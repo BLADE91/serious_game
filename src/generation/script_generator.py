@@ -22,15 +22,25 @@ class QwenScriptGenerator:
     def __init__(self, client: QwenChatClient | None = None) -> None:
         self._client = client or QwenChatClient(QwenConfig.from_env())
 
-    def generate(self, query: str, contexts: list[SourceContext]) -> ScriptDesign:
+    def generate(
+        self,
+        query: str,
+        contexts: list[SourceContext],
+        feedback: str = "",
+    ) -> ScriptDesign:
         if not query.strip():
             raise ValueError("query must not be empty")
 
-        content = self._client.complete(self._build_messages(query, contexts), temperature=0.2)
+        content = self._client.complete(self._build_messages(query, contexts, feedback), temperature=0.2)
         payload = self._parse_json_object(content)
         return self._build_script_design(payload)
 
-    def _build_messages(self, query: str, contexts: list[SourceContext]) -> list[ChatMessage]:
+    def _build_messages(
+        self,
+        query: str,
+        contexts: list[SourceContext],
+        feedback: str = "",
+    ) -> list[ChatMessage]:
         context_payload = [
             {
                 "reference_id": context.id,
@@ -43,6 +53,7 @@ class QwenScriptGenerator:
         user_payload = {
             "query": query,
             "source_contexts": context_payload,
+            "human_feedback": feedback.strip(),
             "output_contract": {
                 "title": "string",
                 "premise": "string",
@@ -122,6 +133,7 @@ class QwenScriptGenerator:
                 "NPC 类型只能使用 cadre、external、villager。",
                 "所有数值字段必须是整数，不要使用百分号字符串。",
                 "语言必须是中文。",
+                "如果 human_feedback 非空，必须优先满足其中的人工反馈，但不能破坏 JSON 输出结构。",
             ],
         }
 

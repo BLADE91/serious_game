@@ -85,6 +85,18 @@ python run_script_generation.py
 python run_script_generation.py --queries "生态搬迁 基层治理,征地补偿 信访,压力型体制 基层干部"
 ```
 
+检索前人工确认或替换 query：
+
+```bash
+python run_script_generation.py --review-queries
+```
+
+带人工反馈生成：
+
+```bash
+python run_script_generation.py --feedback "行动规则要更强调约束、风险和payoff，NPC数量先控制在5个以内"
+```
+
 生成结果会保存到：
 
 ```text

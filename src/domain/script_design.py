@@ -55,6 +55,7 @@ class ScriptGenerationRequest:
 
     query: str
     manual_queries: list[str] = field(default_factory=list)
+    feedback: str = ""
     max_contexts: int = 4
 
     def __post_init__(self) -> None:

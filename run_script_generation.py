@@ -38,6 +38,16 @@ def main() -> None:
         help="人工指定检索 query，多个 query 用英文逗号分隔；设置后跳过自动改写",
     )
     parser.add_argument(
+        "--review-queries",
+        action="store_true",
+        help="检索前先打印 query，并允许人工确认或替换",
+    )
+    parser.add_argument(
+        "--feedback",
+        default="",
+        help="传给剧本生成器的人工反馈或额外要求",
+    )
+    parser.add_argument(
         "--max-contexts",
         type=int,
         default=4,
@@ -53,11 +63,24 @@ def main() -> None:
     request = ScriptGenerationRequest(
         query=args.query,
         manual_queries=_parse_manual_queries(args.queries),
+        feedback=args.feedback,
         max_contexts=args.max_contexts,
     )
 
     try:
-        result = ScriptGenService.from_env().generate_script(request)
+        service = ScriptGenService.from_env()
+        if args.review_queries:
+            reviewed_queries = review_queries(service.resolve_queries(request))
+            if not reviewed_queries:
+                print("已取消生成。")
+                return
+            request = ScriptGenerationRequest(
+                query=args.query,
+                manual_queries=reviewed_queries,
+                feedback=args.feedback,
+                max_contexts=args.max_contexts,
+            )
+        result = service.generate_script(request)
     except OpenSearchClientError as exc:
         print_error("OpenSearch 连接或查询失败", exc)
         return
@@ -76,6 +99,17 @@ def _parse_manual_queries(raw_queries: str) -> list[str]:
     if not raw_queries.strip():
         return []
     return [query.strip() for query in raw_queries.split(",") if query.strip()]
+
+
+def review_queries(queries: list[str]) -> list[str]:
+    print_queries("待使用的检索 query", queries)
+    print("\n直接回车使用这些 query；输入新的 query 可替换，多个 query 用英文逗号分隔；输入 q 取消。")
+    user_input = input("确认检索 query: ").strip()
+    if not user_input:
+        return queries
+    if user_input.lower() in {"q", "quit", "cancel"}:
+        return []
+    return _parse_manual_queries(user_input)
 
 
 def print_queries(title: str, queries: list[str]) -> None:

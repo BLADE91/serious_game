@@ -28,10 +28,10 @@ class ScriptGenService:
         return cls()
 
     def generate_script(self, request: ScriptGenerationRequest) -> ScriptGenerationResult:
-        rewritten_queries = self._resolve_queries(request)
+        rewritten_queries = self.resolve_queries(request)
         contexts = self._search_provider.find_contexts_for_queries(rewritten_queries)
         contexts = contexts[: request.max_contexts]
-        script = self._generator.generate(request.query, contexts)
+        script = self._generator.generate(request.query, contexts, request.feedback)
         return ScriptGenerationResult(
             script=script,
             contexts_used=contexts,
@@ -42,7 +42,9 @@ class ScriptGenService:
             ],
         )
 
-    def _resolve_queries(self, request: ScriptGenerationRequest) -> list[str]:
+    def resolve_queries(self, request: ScriptGenerationRequest) -> list[str]:
+        """解析或改写剧本检索 query，供 CLI 人工确认使用。"""
+
         manual_queries = [query.strip() for query in request.manual_queries if query.strip()]
         if manual_queries:
             return manual_queries[:3]
