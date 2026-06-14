@@ -1,5 +1,6 @@
 """基于 Qwen 的剧本初稿生成器。"""
 
+from dataclasses import asdict
 import json
 from typing import Any
 
@@ -34,6 +35,48 @@ class QwenScriptGenerator:
         content = self._client.complete(self._build_messages(query, contexts, feedback), temperature=0.2)
         payload = self._parse_json_object(content)
         return self._build_script_design(payload)
+
+    def generate_full(
+        self,
+        query: str,
+        contexts: list[SourceContext],
+        feedback: str = "",
+    ) -> ScriptDesign:
+        """通过多阶段扩写生成完整结构化初稿。"""
+
+        script = self.generate(query, contexts, feedback)
+        stage_feedback = [
+            (
+                "这是完整初稿扩写的 NPC 阶段。保留总体设定和初始 GameState，"
+                "将 npc_seed 扩展到 12 至 15 个有明确利益、信息差和行为阈值的角色。"
+                "干部、外部角色和村民都要覆盖，角色之间应形成可用于后续事件的关系网络。"
+            ),
+            (
+                "这是完整初稿扩写的行动规则阶段。保留已有合理内容，"
+                "将 action_rules 扩展到 12 至 16 条，覆盖沟通、调查、承诺、资源分配、"
+                "行政施压、跨部门协调和舆情应对。每条行动都要有成本、前置条件、"
+                "禁止条件、直接 payoff、副作用、风险和资料引用。"
+            ),
+            (
+                "这是完整初稿扩写的事件与夜间推演阶段。将 event_outline 扩展到 15 至 20 个事件，"
+                "覆盖第 1 至 90 天的启动、分化、升级和收束阶段，并形成前后相连的触发链。"
+                "补全夜间 NPC 互动规则、信息传播规则、群体阈值变化和多维 payoff 说明。"
+                "最后检查所有 NPC、行动、事件、数值和引用之间的一致性，输出完整 JSON。"
+            ),
+        ]
+
+        for stage_instruction in stage_feedback:
+            combined_feedback = stage_instruction
+            if feedback.strip():
+                combined_feedback = f"{stage_instruction}\n持续遵守的人工要求：{feedback.strip()}"
+            script = self.revise(
+                query=query,
+                previous_script=asdict(script),
+                contexts=contexts,
+                feedback=combined_feedback,
+            )
+
+        return script
 
     def revise(
         self,

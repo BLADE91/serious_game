@@ -54,6 +54,11 @@ def main() -> None:
         help="读取已有剧本 JSON，复用原资料并根据 --feedback 生成下一轮修订稿",
     )
     parser.add_argument(
+        "--full-draft",
+        action="store_true",
+        help="分阶段生成包含完整 NPC、行动规则和 90 天事件线的结构化初稿",
+    )
+    parser.add_argument(
         "--max-contexts",
         type=int,
         default=4,
@@ -84,6 +89,7 @@ def main() -> None:
                 manual_queries=_parse_manual_queries(args.queries),
                 feedback=args.feedback,
                 max_contexts=args.max_contexts,
+                full_draft=args.full_draft,
             )
             if args.review_queries:
                 reviewed_queries = review_queries(service.resolve_queries(request))
@@ -95,6 +101,7 @@ def main() -> None:
                     manual_queries=reviewed_queries,
                     feedback=args.feedback,
                     max_contexts=args.max_contexts,
+                    full_draft=args.full_draft,
                 )
             result = service.generate_script(request)
     except (OSError, json.JSONDecodeError, ValueError) as exc:

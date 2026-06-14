@@ -57,6 +57,7 @@ class ScriptGenerationRequest:
     manual_queries: list[str] = field(default_factory=list)
     feedback: str = ""
     max_contexts: int = 4
+    full_draft: bool = False
 
     def __post_init__(self) -> None:
         if not self.query.strip():
@@ -74,3 +75,4 @@ class ScriptGenerationResult:
     original_query: str = ""
     feedback: str = ""
     revision_round: int = 0
+    generation_mode: str = "compact"
