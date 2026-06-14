@@ -104,7 +104,10 @@ def main() -> None:
                     max_contexts=args.max_contexts,
                     full_draft=args.full_draft,
                 )
-            result = service.generate_script(request)
+            result = service.generate_script(
+                request,
+                progress_callback=print_generation_progress if args.full_draft else None,
+            )
     except (OSError, json.JSONDecodeError) as exc:
         print_error("读取旧稿失败", exc)
         return
@@ -158,6 +161,19 @@ def print_queries(title: str, queries: list[str]) -> None:
     print(f"\n=== {title} ===")
     for index, query in enumerate(queries, start=1):
         print(f"{index}. {query}")
+
+
+def print_generation_progress(
+    stage: int,
+    total_stages: int,
+    name: str,
+    request_bytes: int,
+) -> None:
+    print(
+        f"\n=== 完整初稿阶段 {stage}/{total_stages}: {name} ===\n"
+        f"Qwen 请求体: {request_bytes / 1024:.1f} KiB",
+        flush=True,
+    )
 
 
 def print_contexts(contexts) -> None:

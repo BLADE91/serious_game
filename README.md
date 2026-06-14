@@ -85,7 +85,7 @@ OPENSEARCH_INDEX=serious_game_sources
 python run_script_generation.py
 ```
 
-交付用完整初稿采用分阶段生成，共调用 Qwen 4 次，依次完成骨架、NPC、行动规则和 90 天事件线：
+交付用完整初稿采用 7 个短阶段生成：总体骨架、NPC、两批行动规则和三段 90 天事件线。Qwen 通过 OpenAI Python SDK 调用，模块结果由 Python 合并：
 
 ```bash
 python run_script_generation.py --full-draft

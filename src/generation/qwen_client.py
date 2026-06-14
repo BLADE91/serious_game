@@ -1,10 +1,21 @@
-"""用于 Qwen 的最小 DashScope OpenAI 兼容对话客户端。"""
+"""通过 OpenAI Python SDK 调用 DashScope 兼容接口。"""
 
 from dataclasses import dataclass
 import json
-import socket
 from typing import Any
-from urllib import error, request
+
+try:
+    from openai import (
+        APIConnectionError,
+        APIStatusError,
+        APITimeoutError,
+        DefaultHttpxClient,
+        OpenAI,
+    )
+except ImportError:
+    APIConnectionError = APIStatusError = APITimeoutError = None
+    DefaultHttpxClient = None
+    OpenAI = None
 
 from src.config import QwenConfig
 
@@ -23,60 +34,93 @@ class ChatMessage:
 
 
 class QwenChatClient:
-    """基于标准库实现的 Qwen chat completions HTTP 客户端。"""
+    """使用 OpenAI SDK 调用 Qwen chat completions。"""
 
-    def __init__(self, config: QwenConfig) -> None:
+    def __init__(self, config: QwenConfig, client: Any | None = None) -> None:
+        if client is None and OpenAI is None:
+            raise QwenClientError(
+                "openai Python SDK is required. Install it with: pip install openai"
+            )
+
         self._config = config
+        self._client = client
+        if self._client is None:
+            self._client = OpenAI(
+                api_key=config.api_key,
+                base_url=config.base_url,
+                timeout=config.timeout_seconds,
+                max_retries=MAX_REQUEST_ATTEMPTS - 1,
+                http_client=DefaultHttpxClient(trust_env=False),
+            )
 
     def complete(self, messages: list[ChatMessage], temperature: float = 0.2) -> str:
-        payload = {
-            "model": self._config.model,
-            "messages": [message.__dict__ for message in messages],
-            "temperature": temperature,
-            "enable_thinking": False,
-        }
-        body = json.dumps(payload).encode("utf-8")
-        endpoint = f"{self._config.base_url}/chat/completions"
-        req = request.Request(
-            endpoint,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self._config.api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-
-        response_body = self._perform_request(req)
+        payload = self._build_payload(messages, temperature)
 
         try:
-            data: dict[str, Any] = json.loads(response_body)
-            return data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+            completion = self._client.chat.completions.create(**payload)
+        except APITimeoutError as exc:
+            raise QwenClientError(
+                f"Qwen API request timed out after {self._config.timeout_seconds} seconds"
+            ) from exc
+        except APIConnectionError as exc:
+            cause = self._root_cause(exc)
+            raise QwenClientError(
+                f"Qwen API connection failed: {exc}; root_cause={cause}"
+            ) from exc
+        except APIStatusError as exc:
+            detail = self._status_error_detail(exc)
+            raise QwenClientError(detail) from exc
+
+        try:
+            content = completion.choices[0].message.content
+        except (AttributeError, IndexError, TypeError) as exc:
             raise QwenClientError("Qwen API returned an invalid chat completion response") from exc
 
-    def _perform_request(self, req: request.Request) -> str:
-        last_error: Exception | None = None
+        if not isinstance(content, str) or not content.strip():
+            raise QwenClientError("Qwen API returned an empty chat completion")
+        return content
 
-        for attempt in range(1, MAX_REQUEST_ATTEMPTS + 1):
-            try:
-                with request.urlopen(req, timeout=self._config.timeout_seconds) as response:
-                    return response.read().decode("utf-8")
-            except error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="replace")
-                if exc.code != 429 and exc.code < 500:
-                    raise QwenClientError(f"Qwen API HTTP {exc.code}: {detail}") from exc
-                last_error = QwenClientError(f"Qwen API HTTP {exc.code}: {detail}")
-            except error.URLError as exc:
-                last_error = QwenClientError(f"Qwen API request failed: {exc.reason}")
-            except (TimeoutError, socket.timeout) as exc:
-                last_error = QwenClientError(
-                    f"Qwen API request timed out after {self._config.timeout_seconds} seconds"
-                )
+    def request_size_bytes(
+        self,
+        messages: list[ChatMessage],
+        temperature: float = 0.2,
+    ) -> int:
+        """估算 OpenAI SDK 发送给 DashScope 的 JSON 请求体字节数。"""
 
-            if attempt == MAX_REQUEST_ATTEMPTS:
-                break
+        payload = self._build_payload(messages, temperature)
+        serializable = {
+            **payload,
+            "extra_body": payload.get("extra_body", {}),
+        }
+        return len(json.dumps(serializable, ensure_ascii=False).encode("utf-8"))
 
-        raise QwenClientError(
-            f"Qwen API request failed after {MAX_REQUEST_ATTEMPTS} attempts: {last_error}"
-        ) from last_error
+    def _build_payload(
+        self,
+        messages: list[ChatMessage],
+        temperature: float,
+    ) -> dict[str, Any]:
+        return {
+            "model": self._config.model,
+            "messages": [
+                {"role": message.role, "content": message.content}
+                for message in messages
+            ],
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+            "extra_body": {"enable_thinking": False},
+        }
+
+    def _status_error_detail(self, exc: Any) -> str:
+        status_code = getattr(exc, "status_code", "unknown")
+        request_id = getattr(exc, "request_id", None)
+        body = getattr(exc, "body", None)
+        message = f"Qwen API HTTP {status_code}: {body or str(exc)}"
+        if request_id:
+            message = f"{message} (request_id={request_id})"
+        return message
+
+    def _root_cause(self, exc: BaseException) -> str:
+        cause = exc
+        while cause.__cause__ is not None:
+            cause = cause.__cause__
+        return repr(cause)
