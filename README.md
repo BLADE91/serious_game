@@ -97,6 +97,12 @@ python run_script_generation.py --review-queries
 python run_script_generation.py --feedback "行动规则要更强调约束、风险和payoff，NPC数量先控制在5个以内"
 ```
 
+基于已保存的剧本继续多轮修订。修订会复用旧稿中的资料，不会再次检索 OpenSearch，并保存为新文件：
+
+```bash
+python run_script_generation.py --revise outputs/script_drafts/script_draft_20260603_161931.json --feedback "把事件冲突提前，并降低初始预算"
+```
+
 生成结果会保存到：
 
 ```text

@@ -71,3 +71,6 @@ class ScriptGenerationResult:
     contexts_used: list[SourceContext] = field(default_factory=list)
     rewritten_queries: list[str] = field(default_factory=list)
     generation_notes: list[str] = field(default_factory=list)
+    original_query: str = ""
+    feedback: str = ""
+    revision_round: int = 0

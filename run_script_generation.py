@@ -48,6 +48,12 @@ def main() -> None:
         help="传给剧本生成器的人工反馈或额外要求",
     )
     parser.add_argument(
+        "--revise",
+        default="",
+        metavar="JSON_PATH",
+        help="读取已有剧本 JSON，复用原资料并根据 --feedback 生成下一轮修订稿",
+    )
+    parser.add_argument(
         "--max-contexts",
         type=int,
         default=4,
@@ -60,27 +66,40 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    request = ScriptGenerationRequest(
-        query=args.query,
-        manual_queries=_parse_manual_queries(args.queries),
-        feedback=args.feedback,
-        max_contexts=args.max_contexts,
-    )
-
     try:
         service = ScriptGenService.from_env()
-        if args.review_queries:
-            reviewed_queries = review_queries(service.resolve_queries(request))
-            if not reviewed_queries:
-                print("已取消生成。")
+        if args.revise:
+            if not args.feedback.strip():
+                print("--revise 必须同时提供非空的 --feedback。")
                 return
+            previous_result = load_result(Path(args.revise))
+            result = service.revise_script(
+                previous_result=previous_result,
+                query=args.query,
+                feedback=args.feedback,
+            )
+        else:
             request = ScriptGenerationRequest(
                 query=args.query,
-                manual_queries=reviewed_queries,
+                manual_queries=_parse_manual_queries(args.queries),
                 feedback=args.feedback,
                 max_contexts=args.max_contexts,
             )
-        result = service.generate_script(request)
+            if args.review_queries:
+                reviewed_queries = review_queries(service.resolve_queries(request))
+                if not reviewed_queries:
+                    print("已取消生成。")
+                    return
+                request = ScriptGenerationRequest(
+                    query=args.query,
+                    manual_queries=reviewed_queries,
+                    feedback=args.feedback,
+                    max_contexts=args.max_contexts,
+                )
+            result = service.generate_script(request)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print_error("读取或校验旧稿失败", exc)
+        return
     except OpenSearchClientError as exc:
         print_error("OpenSearch 连接或查询失败", exc)
         return
@@ -99,6 +118,15 @@ def _parse_manual_queries(raw_queries: str) -> list[str]:
     if not raw_queries.strip():
         return []
     return [query.strip() for query in raw_queries.split(",") if query.strip()]
+
+
+def load_result(path: Path) -> dict[str, Any]:
+    """读取已有剧本生成结果。"""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("旧稿 JSON 顶层必须是对象")
+    return payload
 
 
 def review_queries(queries: list[str]) -> list[str]:

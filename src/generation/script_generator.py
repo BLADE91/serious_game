@@ -35,11 +35,40 @@ class QwenScriptGenerator:
         payload = self._parse_json_object(content)
         return self._build_script_design(payload)
 
+    def revise(
+        self,
+        query: str,
+        previous_script: dict[str, Any],
+        contexts: list[SourceContext],
+        feedback: str,
+    ) -> ScriptDesign:
+        """根据旧稿和人工反馈生成修订稿。"""
+
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        if not feedback.strip():
+            raise ValueError("feedback must not be empty")
+        if not previous_script:
+            raise ValueError("previous_script must not be empty")
+
+        content = self._client.complete(
+            self._build_messages(
+                query,
+                contexts,
+                feedback,
+                previous_script=previous_script,
+            ),
+            temperature=0.2,
+        )
+        payload = self._parse_json_object(content)
+        return self._build_script_design(payload)
+
     def _build_messages(
         self,
         query: str,
         contexts: list[SourceContext],
         feedback: str = "",
+        previous_script: dict[str, Any] | None = None,
     ) -> list[ChatMessage]:
         context_payload = [
             {
@@ -54,6 +83,7 @@ class QwenScriptGenerator:
             "query": query,
             "source_contexts": context_payload,
             "human_feedback": feedback.strip(),
+            "previous_script": previous_script,
             "output_contract": {
                 "title": "string",
                 "premise": "string",
@@ -134,6 +164,8 @@ class QwenScriptGenerator:
                 "所有数值字段必须是整数，不要使用百分号字符串。",
                 "语言必须是中文。",
                 "如果 human_feedback 非空，必须优先满足其中的人工反馈，但不能破坏 JSON 输出结构。",
+                "如果 previous_script 非空，应在旧稿基础上修订，保留不受反馈影响且合理的内容，不要无故从零重写。",
+                "修订后仍需保证行动规则、事件、NPC 和全局状态之间的数据约束一致。",
             ],
         }
 
