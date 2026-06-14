@@ -8,6 +8,7 @@ from src.generation.iterative_agent_context_provider import IterativeAgentContex
 from src.generation.opensearch_agent_context_provider import OpenSearchAgentContextProvider
 from src.generation.retrieval_planner import QwenRetrievalPlanner
 from src.generation.script_generator import QwenScriptGenerator
+from src.services.script_validator import ScriptValidator
 
 
 class ScriptGenService:
@@ -18,10 +19,12 @@ class ScriptGenService:
         search_provider: OpenSearchAgentContextProvider | None = None,
         planner: QwenRetrievalPlanner | None = None,
         generator: QwenScriptGenerator | None = None,
+        validator: ScriptValidator | None = None,
     ) -> None:
         self._search_provider = search_provider or OpenSearchAgentContextProvider.from_env()
         self._planner = planner or QwenRetrievalPlanner()
         self._generator = generator or QwenScriptGenerator()
+        self._validator = validator or ScriptValidator()
 
     @classmethod
     def from_env(cls) -> "ScriptGenService":
@@ -48,6 +51,7 @@ class ScriptGenService:
             ]
             generation_mode = "compact"
 
+        self._validator.validate(script, contexts, full_draft=request.full_draft)
         return ScriptGenerationResult(
             script=script,
             contexts_used=contexts,
@@ -88,6 +92,8 @@ class ScriptGenService:
             contexts,
             feedback,
         )
+        generation_mode = self._generation_mode(previous_result)
+        self._validator.validate(script, contexts, full_draft=generation_mode == "full")
         return ScriptGenerationResult(
             script=script,
             contexts_used=contexts,
@@ -99,7 +105,7 @@ class ScriptGenService:
             original_query=original_query,
             feedback=feedback.strip(),
             revision_round=previous_round + 1,
-            generation_mode=self._generation_mode(previous_result),
+            generation_mode=generation_mode,
         )
 
     def resolve_queries(self, request: ScriptGenerationRequest) -> list[str]:

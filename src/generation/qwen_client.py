@@ -9,6 +9,9 @@ from urllib import error, request
 from src.config import QwenConfig
 
 
+MAX_REQUEST_ATTEMPTS = 3
+
+
 class QwenClientError(RuntimeError):
     """当 Qwen API 请求失败或返回无效响应时抛出。"""
 
@@ -44,21 +47,36 @@ class QwenChatClient:
             method="POST",
         )
 
-        try:
-            with request.urlopen(req, timeout=self._config.timeout_seconds) as response:
-                response_body = response.read().decode("utf-8")
-        except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise QwenClientError(f"Qwen API HTTP {exc.code}: {detail}") from exc
-        except error.URLError as exc:
-            raise QwenClientError(f"Qwen API request failed: {exc.reason}") from exc
-        except (TimeoutError, socket.timeout) as exc:
-            raise QwenClientError(
-                f"Qwen API request timed out after {self._config.timeout_seconds} seconds"
-            ) from exc
+        response_body = self._perform_request(req)
 
         try:
             data: dict[str, Any] = json.loads(response_body)
             return data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
             raise QwenClientError("Qwen API returned an invalid chat completion response") from exc
+
+    def _perform_request(self, req: request.Request) -> str:
+        last_error: Exception | None = None
+
+        for attempt in range(1, MAX_REQUEST_ATTEMPTS + 1):
+            try:
+                with request.urlopen(req, timeout=self._config.timeout_seconds) as response:
+                    return response.read().decode("utf-8")
+            except error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                if exc.code != 429 and exc.code < 500:
+                    raise QwenClientError(f"Qwen API HTTP {exc.code}: {detail}") from exc
+                last_error = QwenClientError(f"Qwen API HTTP {exc.code}: {detail}")
+            except error.URLError as exc:
+                last_error = QwenClientError(f"Qwen API request failed: {exc.reason}")
+            except (TimeoutError, socket.timeout) as exc:
+                last_error = QwenClientError(
+                    f"Qwen API request timed out after {self._config.timeout_seconds} seconds"
+                )
+
+            if attempt == MAX_REQUEST_ATTEMPTS:
+                break
+
+        raise QwenClientError(
+            f"Qwen API request failed after {MAX_REQUEST_ATTEMPTS} attempts: {last_error}"
+        ) from last_error

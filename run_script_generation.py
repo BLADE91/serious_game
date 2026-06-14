@@ -13,6 +13,7 @@ from src.generation.opensearch_client import OpenSearchClientError
 from src.generation.qwen_client import QwenClientError
 from src.generation.script_generator import ScriptGenerationError
 from src.services import ScriptGenService
+from src.services.script_validator import ScriptValidationError
 
 
 DEFAULT_SCRIPT_QUERY = (
@@ -104,8 +105,14 @@ def main() -> None:
                     full_draft=args.full_draft,
                 )
             result = service.generate_script(request)
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
-        print_error("读取或校验旧稿失败", exc)
+    except (OSError, json.JSONDecodeError) as exc:
+        print_error("读取旧稿失败", exc)
+        return
+    except ScriptValidationError as exc:
+        print_error("剧本结构校验失败", exc)
+        return
+    except ValueError as exc:
+        print_error("参数或配置校验失败", exc)
         return
     except OpenSearchClientError as exc:
         print_error("OpenSearch 连接或查询失败", exc)
