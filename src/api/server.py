@@ -20,6 +20,41 @@ from src.services.script_gen_service import ScriptGenService
 from src.services.script_validator import ScriptValidationError
 
 
+# ---- 任务追踪 ----
+
+import secrets
+import threading
+
+_active_tasks: dict[str, threading.Event] = {}
+
+
+def _create_task() -> str:
+    task_id = secrets.token_hex(8)
+    _active_tasks[task_id] = threading.Event()  # Event 被设置 = 取消
+    return task_id
+
+
+def _cancel_task(task_id: str) -> bool:
+    event = _active_tasks.get(task_id)
+    if event is None:
+        return False
+    event.set()
+    return True
+
+
+def _is_cancelled(task_id: str) -> bool:
+    event = _active_tasks.get(task_id)
+    return event is not None and event.is_set()
+
+
+def _cleanup_task(task_id: str) -> None:
+    _active_tasks.pop(task_id, None)
+
+
+class CancelledError(RuntimeError):
+    """任务被用户取消。"""
+
+
 # ---- 数据模型 ----
 
 class GenerateRequest(BaseModel):
@@ -112,11 +147,23 @@ def create_app() -> FastAPI:
             full_draft=req.full_draft,
         )
 
+        task_id = _create_task()
+
         async def event_stream() -> AsyncGenerator[str, None]:
             queue: asyncio.Queue[dict] = asyncio.Queue()
 
             def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
-                """同步回调 → 异步队列。"""
+                """同步回调 → 异步队列，同时检测取消。"""
+                if _is_cancelled(task_id):
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait,
+                            {"type": "cancelled", "message": "生成已被用户取消"},
+                        )
+                    except RuntimeError:
+                        pass
+                    return
                 try:
                     loop = asyncio.get_event_loop()
                     loop.call_soon_threadsafe(
@@ -130,8 +177,12 @@ def create_app() -> FastAPI:
             def run_generation() -> None:
                 """在线程中运行同步生成。"""
                 try:
+                    if _is_cancelled(task_id):
+                        return
                     service = ScriptGenService.from_env()
                     result = service.generate_script(request, progress_callback=progress_callback)
+                    if _is_cancelled(task_id):
+                        return
                     script_dict = serialize_script(result.script)
                     final = {
                         "type": "result",
@@ -164,14 +215,19 @@ def create_app() -> FastAPI:
             thread = threading.Thread(target=run_generation, daemon=True)
             thread.start()
 
-            while True:
-                event_data = await queue.get()
-                event_type = event_data.pop("type")
-                yield await sse_event(event_type, event_data)
-                if event_type in ("result", "error"):
-                    break
-
-            thread.join(timeout=5)
+            try:
+                while True:
+                    event_data = await queue.get()
+                    event_type = event_data.pop("type")
+                    yield await sse_event(event_type, event_data)
+                    if event_type in ("result", "error", "cancelled"):
+                        break
+            except asyncio.CancelledError:
+                _cancel_task(task_id)
+                yield await sse_event("cancelled", {"message": "客户端断开连接"})
+            finally:
+                _cleanup_task(task_id)
+                thread.join(timeout=5)
 
         return StreamingResponse(
             event_stream(),
@@ -180,8 +236,17 @@ def create_app() -> FastAPI:
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
+                "X-Task-Id": task_id,
             },
         )
+
+    # ---------- POST /api/cancel/{task_id} ----------
+
+    @app.post("/api/cancel/{task_id}")
+    async def cancel_task(task_id: str):
+        """取消正在进行的生成任务。"""
+        ok = _cancel_task(task_id)
+        return {"cancelled": ok, "task_id": task_id}
 
     # ---------- POST /api/revise ----------
 

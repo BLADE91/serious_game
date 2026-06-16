@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>父母官 · 剧本生成器</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏛️</text></svg>">
 <style>
 :root {
   --bg: #f5f0eb;
@@ -159,6 +160,7 @@ textarea { resize: vertical; min-height: 60px; }
   <h2>⏳ 生成进度</h2>
   <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progressBar" style="width:0%"></div></div>
   <p class="progress-text" id="progressText">准备中...</p>
+  <button class="btn btn-secondary btn-sm" id="cancelBtn" onclick="cancelGeneration()" style="margin-top:12px;">⏹ 取消生成</button>
 </div>
 
 <!-- 结果区 -->
@@ -196,6 +198,8 @@ textarea { resize: vertical; min-height: 60px; }
 <script>
 // ===== 全局状态 =====
 let lastResult = null;
+let activeAbortController = null;
+let activeTaskId = null;
 
 // ===== Tab 切换 =====
 document.getElementById('tabs')?.addEventListener('click', e => {
@@ -266,6 +270,23 @@ function setButtonLoading(btn, loading) {
   }
 }
 
+// ===== 取消生成 =====
+async function cancelGeneration() {
+  if (activeAbortController) {
+    activeAbortController.abort();
+    activeAbortController = null;
+  }
+  if (activeTaskId) {
+    try {
+      await fetch(`/api/cancel/${activeTaskId}`, { method: 'POST' });
+    } catch {}
+    activeTaskId = null;
+  }
+  hide('progress-card');
+  document.getElementById('generateBtn').disabled = false;
+  document.getElementById('generateBtn').textContent = '▶ 生成剧本';
+}
+
 // ===== 生成 =====
 async function startGeneration() {
   const scenario = document.getElementById('scenario').value.trim();
@@ -282,6 +303,8 @@ async function startGeneration() {
   const btn = document.getElementById('generateBtn');
   setButtonLoading(btn, true);
 
+  activeAbortController = new AbortController();
+
   try {
     const resp = await fetch('/api/generate', {
       method: 'POST',
@@ -294,10 +317,14 @@ async function startGeneration() {
         complexity: document.getElementById('complexity').value,
         extra_requirements: document.getElementById('extra').value.trim(),
       }),
+      signal: activeAbortController.signal,
     });
 
+    // 从响应头拿 task_id
+    activeTaskId = resp.headers.get('X-Task-Id');
+
     if (!resp.ok) {
-      const err = await resp.json();
+      const err = await resp.json().catch(() => ({}));
       throw new Error(err.detail || '请求失败 ' + resp.status);
     }
 
@@ -312,12 +339,20 @@ async function startGeneration() {
         document.getElementById('feedback').value = '';
       } else if (event === 'error') {
         showError(data.message);
+      } else if (event === 'cancelled') {
+        hide('progress-card');
       }
     }
   } catch (err) {
-    showError(err.message);
+    if (err.name === 'AbortError') {
+      // 用户主动取消，不显示错误
+    } else {
+      showError(err.message);
+    }
   } finally {
     setButtonLoading(btn, false);
+    activeAbortController = null;
+    activeTaskId = null;
   }
 }
 
@@ -333,18 +368,18 @@ async function startRevision() {
   document.getElementById('progressBar').style.width = '50%';
   document.getElementById('progressText').textContent = '正在根据反馈修订剧本...';
 
+  activeAbortController = new AbortController();
+
   try {
     const resp = await fetch('/api/revise', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        previous_result: lastResult,
-        feedback,
-      }),
+      body: JSON.stringify({ previous_result: lastResult, feedback }),
+      signal: activeAbortController.signal,
     });
 
     if (!resp.ok) {
-      const err = await resp.json();
+      const err = await resp.json().catch(() => ({}));
       throw new Error(err.detail || '修订失败 ' + resp.status);
     }
 
@@ -360,7 +395,11 @@ async function startRevision() {
       }
     }
   } catch (err) {
-    showError(err.message);
+    if (err.name !== 'AbortError') {
+      showError(err.message);
+    }
+  } finally {
+    activeAbortController = null;
   }
 }
 
