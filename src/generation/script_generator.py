@@ -643,7 +643,7 @@ class QwenScriptGenerator:
         contexts: list[SourceContext],
         feedback: str,
     ) -> ScriptDesign:
-        """根据旧稿和人工反馈生成修订稿。"""
+        """根据旧稿和人工反馈生成修订稿（旧格式兼容）。"""
 
         if not query.strip():
             raise ValueError("query must not be empty")
@@ -663,6 +663,117 @@ class QwenScriptGenerator:
         )
         payload = self._parse_json_object(content)
         return self._build_script_design(payload)
+
+    def revise_structured(
+        self,
+        query: str,
+        previous_result: dict[str, Any],
+        contexts: list[SourceContext],
+        feedback: str,
+    ) -> ScriptDesign:
+        """根据完整旧稿和新格式反馈生成修订稿。
+
+        单次 prompt，保留新结构（三幕、决策点、关系网、结局），
+        只对反馈指出的部分做定向修改。
+        """
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        if not feedback.strip():
+            raise ValueError("feedback must not be empty")
+        if not previous_result:
+            raise ValueError("previous_result must not be empty")
+
+        content = self._client.complete(
+            self._build_revise_structured_messages(query, previous_result, contexts, feedback),
+            temperature=0.2,
+        )
+        payload = self._parse_json_object(content)
+        return self._build_script_design(payload)
+
+    def _build_revise_structured_messages(
+        self,
+        query: str,
+        previous_result: dict[str, Any],
+        contexts: list[SourceContext],
+        feedback: str,
+    ) -> list[ChatMessage]:
+        """构建新格式修订 prompt：保留结构，定向修改。"""
+        previous_script = previous_result.get("script") if isinstance(previous_result, dict) else None
+        user_payload = {
+            "query": query,
+            "human_feedback": feedback.strip(),
+            "previous_script": previous_script,
+            "source_contexts": self._context_payload(contexts),
+            "output_contract": {
+                "title": "string",
+                "premise": "string",
+                "player_role": "string",
+                "core_conflict": "string",
+                "initial_game_state": {
+                    "day": 1, "action_points": 3, "budget_remaining": 8000,
+                    "budget_unit": "万元", "signed_households": 0,
+                    "total_households": 36, "social_stability_index": 70,
+                    "political_credit": 70, "cadre_execution_index": 60,
+                },
+                "acts": [
+                    {"act_number": 1, "title": "string", "day_range": "string",
+                     "goal": "string", "description": "string"},
+                ],
+                "npc_seed": [
+                    {"npc_id": "string", "name": "string", "npc_type": "cadre | external | villager",
+                     "group": "string", "trust_to_player": 0, "attitude_score": 0,
+                     "anxiety_level": 0, "reference_point": 0, "granovetter_threshold": 0,
+                     "core_demand_satisfied": False, "signed": False,
+                     "known_info": ["string"], "player_promises": []},
+                ],
+                "npc_relationships": [
+                    {"from_npc_id": "string", "to_npc_id": "string",
+                     "relation_type": "亲属 | 上下级 | 利益同盟 | 矛盾对立 | 信息渠道 | 情感纽带",
+                     "strength": 50, "description": "string"},
+                ],
+                "decision_points": [
+                    {"decision_id": "string", "title": "string", "day_window": "string",
+                     "situation": "string",
+                     "options": [
+                         {"option_id": "string", "label": "string", "description": "string",
+                          "cost_action_points": 1, "budget_cost": 0,
+                          "payoffs": {}, "risks": ["string"], "citation": "string"},
+                     ],
+                     "affected_npc_ids": ["string"], "trigger_condition": "",
+                     "is_critical": False, "citations": ["string"]},
+                ],
+                "endings": [
+                    {"ending_id": "string", "title": "string", "description": "string",
+                     "conditions": ["string"], "ending_type": "good | neutral | bad"},
+                ],
+                "citations": [
+                    {"citation_id": "string", "source_context_id": "string",
+                     "title": "string", "note": "string"},
+                ],
+            },
+            "rules": [
+                "你是严肃游戏《父母官》的剧本修订器。",
+                "在 previous_script 基础上，根据 human_feedback 进行定向修订。",
+                "保留不受反馈影响的所有原有内容，不要无故从零重写。",
+                "如果反馈要求增加 NPC 关系，只改 npc_relationships 和相关 NPC。",
+                "如果反馈要求修改某个决策点的选项，只改那个决策点。",
+                "如果反馈要求调整结局条件，只改 endings。",
+                "确保修订后 NPC、决策点和关系网之间的交叉引用仍然一致。",
+                "输出完整剧本 JSON（不是部分更新），包含所有字段。",
+                "所有数值字段必须是整数，语言必须是中文，不要 Markdown。",
+            ],
+        }
+        return [
+            ChatMessage(
+                role="system",
+                content=(
+                    "你是严肃游戏《父母官》的剧本修订器。"
+                    "在已有剧本基础上根据反馈定向修改，保留未提及的内容。"
+                    "必须输出完整合法 JSON 对象。"
+                ),
+            ),
+            ChatMessage(role="user", content=json.dumps(user_payload, ensure_ascii=False)),
+        ]
 
     def _build_messages(
         self,
