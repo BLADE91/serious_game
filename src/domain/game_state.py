@@ -10,6 +10,7 @@ class GameState:
     day: int = 1
     action_points: int = 3
     budget_remaining: int = 8000
+    budget_unit: str = "万元"
     signed_households: int = 0
     total_households: int = 36
     social_stability_index: int = 70
