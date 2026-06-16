@@ -674,10 +674,13 @@ class QwenScriptGenerator:
         for item in value:
             if not isinstance(item, dict):
                 continue
+            source_context_id = str(item.get("source_context_id", "")).strip()
+            if not source_context_id:
+                source_context_id = "query"
             citations.append(
                 ScriptCitation(
                     citation_id=self._required_str(item, "citation_id"),
-                    source_context_id=self._required_str(item, "source_context_id"),
+                    source_context_id=source_context_id,
                     title=self._required_str(item, "title"),
                     note=self._required_str(item, "note"),
                 )
