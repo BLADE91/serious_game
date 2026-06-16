@@ -151,14 +151,19 @@ class ScriptGenService:
         if manual_queries:
             return manual_queries[:3]
 
-        rewritten_queries = self._planner.rewrite_initial_queries(request.query)
+        query = self._effective_query(request)
+        rewritten_queries = self._planner.rewrite_initial_queries(query)
         if rewritten_queries:
             return rewritten_queries[:3]
-        return [request.query.strip()]
+        return [query]
 
     def _uses_pa_backend_generation(self) -> bool:
         load_dotenv(override=False)
         return os.getenv("SCRIPT_GENERATION_BACKEND", "qwen").strip().lower() == "pa_backend"
+
+    def _skip_retrieval(self, request: ScriptGenerationRequest) -> bool:
+        """PA Backend 模式下不自行检索，由 agent 端处理。"""
+        return self._uses_pa_backend_generation() and not request.manual_queries
 
     def _build_contexts(self, value: Any) -> list[SourceContext]:
         if not isinstance(value, list):
