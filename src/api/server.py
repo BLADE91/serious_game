@@ -25,30 +25,40 @@ from src.services.script_validator import ScriptValidationError
 import secrets
 import threading
 
-_active_tasks: dict[str, threading.Event] = {}
+_active_tasks: dict[str, dict] = {}
+# 每个 task: {"event": threading.Event, "service": ScriptGenService | None}
 
 
 def _create_task() -> str:
     task_id = secrets.token_hex(8)
-    _active_tasks[task_id] = threading.Event()  # Event 被设置 = 取消
+    _active_tasks[task_id] = {"event": threading.Event(), "service": None}
     return task_id
 
 
 def _cancel_task(task_id: str) -> bool:
-    event = _active_tasks.get(task_id)
-    if event is None:
+    entry = _active_tasks.get(task_id)
+    if entry is None:
         return False
-    event.set()
+    # 1. 设置取消标志
+    entry["event"].set()
+    # 2. 关闭正在进行的 HTTP 连接（立即中断 urlopen 阻塞）
+    service = entry.get("service")
+    if service is not None and hasattr(service, 'cancel_active_request'):
+        service.cancel_active_request()
     return True
 
 
 def _is_cancelled(task_id: str) -> bool:
-    event = _active_tasks.get(task_id)
-    return event is not None and event.is_set()
+    entry = _active_tasks.get(task_id)
+    return entry is not None and entry["event"].is_set()
 
 
 def _cleanup_task(task_id: str) -> None:
     _active_tasks.pop(task_id, None)
+
+def _task_event(task_id: str) -> threading.Event | None:
+    entry = _active_tasks.get(task_id)
+    return entry["event"] if entry else None
 
 
 class CancelledError(RuntimeError):
@@ -179,7 +189,12 @@ def create_app() -> FastAPI:
                 try:
                     if _is_cancelled(task_id):
                         return
-                    service = ScriptGenService.from_env()
+                    cancel_evt = _task_event(task_id)
+                    service = ScriptGenService(cancel_event=cancel_evt)
+                    # 保存引用以便取消端点关闭 HTTP 连接
+                    entry = _active_tasks.get(task_id)
+                    if entry is not None:
+                        entry["service"] = service
                     result = service.generate_script(request, progress_callback=progress_callback)
                     if _is_cancelled(task_id):
                         return
@@ -253,11 +268,15 @@ def create_app() -> FastAPI:
     @app.post("/api/revise")
     async def revise(req: ReviseRequest):
         """提交修订请求，返回 SSE 流：progress → result。"""
+        task_id = _create_task()
+
         async def event_stream() -> AsyncGenerator[str, None]:
             queue: asyncio.Queue[dict] = asyncio.Queue()
 
             def run_revision() -> None:
                 try:
+                    if _is_cancelled(task_id):
+                        return
                     previous = req.previous_result
                     original_query = req.query.strip() or previous.get("original_query", "")
                     if not original_query:
@@ -283,7 +302,12 @@ def create_app() -> FastAPI:
                     from src.config import load_dotenv
                     import os
                     load_dotenv(override=False)
-                    generator = QwenScriptGenerator()
+                    cancel_evt = _task_event(task_id)
+                    generator = QwenScriptGenerator(cancel_event=cancel_evt)
+                    # 保存 generator 引用以便取消端点关闭 HTTP 连接
+                    entry = _active_tasks.get(task_id)
+                    if entry is not None:
+                        entry["service"] = generator
 
                     loop = asyncio.get_event_loop()
                     loop.call_soon_threadsafe(
@@ -327,14 +351,19 @@ def create_app() -> FastAPI:
             thread = threading.Thread(target=run_revision, daemon=True)
             thread.start()
 
-            while True:
-                event_data = await queue.get()
-                event_type = event_data.pop("type")
-                yield await sse_event(event_type, event_data)
-                if event_type in ("result", "error"):
-                    break
-
-            thread.join(timeout=5)
+            try:
+                while True:
+                    event_data = await queue.get()
+                    event_type = event_data.pop("type")
+                    yield await sse_event(event_type, event_data)
+                    if event_type in ("result", "error", "cancelled"):
+                        break
+            except asyncio.CancelledError:
+                _cancel_task(task_id)
+                yield await sse_event("cancelled", {"message": "客户端断开连接"})
+            finally:
+                _cleanup_task(task_id)
+                thread.join(timeout=5)
 
         return StreamingResponse(
             event_stream(),

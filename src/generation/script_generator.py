@@ -3,6 +3,7 @@
 from dataclasses import asdict, replace
 import json
 import os
+import threading
 from typing import Any, Callable
 
 from src.config import QwenConfig, load_dotenv
@@ -29,17 +30,27 @@ GenerationProgressCallback = Callable[[int, int, str, int], None]
 class QwenScriptGenerator:
     """根据检索资料生成结构化剧本初稿。"""
 
-    def __init__(self, client: Any | None = None) -> None:
+    def __init__(
+        self,
+        client: Any | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
+        self._cancel_event = cancel_event
         self._client = client or self._client_from_env()
 
     def _client_from_env(self) -> Any:
         load_dotenv(override=False)
         backend = os.getenv("SCRIPT_GENERATION_BACKEND", "qwen").strip().lower()
         if backend == "pa_backend":
-            return PABackendScriptClient()
+            return PABackendScriptClient(cancel_event=self._cancel_event)
         if backend != "qwen":
             raise ValueError(f"Unsupported SCRIPT_GENERATION_BACKEND: {backend}")
         return QwenChatClient(QwenConfig.from_env())
+
+    def cancel_active_request(self) -> None:
+        """取消正在进行的 HTTP 请求（委托给底层 PABackendScriptClient）。"""
+        if hasattr(self._client, 'cancel_active_request'):
+            self._client.cancel_active_request()
 
     def generate(
         self,

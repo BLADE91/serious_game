@@ -2,6 +2,7 @@
 
 from typing import Any
 import os
+import threading
 
 from src.config import load_dotenv
 from src.domain.script_design import ScriptGenerationRequest, ScriptGenerationResult
@@ -22,11 +23,17 @@ class ScriptGenService:
         planner: QwenRetrievalPlanner | None = None,
         generator: QwenScriptGenerator | None = None,
         validator: ScriptValidator | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         self._search_provider = search_provider or OpenSearchAgentContextProvider.from_env()
         self._planner = planner or QwenRetrievalPlanner()
-        self._generator = generator or QwenScriptGenerator()
+        self._generator = generator or QwenScriptGenerator(cancel_event=cancel_event)
         self._validator = validator or ScriptValidator()
+
+    def cancel_active_request(self) -> None:
+        """取消正在进行的 HTTP 请求（委托给 generator）。"""
+        if hasattr(self._generator, 'cancel_active_request'):
+            self._generator.cancel_active_request()
 
     @classmethod
     def from_env(cls) -> "ScriptGenService":

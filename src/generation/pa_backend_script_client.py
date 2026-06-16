@@ -1,11 +1,13 @@
 """Use pa_backend agent as the staged script-generation backend."""
 
 from dataclasses import dataclass
-from http.client import RemoteDisconnected
+from http.client import HTTPSConnection, HTTPConnection, RemoteDisconnected
 import json
 import ssl
+import threading
 from typing import Any
 from urllib import error, request
+from urllib.parse import urlparse
 
 from src.config import PABackendConfig
 from src.generation.qwen_client import ChatMessage
@@ -29,16 +31,36 @@ class PABackendScriptClient:
     the whole draft and sends each stage prompt to that conversation.
     """
 
-    def __init__(self, config: PABackendConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: PABackendConfig | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
         self._config = config or PABackendConfig.from_env()
         self._auth: _PABackendAuth | None = None
         self._conversation_id: str | None = None
+        self._cancel_event = cancel_event  # 外部传入的取消标志
+        # 正在进行的 HTTP 连接引用，供跨线程取消
+        self._active_conn: HTTPConnection | HTTPSConnection | None = None
+        self._active_conn_lock = threading.Lock()
 
     @property
     def conversation_id(self) -> str | None:
         return self._conversation_id
 
+    def cancel_active_request(self) -> None:
+        """从外部线程调用，关闭正在进行的 HTTP 连接以中断阻塞的请求。"""
+        with self._active_conn_lock:
+            conn = self._active_conn
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
     def complete(self, messages: list[ChatMessage], temperature: float = 0.2) -> str:
+        if self._cancel_event and self._cancel_event.is_set():
+            raise PABackendClientError("生成已被用户取消")
         if not self._config.base_url:
             raise PABackendClientError("PA_BACKEND_BASE_URL is required")
         auth = self._ensure_auth()
@@ -149,41 +171,69 @@ class PABackendScriptClient:
         token: str,
         extra_headers: dict[str, str] | None = None,
     ) -> str:
+        """发送 POST 请求。使用 http.client 直连以支持跨线程取消。
+
+        取消机制：_active_conn 存储正在使用的连接对象，
+        外部线程调用 cancel_active_request() 关闭连接，
+        getresponse()/read() 会立即抛出异常。
+        """
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path = parsed.path + ("?" + parsed.query if parsed.query else "")
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+        headers = {"Content-Type": "application/json"}
+        if extra_headers:
+            headers.update(extra_headers)
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
         last_disconnect: RemoteDisconnected | None = None
         for attempt in range(2):
-            headers = {"Content-Type": "application/json"}
-            if extra_headers:
-                headers.update(extra_headers)
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
-            req = request.Request(
-                url,
-                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                headers=headers,
-                method="POST",
-            )
+            if self._cancel_event and self._cancel_event.is_set():
+                raise PABackendClientError("生成已被用户取消")
+
+            conn: HTTPConnection | HTTPSConnection | None = None
             try:
-                if not self._config.verify_ssl and url.startswith("https://"):
-                    response_cm = request.urlopen(
-                        req,
-                        timeout=self._config.timeout_seconds,
-                        context=ssl._create_unverified_context(),
+                if parsed.scheme == "https":
+                    ctx: ssl.SSLContext | None = None
+                    if not self._config.verify_ssl:
+                        ctx = ssl._create_unverified_context()
+                    conn = HTTPSConnection(
+                        host, port, timeout=self._config.timeout_seconds, context=ctx,
                     )
                 else:
-                    response_cm = request.urlopen(req, timeout=self._config.timeout_seconds)
-                with response_cm as response:
-                    return response.read().decode("utf-8", errors="replace")
-            except error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="replace")
-                raise PABackendClientError(
-                    f"pa_backend request failed: {exc.code} {detail}"
-                ) from exc
-            except error.URLError as exc:
+                    conn = HTTPConnection(host, port, timeout=self._config.timeout_seconds)
+
+                # 注册连接，允许跨线程关闭
+                with self._active_conn_lock:
+                    self._active_conn = conn
+
+                conn.request("POST", path, body, headers)
+                response = conn.getresponse()
+                result = response.read().decode("utf-8", errors="replace")
+                return result
+
+            except (RemoteDisconnected, ConnectionError, OSError, TimeoutError) as exc:
+                # 检查是否是被取消触发的
+                if self._cancel_event and self._cancel_event.is_set():
+                    raise PABackendClientError("生成已被用户取消") from exc
+                if isinstance(exc, RemoteDisconnected):
+                    last_disconnect = exc
+                    if attempt == 0:
+                        continue
                 raise PABackendClientError(f"pa_backend request failed: {exc}") from exc
-            except RemoteDisconnected as exc:
-                last_disconnect = exc
-                if attempt == 0:
-                    continue
+            finally:
+                with self._active_conn_lock:
+                    if self._active_conn is conn:
+                        self._active_conn = None
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+
         raise PABackendClientError(
             "pa_backend request failed: remote server closed connection without response"
         ) from last_disconnect
