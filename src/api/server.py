@@ -160,29 +160,22 @@ def create_app() -> FastAPI:
         task_id = _create_task()
 
         async def event_stream() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_running_loop()
             queue: asyncio.Queue[dict] = asyncio.Queue()
 
             def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
                 """同步回调 → 异步队列，同时检测取消。"""
                 if _is_cancelled(task_id):
-                    try:
-                        loop = asyncio.get_event_loop()
-                        loop.call_soon_threadsafe(
-                            queue.put_nowait,
-                            {"type": "cancelled", "message": "生成已被用户取消"},
-                        )
-                    except RuntimeError:
-                        pass
-                    return
-                try:
-                    loop = asyncio.get_event_loop()
                     loop.call_soon_threadsafe(
                         queue.put_nowait,
-                        {"type": "progress", "stage": stage, "total": total,
-                         "name": name, "request_bytes": request_bytes},
+                        {"type": "cancelled", "message": "生成已被用户取消"},
                     )
-                except RuntimeError:
-                    pass
+                    return
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    {"type": "progress", "stage": stage, "total": total,
+                     "name": name, "request_bytes": request_bytes},
+                )
 
             def run_generation() -> None:
                 """在线程中运行同步生成。"""
@@ -191,7 +184,6 @@ def create_app() -> FastAPI:
                         return
                     cancel_evt = _task_event(task_id)
                     service = ScriptGenService(cancel_event=cancel_evt)
-                    # 保存引用以便取消端点关闭 HTTP 连接
                     entry = _active_tasks.get(task_id)
                     if entry is not None:
                         entry["service"] = service
@@ -199,7 +191,7 @@ def create_app() -> FastAPI:
                     if _is_cancelled(task_id):
                         return
                     script_dict = serialize_script(result.script)
-                    final = {
+                    loop.call_soon_threadsafe(queue.put_nowait, {
                         "type": "result",
                         "script": script_dict,
                         "contexts_used": [
@@ -210,21 +202,15 @@ def create_app() -> FastAPI:
                         "generation_notes": result.generation_notes,
                         "original_query": result.original_query,
                         "generation_mode": result.generation_mode,
-                    }
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(queue.put_nowait, final)
+                    })
                 except ScriptValidationError as exc:
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "error", "message": f"剧本校验失败：{exc.issues}", "issues": exc.issues},
-                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "error", "message": f"剧本校验失败：{exc.issues}", "issues": exc.issues,
+                    })
                 except Exception as exc:
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "error", "message": f"生成失败：{exc}", "detail": traceback.format_exc()},
-                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "error", "message": f"生成失败：{exc}", "detail": traceback.format_exc(),
+                    })
 
             import threading
             thread = threading.Thread(target=run_generation, daemon=True)
@@ -271,6 +257,7 @@ def create_app() -> FastAPI:
         task_id = _create_task()
 
         async def event_stream() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_running_loop()
             queue: asyncio.Queue[dict] = asyncio.Queue()
 
             def run_revision() -> None:
@@ -280,11 +267,9 @@ def create_app() -> FastAPI:
                     previous = req.previous_result
                     original_query = req.query.strip() or previous.get("original_query", "")
                     if not original_query:
-                        loop = asyncio.get_event_loop()
-                        loop.call_soon_threadsafe(
-                            queue.put_nowait,
-                            {"type": "error", "message": "无法确定原始 query"},
-                        )
+                        loop.call_soon_threadsafe(queue.put_nowait, {
+                            "type": "error", "message": "无法确定原始 query",
+                        })
                         return
 
                     contexts_raw = previous.get("contexts_used", [])
@@ -304,48 +289,36 @@ def create_app() -> FastAPI:
                     load_dotenv(override=False)
                     cancel_evt = _task_event(task_id)
                     generator = QwenScriptGenerator(cancel_event=cancel_evt)
-                    # 保存 generator 引用以便取消端点关闭 HTTP 连接
                     entry = _active_tasks.get(task_id)
                     if entry is not None:
                         entry["service"] = generator
 
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "progress", "stage": 1, "total": 1,
-                         "name": "正在根据反馈修订剧本", "request_bytes": 0},
-                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "progress", "stage": 1, "total": 1,
+                        "name": "正在根据反馈修订剧本", "request_bytes": 0,
+                    })
 
                     revised = generator.revise_structured(
                         original_query, previous, contexts, req.feedback,
                     )
                     script_dict = serialize_script(revised)
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {
-                            "type": "result",
-                            "script": script_dict,
-                            "contexts_used": previous.get("contexts_used", []),
-                            "rewritten_queries": previous.get("rewritten_queries", []),
-                            "generation_notes": [
-                                f"根据人工反馈修订：{req.feedback[:100]}",
-                            ],
-                            "original_query": original_query,
-                            "generation_mode": "revision",
-                        },
-                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "result",
+                        "script": script_dict,
+                        "contexts_used": previous.get("contexts_used", []),
+                        "rewritten_queries": previous.get("rewritten_queries", []),
+                        "generation_notes": [f"根据人工反馈修订：{req.feedback[:100]}"],
+                        "original_query": original_query,
+                        "generation_mode": "revision",
+                    })
                 except ScriptValidationError as exc:
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "error", "message": f"修订后剧本校验失败：{exc.issues}", "issues": exc.issues},
-                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "error", "message": f"修订后剧本校验失败：{exc.issues}", "issues": exc.issues,
+                    })
                 except Exception as exc:
-                    loop = asyncio.get_event_loop()
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "error", "message": f"修订失败：{exc}", "detail": traceback.format_exc()},
-                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "error", "message": f"修订失败：{exc}", "detail": traceback.format_exc(),
+                    })
 
             import threading
             thread = threading.Thread(target=run_revision, daemon=True)
