@@ -28,16 +28,50 @@ def main() -> None:
     load_dotenv(override=True)
 
     parser = ArgumentParser(description="本地调试剧本生成器")
+    # 新结构化输入（推荐）
+    parser.add_argument(
+        "--scenario", "-s",
+        default="",
+        help="政策场景，如 '生态搬迁'、'征地拆迁'",
+    )
+    parser.add_argument(
+        "--player-role", "-r",
+        default="",
+        help="玩家角色，如 '乡镇党委副书记'",
+    )
+    parser.add_argument(
+        "--learning-goal", "-g",
+        default="",
+        help="教育目标，如 '体验基层政策执行中的多重压力'",
+    )
+    parser.add_argument(
+        "--duration", "-d",
+        type=int,
+        default=45,
+        help="目标游戏时长（分钟），默认 45",
+    )
+    parser.add_argument(
+        "--complexity", "-c",
+        choices=["simple", "medium", "complex"],
+        default="medium",
+        help="剧本复杂度，默认 medium",
+    )
+    parser.add_argument(
+        "--extra", "-x",
+        default="",
+        help="额外要求，自由文本",
+    )
+    # 旧输入（兼容）
     parser.add_argument(
         "query",
         nargs="?",
-        default=DEFAULT_SCRIPT_QUERY,
-        help="剧本生成需求",
+        default="",
+        help="剧本生成需求（自由文本，兼容旧版）",
     )
     parser.add_argument(
         "--queries",
         default="",
-        help="人工指定检索 query，多个 query 用英文逗号分隔；设置后跳过自动改写",
+        help="人工指定检索 query，多个 query 用英文逗号分隔",
     )
     parser.add_argument(
         "--review-queries",
@@ -53,12 +87,18 @@ def main() -> None:
         "--revise",
         default="",
         metavar="JSON_PATH",
-        help="读取已有剧本 JSON，复用原资料并根据 --feedback 生成下一轮修订稿",
+        help="读取已有剧本 JSON，根据 --feedback 生成修订稿",
     )
     parser.add_argument(
         "--full-draft",
         action="store_true",
-        help="分阶段生成包含完整 NPC、行动规则和 90 天事件线的结构化初稿",
+        default=True,
+        help="分阶段生成完整结构化初稿（默认开启）",
+    )
+    parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="使用紧凑模式（与 --full-draft 互斥）",
     )
     parser.add_argument(
         "--max-contexts",
@@ -80,18 +120,27 @@ def main() -> None:
                 print("--revise 必须同时提供非空的 --feedback。")
                 return
             previous_result = load_result(Path(args.revise))
+            # 修订时从旧稿提取 query
+            original_query = previous_result.get("original_query", args.query or DEFAULT_SCRIPT_QUERY)
             result = service.revise_script(
                 previous_result=previous_result,
-                query=args.query,
+                query=original_query,
                 feedback=args.feedback,
             )
         else:
+            full_draft = not args.compact
             request = ScriptGenerationRequest(
+                scenario=args.scenario,
+                player_role=args.player_role,
+                learning_goal=args.learning_goal,
+                duration_minutes=args.duration,
+                complexity=args.complexity,
+                extra_requirements=args.extra,
                 query=args.query,
                 manual_queries=_parse_manual_queries(args.queries),
                 feedback=args.feedback,
                 max_contexts=args.max_contexts,
-                full_draft=args.full_draft,
+                full_draft=full_draft,
             )
             if args.review_queries:
                 reviewed_queries = review_queries(service.resolve_queries(request))
@@ -99,15 +148,21 @@ def main() -> None:
                     print("已取消生成。")
                     return
                 request = ScriptGenerationRequest(
+                    scenario=args.scenario,
+                    player_role=args.player_role,
+                    learning_goal=args.learning_goal,
+                    duration_minutes=args.duration,
+                    complexity=args.complexity,
+                    extra_requirements=args.extra,
                     query=args.query,
                     manual_queries=reviewed_queries,
                     feedback=args.feedback,
                     max_contexts=args.max_contexts,
-                    full_draft=args.full_draft,
+                    full_draft=full_draft,
                 )
             result = service.generate_script(
                 request,
-                progress_callback=print_generation_progress if args.full_draft else None,
+                progress_callback=print_generation_progress if full_draft else None,
             )
     except (OSError, json.JSONDecodeError) as exc:
         print_error("读取旧稿失败", exc)
@@ -188,47 +243,91 @@ def print_contexts(contexts) -> None:
 
 def print_script(script) -> None:
     print("\n=== 剧本初稿 ===")
-    print(f"Title: {script.title}")
-    print(f"Premise: {script.premise}")
-    print(f"Player Role: {script.player_role}")
-    print(f"Core Conflict: {script.core_conflict}")
+    print(f"标题: {script.title}")
+    print(f"设定: {script.premise}")
+    print(f"玩家角色: {script.player_role}")
+    print(f"核心冲突: {script.core_conflict}")
 
     state = script.initial_game_state
-    print("\n=== 初始 GameState ===")
+    print(f"\n=== 初始状态 ===")
     print(
-        f"day={state.day}, action_points={state.action_points}, "
-        f"budget_remaining={state.budget_remaining}, signed={state.signed_households}/{state.total_households}, "
-        f"SSI={state.social_stability_index}, PC={state.political_credit}, TEI={state.cadre_execution_index}"
+        f"第{state.day}天 | AP={state.action_points} | "
+        f"预算={state.budget_remaining}{state.budget_unit} | "
+        f"签约={state.signed_households}/{state.total_households}"
+    )
+    print(
+        f"社会稳定={state.social_stability_index} | "
+        f"政治信用={state.political_credit} | "
+        f"干部执行={state.cadre_execution_index}"
     )
 
-    print("\n=== 首批 NPC ===")
-    for npc in script.npc_seed:
-        print(
-            f"- {npc.npc_id} | {npc.name} | {npc.npc_type} | {npc.group} | "
-            f"trust={npc.trust_to_player}, attitude={npc.attitude_score}, anxiety={npc.anxiety_level}"
-        )
+    # 三幕结构
+    if script.acts:
+        print(f"\n=== 三幕结构 ===")
+        for act in script.acts:
+            print(f"第{act.act_number}幕：{act.title}（{act.day_range}）")
+            print(f"  目标: {act.goal}")
+            print(f"  概述: {act.description}")
+            print(f"  决策点: {len(act.decision_point_ids)} 个")
 
-    print("\n=== 基础行动规则 ===")
-    for rule in script.action_rules:
-        print(f"- {rule.action_id} | {rule.name} | AP={rule.cost_action_points} | budget={rule.budget_cost}")
-        if rule.risk_notes:
-            print(f"  风险: {'；'.join(rule.risk_notes)}")
-        if rule.citations:
-            print(f"  参考: {'；'.join(rule.citations)}")
+    # NPC 列表
+    if script.npc_seed:
+        print(f"\n=== NPC 角色（共 {len(script.npc_seed)} 人）===")
+        type_labels = {"cadre": "干部", "external": "外部", "villager": "村民"}
+        for npc in script.npc_seed:
+            print(
+                f"- {npc.npc_id} | {npc.name} | {type_labels.get(npc.npc_type, npc.npc_type)} | "
+                f"{npc.group} | 信任={npc.trust_to_player} | 态度={npc.attitude_score}"
+            )
 
-    print("\n=== 事件概要 ===")
-    for event in script.event_outline:
-        print(f"- {event.event_id} | {event.name} | {event.day_window}")
-        print(f"  触发: {event.trigger_condition}")
-        print(f"  描述: {event.description}")
+    # NPC 关系网
+    if script.npc_relationships:
+        print(f"\n=== NPC 关系网（共 {len(script.npc_relationships)} 条）===")
+        name_map = {npc.npc_id: npc.name for npc in script.npc_seed}
+        # 按关系类型分组
+        by_type: dict[str, list] = {}
+        for rel in script.npc_relationships:
+            by_type.setdefault(rel.relation_type, []).append(rel)
+        for rel_type, rels in by_type.items():
+            print(f"\n  [{rel_type}]")
+            for rel in rels[:5]:  # 每种类型最多显示 5 条
+                from_name = name_map.get(rel.from_npc_id, rel.from_npc_id)
+                to_name = name_map.get(rel.to_npc_id, rel.to_npc_id)
+                print(f"    {from_name} → {to_name} (强度={rel.strength})：{rel.description}")
 
-    print("\n=== 夜间规则 ===")
-    for index, rule in enumerate(script.night_rules, start=1):
-        print(f"{index}. {rule}")
+    # 决策点
+    if script.decision_points:
+        print(f"\n=== 决策点序列（共 {len(script.decision_points)} 个）===")
+        for dp in script.decision_points:
+            critical_mark = " ★关键决策" if dp.is_critical else ""
+            print(f"\n[{dp.decision_id}]{critical_mark} {dp.title}（{dp.day_window}）")
+            print(f"  情境: {dp.situation}")
+            if dp.affected_npc_ids:
+                npc_names = [name_map.get(nid, nid) for nid in dp.affected_npc_ids if name_map]
+                print(f"  关联NPC: {', '.join(npc_names) if npc_names else ', '.join(dp.affected_npc_ids)}")
+            print(f"  选项 ({len(dp.options)} 个):")
+            for opt in dp.options:
+                costs = []
+                if opt.cost_action_points:
+                    costs.append(f"AP×{opt.cost_action_points}")
+                if opt.budget_cost:
+                    costs.append(f"预算{opt.budget_cost}{state.budget_unit}")
+                cost_str = f"（{'，'.join(costs)}）" if costs else ""
+                print(f"    ◇ {opt.option_id} | {opt.label}{cost_str}")
+                print(f"      {opt.description}")
+                if opt.risks:
+                    print(f"      风险: {'；'.join(opt.risks)}")
 
-    print("\n=== Payoff Notes ===")
-    for index, note in enumerate(script.payoff_notes, start=1):
-        print(f"{index}. {note}")
+    # 多结局
+    if script.endings:
+        print(f"\n=== 多结局（共 {len(script.endings)} 个）===")
+        type_labels = {"good": "✓ 好结局", "neutral": "≈ 中性结局", "bad": "✗ 坏结局"}
+        for end in script.endings:
+            label = type_labels.get(end.ending_type, end.ending_type)
+            print(f"\n[{end.ending_id}] {label}: {end.title}")
+            print(f"  {end.description}")
+            if end.conditions:
+                print(f"  条件: {' AND '.join(end.conditions)}")
 
 
 def save_result(result, out_dir: Path) -> Path:
