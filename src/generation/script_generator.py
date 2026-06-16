@@ -2,14 +2,16 @@
 
 from dataclasses import asdict, replace
 import json
+import os
 from typing import Any, Callable
 
-from src.config import QwenConfig
+from src.config import QwenConfig, load_dotenv
 from src.domain.game_action import GameActionRule
 from src.domain.game_state import GameState
 from src.domain.npc_state import NPCState
 from src.domain.script_design import ScriptCitation, ScriptDesign, ScriptEventOutline
 from src.domain.source_context import SourceContext
+from src.generation.pa_backend_script_client import PABackendScriptClient
 from src.generation.qwen_client import ChatMessage, QwenChatClient
 
 
@@ -23,8 +25,17 @@ GenerationProgressCallback = Callable[[int, int, str, int], None]
 class QwenScriptGenerator:
     """根据检索资料生成结构化剧本初稿。"""
 
-    def __init__(self, client: QwenChatClient | None = None) -> None:
-        self._client = client or QwenChatClient(QwenConfig.from_env())
+    def __init__(self, client: Any | None = None) -> None:
+        self._client = client or self._client_from_env()
+
+    def _client_from_env(self) -> Any:
+        load_dotenv(override=False)
+        backend = os.getenv("SCRIPT_GENERATION_BACKEND", "qwen").strip().lower()
+        if backend == "pa_backend":
+            return PABackendScriptClient()
+        if backend != "qwen":
+            raise ValueError(f"Unsupported SCRIPT_GENERATION_BACKEND: {backend}")
+        return QwenChatClient(QwenConfig.from_env())
 
     def generate(
         self,
@@ -61,7 +72,7 @@ class QwenScriptGenerator:
         )
         if not npc_seed:
             raise ScriptGenerationError(
-                f"Qwen NPC stage returned an empty npc_seed: {self._payload_preview(npc_payload)}"
+                f"NPC stage returned an empty npc_seed: {self._payload_preview(npc_payload)}"
             )
         script = replace(script, npc_seed=npc_seed)
 
@@ -88,7 +99,7 @@ class QwenScriptGenerator:
             )
             if not batch_rules:
                 raise ScriptGenerationError(
-                    f"Qwen {batch_name} stage returned empty action_rules: "
+                    f"{batch_name} stage returned empty action_rules: "
                     f"{self._payload_preview(action_payload)}"
                 )
             action_rules.extend(batch_rules)
@@ -122,7 +133,7 @@ class QwenScriptGenerator:
             )
             if not batch_events:
                 raise ScriptGenerationError(
-                    f"Qwen {batch_name} stage returned empty event_outline: "
+                    f"{batch_name} stage returned empty event_outline: "
                     f"{self._payload_preview(event_payload)}"
                 )
             event_outline.extend(batch_events)
@@ -546,11 +557,11 @@ class QwenScriptGenerator:
             preview = cleaned[:240].replace("\n", " ")
             suffix = cleaned[-240:].replace("\n", " ")
             raise ScriptGenerationError(
-                f"Qwen script response was not valid JSON: start={preview!r}, end={suffix!r}"
+                f"Script generation response was not valid JSON: start={preview!r}, end={suffix!r}"
             ) from exc
 
         if not isinstance(parsed, dict):
-            raise ScriptGenerationError("Qwen script response must be a JSON object")
+            raise ScriptGenerationError("Script generation response must be a JSON object")
         return parsed
 
     def _build_script_design(self, payload: dict[str, Any]) -> ScriptDesign:

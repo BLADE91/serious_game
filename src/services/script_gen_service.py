@@ -1,7 +1,9 @@
 """剧本生成工作流服务。"""
 
 from typing import Any
+import os
 
+from src.config import load_dotenv
 from src.domain.script_design import ScriptGenerationRequest, ScriptGenerationResult
 from src.domain.source_context import SourceContext
 from src.generation.iterative_agent_context_provider import IterativeAgentContextProvider
@@ -38,8 +40,11 @@ class ScriptGenService:
         progress_callback: GenerationProgressCallback | None = None,
     ) -> ScriptGenerationResult:
         rewritten_queries = self.resolve_queries(request)
-        contexts = self._search_provider.find_contexts_for_queries(rewritten_queries)
-        contexts = contexts[: request.max_contexts]
+        if self._uses_pa_backend_generation() and not request.manual_queries:
+            contexts = []
+        else:
+            contexts = self._search_provider.find_contexts_for_queries(rewritten_queries)
+            contexts = contexts[: request.max_contexts]
         if request.full_draft:
             script = self._generator.generate_full(
                 request.query,
@@ -128,6 +133,10 @@ class ScriptGenService:
         if rewritten_queries:
             return rewritten_queries[:3]
         return [request.query.strip()]
+
+    def _uses_pa_backend_generation(self) -> bool:
+        load_dotenv(override=False)
+        return os.getenv("SCRIPT_GENERATION_BACKEND", "qwen").strip().lower() == "pa_backend"
 
     def _build_contexts(self, value: Any) -> list[SourceContext]:
         if not isinstance(value, list):

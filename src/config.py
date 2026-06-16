@@ -117,6 +117,46 @@ class OpenSearchConfig:
 
 
 @dataclass(frozen=True)
+class PABackendConfig:
+    """pa_backend agent API configuration."""
+
+    base_url: str = ""
+    login_endpoint: str = "/api/auth/sso/login-password"
+    agent_endpoint: str = "/agent/os-search/general"
+    supabase_url: str = ""
+    supabase_key: str = ""
+    account: str = ""
+    password: str = ""
+    timeout_seconds: int = 180
+    search_preference: str = "breadth"
+    enable_web_search: bool = False
+    verify_ssl: bool = True
+
+    @classmethod
+    def from_env(cls, dotenv_path: str | Path = ".env") -> "PABackendConfig":
+        load_dotenv(dotenv_path)
+        return cls(
+            base_url=os.getenv("PA_BACKEND_BASE_URL", "").strip().rstrip("/"),
+            login_endpoint=os.getenv(
+                "PA_BACKEND_LOGIN_ENDPOINT",
+                "/api/auth/sso/login-password",
+            ).strip(),
+            agent_endpoint=os.getenv(
+                "PA_BACKEND_AGENT_ENDPOINT",
+                "/agent/os-search/general",
+            ).strip(),
+            supabase_url=os.getenv("PA_BACKEND_SUPABASE_URL", "").strip().rstrip("/"),
+            supabase_key=os.getenv("PA_BACKEND_SUPABASE_KEY", "").strip(),
+            account=os.getenv("PA_BACKEND_ACCOUNT", "").strip(),
+            password=os.getenv("PA_BACKEND_PASSWORD", "").strip(),
+            timeout_seconds=_int_from_env("PA_BACKEND_TIMEOUT_SECONDS", 180),
+            search_preference=os.getenv("PA_BACKEND_SEARCH_PREFERENCE", "breadth").strip(),
+            enable_web_search=_bool_from_env("PA_BACKEND_ENABLE_WEB_SEARCH", False),
+            verify_ssl=_bool_from_env("PA_BACKEND_VERIFY_SSL", True),
+        )
+
+
+@dataclass(frozen=True)
 class IterativeRetrievalConfig:
     """多步资料检索配置。"""
 

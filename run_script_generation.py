@@ -10,6 +10,7 @@ from typing import Any
 from src.config import load_dotenv
 from src.domain.script_design import ScriptGenerationRequest
 from src.generation.opensearch_client import OpenSearchClientError
+from src.generation.pa_backend_script_client import PABackendClientError
 from src.generation.qwen_client import QwenClientError
 from src.generation.script_generator import ScriptGenerationError
 from src.services import ScriptGenService
@@ -120,8 +121,8 @@ def main() -> None:
     except OpenSearchClientError as exc:
         print_error("OpenSearch 连接或查询失败", exc)
         return
-    except (QwenClientError, ScriptGenerationError) as exc:
-        print_error("Qwen 剧本生成失败", exc)
+    except (QwenClientError, PABackendClientError, ScriptGenerationError) as exc:
+        print_error("剧本生成失败", exc)
         return
 
     print_queries("检索 query", result.rewritten_queries)
