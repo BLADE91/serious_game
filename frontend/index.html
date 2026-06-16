@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>父母官 · 剧本生成器</title>
+<style>
+:root {
+  --bg: #f5f0eb;
+  --card: #fff;
+  --text: #2c2416;
+  --text-muted: #6b5e4a;
+  --accent: #8b4513;
+  --accent-light: #d4a574;
+  --danger: #c0392b;
+  --success: #27ae60;
+  --neutral: #8e7c5e;
+  --border: #e0d5c7;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(44,36,22,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+
+header { text-align: center; padding: 32px 0 16px; }
+header h1 { font-size: 28px; color: var(--accent); letter-spacing: 2px; }
+header p { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; margin-bottom: 20px; border: 1px solid var(--border); }
+.card h2 { font-size: 16px; color: var(--accent); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+label { font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 4px; font-weight: 500; }
+input, textarea, select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: inherit; background: var(--bg); color: var(--text); transition: border-color .2s; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; min-height: 60px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 600; cursor: pointer; transition: all .2s; font-family: inherit; }
+.btn-primary { background: var(--accent); color: #fff; width: 100%; justify-content: center; }
+.btn-primary:hover { background: #6b3410; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+
+.progress-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 8px 0; }
+.progress-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
+.progress-text { font-size: 13px; color: var(--text-muted); }
+
+.tabs { display: flex; gap: 2px; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+.tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; background: var(--bg); color: var(--text-muted); border: 1px solid transparent; transition: all .2s; }
+.tab.active { background: var(--card); color: var(--accent); border-color: var(--border); border-bottom-color: var(--card); margin-bottom: -2px; font-weight: 600; }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+.act-card { border-left: 3px solid var(--accent-light); padding: 12px 16px; margin-bottom: 12px; background: var(--bg); border-radius: 0 var(--radius) var(--radius) 0; }
+.act-card h3 { font-size: 15px; color: var(--accent); margin-bottom: 4px; }
+.act-card .act-meta { font-size: 12px; color: var(--text-muted); }
+
+.npc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.npc-chip { padding: 8px 12px; background: var(--bg); border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
+.npc-chip .name { font-weight: 600; color: var(--accent); }
+.npc-chip .type { font-size: 11px; padding: 1px 6px; border-radius: 10px; margin-left: 4px; }
+.type-cadre { background: #e74c3c22; color: #c0392b; }
+.type-external { background: #f39c1222; color: #d68910; }
+.type-villager { background: #27ae6022; color: #1e8449; }
+
+.rel-group { margin-bottom: 12px; }
+.rel-group h4 { font-size: 13px; color: var(--accent); margin-bottom: 6px; }
+.rel-item { font-size: 13px; padding: 4px 0; border-bottom: 1px dotted var(--border); display: flex; gap: 8px; align-items: baseline; }
+.rel-item .arrow { color: var(--text-muted); }
+.rel-item .desc { color: var(--text-muted); font-size: 12px; }
+
+.decision-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.decision-card.critical { border-left: 3px solid var(--danger); }
+.decision-card h3 { font-size: 15px; }
+.decision-card .dp-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.decision-card .situation { font-size: 14px; margin-bottom: 12px; padding: 10px; background: var(--bg); border-radius: var(--radius); }
+
+.option-card { padding: 10px 14px; margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; }
+.option-card .opt-cost { font-size: 11px; color: var(--text-muted); float: right; }
+.option-card .opt-risk { color: var(--danger); font-size: 12px; margin-top: 4px; }
+
+.ending-card { border-left: 4px solid var(--neutral); padding: 12px 16px; margin-bottom: 12px; background: var(--bg); border-radius: 0 var(--radius) var(--radius) 0; }
+.ending-card.good { border-color: var(--success); }
+.ending-card.bad { border-color: var(--danger); }
+.ending-card h3 { font-size: 15px; }
+.ending-card .conditions { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+.feedback-area { display: flex; gap: 8px; margin-top: 12px; }
+.feedback-area input { flex: 1; }
+
+.hidden { display: none; }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff6; border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-good { background: #27ae6022; color: #1e8449; }
+.badge-neutral { background: #f39c1222; color: #d68910; }
+.badge-bad { background: #e74c3c22; color: #c0392b; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>🏛️ 父母官 · 剧本生成器</h1>
+  <p>严肃游戏结构化剧本生成与修订工具</p>
+</header>
+
+<!-- 输入区 -->
+<div class="card" id="input-card">
+  <h2>📝 剧本参数</h2>
+  <div class="form-grid">
+    <div>
+      <label for="scenario">政策场景 *</label>
+      <input id="scenario" placeholder="如：生态搬迁、征地拆迁" value="生态搬迁">
+    </div>
+    <div>
+      <label for="playerRole">玩家角色 *</label>
+      <input id="playerRole" placeholder="如：乡镇党委副书记" value="乡镇党委副书记">
+    </div>
+    <div class="full">
+      <label for="learningGoal">教育目标 *</label>
+      <input id="learningGoal" placeholder="如：体验基层政策执行中多重压力的权衡与抉择" value="体验基层政策执行中多重压力的权衡与抉择">
+    </div>
+    <div>
+      <label for="duration">目标时长</label>
+      <select id="duration">
+        <option value="30">30 分钟</option>
+        <option value="45" selected>45 分钟</option>
+        <option value="60">60 分钟</option>
+        <option value="90">90 分钟</option>
+      </select>
+    </div>
+    <div>
+      <label for="complexity">复杂度</label>
+      <select id="complexity">
+        <option value="simple">简单</option>
+        <option value="medium" selected>中等</option>
+        <option value="complex">复杂</option>
+      </select>
+    </div>
+    <div class="full">
+      <label for="extra">额外要求（可选）</label>
+      <textarea id="extra" placeholder="如：需要涉及宗族矛盾、加入媒体监督角色"></textarea>
+    </div>
+  </div>
+  <button class="btn btn-primary" id="generateBtn" onclick="startGeneration()">
+    ▶ 生成剧本
+  </button>
+</div>
+
+<!-- 进度区 -->
+<div class="card hidden" id="progress-card">
+  <h2>⏳ 生成进度</h2>
+  <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progressBar" style="width:0%"></div></div>
+  <p class="progress-text" id="progressText">准备中...</p>
+</div>
+
+<!-- 结果区 -->
+<div class="card hidden" id="result-card">
+  <h2>📋 生成结果</h2>
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-panel="overview">📊 概览</div>
+    <div class="tab" data-panel="npcs">👥 NPC 网络</div>
+    <div class="tab" data-panel="decisions">🎯 决策点</div>
+    <div class="tab" data-panel="endings">🏁 多结局</div>
+  </div>
+  <div id="panel-overview" class="panel active"></div>
+  <div id="panel-npcs" class="panel"></div>
+  <div id="panel-decisions" class="panel"></div>
+  <div id="panel-endings" class="panel"></div>
+
+  <!-- 反馈修订 -->
+  <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+    <label for="feedback">💬 反馈修订</label>
+    <div class="feedback-area">
+      <input id="feedback" placeholder="如：NPC关系网太简单，希望增加更多矛盾冲突">
+      <button class="btn btn-secondary btn-sm" id="reviseBtn" onclick="startRevision()">✏️ 修订</button>
+    </div>
+  </div>
+</div>
+
+<!-- 错误区 -->
+<div class="card hidden" id="error-card" style="border-left:4px solid var(--danger);">
+  <h2>❌ 出错了</h2>
+  <p id="errorText" style="color:var(--danger);"></p>
+</div>
+
+</div>
+
+<script>
+// ===== 全局状态 =====
+let lastResult = null;
+
+// ===== Tab 切换 =====
+document.getElementById('tabs')?.addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-' + tab.dataset.panel)?.classList.add('active');
+});
+
+// ===== SSE 流读取 =====
+async function* readSSE(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let eventType = '';
+  let dataBuffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        eventType = line.slice(6).trim();
+      } else if (line.startsWith('data:')) {
+        dataBuffer = line.slice(5).trim();
+      } else if (line === '' && eventType && dataBuffer) {
+        try {
+          yield { event: eventType, data: JSON.parse(dataBuffer) };
+        } catch {
+          yield { event: eventType, data: dataBuffer };
+        }
+        eventType = '';
+        dataBuffer = '';
+      }
+    }
+  }
+}
+
+// ===== UI 控制 =====
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function setProgress(stage, total, name) {
+  show('progress-card');
+  const pct = Math.round((stage / total) * 100);
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `阶段 ${stage}/${total}：${name}`;
+}
+function showError(msg) {
+  show('error-card');
+  document.getElementById('errorText').textContent = msg;
+  hide('progress-card');
+}
+
+function setButtonLoading(btn, loading) {
+  if (loading) {
+    btn.disabled = true;
+    btn.dataset.origText = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span> 生成中...';
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.origText || '▶ 生成剧本';
+  }
+}
+
+// ===== 生成 =====
+async function startGeneration() {
+  const scenario = document.getElementById('scenario').value.trim();
+  const playerRole = document.getElementById('playerRole').value.trim();
+  const learningGoal = document.getElementById('learningGoal').value.trim();
+
+  if (!scenario || !playerRole || !learningGoal) {
+    showError('请填写政策场景、玩家角色和教育目标');
+    return;
+  }
+
+  hide('error-card');
+  hide('result-card');
+  const btn = document.getElementById('generateBtn');
+  setButtonLoading(btn, true);
+
+  try {
+    const resp = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scenario,
+        player_role: playerRole,
+        learning_goal: learningGoal,
+        duration_minutes: parseInt(document.getElementById('duration').value),
+        complexity: document.getElementById('complexity').value,
+        extra_requirements: document.getElementById('extra').value.trim(),
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || '请求失败 ' + resp.status);
+    }
+
+    for await (const { event, data } of readSSE(resp)) {
+      if (event === 'progress') {
+        setProgress(data.stage, data.total, data.name);
+      } else if (event === 'result') {
+        lastResult = data;
+        renderResult(data);
+        hide('progress-card');
+        show('result-card');
+        document.getElementById('feedback').value = '';
+      } else if (event === 'error') {
+        showError(data.message);
+      }
+    }
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+// ===== 修订 =====
+async function startRevision() {
+  const feedback = document.getElementById('feedback').value.trim();
+  if (!feedback) { showError('请输入反馈内容'); return; }
+  if (!lastResult) { showError('没有可修订的结果'); return; }
+
+  hide('error-card');
+  hide('result-card');
+  show('progress-card');
+  document.getElementById('progressBar').style.width = '50%';
+  document.getElementById('progressText').textContent = '正在根据反馈修订剧本...';
+
+  try {
+    const resp = await fetch('/api/revise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        previous_result: lastResult,
+        feedback,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || '修订失败 ' + resp.status);
+    }
+
+    for await (const { event, data } of readSSE(resp)) {
+      if (event === 'result') {
+        lastResult = data;
+        renderResult(data);
+        hide('progress-card');
+        show('result-card');
+        document.getElementById('feedback').value = '';
+      } else if (event === 'error') {
+        showError(data.message);
+      }
+    }
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// ===== 结果渲染 =====
+function renderResult(data) {
+  const s = data.script;
+  const state = s.initial_game_state;
+  const typeLabels = { cadre: '干部', external: '外部', villager: '村民' };
+  const nameMap = {};
+  (s.npc_seed || []).forEach(n => { nameMap[n.npc_id] = n.name; });
+
+  // 概览面板
+  document.getElementById('panel-overview').innerHTML = `
+    <p><strong>标题：</strong>${esc(s.title)}</p>
+    <p><strong>设定：</strong>${esc(s.premise)}</p>
+    <p><strong>玩家角色：</strong>${esc(s.player_role)}</p>
+    <p><strong>核心冲突：</strong>${esc(s.core_conflict)}</p>
+    <p><strong>初始状态：</strong>第${state.day}天 | AP=${state.action_points} | 预算=${state.budget_remaining}${state.budget_unit} | 签约=${state.signed_households}/${state.total_households} | 稳定=${state.social_stability_index} | 信用=${state.political_credit} | 执行=${state.cadre_execution_index}</p>
+    <h3 style="margin-top:16px;">三幕结构</h3>
+    ${(s.acts||[]).map(a => `
+      <div class="act-card">
+        <h3>第${a.act_number}幕：${esc(a.title)}（${esc(a.day_range)}）</h3>
+        <p class="act-meta">目标：${esc(a.goal)}</p>
+        <p style="font-size:13px;">${esc(a.description)}</p>
+        <p class="act-meta">决策点：${(a.decision_point_ids||[]).length} 个</p>
+      </div>
+    `).join('')}
+    ${data.generation_notes ? `<p style="margin-top:8px;font-size:12px;color:var(--text-muted);">📝 ${data.generation_notes.join('；')}</p>` : ''}
+  `;
+
+  // NPC 面板
+  const relsByType = {};
+  (s.npc_relationships||[]).forEach(r => {
+    (relsByType[r.relation_type] = relsByType[r.relation_type]||[]).push(r);
+  });
+  document.getElementById('panel-npcs').innerHTML = `
+    <h3>NPC 角色（${(s.npc_seed||[]).length} 人）</h3>
+    <div class="npc-list">${(s.npc_seed||[]).map(n => `
+      <div class="npc-chip">
+        <span class="name">${esc(n.name)}</span>
+        <span class="type type-${n.npc_type}">${typeLabels[n.npc_type]||n.npc_type}</span>
+        <br><small>${esc(n.group)} | 信任=${n.trust_to_player} | 态度=${n.attitude_score}</small>
+      </div>
+    `).join('')}</div>
+    <h3 style="margin-top:16px;">关系网络（${(s.npc_relationships||[]).length} 条）</h3>
+    ${Object.entries(relsByType).map(([type, rels]) => `
+      <div class="rel-group">
+        <h4>【${esc(type)}】</h4>
+        ${rels.map(r => `
+          <div class="rel-item">
+            <span>${esc(nameMap[r.from_npc_id]||r.from_npc_id)} <span class="arrow">→</span> ${esc(nameMap[r.to_npc_id]||r.to_npc_id)}</span>
+            <span class="desc">强度=${r.strength}：${esc(r.description)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `).join('')}
+  `;
+
+  // 决策点面板
+  document.getElementById('panel-decisions').innerHTML = `
+    <p style="margin-bottom:12px;">共 ${(s.decision_points||[]).length} 个决策点</p>
+    ${(s.decision_points||[]).map(dp => `
+      <div class="decision-card${dp.is_critical?' critical':''}">
+        <h3>${esc(dp.decision_id)} ${dp.is_critical?'★ ':''}${esc(dp.title)}</h3>
+        <p class="dp-meta">${esc(dp.day_window)} | 关联NPC: ${(dp.affected_npc_ids||[]).map(id=>esc(nameMap[id]||id)).join('、')||'无'}</p>
+        <div class="situation">${esc(dp.situation)}</div>
+        <strong>选项（${(dp.options||[]).length} 个）：</strong>
+        ${(dp.options||[]).map(o => {
+          const costs = [];
+          if (o.cost_action_points) costs.push(`AP×${o.cost_action_points}`);
+          if (o.budget_cost) costs.push(`预算${o.budget_cost}${state.budget_unit||'万元'}`);
+          return `
+          <div class="option-card">
+            <strong>${esc(o.label)}</strong>
+            <span class="opt-cost">${costs.join('，')||'无消耗'}</span>
+            <br><small>${esc(o.description)}</small>
+            ${(o.risks||[]).length?`<div class="opt-risk">⚠️ ${o.risks.map(esc).join('；')}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    `).join('')}
+  `;
+
+  // 结局面板
+  const statusLabels = { good:'好结局', neutral:'中性结局', bad:'坏结局' };
+  document.getElementById('panel-endings').innerHTML = `
+    ${(s.endings||[]).map(e => `
+      <div class="ending-card ${e.ending_type}">
+        <h3><span class="status-badge badge-${e.ending_type}">${statusLabels[e.ending_type]||e.ending_type}</span> ${esc(e.title)}</h3>
+        <p style="font-size:14px;">${esc(e.description)}</p>
+        <p class="conditions">📋 条件：${(e.conditions||[]).map(esc).join(' <strong>AND</strong> ')||'无条件'}</p>
+      </div>
+    `).join('')}
+  `;
+}
+
+function esc(s) {
+  if (!s) return '';
+  const div = document.createElement('div');
+  div.textContent = String(s);
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
