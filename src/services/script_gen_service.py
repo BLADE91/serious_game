@@ -25,10 +25,17 @@ class ScriptGenService:
         validator: ScriptValidator | None = None,
         cancel_event: threading.Event | None = None,
     ) -> None:
-        self._search_provider = search_provider or OpenSearchAgentContextProvider.from_env()
+        self._search_provider = search_provider  # None = lazy init when needed
         self._planner = planner or QwenRetrievalPlanner()
         self._generator = generator or QwenScriptGenerator(cancel_event=cancel_event)
         self._validator = validator or ScriptValidator()
+
+    @property
+    def _search(self) -> OpenSearchAgentContextProvider:
+        """延迟初始化检索 provider，避免 PA Backend 模式下强制要求 OpenSearch。"""
+        if self._search_provider is None:
+            self._search_provider = OpenSearchAgentContextProvider.from_env()
+        return self._search_provider
 
     def cancel_active_request(self) -> None:
         """取消正在进行的 HTTP 请求（委托给 generator）。"""
@@ -51,7 +58,7 @@ class ScriptGenService:
         if self._uses_pa_backend_generation() and not request.manual_queries:
             contexts = []
         else:
-            contexts = self._search_provider.find_contexts_for_queries(rewritten_queries)
+            contexts = self._search.find_contexts_for_queries(rewritten_queries)
             contexts = contexts[: request.max_contexts]
         if request.full_draft:
             script = self._generator.generate_full(

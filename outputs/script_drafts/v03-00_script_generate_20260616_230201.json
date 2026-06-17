@@ -1,0 +1,936 @@
+{
+  "script": {
+    "title": "云岭新村生态搬迁：九十天攻坚",
+    "premise": "地处生态保护红线的云岭村被纳入省级生态搬迁项目。作为新任镇党委副书记兼搬迁指挥部副总指挥，玩家需在90天内完成36户建档立卡户与一般户的搬迁协议签署。面临资金拨付滞后、村民对安置点产业配套的疑虑，以及部分村干部执行不力与潜在的群体性上访风险，必须在政策刚性考核与柔性群众工作之间寻找平衡。",
+    "player_role": "云岭镇党委副书记兼生态搬迁指挥部副总指挥",
+    "core_conflict": "上级硬性考核指标与专项资金拨付滞后之间的张力，对比村民对补偿标准透明度与未来生计可持续性的合理诉求及抗拒心理。",
+    "initial_game_state": {
+      "day": 1,
+      "action_points": 3,
+      "budget_remaining": 8000,
+      "signed_households": 0,
+      "total_households": 36,
+      "social_stability_index": 70,
+      "political_credit": 70,
+      "cadre_execution_index": 60
+    },
+    "npc_seed": [
+      {
+        "npc_id": "C01_ZhangJianguo",
+        "name": "张建国",
+        "npc_type": "cadre",
+        "group": "村委班子",
+        "trust_to_player": 30,
+        "attitude_score": 50,
+        "anxiety_level": 65,
+        "reference_point": 75,
+        "granovetter_threshold": 40,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "省级考核 deadline 为90天",
+          "县财政目前仅拨付30%前期资金"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "C02_LiWei",
+        "name": "李伟",
+        "npc_type": "cadre",
+        "group": "镇指挥部",
+        "trust_to_player": 60,
+        "attitude_score": 80,
+        "anxiety_level": 55,
+        "reference_point": 85,
+        "granovetter_threshold": 50,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "安置房一期工程进度滞后两周",
+          "玩家是县委派来的新副总指挥"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "C03_WangFang",
+        "name": "王芳",
+        "npc_type": "cadre",
+        "group": "驻村工作队",
+        "trust_to_player": 75,
+        "attitude_score": 85,
+        "anxiety_level": 40,
+        "reference_point": 60,
+        "granovetter_threshold": 60,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "村民对搬迁后产业就业最担忧",
+          "贫困户档案数据已核对完毕"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "E01_ChenKe",
+        "name": "陈科长",
+        "npc_type": "external",
+        "group": "县生态局",
+        "trust_to_player": 40,
+        "attitude_score": 70,
+        "anxiety_level": 50,
+        "reference_point": 90,
+        "granovetter_threshold": 30,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "生态红线区内严禁新建农房",
+          "将按月向市里上报搬迁进度排名"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "E02_ZhaoTong",
+        "name": "赵总",
+        "npc_type": "external",
+        "group": "承建商",
+        "trust_to_player": 20,
+        "attitude_score": 40,
+        "anxiety_level": 70,
+        "reference_point": 80,
+        "granovetter_threshold": 20,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "建材成本近期上涨15%",
+          "希望镇政府能提前支付二期工程款"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "E03_SunJi",
+        "name": "孙记",
+        "npc_type": "external",
+        "group": "县级融媒体中心",
+        "trust_to_player": 50,
+        "attitude_score": 60,
+        "anxiety_level": 30,
+        "reference_point": 50,
+        "granovetter_threshold": 70,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "近期有自媒体在传'强制搬迁'谣言",
+          "正在跟进安置区配套设施建设报道"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "V01_LiuDaqiang",
+        "name": "刘大强",
+        "npc_type": "villager",
+        "group": "村民代表/意见领袖",
+        "trust_to_player": 15,
+        "attitude_score": 20,
+        "anxiety_level": 80,
+        "reference_point": 90,
+        "granovetter_threshold": 10,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "补偿标准未向村民大会完全公开",
+          "计划在县里组织联名上访"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "V02_MaShu",
+        "name": "马淑珍",
+        "npc_type": "villager",
+        "group": "建档立卡贫困户",
+        "trust_to_player": 35,
+        "attitude_score": 45,
+        "anxiety_level": 95,
+        "reference_point": 85,
+        "granovetter_threshold": 40,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "搬迁后家里少了两亩坡地收入",
+          "担心安置房物业费交不起"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "V03_GaoMing",
+        "name": "高明",
+        "npc_type": "villager",
+        "group": "一般户/种植大户",
+        "trust_to_player": 40,
+        "attitude_score": 50,
+        "anxiety_level": 60,
+        "reference_point": 80,
+        "granovetter_threshold": 50,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "自家果园评估价偏低",
+          "要求在安置区配套农业大棚"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "V04_ZhaoLao",
+        "name": "赵老汉",
+        "npc_type": "villager",
+        "group": "宗族长辈",
+        "trust_to_player": 25,
+        "attitude_score": 35,
+        "anxiety_level": 75,
+        "reference_point": 70,
+        "granovetter_threshold": 60,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "祖坟选址涉及搬迁红线范围",
+          "相信风水师说的'新址不聚财'"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "V05_ZhouXin",
+        "name": "周鑫",
+        "npc_type": "villager",
+        "group": "返乡务工青年",
+        "trust_to_player": 45,
+        "attitude_score": 65,
+        "anxiety_level": 40,
+        "reference_point": 65,
+        "granovetter_threshold": 30,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "熟悉网络舆情与法律维权渠道",
+          "希望镇里能引进电商物流项目"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "V06_QianNi",
+        "name": "钱妮",
+        "npc_type": "villager",
+        "group": "边缘易致贫户",
+        "trust_to_player": 30,
+        "attitude_score": 55,
+        "anxiety_level": 85,
+        "reference_point": 75,
+        "granovetter_threshold": 55,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "丈夫在外打工受伤需长期服药",
+          "担心搬迁过渡期无处可去"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "V07_SunGuihua",
+        "name": "孙桂花",
+        "npc_type": "villager",
+        "group": "一般留守妇女",
+        "trust_to_player": 50,
+        "attitude_score": 60,
+        "anxiety_level": 50,
+        "reference_point": 55,
+        "granovetter_threshold": 45,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "邻里都在观望谁先签字",
+          "关注安置点附近能否建幼儿园"
+        ],
+        "player_promises": []
+      }
+    ],
+    "action_rules": [
+      {
+        "action_id": "ACT_01_HomeVisit",
+        "name": "入户走访建档",
+        "cost_action_points": 1,
+        "budget_cost": 50,
+        "allowed_targets": [
+          "villager"
+        ],
+        "preconditions": [],
+        "forbidden_conditions": [
+          "目标 signed 为 true"
+        ],
+        "direct_payoff": {
+          "trust_to_player": 5,
+          "attitude_score": 3,
+          "anxiety_level": -5
+        },
+        "side_effects": [
+          "解锁该户具体家庭困难标签",
+          "cadre_execution_index +1"
+        ],
+        "risk_notes": [
+          "若玩家 attitude_score 低于 30 强行入户，有 30% 概率被拒，导致 trust -3 且 social_stability_index -2"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_02_PublicBriefing",
+        "name": "搬迁政策集中宣讲",
+        "cost_action_points": 2,
+        "budget_cost": 300,
+        "allowed_targets": [
+          "villager"
+        ],
+        "preconditions": [
+          "day >= 3"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "political_credit": 2,
+          "cadre_execution_index": 3,
+          "social_stability_index": 2
+        },
+        "side_effects": [
+          "全村 anxiety_level 平均 -8",
+          "部分村民 known_info 更新为官方标准"
+        ],
+        "risk_notes": [
+          "若前期信息核验不足，宣讲时遭遇尖锐提问，political_credit 可能 -5，引发谣言扩散"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_03_InfoVerify",
+        "name": "补偿资产评估复核",
+        "cost_action_points": 1,
+        "budget_cost": 100,
+        "allowed_targets": [
+          "villager"
+        ],
+        "preconditions": [
+          "已进行过 ACT_01_HomeVisit"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "attitude_score": 5,
+          "trust_to_player": 3
+        },
+        "side_effects": [
+          "获取房屋/土地精准估值数据，消除信息差"
+        ],
+        "risk_notes": [
+          "若评估结果低于村民 reference_point 10% 以上，anxiety_level 将激增 15 并可能触发抗议"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_04_NegComm",
+        "name": "过渡期生计帮扶协商",
+        "cost_action_points": 2,
+        "budget_cost": 500,
+        "allowed_targets": [
+          "villager"
+        ],
+        "preconditions": [
+          "budget_remaining >= 500"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "attitude_score": 15,
+          "anxiety_level": -20,
+          "signed_households": 1
+        },
+        "side_effects": [
+          "target 标记 core_demand_satisfied 为 true",
+          "budget_remaining 扣除 500"
+        ],
+        "risk_notes": [
+          "过度承诺将导致后续 budget_remaining 枯竭，若无法兑现则 political_credit -10 且 trust 清零"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_05_CadreMeet",
+        "name": "镇村干部加压调度会",
+        "cost_action_points": 1,
+        "budget_cost": 0,
+        "allowed_targets": [
+          "cadre"
+        ],
+        "preconditions": [
+          "cadre_execution_index < 70"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "cadre_execution_index": 10,
+          "political_credit": -3
+        },
+        "side_effects": [
+          "解锁针对特定钉子户的联合攻坚选项"
+        ],
+        "risk_notes": [
+          "若 political_credit 低于 50 时施压，可能引发基层干部消极怠工，cadre_execution_index 反降 5"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_06_ExtComm",
+        "name": "上级部门资金与进度协调",
+        "cost_action_points": 2,
+        "budget_cost": 0,
+        "allowed_targets": [
+          "external"
+        ],
+        "preconditions": [
+          "political_credit >= 65"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "budget_remaining": 2000,
+          "political_credit": 5
+        },
+        "side_effects": [
+          "解锁二期工程加速选项"
+        ],
+        "risk_notes": [
+          "若频繁调用（单日超过1次），陈科长等 external 角色 anxiety_level 上升，可能提前上报负面进度"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_07_RumorCtrl",
+        "name": "舆情监测与谣言澄清",
+        "cost_action_points": 1,
+        "budget_cost": 100,
+        "allowed_targets": [
+          "external"
+        ],
+        "preconditions": [
+          "social_stability_index < 65"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "social_stability_index": 8,
+          "attitude_score": 2
+        },
+        "side_effects": [
+          "阻断村民群体性上访的连锁反应阈值"
+        ],
+        "risk_notes": [
+          "若澄清不及时，social_stability_index 每日自动 -3，并可能触发强制维稳事件"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_08_EmergencyRelief",
+        "name": "特殊困难户紧急纾困",
+        "cost_action_points": 1,
+        "budget_cost": 300,
+        "allowed_targets": [
+          "villager"
+        ],
+        "preconditions": [
+          "budget_remaining >= 300"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "trust_to_player": 10,
+          "anxiety_level": -15
+        },
+        "side_effects": [
+          "budget_remaining 减少 300",
+          "目标户标记为已安抚"
+        ],
+        "risk_notes": [
+          "若频繁使用导致资金枯竭，后续将无力应对突发群体性上访事件"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_09_IndustrialSubsidyPromise",
+        "name": "产业配套补贴承诺",
+        "cost_action_points": 1,
+        "budget_cost": 0,
+        "allowed_targets": [
+          "villager"
+        ],
+        "preconditions": [
+          "political_credit >= 60"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "attitude_score": 15,
+          "anxiety_level": -10,
+          "granovetter_threshold": 10
+        },
+        "side_effects": [
+          "解锁后续大棚/果园置换谈判选项",
+          "player_promises 增加一项产业承诺"
+        ],
+        "risk_notes": [
+          "若搬迁后 60 天内无法兑现产业扶持，该户 trust 清零并可能引发连带拒签"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_10_CadreAccountability",
+        "name": "干部问责约谈",
+        "cost_action_points": 1,
+        "budget_cost": 0,
+        "allowed_targets": [
+          "cadre"
+        ],
+        "preconditions": [
+          "cadre_execution_index < 60"
+        ],
+        "forbidden_conditions": [
+          "目标 political_credit > 80"
+        ],
+        "direct_payoff": {
+          "cadre_execution_index": 15,
+          "political_credit": -5
+        },
+        "side_effects": [
+          "目标干部 anxiety_level +20",
+          "解锁针对特定村民的联合攻坚"
+        ],
+        "risk_notes": [
+          "若 player 自身 political_credit 低于 50，将引发基层干部消极对抗，cadre_execution_index 不升反降 5"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_11_ContractorNegotiation",
+        "name": "承建商工期与资金博弈",
+        "cost_action_points": 2,
+        "budget_cost": 1000,
+        "allowed_targets": [
+          "external"
+        ],
+        "preconditions": [
+          "budget_remaining >= 1000",
+          "day >= 15"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "social_stability_index": 5,
+          "political_credit": 3
+        },
+        "side_effects": [
+          "安置房一期工程进度追回 5%",
+          "赵总 anxiety_level -15"
+        ],
+        "risk_notes": [
+          "建材若继续涨价，二期工程将面临烂尾风险，需预留额外预算"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_12_MultiDeptJointMeeting",
+        "name": "多部门联席推进会",
+        "cost_action_points": 2,
+        "budget_cost": 200,
+        "allowed_targets": [
+          "external"
+        ],
+        "preconditions": [
+          "day >= 30"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "cadre_execution_index": 5,
+          "social_stability_index": 5
+        },
+        "side_effects": [
+          "打通生态局与镇指挥部的信息壁垒",
+          "解锁跨部门联合执法权限"
+        ],
+        "risk_notes": [
+          "若前期准备不足，易陷入部门推诿扯皮，白白消耗 2 点行动力"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_13_NewMediaIntervention",
+        "name": "舆情监测与定向澄清",
+        "cost_action_points": 1,
+        "budget_cost": 200,
+        "allowed_targets": [
+          "external"
+        ],
+        "preconditions": [
+          "social_stability_index < 65"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "social_stability_index": 10,
+          "attitude_score": 3
+        },
+        "side_effects": [
+          "压制‘强制搬迁’谣言传播速率",
+          "孙记 known_info 更新为官方通报口径"
+        ],
+        "risk_notes": [
+          "若干预手段过于强硬，可能引发‘捂盖子’次生舆情，导致 political_credit -10"
+        ],
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "action_id": "ACT_14_CountyProgressReporting",
+        "name": "向上级党委专项汇报",
+        "cost_action_points": 2,
+        "budget_cost": 0,
+        "allowed_targets": [
+          "external"
+        ],
+        "preconditions": [
+          "signed_households >= 8"
+        ],
+        "forbidden_conditions": [],
+        "direct_payoff": {
+          "political_credit": 15,
+          "budget_remaining": 2000
+        },
+        "side_effects": [
+          "获得县级专项资金二次拨付",
+          "陈科长 reference_point 下调 5"
+        ],
+        "risk_notes": [
+          "若 signed_households 未达 8 户强行汇报，将触发县委通报批评，political_credit -20 且后续资金拨付冻结"
+        ],
+        "citations": [
+          "query"
+        ]
+      }
+    ],
+    "event_outline": [
+      {
+        "event_id": "EVT_01_TrustBuilding",
+        "name": "进驻与摸底：打破沉默",
+        "day_window": "第 1-5 天",
+        "trigger_condition": "游戏初始化，signed_households == 0",
+        "description": "云岭村进入生态搬迁启动期。村委班子 C01_ZhangJianguo 态度暧昧，村民代表 V01_LiuDaqiang 组织观望。玩家需优先执行 ACT_01_HomeVisit 建档，并配合 ACT_02_PublicBriefing 宣讲政策，降低全村焦虑。",
+        "payoff": {
+          "social_stability_index": 5,
+          "cadre_execution_index": 5
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_02_FundingGap",
+        "name": "承建商的最后通牒",
+        "day_window": "第 6-10 天",
+        "trigger_condition": "day >= 6 && budget_remaining < 7000",
+        "description": "县生态局资金拨付滞后，承建商 E02_ZhaoTong 以建材涨价为由威胁停工。玩家必须通过 ACT_11_ContractorNegotiation 进行博弈，或紧急执行 ACT_06_ExtComm 协调陈科长 E01_ChenKe 追加预算。",
+        "payoff": {
+          "political_credit": 5,
+          "budget_remaining": -500
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_03_RumorControl",
+        "name": "暗流涌动：强制搬迁谣言",
+        "day_window": "第 11-15 天",
+        "trigger_condition": "day >= 11 && social_stability_index < 70",
+        "description": "V01_LiuDaqiang 在村内散布补偿不公谣言，引发 V02_MaShu 等贫困户恐慌。县级融媒体中心 E03_SunJi 提示舆情风险。玩家需执行 ACT_07_RumorCtrl 辟谣，或通过 ACT_04_NegComm 对困难户进行精准帮扶。",
+        "payoff": {
+          "social_stability_index": 8,
+          "attitude_score_V01": -10
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_04_ValuationConflict",
+        "name": "资产评估的硬骨头",
+        "day_window": "第 16-20 天",
+        "trigger_condition": "day >= 16 && attitude_score_V03 < 60",
+        "description": "种植大户 V03_GaoMing 对果树补偿评估价格强烈不满，联合 V04_ZhaoLao 阻挠签字。玩家需指派 C03_WangFang 执行 ACT_03_InfoVerify 复核数据，并利用 ACT_09_IndustrialSubsidyPromise 承诺产业配套以平息怒火。",
+        "payoff": {
+          "signed_households": 1,
+          "political_credit": -3
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_05_CountyReview",
+        "name": "县级期中考核压力",
+        "day_window": "第 21-25 天",
+        "trigger_condition": "day >= 21",
+        "description": "E01_ChenKe 代表县生态局进行第 30 天前的进度预检。若签约率过低，将面临通报批评。玩家需召开 ACT_05_CadreMeet 施压镇村干部 C02_LiWei，并整理材料向 E01_ChenKe 执行 ACT_14_CountyProgressReporting 争取宽限期。",
+        "payoff": {
+          "political_credit": 10,
+          "cadre_execution_index": -5
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_06_DivideConquer",
+        "name": "分化瓦解：返乡青年的破局",
+        "day_window": "第 26-30 天",
+        "trigger_condition": "day >= 26 && signed_households < 10",
+        "description": "为打破僵局，玩家将目光转向返乡青年 V05_ZhouXin。通过 ACT_09_IndustrialSubsidyPromise 承诺电商物流配套，成功拉拢 V05_ZhouXin 签约，并带动 V07_SunGuihua 等一般户跟随。抵抗联盟初步瓦解。",
+        "payoff": {
+          "signed_households": 3,
+          "granovetter_threshold_V07": -15
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_07_InspectionPressure",
+        "name": "县级督查组进驻施压",
+        "day_window": "第 31-35 天",
+        "trigger_condition": "day >= 31 && signed_households < 15",
+        "description": "县级督查组突击检查云岭村搬迁进度，E01_ChenKe 全程陪同并对 C01_ZhangJianguo 施压。玩家需通过 ACT_14_CountyProgressReporting 汇报阶段性成果，或执行 ACT_12_MultiDeptJointMeeting 展示多部门协同姿态以缓冲考核压力，避免被全县通报批评。",
+        "payoff": {
+          "political_credit": -10,
+          "social_stability_index": -5
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_08_CadreCrisis",
+        "name": "干部畏难与问责破局",
+        "day_window": "第 36-40 天",
+        "trigger_condition": "day >= 36 && cadre_execution_index < 55",
+        "description": "面对督查组和村民的双重压力，镇指挥部成员 C02_LiWei 产生畏难情绪，消极怠工。村委 C01_ZhangJianguo 抱怨工作难以推进。玩家必须果断对 C02_LiWei 执行 ACT_10_CadreAccountability，并召开 ACT_05_CadreMeet 重新分配包保责任，以正视听。",
+        "payoff": {
+          "cadre_execution_index": 15,
+          "political_credit": 5
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_09_PetitionRisk",
+        "name": "群体上访危机拦截",
+        "day_window": "第 41-45 天",
+        "trigger_condition": "day >= 41 && V01_LiuDaqiang_attitude < 40",
+        "description": "意见领袖 V01_LiuDaqiang 串联 V04_ZhaoLao 及部分未签约户，准备越级赴县上访。县级融媒体中心 E03_SunJi 监测到网络舆情苗头。玩家需迅速执行 ACT_13_NewMediaIntervention 进行线上降温，并亲自上门对 V01_LiuDaqiang 执行 ACT_08_EmergencyRelief 或 ACT_04_NegComm 化解核心矛盾。",
+        "payoff": {
+          "social_stability_index": -15,
+          "political_credit": -10
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_10_ContractorDelay",
+        "name": "工程停摆与信任危机",
+        "day_window": "第 46-50 天",
+        "trigger_condition": "day >= 46 && budget_remaining < 4000",
+        "description": "承建商 E02_ZhaoTong 因资金迟迟不到位，宣布安置房二期工程停工，引发已签约村民恐慌，担心烂尾。V05_ZhouXin 带头质疑政府信用。玩家必须紧急执行 ACT_11_ContractorNegotiation，承诺近期拨付进度款，或通过 ACT_06_ExtComm 向陈科长申请专项应急资金。",
+        "payoff": {
+          "social_stability_index": -10,
+          "budget_remaining": -1000
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_11_Breakthrough",
+        "name": "边缘户攻坚与策略转折",
+        "day_window": "第 51-55 天",
+        "trigger_condition": "day >= 51 && signed_households >= 18",
+        "description": "搬迁过半，剩余的 V06_QianNi 等边缘易致贫户因担心失去土地依赖而坚决抗拒。驻村工作队 C03_WangFang 摸排到其实际困难。玩家利用 ACT_04_NegComm 结合低保政策兜底承诺，并兑现 ACT_09_IndustrialSubsidyPromise 给 V05_ZhouXin 作为示范，带动 V06_QianNi 心理防线松动。",
+        "payoff": {
+          "signed_households": 3,
+          "political_credit": 10
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_12_MediaCrisis",
+        "name": "分配不公传言与公开透明",
+        "day_window": "第 56-60 天",
+        "trigger_condition": "day >= 56 && signed_households >= 25",
+        "description": "关于安置点户型分配不公的传言在村民微信群疯传。E03_SunJi 警告若不及时回应将上热搜。玩家需联合镇指挥部 C02_LiWei 召开 ACT_02_PublicBriefing，公开透明抽签规则，并邀请 V07_SunGuihua 等信任度高的村民代表参与监督，重塑公信力。",
+        "payoff": {
+          "social_stability_index": 10,
+          "attitude_score_V07": 10
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_13_FundingSprint",
+        "name": "资金链极限施压",
+        "day_window": "第 61-65 天",
+        "trigger_condition": "day >= 61 && budget_remaining < 2000",
+        "description": "搬迁进入深水区，安置点建设尾款与过渡费发放叠加。承建商 E02_ZhaoTong 停止供应建材，威胁彻底断供。玩家必须通过 ACT_11_ContractorNegotiation 签订分期付款协议，或紧急向县财政局申请过桥资金（隐含行动）。",
+        "payoff": {
+          "budget_remaining": -500,
+          "political_credit": 5,
+          "signed_households": 2
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_14_ClanElder",
+        "name": "祖坟迁移与宗族和解",
+        "day_window": "第 66-70 天",
+        "trigger_condition": "day >= 66 && attitude_score_V04 < 50",
+        "description": "宗族长辈 V04_ZhaoLao 因祖坟迁移风水问题迟迟不肯签字，导致其家族内 5 户人家观望。玩家需联合村委 C01_ZhangJianguo 执行 ACT_01_HomeVisit，承诺在新村规划宗族文化广场，并亲自陪同勘察新墓地选址。",
+        "payoff": {
+          "signed_households": 6,
+          "social_stability_index": 10,
+          "attitude_score_V04": 20
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_15_SettlementDelivery",
+        "name": "安置点实景开放日",
+        "day_window": "第 71-75 天",
+        "trigger_condition": "day >= 71 && signed_households >= 28",
+        "description": "为彻底打消 V03_GaoMing 等种植大户对产业配套的疑虑，指挥部组织首批村民代表参观已建成的安置房与农业产业园。玩家需协调 E01_ChenKe 进行 ACT_12_MultiDeptJointMeeting 确保现场展示效果，并兑现 ACT_09_IndustrialSubsidyPromise。",
+        "payoff": {
+          "signed_households": 4,
+          "cadre_execution_index": 5,
+          "social_stability_index": 15
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_16_FinalCountdown",
+        "name": "最后十户清零行动",
+        "day_window": "第 76-80 天",
+        "trigger_condition": "day >= 76 && signed_households < 34",
+        "description": "距离最终考核仅剩半个月，剩余未签约户多为 V06_QianNi 等边缘易致贫户或存在特殊历史遗留问题的家庭。玩家启动 ACT_08_EmergencyRelief 兜底保障，并指派 C03_WangFang 驻村工作队进行 ACT_04_NegComm 一对一攻坚。",
+        "payoff": {
+          "signed_households": 3,
+          "political_credit": 10,
+          "budget_remaining": -1000
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_17_FinalInspection",
+        "name": "省级终期验收与问责",
+        "day_window": "第 81-85 天",
+        "trigger_condition": "day >= 81",
+        "description": "省级联合督查组进驻云岭村进行生态搬迁终期验收。若 signed_households 达标且 social_stability_index > 60，则玩家获得晋升通报；否则 E01_ChenKe 将启动问责程序。玩家需执行 ACT_14_CountyProgressReporting 提交最终总结报告。",
+        "payoff": {
+          "political_credit": 20,
+          "game_status": "inspection"
+        },
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "event_id": "EVT_18_NewVillageGenesis",
+        "name": "云岭新村的破晓",
+        "day_window": "第 86-90 天",
+        "trigger_condition": "day >= 86 && signed_households == 36",
+        "description": "全村完成搬迁协议签署。指挥部转入后期服务阶段，重点解决搬迁后的社区融入与就业安置。玩家需组织 ACT_02_PublicBriefing 宣布新村管委会选举计划，并协调 E03_SunJi 进行 ACT_07_RumorCtrl 宣传新村新气象。",
+        "payoff": {
+          "social_stability_index": 20,
+          "political_credit": 15,
+          "game_status": "victory"
+        },
+        "citations": [
+          "query"
+        ]
+      }
+    ],
+    "night_rules": [
+      "每日夜间系统自动结算：若 budget_remaining < 0，则 social_stability_index 每日自动扣除 5 点，直至触发资金断裂 Game Over。",
+      "夜间村民态度推演：若白天未执行针对特定村民的 ACT_01 或 ACT_04，其 anxiety_level 每日上升 3 点；若 social_stability_index < 50，V01_LiuDaqiang 有 20% 概率夜间串联发起集体上访预备会议。",
+      "资金回补机制：若当天完成了 ACT_06_ExtComm 且 E01_ChenKe 的 approval_score > 60，夜间有 40% 概率获得县级专项资金拨付（+2000 预算），否则资金状态保持不变。",
+      "舆情衰减规则：夜间若无新的谣言触发事件 E03_SunJi 监测到的负面舆情将每日自然衰减 10%，但若白天政治信用低于 50，衰减速度减半。"
+    ],
+    "payoff_notes": [
+      "political_credit (政治信用) 直接影响上级部门（如 E01_ChenKe）的资金审批意愿与问责宽容度。低于 40 时将触发强制停职审查风险。",
+      "social_stability_index (社会稳定指数) 是群体性事件的防火墙。低于 50 将解锁 V01 组织的非理性抗争事件，高于 80 可加速一般户签约进程。",
+      "cadre_execution_index (干部执行指数) 决定 NPC 干部（C01, C02, C03）主动完成分包任务的效率。指数过低时，干部行动将消耗玩家额外行动点或产生负面连带效应。",
+      "signed_households (已签约户数) 为核心胜利指标。达到 36 户且保持 social_stability_index >= 50 方可达成完美结局（Perfect Victory）。"
+    ],
+    "citations": [
+      {
+        "citation_id": "query",
+        "source_context_id": "query",
+        "title": "《父母官》生态搬迁政治博弈仿真游戏设定需求",
+        "note": "基于用户原始query生成，未提供外部source_contexts。"
+      },
+      {
+        "citation_id": "CIT_01",
+        "source_context_id": "query",
+        "title": "《父母官》生态搬迁剧本设计需求",
+        "note": "基于用户提供的第61-90天事件周期、NPC设定及行动规则生成。"
+      }
+    ]
+  },
+  "contexts_used": [],
+  "rewritten_queries": [
+    "生态搬迁 政治博弈 仿真规则",
+    "官员 payoff 约束 基础行动",
+    "夜间互动 事件概要 NPC设定"
+  ],
+  "generation_notes": [
+    "Generated by the staged full-draft pipeline.",
+    "Expanded NPCs, actions, events, night rules, and payoff notes in separate stages."
+  ],
+  "original_query": "基于《父母官》生态搬迁政治博弈仿真游戏，生成一个小规模剧本初稿。重点输出规则、约束、payoff、首批NPC、基础行动、事件概要和夜间互动规则，不要只写文学设定。",
+  "feedback": "",
+  "revision_round": 0,
+  "generation_mode": "full"
+}

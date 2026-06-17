@@ -675,6 +675,88 @@ class QwenScriptGenerator:
         payload = self._parse_json_object(content)
         return self._build_script_design(payload)
 
+    def revise_element(
+        self,
+        element_type: str,
+        element_id: str,
+        current_element: dict[str, Any],
+        context: dict[str, Any],
+        feedback: str,
+    ) -> dict[str, Any]:
+        """局部定向修订：只修改目标元素，返回修改后的元素 JSON。
+
+        不发送完整剧本，只发送目标元素 + 最小上下文，
+        LLM 返回修改后的元素，前端做局部 merge。
+        """
+        if not feedback.strip():
+            raise ValueError("feedback must not be empty")
+        if not current_element:
+            raise ValueError("current_element must not be empty")
+
+        messages = self._build_revise_element_messages(
+            element_type, element_id, current_element, context, feedback,
+        )
+        content = self._client.complete(messages, temperature=0.2)
+        revised = self._parse_json_object(content)
+        return revised
+
+    def _build_revise_element_messages(
+        self,
+        element_type: str,
+        element_id: str,
+        current_element: dict[str, Any],
+        context: dict[str, Any],
+        feedback: str,
+    ) -> list[ChatMessage]:
+        """构建局部修订 prompt：只包含目标元素和必要上下文。"""
+        npc_summary = context.get("npc_summary", [])
+        script_title = context.get("script_title", "")
+        script_premise = context.get("script_premise", "")
+
+        element_labels = {
+            "decision_point": "决策点",
+            "npc": "NPC",
+            "relationship": "关系",
+            "option": "决策选项",
+            "ending": "结局",
+            "act": "幕",
+        }
+        label = element_labels.get(element_type, element_type)
+
+        user_payload = {
+            "element_type": element_type,
+            "element_id": element_id,
+            "label": label,
+            "feedback": feedback.strip(),
+            "current_element": current_element,
+            "context": {
+                "script_title": script_title,
+                "script_premise": script_premise,
+                "npc_summary": npc_summary,
+            },
+            "output_contract": current_element,
+            "rules": [
+                f"你是严肃游戏《父母官》剧本的定向修订器。",
+                f"只修改上面这个{label}，不要改动未提及的内容。",
+                f"根据 feedback 中的要求进行定向修改。",
+                f"保留元素的原始结构（相同的 key），只改需要改的值。",
+                f"如果 feedback 要求增加内容（如增加选项），在现有内容基础上追加。",
+                f"如果 feedback 要求删除内容，明确执行删除。",
+                f"返回修改后的完整{label} JSON 对象，不要 Markdown，不要解释。",
+                f"所有数值字段必须是整数。",
+            ],
+        }
+        return [
+            ChatMessage(
+                role="system",
+                content=(
+                    f"你是严肃游戏《父母官》的{label}修订器。"
+                    "只修改指定的元素，返回修改后的完整 JSON 对象。"
+                ),
+            ),
+            ChatMessage(role="user", content=json.dumps(user_payload, ensure_ascii=False)),
+        ]
+
     def revise_structured(
         self,
         query: str,

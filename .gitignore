@@ -2,3 +2,14 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+
+# Frontend build artifacts
+frontend/dist/
+frontend/node_modules/
+frontend/tsconfig.tsbuildinfo
+
+# Local dev data
+data/
+
+# Runtime state
+outputs/script_drafts/.version_counter

@@ -1,0 +1,2223 @@
+{
+  "script": {
+    "title": "父母官：生态搬迁中的权衡与抉择",
+    "premise": "玩家扮演乡镇党委副书记兼搬迁指挥部副总指挥，面对“一方水土养不起一方人”的生态脆弱区36户建档立卡贫困户的搬迁任务。在90天的倒计时内，玩家需在有限的预算和政治信用下，平衡上级层层加码的考核压力、基层复杂的利益博弈以及搬迁户的生计适应难题。游戏旨在模拟基层政策执行中“运动型治理”与“常规治理”的张力，体验从“搬得出”到“稳得住”过程中的多重困境与决策权衡{doc#40}{doc#41}。",
+    "player_role": "乡镇党委副书记兼搬迁指挥部副总指挥",
+    "core_conflict": "核心冲突体现为三重张力：一是政治晋升激励与民生福祉保障之间的目标置换风险，即为了完成硬性指标可能导致的“数字竞赛”与政策异化{doc#8}；二是行政命令的刚性执行与乡土社会弹性逻辑之间的互动困境，如政策多变导致的信任危机与“互惠-缺位-依赖”关系的演变{doc#4}{doc#22}；三是短期搬迁任务完成与长期可持续生计发展之间的资源错配，包括安置点产业支撑不足与社会融入困难{doc#1}{doc#24}。",
+    "initial_game_state": {
+      "day": 1,
+      "action_points": 3,
+      "budget_remaining": 8000,
+      "budget_unit": "万元",
+      "signed_households": 0,
+      "total_households": 36,
+      "social_stability_index": 70,
+      "political_credit": 70,
+      "cadre_execution_index": 60
+    },
+    "npc_seed": [
+      {
+        "npc_id": "cadre_01",
+        "name": "张书记",
+        "npc_type": "cadre",
+        "group": "乡镇党委",
+        "trust_to_player": 60,
+        "attitude_score": 50,
+        "anxiety_level": 80,
+        "reference_point": 90,
+        "granovetter_threshold": 70,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "上级考核指标压力",
+          "资金拨付进度滞后"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "cadre_02",
+        "name": "李主任",
+        "npc_type": "cadre",
+        "group": "村两委",
+        "trust_to_player": 40,
+        "attitude_score": 30,
+        "anxiety_level": 60,
+        "reference_point": 50,
+        "granovetter_threshold": 60,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "村民真实家庭状况",
+          "宗族势力分布"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "cadre_03",
+        "name": "王队长",
+        "npc_type": "cadre",
+        "group": "驻村工作队",
+        "trust_to_player": 70,
+        "attitude_score": 60,
+        "anxiety_level": 50,
+        "reference_point": 80,
+        "granovetter_threshold": 50,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "贫困户精准识别数据",
+          "政策解释口径"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "external_01",
+        "name": "赵经理",
+        "npc_type": "external",
+        "group": "承建企业",
+        "trust_to_player": 50,
+        "attitude_score": 40,
+        "anxiety_level": 70,
+        "reference_point": 60,
+        "granovetter_threshold": 40,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "工程款结算周期",
+          "安置房建设进度"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "external_02",
+        "name": "孙记者",
+        "npc_type": "external",
+        "group": "媒体",
+        "trust_to_player": 30,
+        "attitude_score": 50,
+        "anxiety_level": 20,
+        "reference_point": 40,
+        "granovetter_threshold": 30,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "舆情关注点",
+          "典型宣传需求"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "villager_01",
+        "name": "刘老根",
+        "npc_type": "villager",
+        "group": "关键意见领袖",
+        "trust_to_player": 20,
+        "attitude_score": 20,
+        "anxiety_level": 90,
+        "reference_point": 100,
+        "granovetter_threshold": 80,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "对故土依恋",
+          "担心生计无着"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "villager_02",
+        "name": "陈大娘",
+        "npc_type": "villager",
+        "group": "困难户",
+        "trust_to_player": 50,
+        "attitude_score": 45,
+        "anxiety_level": 85,
+        "reference_point": 70,
+        "granovetter_threshold": 60,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "自筹资金困难",
+          "家庭成员残疾"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "villager_03",
+        "name": "周致富",
+        "npc_type": "villager",
+        "group": "非贫困户/精英",
+        "trust_to_player": 30,
+        "attitude_score": 60,
+        "anxiety_level": 40,
+        "reference_point": 50,
+        "granovetter_threshold": 40,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "想享受搬迁补贴",
+          "与村干部关系密切"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "villager_04",
+        "name": "吴青年",
+        "npc_type": "villager",
+        "group": "外出务工者",
+        "trust_to_player": 60,
+        "attitude_score": 70,
+        "anxiety_level": 30,
+        "reference_point": 40,
+        "granovetter_threshold": 30,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "愿意搬迁但需就业支持",
+          "关心子女教育"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "villager_05",
+        "name": "郑寡妇",
+        "npc_type": "villager",
+        "group": "边缘户",
+        "trust_to_player": 40,
+        "attitude_score": 30,
+        "anxiety_level": 75,
+        "reference_point": 60,
+        "granovetter_threshold": 50,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "住房危房鉴定争议",
+          "缺乏劳动力"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "villager_06",
+        "name": "冯老汉",
+        "npc_type": "villager",
+        "group": "保守派",
+        "trust_to_player": 10,
+        "attitude_score": 10,
+        "anxiety_level": 95,
+        "reference_point": 90,
+        "granovetter_threshold": 90,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "坚决不搬",
+          "担心失去土地"
+        ],
+        "player_promises": []
+      },
+      {
+        "npc_id": "villager_07",
+        "name": "褚小妹",
+        "npc_type": "villager",
+        "group": "信息灵通者",
+        "trust_to_player": 50,
+        "attitude_score": 50,
+        "anxiety_level": 50,
+        "reference_point": 50,
+        "granovetter_threshold": 40,
+        "core_demand_satisfied": false,
+        "signed": false,
+        "known_info": [
+          "政策小道消息",
+          "邻里矛盾内幕"
+        ],
+        "player_promises": []
+      }
+    ],
+    "action_rules": [],
+    "event_outline": [],
+    "night_rules": [],
+    "payoff_notes": [],
+    "citations": [
+      {
+        "citation_id": "cite_1",
+        "source_context_id": "query",
+        "title": "用户需求：基于生态搬迁主题的严肃游戏剧本生成",
+        "note": "原始任务需求，定义角色、目标与复杂度。"
+      }
+    ],
+    "npc_relationships": [
+      {
+        "from_npc_id": "cadre_01",
+        "to_npc_id": "cadre_02",
+        "relation_type": "上下级",
+        "strength": 70,
+        "description": "张书记依赖李主任落实村级动员，但对其优亲厚友行为有所察觉。"
+      },
+      {
+        "from_npc_id": "cadre_01",
+        "to_npc_id": "cadre_03",
+        "relation_type": "利益同盟",
+        "strength": 80,
+        "description": "张书记与王队长共同承担考核压力，需紧密合作完成指标。"
+      },
+      {
+        "from_npc_id": "cadre_02",
+        "to_npc_id": "villager_03",
+        "relation_type": "亲属",
+        "strength": 90,
+        "description": "李主任的亲戚，试图通过关系获取搬迁名额或额外利益。"
+      },
+      {
+        "from_npc_id": "cadre_02",
+        "to_npc_id": "villager_01",
+        "relation_type": "矛盾对立",
+        "strength": 60,
+        "description": "李主任在贫困户识别中与刘老根发生冲突，刘老根质疑其公正性。"
+      },
+      {
+        "from_npc_id": "villager_01",
+        "to_npc_id": "villager_06",
+        "relation_type": "情感纽带",
+        "strength": 85,
+        "description": "刘老根与冯老汉是多年老友，共同抵制搬迁，影响其他村民态度。"
+      },
+      {
+        "from_npc_id": "villager_01",
+        "to_npc_id": "villager_07",
+        "relation_type": "信息渠道",
+        "strength": 70,
+        "description": "刘老根通过褚小妹获取政策变动的小道消息，并传播给其他村民。"
+      },
+      {
+        "from_npc_id": "villager_02",
+        "to_npc_id": "cadre_03",
+        "relation_type": "情感纽带",
+        "strength": 60,
+        "description": "王队长长期帮扶陈大娘，建立了一定信任，陈大娘愿意听取其建议。"
+      },
+      {
+        "from_npc_id": "villager_03",
+        "to_npc_id": "villager_05",
+        "relation_type": "矛盾对立",
+        "strength": 75,
+        "description": "周致富嫉妒郑寡妇获得危房改造补助，常在村里散布不满言论。"
+      },
+      {
+        "from_npc_id": "external_01",
+        "to_npc_id": "cadre_01",
+        "relation_type": "利益同盟",
+        "strength": 50,
+        "description": "赵经理需要张书记协调工程款支付，张书记需要赵经理保证工期。"
+      },
+      {
+        "from_npc_id": "external_02",
+        "to_npc_id": "cadre_01",
+        "relation_type": "信息渠道",
+        "strength": 40,
+        "description": "孙记者向张书记打听搬迁亮点，张书记需谨慎应对以防负面舆情。"
+      },
+      {
+        "from_npc_id": "villager_04",
+        "to_npc_id": "villager_02",
+        "relation_type": "亲属",
+        "strength": 80,
+        "description": "吴青年是陈大娘的儿子，在外务工，其态度影响陈大娘的搬迁决策。"
+      },
+      {
+        "from_npc_id": "cadre_03",
+        "to_npc_id": "villager_07",
+        "relation_type": "信息渠道",
+        "strength": 50,
+        "description": "王队长通过褚小妹了解村民真实想法和潜在矛盾。"
+      },
+      {
+        "from_npc_id": "villager_05",
+        "to_npc_id": "cadre_02",
+        "relation_type": "矛盾对立",
+        "strength": 65,
+        "description": "郑寡妇因危房鉴定问题与李主任产生纠纷，拒绝配合工作。"
+      },
+      {
+        "from_npc_id": "villager_06",
+        "to_npc_id": "cadre_01",
+        "relation_type": "矛盾对立",
+        "strength": 90,
+        "description": "冯老汉视张书记为破坏乡土秩序的敌人，多次公开对抗。"
+      },
+      {
+        "from_npc_id": "villager_04",
+        "to_npc_id": "external_01",
+        "relation_type": "利益同盟",
+        "strength": 40,
+        "description": "吴青年希望在安置点建设中寻找就业机会，与赵经理有接触。"
+      }
+    ],
+    "decision_points": [
+      {
+        "decision_id": "DP01",
+        "title": "名单疑云：初识精英俘获",
+        "day_window": "第2-3天",
+        "situation": "村两委李主任提交了首批拟签约的10户名单。你通过侧面了解发现，名单中混入了非贫困户周致富（李主任亲戚），而真正的边缘户郑寡妇却被以“材料不全”为由剔除。驻村工作队王队长对此表示担忧。",
+        "options": [
+          {
+            "option_id": "DP01_O1",
+            "label": "默认通过名单",
+            "description": "为推进进度，暂时认可李主任的名单，避免初期冲突，后续再找机会调整。",
+            "cost_action_points": 0,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -10,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "villager_03": {
+                "trust_to_player": 15,
+                "attitude_score": 20
+              },
+              "cadre_02": {
+                "trust_to_player": 10
+              },
+              "villager_05": {
+                "trust_to_player": -20,
+                "anxiety_level": 15
+              }
+            },
+            "risks": [
+              "郑寡妇可能因不公待遇上访，引发后续群体性不满。",
+              "驻村工作队对你的公正性产生怀疑。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP01_O2",
+            "label": "要求重新入户核查",
+            "description": "当众驳回名单，责令李主任配合驻村工作队重新进行全覆盖入户摸排。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": -5,
+                "cadre_execution_index": -5
+              },
+              "cadre_02": {
+                "trust_to_player": -15,
+                "attitude_score": -20
+              },
+              "cadre_03": {
+                "trust_to_player": 15,
+                "attitude_score": 10
+              },
+              "villager_05": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "初期进度严重滞后，可能受到上级批评。",
+              "李主任消极怠工，增加后续村级动员难度。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP01_O3",
+            "label": "暗中置换并安抚",
+            "description": "表面通过名单，私下授意王队长将郑寡妇加入补充名单，并找借口暂缓周致富的签约流程。",
+            "cost_action_points": 1,
+            "budget_cost": 20,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 2,
+                "political_credit": 2,
+                "cadre_execution_index": 5
+              },
+              "cadre_02": {
+                "trust_to_player": -5
+              },
+              "villager_03": {
+                "trust_to_player": -10
+              },
+              "cadre_03": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "若被周致富或李主任察觉，可能引发基层干部内部信任危机。"
+            ],
+            "citation": "query"
+          }
+        ],
+        "affected_npc_ids": [
+          "cadre_02",
+          "cadre_03",
+          "villager_03",
+          "villager_05"
+        ],
+        "trigger_condition": "game_start",
+        "is_critical": false,
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "decision_id": "DP02",
+        "title": "破冰关键：意见领袖的博弈",
+        "day_window": "第5-7天",
+        "situation": "关键意见领袖刘老根联合保守派冯老汉在村口聚集，散布“搬迁就是骗局”的言论，导致已有意向的3户开始动摇。信息灵通者褚小妹透露，他们主要担心失去土地和安置点就业无着。",
+        "options": [
+          {
+            "option_id": "DP02_O1",
+            "label": "公开宣讲与强硬表态",
+            "description": "召开村民大会，公开政策文件，明确搬迁红线，对煽动抵制者予以警告。",
+            "cost_action_points": 1,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -15,
+                "political_credit": 10,
+                "cadre_execution_index": 15
+              },
+              "villager_01": {
+                "trust_to_player": -25,
+                "anxiety_level": 20
+              },
+              "villager_06": {
+                "trust_to_player": -30,
+                "attitude_score": -25
+              }
+            },
+            "risks": [
+              "激化干群矛盾，可能导致刘老根彻底倒向对立面，煽动更激烈抵抗。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP02_O2",
+            "label": "登门夜话与情感攻坚",
+            "description": "利用晚间时间单独拜访刘老根，带少量慰问品，耐心倾听诉求，承诺优先安排安置房楼层。",
+            "cost_action_points": 2,
+            "budget_cost": 30,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": 0,
+                "cadre_execution_index": -5
+              },
+              "villager_01": {
+                "trust_to_player": 20,
+                "anxiety_level": -15
+              },
+              "villager_06": {
+                "trust_to_player": 10,
+                "anxiety_level": -10
+              }
+            },
+            "risks": [
+              "消耗大量行动点，若其他村民效仿，将面临巨大的资源挤兑压力。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP02_O3",
+            "label": "曲线救国：利用信息渠道",
+            "description": "通过褚小妹传递安置点产业规划利好消息，并暗示若带头签约可获得“示范户”表彰及部分补贴倾斜。",
+            "cost_action_points": 1,
+            "budget_cost": 80,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 5,
+                "cadre_execution_index": 5
+              },
+              "villager_07": {
+                "trust_to_player": 15,
+                "attitude_score": 10
+              },
+              "villager_01": {
+                "trust_to_player": 5,
+                "anxiety_level": -5
+              }
+            },
+            "risks": [
+              "补贴倾斜若被公开，可能引发“暗箱操作”的舆论质疑。"
+            ],
+            "citation": "query"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_01",
+          "villager_06",
+          "villager_07"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "decision_id": "DP03",
+        "title": "生计难题：困难户的筹款困境",
+        "day_window": "第8-10天",
+        "situation": "困难户陈大娘因需自筹2万元购房款且需照顾残疾儿子，明确表示放弃搬迁。其子吴青年在外务工虽有收入但不愿全额承担。驻村工作队王队长多次上门无果。",
+        "options": [
+          {
+            "option_id": "DP03_O1",
+            "label": "启动应急救助基金",
+            "description": "从指挥部有限预算中拨付专项资金，兜底解决陈大娘的自筹缺口。",
+            "cost_action_points": 1,
+            "budget_cost": 200,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": 5,
+                "cadre_execution_index": 5
+              },
+              "villager_02": {
+                "trust_to_player": 30,
+                "anxiety_level": -25,
+                "signed": true
+              },
+              "cadre_03": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "大幅消耗预算，后续应对突发事件资金捉襟见肘。",
+              "可能引发其他边缘户的攀比心理。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP03_O2",
+            "label": "跨界联动：企业用工置换",
+            "description": "联系承建企业赵经理，承诺若其资助陈大娘部分房款，将在安置房后期维护中优先考虑该企业。",
+            "cost_action_points": 2,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": -5,
+                "cadre_execution_index": 0
+              },
+              "external_01": {
+                "trust_to_player": 15,
+                "attitude_score": 20
+              },
+              "villager_02": {
+                "trust_to_player": 15,
+                "signed": true
+              },
+              "villager_04": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "政企利益交换若曝光，将面临严重的廉政审查风险。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP03_O3",
+            "label": "远程动员家属",
+            "description": "通过村委联系吴青年，阐明政策红利与家庭长远生计，承诺为其在安置点附近协调就业岗位，促使其汇款。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 5,
+                "cadre_execution_index": 5
+              },
+              "villager_04": {
+                "trust_to_player": 15,
+                "attitude_score": 10,
+                "signed": true
+              },
+              "villager_02": {
+                "trust_to_player": 20,
+                "anxiety_level": -15,
+                "signed": true
+              }
+            },
+            "risks": [
+              "吴青年若拒绝或拖延，将错过最佳动员窗口。",
+              "需后续兑现就业承诺，增加安置压力。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP03_O4",
+            "label": "暂缓处理，转向易签户",
+            "description": "将工作重心暂时转移至其他意愿较强的农户，对陈大娘采取冷处理。",
+            "cost_action_points": 0,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -5,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "villager_02": {
+                "trust_to_player": -20,
+                "anxiety_level": 20
+              }
+            },
+            "risks": [
+              "陈大娘可能成为后续“钉子户”，增加清零难度。"
+            ],
+            "citation": "query"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_02",
+          "villager_04",
+          "cadre_03",
+          "external_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "decision_id": "DP04",
+        "title": "舆情暗流：媒体的突然造访",
+        "day_window": "第11-12天",
+        "situation": "市报记者孙记者不请自来，称接到群众反映“搬迁过程存在强迫签字和资金挪用”。张书记指示务必妥善应对，防止负面报道影响全县考核。",
+        "options": [
+          {
+            "option_id": "DP04_O1",
+            "label": "全程陪同与透明公开",
+            "description": "主动向孙记者公开资金账目和签约流程，安排走访已签约农户，展现基层工作透明度。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 15,
+                "cadre_execution_index": 5
+              },
+              "external_02": {
+                "trust_to_player": 20,
+                "attitude_score": 15
+              }
+            },
+            "risks": [
+              "若前期存在瑕疵（如决策点1选择默认名单），可能被记者抓包放大。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP04_O2",
+            "label": "控制行程与典型宣传",
+            "description": "精心安排采访路线，只允许记者接触配合度高的典型户，并安排专人“陪同记录”。",
+            "cost_action_points": 1,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 0,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "external_02": {
+                "trust_to_player": -5,
+                "attitude_score": -10
+              }
+            },
+            "risks": [
+              "记者若察觉被刻意引导，可能撰写更具批判性的深度调查报道。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP04_O3",
+            "label": "软性阻隔与信息管控",
+            "description": "以“施工区域存在安全隐患”和“村民农忙”为由，婉拒记者深入村内采访，仅提供书面材料。",
+            "cost_action_points": 1,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -5,
+                "political_credit": -10,
+                "cadre_execution_index": -5
+              },
+              "external_02": {
+                "trust_to_player": -25,
+                "attitude_score": -20
+              }
+            },
+            "risks": [
+              "引发记者反感，可能通过外围渠道获取负面信息并强行发布。"
+            ],
+            "citation": "query"
+          }
+        ],
+        "affected_npc_ids": [
+          "external_02",
+          "cadre_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "decision_id": "DP05",
+        "title": "决战清零：最后三户的抉择",
+        "day_window": "第13-15天",
+        "situation": "首批签约截止日期临近，全镇进度通报显示本镇落后。仅剩3户未签，其中保守派冯老汉态度坚决，另外2户持观望态度。上级下达死命令：15日内必须实现“清零”，否则启动问责。",
+        "options": [
+          {
+            "option_id": "DP05_O1",
+            "label": "行政施压与代签",
+            "description": "联合派出所和村干部上门施压，暗示不签字将取消后续所有惠农政策资格，必要时采取“代为签字”策略。",
+            "cost_action_points": 1,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -30,
+                "political_credit": 20,
+                "cadre_execution_index": 30
+              },
+              "villager_06": {
+                "trust_to_player": -40,
+                "anxiety_level": 30,
+                "signed": true
+              },
+              "cadre_02": {
+                "trust_to_player": 5
+              }
+            },
+            "risks": [
+              "极度破坏干群信任，为第2幕的“矛盾升级”埋下重大隐患（如上访、冲突）。",
+              "严重违背“稳得住”的长期目标。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP05_O2",
+            "label": "风险兜底与延期承诺",
+            "description": "向县委立下军令状，申请延期5天，同时动用全部剩余预算为观望户提供搬迁奖励，对冯老汉做出不改变其土地承包权的书面承诺。",
+            "cost_action_points": 3,
+            "budget_cost": 500,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 20,
+                "political_credit": -15,
+                "cadre_execution_index": 5
+              },
+              "villager_06": {
+                "trust_to_player": 15,
+                "anxiety_level": -20,
+                "signed": true
+              },
+              "villager_01": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "政治信用大幅受损，若5天内仍无法签约将面临直接免职。",
+              "预算枯竭，后续安置工作举步维艰。"
+            ],
+            "citation": "query"
+          },
+          {
+            "option_id": "DP05_O3",
+            "label": "发动乡贤与亲情劝解",
+            "description": "利用已签约的刘老根（若已转化）或吴青年等人，通过宗族亲情网络进行最后一轮“软性劝解”。",
+            "cost_action_points": 2,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 15,
+                "political_credit": 0,
+                "cadre_execution_index": 10
+              },
+              "villager_06": {
+                "trust_to_player": 5,
+                "anxiety_level": -10,
+                "signed": true
+              },
+              "villager_01": {
+                "trust_to_player": 10,
+                "attitude_score": 15
+              },
+              "villager_04": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "极度依赖前期建立的NPC信任网络，若前期关系破裂，此选项将彻底失效。",
+              "可能无法按时完成清零任务，遭受上级通报批评。"
+            ],
+            "citation": "query"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_06",
+          "villager_01",
+          "villager_04",
+          "cadre_02"
+        ],
+        "trigger_condition": "",
+        "is_critical": true,
+        "citations": [
+          "query"
+        ]
+      },
+      {
+        "decision_id": "DP06",
+        "title": "安置选址：科学论证与政治速度的博弈",
+        "day_window": "第16-20天",
+        "situation": "上级要求加快工程进度以在季度考核中争先，但初步选定的A地块存在地质隐患风险，而更安全的B地块征地成本高且涉及基本农田调整，审批周期长。张书记暗示要“特事特办”，李主任则担心B地块的村民阻力。",
+        "options": [
+          {
+            "option_id": "DP06_O1",
+            "label": "坚持科学选址，启动B地块程序",
+            "description": "顶住进度压力，委托专业机构对A地块进行详细地灾评估，同时启动B地块的用地预审和规划调整。此举符合长远安全，但可能导致短期进度滞后，面临上级通报批评。",
+            "cost_action_points": 3,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": -10,
+                "cadre_execution_index": -15
+              },
+              "cadre_01": {
+                "trust_to_player": -10
+              },
+              "villager_01": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "若B地块审批受阻，将严重延误工期，影响年度考核排名。",
+              "可能被上级视为执行力不足。"
+            ],
+            "citation": "doc#8 - 数字竞赛与层层加码"
+          },
+          {
+            "option_id": "DP06_O2",
+            "label": "采纳A地块，强化工程加固",
+            "description": "顺应上级速度要求，选择A地块，但增加预算用于地基加固和边坡治理。此举可保进度，但存在长期安全隐患，且需应对可能的质量质疑。",
+            "cost_action_points": 1,
+            "budget_cost": 300,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -5,
+                "political_credit": 15,
+                "cadre_execution_index": 20
+              },
+              "cadre_01": {
+                "trust_to_player": 15
+              },
+              "external_01": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "若后期出现裂缝或灾害，将面临严厉问责。",
+              "村民可能因担忧安全而拒绝入住或上访。"
+            ],
+            "citation": "doc#12 - 工程质量监管不严"
+          },
+          {
+            "option_id": "DP06_O3",
+            "label": "折中方案：分期建设与动态调整",
+            "description": "先在A地块安全区域启动一期建设以满足考核节点，同时并行推进B地块手续，待手续完备后二期迁入。此法平衡速度与合规，但管理复杂度极高。",
+            "cost_action_points": 2,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "cadre_01": {
+                "trust_to_player": 5
+              },
+              "cadre_02": {
+                "trust_to_player": 5
+              }
+            },
+            "risks": [
+              "需高超的协调能力，若衔接不畅易造成资源浪费和村民困惑。"
+            ],
+            "citation": "doc#16 - 资源匮乏型地区的创新激活"
+          }
+        ],
+        "affected_npc_ids": [
+          "cadre_01",
+          "cadre_02",
+          "external_01",
+          "villager_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": true,
+        "citations": [
+          "doc#8 - 数字竞赛与层层加码",
+          "doc#12 - 工程质量监管不严",
+          "doc#16 - 资源匮乏型地区的创新激活"
+        ]
+      },
+      {
+        "decision_id": "DP07",
+        "title": "资金筹措：配建收益与群众负担的权衡",
+        "day_window": "第21-25天",
+        "situation": "预算紧张，承建企业赵经理催要进度款。政策允许通过安置点配建商品房收益补充资金，但需提高部分户型面积或增加商业比例，这可能增加搬迁户自筹负担或挤占公共空间。",
+        "options": [
+          {
+            "option_id": "DP07_O1",
+            "label": "扩大配建规模，转嫁成本",
+            "description": "增加安置点商业铺面和较大户型比例，通过销售收益填补资金缺口。此举可快速回笼资金，但可能导致贫困户自筹压力增大，引发不满。",
+            "cost_action_points": 1,
+            "budget_cost": -200,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -10,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "villager_02": {
+                "trust_to_player": -15,
+                "anxiety_level": 20
+              },
+              "villager_03": {
+                "trust_to_player": 10
+              },
+              "external_01": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "加剧“搬富不搬穷”现象，导致真正贫困户被挤出。",
+              "可能引发关于公平性的舆情危机。"
+            ],
+            "citation": "doc#42 - 生态移民政策变通与成本转嫁"
+          },
+          {
+            "option_id": "DP07_O2",
+            "label": "申请专项债与整合涉农资金",
+            "description": "撰写详细报告，向县级部门申请地方政府专项债券，并整合国土、水利等涉农项目资金。此举合规且减轻群众负担，但审批流程长，不确定性高。",
+            "cost_action_points": 3,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 0,
+                "cadre_execution_index": -5
+              },
+              "cadre_01": {
+                "trust_to_player": 5
+              },
+              "cadre_03": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "若申请失败或拨款延迟，将面临资金链断裂风险。",
+              "消耗大量行动点，影响其他工作推进。"
+            ],
+            "citation": "doc#40 - 资金筹措与整合"
+          },
+          {
+            "option_id": "DP07_O3",
+            "label": "动员社会捐赠与企业帮扶",
+            "description": "利用吴青年等外出务工者的社会网络，联系外地商会或企业进行定向捐赠或结对帮扶。此举不增加财政负担，但金额有限且不稳定。",
+            "cost_action_points": 2,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 8,
+                "cadre_execution_index": 5
+              },
+              "villager_04": {
+                "trust_to_player": 15
+              },
+              "external_01": {
+                "trust_to_player": 5
+              }
+            },
+            "risks": [
+              "资金来源不可控，难以解决大额资金缺口。",
+              "可能被质疑搞“摊派”或利益交换。"
+            ],
+            "citation": "doc#39 - 多元协同与社会责任"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_02",
+          "villager_03",
+          "villager_04",
+          "cadre_01",
+          "cadre_03",
+          "external_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "doc#42 - 生态移民政策变通与成本转嫁",
+          "doc#40 - 资金筹措与整合",
+          "doc#39 - 多元协同与社会责任"
+        ]
+      },
+      {
+        "decision_id": "DP08",
+        "title": "旧宅腾退：刚性拆除与情感缓冲",
+        "day_window": "第26-35天",
+        "situation": "首批搬迁户已入住新居，但旧宅腾退工作陷入僵局。冯老汉等保守派以“存放农具、棺材”及“留恋故土”为由拒绝拆房。上级下达“清零”指令，要求限期拆除以完成复垦指标。",
+        "options": [
+          {
+            "option_id": "DP08_O1",
+            "label": "行政强制拆除",
+            "description": "联合执法部门，对逾期未拆旧宅实施强制拆除。此举能迅速完成考核指标，但极易激化矛盾，引发群体性事件或极端行为。",
+            "cost_action_points": 1,
+            "budget_cost": 20,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -25,
+                "political_credit": 15,
+                "cadre_execution_index": 25
+              },
+              "villager_06": {
+                "trust_to_player": -40,
+                "anxiety_level": 30
+              },
+              "villager_01": {
+                "trust_to_player": -20
+              }
+            },
+            "risks": [
+              "严重损害政府公信力，导致后续工作难以开展。",
+              "可能引发媒体负面报道，造成政治信用崩盘。"
+            ],
+            "citation": "doc#47 - 旧宅腾退的困境与强拆风险"
+          },
+          {
+            "option_id": "DP08_O2",
+            "label": "设立过渡期与辅助搬运",
+            "description": "承诺给予3个月过渡期，并组织志愿者帮助老人搬运贵重物品和农具，保留部分生产工具存放点。此举体现人文关怀，但延缓复垦进度，可能受上级批评。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 15,
+                "political_credit": -5,
+                "cadre_execution_index": -10
+              },
+              "villager_06": {
+                "trust_to_player": 20,
+                "anxiety_level": -15
+              },
+              "villager_01": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "若过渡期后仍不拆，将陷入被动。",
+              "可能被其他村民效仿，导致整体进度滞后。"
+            ],
+            "citation": "doc#47 - 观望式执行与过渡期策略"
+          },
+          {
+            "option_id": "DP08_O3",
+            "label": "以奖代补，激励自主腾退",
+            "description": "设立小额奖励基金，对在规定时间内自主腾退并交钥匙的农户给予现金或物资奖励。利用经济杠杆撬动，但需额外预算。",
+            "cost_action_points": 1,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "villager_06": {
+                "trust_to_player": 10,
+                "anxiety_level": -5
+              },
+              "villager_07": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "可能引发“钉子户”索要更高补偿的攀比心理。",
+              "预算压力进一步增大。"
+            ],
+            "citation": "doc#9 - 优惠政策与激励机制"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_06",
+          "villager_01",
+          "villager_07"
+        ],
+        "trigger_condition": "",
+        "is_critical": true,
+        "citations": [
+          "doc#47 - 旧宅腾退的困境与强拆风险",
+          "doc#9 - 优惠政策与激励机制"
+        ]
+      },
+      {
+        "decision_id": "DP09",
+        "title": "就业焦虑：社区工厂的虚实之辩",
+        "day_window": "第36-45天",
+        "situation": "搬迁户普遍反映安置点远离耕地，生计无着。吴青年等年轻人外出务工，留守妇女和老人就业困难。上级要求建设“社区工厂”以解决就业，但招商困难，现有企业多为低端加工，工资低且不稳定。",
+        "options": [
+          {
+            "option_id": "DP09_O1",
+            "label": "引进劳动密集型代工企业",
+            "description": "降低门槛，引进服装、电子组装等代工企业入驻社区工厂。此举能快速提供岗位，满足考核要求，但工资低、技能提升有限，且易受市场波动影响。",
+            "cost_action_points": 1,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 10,
+                "cadre_execution_index": 15
+              },
+              "villager_02": {
+                "trust_to_player": 10,
+                "anxiety_level": -10
+              },
+              "external_01": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "岗位稳定性差，若企业撤资将引发更大不满。",
+              "被批评为“形式主义”就业帮扶。"
+            ],
+            "citation": "doc#30 - 就业帮扶车间的空置与失效"
+          },
+          {
+            "option_id": "DP09_O2",
+            "label": "开发公益性岗位与技能培训",
+            "description": "开发保洁、保安、护林等公益性岗位，并联合人社部门开展家政、养老护理等技能培训。此举针对性强，有助于弱势群体，但岗位数量有限，财政供养压力大。",
+            "cost_action_points": 2,
+            "budget_cost": 80,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 12,
+                "political_credit": 5,
+                "cadre_execution_index": 5
+              },
+              "villager_02": {
+                "trust_to_player": 15,
+                "anxiety_level": -15
+              },
+              "villager_05": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "公益性岗位不可持续，长期依赖财政补贴。",
+              "可能引发未获得岗位者的相对剥夺感。"
+            ],
+            "citation": "doc#45 - 技能培训与精准帮扶"
+          },
+          {
+            "option_id": "DP09_O3",
+            "label": "鼓励返乡创业与电商孵化",
+            "description": "提供免租店面和创业贷款贴息，鼓励吴青年等能人返乡创办电商服务站或特色农产品加工厂。此举激发内生动力，但见效慢，风险高。",
+            "cost_action_points": 2,
+            "budget_cost": 30,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 8,
+                "cadre_execution_index": 0
+              },
+              "villager_04": {
+                "trust_to_player": 20,
+                "attitude_score": 15
+              },
+              "villager_03": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "创业成功率低，若失败可能加剧债务负担。",
+              "短期内无法解决大多数人的就业问题。"
+            ],
+            "citation": "doc#39 - 产业融合与新业态培育"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_02",
+          "villager_04",
+          "villager_05",
+          "villager_03",
+          "external_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "doc#30 - 就业帮扶车间的空置与失效",
+          "doc#45 - 技能培训与精准帮扶",
+          "doc#39 - 产业融合与新业态培育"
+        ]
+      },
+      {
+        "decision_id": "DP10",
+        "title": "舆情危机：记者的深度调查",
+        "day_window": "第46-50天",
+        "situation": "孙记者收到匿名举报，称安置点存在“质量瑕疵”和“强迫腾退”现象，并掌握部分照片证据。记者要求采访玩家和受影响村民，报道即将发出。",
+        "options": [
+          {
+            "option_id": "DP10_O1",
+            "label": "全面公开，邀请第三方检测",
+            "description": "坦诚面对问题，邀请权威第三方机构进行质量检测，并公开整改方案。同时安排记者实地走访，展示真实情况。此举风险高，但若处理得当可挽回信任。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": 10,
+                "cadre_execution_index": 5
+              },
+              "external_02": {
+                "trust_to_player": 20,
+                "attitude_score": 15
+              },
+              "villager_01": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "若检测结果不合格，将面临严厉问责和舆论风暴。",
+              "需确保整改措施迅速落地，否则被视为作秀。"
+            ],
+            "citation": "doc#40 - 媒体监督与公信力"
+          },
+          {
+            "option_id": "DP10_O2",
+            "label": "公关干预，淡化处理",
+            "description": "通过上级宣传部门协调，争取暂缓报道或修改角度，强调搬迁成效，弱化个别问题。同时私下接触举报人，了解诉求并予以解决。",
+            "cost_action_points": 1,
+            "budget_cost": 20,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -5,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "external_02": {
+                "trust_to_player": -10,
+                "attitude_score": -15
+              }
+            },
+            "risks": [
+              "若被曝光“捂盖子”，将引发更严重的信任危机。",
+              "记者可能转向更深入的负面调查。"
+            ],
+            "citation": "doc#11 - 模糊搁置与工具反噬"
+          },
+          {
+            "option_id": "DP10_O3",
+            "label": "转移视线，策划正面典型",
+            "description": "迅速策划一个“感恩搬迁、勤劳致富”的典型人物故事，邀请记者采访，试图用正面叙事覆盖负面传闻。",
+            "cost_action_points": 1,
+            "budget_cost": 30,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 0,
+                "political_credit": 5,
+                "cadre_execution_index": 5
+              },
+              "external_02": {
+                "trust_to_player": -5,
+                "attitude_score": -5
+              },
+              "villager_03": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "若典型人物被扒出造假，将彻底失去媒体和公众信任。",
+              "无法根本解决质量问题，隐患依然存在。"
+            ],
+            "citation": "doc#8 - 数字竞赛与绩效包装"
+          }
+        ],
+        "affected_npc_ids": [
+          "external_02",
+          "villager_01",
+          "villager_03"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "doc#40 - 媒体监督与公信力",
+          "doc#11 - 模糊搁置与工具反噬",
+          "doc#8 - 数字竞赛与绩效包装"
+        ]
+      },
+      {
+        "decision_id": "DP11",
+        "title": "安置选址：安全底线与考核速度的博弈",
+        "day_window": "第16-20天",
+        "situation": "上级要求加快工程进度以在季度考核中争先，但初步选定的A地块存在地质隐患风险，而更安全的B地块征地成本高且涉及基本农田调整，审批周期长。张书记暗示要“特事特办”，李主任则担心B地块的村民阻力。",
+        "options": [
+          {
+            "option_id": "DP11_O1",
+            "label": "坚持科学选址，启动B地块程序",
+            "description": "顶住进度压力，委托专业机构对A地块进行详细地灾评估，同时启动B地块的用地预审和规划调整。此举符合长远安全，但可能导致短期进度滞后，面临上级通报批评。",
+            "cost_action_points": 3,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": -10,
+                "cadre_execution_index": -15
+              },
+              "cadre_01": {
+                "trust_to_player": -10
+              },
+              "villager_01": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "若B地块审批受阻，将严重延误工期，影响年度考核排名。",
+              "可能被上级视为执行力不足。"
+            ],
+            "citation": "doc#8 - 数字竞赛与层层加码"
+          },
+          {
+            "option_id": "DP11_O2",
+            "label": "采纳A地块，强化工程加固",
+            "description": "顺应上级速度要求，选择A地块，但增加预算用于地基加固和边坡治理。此举可保进度，但存在长期安全隐患，且需应对可能的质量质疑。",
+            "cost_action_points": 1,
+            "budget_cost": 300,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -5,
+                "political_credit": 15,
+                "cadre_execution_index": 20
+              },
+              "cadre_01": {
+                "trust_to_player": 15
+              },
+              "external_01": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "若后期出现裂缝或灾害，将面临严厉问责。",
+              "村民可能因担忧安全而拒绝入住或上访。"
+            ],
+            "citation": "doc#12 - 工程质量监管不严"
+          },
+          {
+            "option_id": "DP11_O3",
+            "label": "折中方案：分期建设与动态调整",
+            "description": "先在A地块安全区域启动一期建设以满足考核节点，同时并行推进B地块手续，待手续完备后二期迁入。此法平衡速度与合规，但管理复杂度极高。",
+            "cost_action_points": 2,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "cadre_01": {
+                "trust_to_player": 5
+              },
+              "cadre_02": {
+                "trust_to_player": 5
+              }
+            },
+            "risks": [
+              "需高超的协调能力，若衔接不畅易造成资源浪费和村民困惑。"
+            ],
+            "citation": "doc#16 - 资源匮乏型地区的创新激活"
+          }
+        ],
+        "affected_npc_ids": [
+          "cadre_01",
+          "cadre_02",
+          "external_01",
+          "villager_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": true,
+        "citations": [
+          "doc#8 - 数字竞赛与层层加码",
+          "doc#12 - 工程质量监管不严",
+          "doc#16 - 资源匮乏型地区的创新激活"
+        ]
+      },
+      {
+        "decision_id": "DP12",
+        "title": "资金筹措：配建收益与群众负担的权衡",
+        "day_window": "第21-25天",
+        "situation": "预算紧张，承建企业赵经理催要进度款。政策允许通过安置点配建商品房收益补充资金，但需提高部分户型面积或增加商业比例，这可能增加搬迁户自筹负担或挤占公共空间。",
+        "options": [
+          {
+            "option_id": "DP12_O1",
+            "label": "扩大配建规模，转嫁成本",
+            "description": "增加安置点商业铺面和较大户型比例，通过销售收益填补资金缺口。此举可快速回笼资金，但可能导致贫困户自筹压力增大，引发不满。",
+            "cost_action_points": 1,
+            "budget_cost": -200,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -10,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "villager_02": {
+                "trust_to_player": -15,
+                "anxiety_level": 20
+              },
+              "villager_03": {
+                "trust_to_player": 10
+              },
+              "external_01": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "加剧“搬富不搬穷”现象，导致真正贫困户被挤出。",
+              "可能引发关于公平性的舆情危机。"
+            ],
+            "citation": "doc#42 - 生态移民政策变通与成本转嫁"
+          },
+          {
+            "option_id": "DP12_O2",
+            "label": "申请专项债与整合涉农资金",
+            "description": "撰写详细报告，向县级部门申请地方政府专项债券，并整合国土、水利等涉农项目资金。此举合规且减轻群众负担，但审批流程长，不确定性高。",
+            "cost_action_points": 3,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 0,
+                "cadre_execution_index": -5
+              },
+              "cadre_01": {
+                "trust_to_player": 5
+              },
+              "cadre_03": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "若申请失败或拨款延迟，将面临资金链断裂风险。",
+              "消耗大量行动点，影响其他工作推进。"
+            ],
+            "citation": "doc#40 - 资金筹措与整合"
+          },
+          {
+            "option_id": "DP12_O3",
+            "label": "动员社会捐赠与企业帮扶",
+            "description": "利用吴青年等外出务工者的社会网络，联系外地商会或企业进行定向捐赠或结对帮扶。此举不增加财政负担，但金额有限且不稳定。",
+            "cost_action_points": 2,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 8,
+                "cadre_execution_index": 5
+              },
+              "villager_04": {
+                "trust_to_player": 15
+              },
+              "external_01": {
+                "trust_to_player": 5
+              }
+            },
+            "risks": [
+              "资金来源不可控，难以解决大额资金缺口。",
+              "可能被质疑搞“摊派”或利益交换。"
+            ],
+            "citation": "doc#39 - 多元协同与社会责任"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_02",
+          "villager_03",
+          "villager_04",
+          "cadre_01",
+          "cadre_03",
+          "external_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "doc#42 - 生态移民政策变通与成本转嫁",
+          "doc#40 - 资金筹措与整合",
+          "doc#39 - 多元协同与社会责任"
+        ]
+      },
+      {
+        "decision_id": "DP13",
+        "title": "旧宅腾退：刚性拆除与情感缓冲",
+        "day_window": "第26-35天",
+        "situation": "首批搬迁户已入住新居，但旧宅腾退工作陷入僵局。冯老汉等保守派以“存放农具、棺材”及“留恋故土”为由拒绝拆房。上级下达“清零”指令，要求限期拆除以完成复垦指标。",
+        "options": [
+          {
+            "option_id": "DP13_O1",
+            "label": "行政强制拆除",
+            "description": "联合执法部门，对逾期未拆旧宅实施强制拆除。此举能迅速完成考核指标，但极易激化矛盾，引发群体性事件或极端行为。",
+            "cost_action_points": 1,
+            "budget_cost": 20,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -25,
+                "political_credit": 15,
+                "cadre_execution_index": 25
+              },
+              "villager_06": {
+                "trust_to_player": -40,
+                "anxiety_level": 30
+              },
+              "villager_01": {
+                "trust_to_player": -20
+              }
+            },
+            "risks": [
+              "严重损害政府公信力，导致后续工作难以开展。",
+              "可能引发媒体负面报道，造成政治信用崩盘。"
+            ],
+            "citation": "doc#47 - 旧宅腾退的困境与强拆风险"
+          },
+          {
+            "option_id": "DP13_O2",
+            "label": "设立过渡期与辅助搬运",
+            "description": "承诺给予3个月过渡期，并组织志愿者帮助老人搬运贵重物品和农具，保留部分生产工具存放点。此举体现人文关怀，但延缓复垦进度，可能受上级批评。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 15,
+                "political_credit": -5,
+                "cadre_execution_index": -10
+              },
+              "villager_06": {
+                "trust_to_player": 20,
+                "anxiety_level": -15
+              },
+              "villager_01": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "若过渡期后仍不拆，将陷入被动。",
+              "可能被其他村民效仿，导致整体进度滞后。"
+            ],
+            "citation": "doc#47 - 观望式执行与过渡期策略"
+          },
+          {
+            "option_id": "DP13_O3",
+            "label": "以奖代补，激励自主腾退",
+            "description": "设立小额奖励基金，对在规定时间内自主腾退并交钥匙的农户给予现金或物资奖励。利用经济杠杆撬动，但需额外预算。",
+            "cost_action_points": 1,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "villager_06": {
+                "trust_to_player": 10,
+                "anxiety_level": -5
+              },
+              "villager_07": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "可能引发“钉子户”索要更高补偿的攀比心理。",
+              "预算压力进一步增大。"
+            ],
+            "citation": "doc#9 - 优惠政策与激励机制"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_06",
+          "villager_01",
+          "villager_07"
+        ],
+        "trigger_condition": "",
+        "is_critical": true,
+        "citations": [
+          "doc#47 - 旧宅腾退的困境与强拆风险",
+          "doc#9 - 优惠政策与激励机制"
+        ]
+      },
+      {
+        "decision_id": "DP14",
+        "title": "就业焦虑：社区工厂的虚实之辩",
+        "day_window": "第36-45天",
+        "situation": "搬迁户普遍反映安置点远离耕地，生计无着。吴青年等年轻人外出务工，留守妇女和老人就业困难。上级要求建设“社区工厂”以解决就业，但招商困难，现有企业多为低端加工，工资低且不稳定。",
+        "options": [
+          {
+            "option_id": "DP14_O1",
+            "label": "引进劳动密集型代工企业",
+            "description": "降低门槛，引进服装、电子组装等代工企业入驻社区工厂。此举能快速提供岗位，满足考核要求，但工资低、技能提升有限，且易受市场波动影响。",
+            "cost_action_points": 1,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 10,
+                "cadre_execution_index": 15
+              },
+              "villager_02": {
+                "trust_to_player": 10,
+                "anxiety_level": -10
+              },
+              "external_01": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "岗位稳定性差，若企业撤资将引发更大不满。",
+              "被批评为“形式主义”就业帮扶。"
+            ],
+            "citation": "doc#30 - 就业帮扶车间的空置与失效"
+          },
+          {
+            "option_id": "DP14_O2",
+            "label": "开发公益性岗位与技能培训",
+            "description": "开发保洁、保安、护林等公益性岗位，并联合人社部门开展家政、养老护理等技能培训。此举针对性强，有助于弱势群体，但岗位数量有限，财政供养压力大。",
+            "cost_action_points": 2,
+            "budget_cost": 80,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 12,
+                "political_credit": 5,
+                "cadre_execution_index": 5
+              },
+              "villager_02": {
+                "trust_to_player": 15,
+                "anxiety_level": -15
+              },
+              "villager_05": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "公益性岗位不可持续，长期依赖财政补贴。",
+              "可能引发未获得岗位者的相对剥夺感。"
+            ],
+            "citation": "doc#45 - 技能培训与精准帮扶"
+          },
+          {
+            "option_id": "DP14_O3",
+            "label": "鼓励返乡创业与电商孵化",
+            "description": "提供免租店面和创业贷款贴息，鼓励吴青年等能人返乡创办电商服务站或特色农产品加工厂。此举激发内生动力，但见效慢，风险高。",
+            "cost_action_points": 2,
+            "budget_cost": 30,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 8,
+                "cadre_execution_index": 0
+              },
+              "villager_04": {
+                "trust_to_player": 20,
+                "attitude_score": 15
+              },
+              "villager_03": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "创业成功率低，若失败可能加剧债务负担。",
+              "短期内无法解决大多数人的就业问题。"
+            ],
+            "citation": "doc#39 - 产业融合与新业态培育"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_02",
+          "villager_04",
+          "villager_05",
+          "villager_03",
+          "external_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "doc#30 - 就业帮扶车间的空置与失效",
+          "doc#45 - 技能培训与精准帮扶",
+          "doc#39 - 产业融合与新业态培育"
+        ]
+      },
+      {
+        "decision_id": "DP15",
+        "title": "应对“回流”与腾退拉锯",
+        "day_window": "第51-60天",
+        "situation": "搬迁主体任务完成，但“人搬房未退”现象突出。部分村民因生计惯性或情感依赖，私自回流旧村耕种或居住，导致旧房腾退停滞。上级下达“清零”死命令，要求限期拆除以迎接最终验收。",
+        "options": [
+          {
+            "option_id": "DP15_O1",
+            "label": "强硬清拆",
+            "description": "组织执法力量断水断电并限期强拆，彻底切断回流退路。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -15,
+                "political_credit": 10,
+                "cadre_execution_index": 20
+              },
+              "npc_villager_06": {
+                "trust_to_player": -25
+              },
+              "npc_cadre_01": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "激化干群矛盾，社会稳定性大幅下降，冯老汉可能采取极端行为或上访，政治信用受损。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP15_O2",
+            "label": "柔性疏导",
+            "description": "在安置点周边规划“微菜园”与农具存放棚，允许农忙时白天往返，但严格规定夜间必须回迁。",
+            "cost_action_points": 2,
+            "budget_cost": 30,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": -5,
+                "cadre_execution_index": -10
+              },
+              "npc_villager_06": {
+                "trust_to_player": 15
+              },
+              "npc_villager_02": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "耗费大量基层管理精力，上级可能认定腾退不彻底，面临通报批评。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP15_O3",
+            "label": "利益激励",
+            "description": "设立腾退奖励基金，利用冯老汉在旧村的威望带头签约，对按时交钥匙的农户给予额外物资补贴。",
+            "cost_action_points": 1,
+            "budget_cost": 80,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 5,
+                "cadre_execution_index": 10
+              },
+              "npc_villager_06": {
+                "trust_to_player": 20
+              },
+              "npc_villager_02": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "财政压力剧增，若后续资金拨付延迟将引发二次失信，且可能诱发其他村民攀比索要补偿。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_06",
+          "villager_02",
+          "cadre_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": true,
+        "citations": [
+          "query - 父母官：生态搬迁中的权衡与抉择"
+        ]
+      },
+      {
+        "decision_id": "DP16",
+        "title": "社区融入与公共资源冲突",
+        "day_window": "第61-70天",
+        "situation": "集中安置后，生活习惯差异与原村落宗族边界引发社区摩擦。郑寡妇(边缘户)与周致富(精英/李主任亲属)因公共晒粮区占用发生激烈冲突，并有演变为群体对立的风险。",
+        "options": [
+          {
+            "option_id": "DP16_O1",
+            "label": "行政裁决",
+            "description": "依据社区管理公约，对违规占用者强制清理并罚款，以儆效尤，树立规则权威。",
+            "cost_action_points": 1,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -5,
+                "political_credit": 5,
+                "cadre_execution_index": 15
+              },
+              "npc_villager_05": {
+                "trust_to_player": -10
+              },
+              "npc_villager_03": {
+                "trust_to_player": -15
+              }
+            },
+            "risks": [
+              "简单粗暴易引发村民反感，刘老根可能借机煽动不满，指责干部偏袒或破坏乡土人情。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP16_O2",
+            "label": "居民自治",
+            "description": "组建由刘老根牵头的“邻里议事会”，赋予其调解权，让村民协商解决公共资源分配问题。",
+            "cost_action_points": 2,
+            "budget_cost": 10,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 12,
+                "political_credit": 0,
+                "cadre_execution_index": 5
+              },
+              "npc_villager_01": {
+                "trust_to_player": 20
+              },
+              "npc_villager_05": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "议事效率低，若刘老根与周致富暗中妥协，可能牺牲边缘户利益，引发新的不公。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP16_O3",
+            "label": "情感融合",
+            "description": "出资举办社区文化节与百家宴，通过共同活动淡化隔阂，重塑社区认同感。",
+            "cost_action_points": 1,
+            "budget_cost": 20,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 5,
+                "cadre_execution_index": 0
+              },
+              "npc_villager_01": {
+                "trust_to_player": 10
+              },
+              "npc_villager_05": {
+                "trust_to_player": 5
+              }
+            },
+            "risks": [
+              "治标不治本，若实际利益冲突未解，活动后矛盾可能迅速反弹。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_05",
+          "villager_03",
+          "villager_01"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "query - 父母官：生态搬迁中的权衡与抉择"
+        ]
+      },
+      {
+        "decision_id": "DP17",
+        "title": "产业扶持的虚与实",
+        "day_window": "第71-80天",
+        "situation": "承诺的后续产业扶持项目进展缓慢，部分搬迁户面临“住楼房、无收入”困境。吴青年带回外地高薪招工信息，但本地合作社(周致富主导)以“留守照顾家庭”为由劝留村民入股。",
+        "options": [
+          {
+            "option_id": "DP17_O1",
+            "label": "强推本地合作社",
+            "description": "动员村民入股周致富的合作社发展特色养殖，快速完成产业配套考核指标。",
+            "cost_action_points": 1,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -8,
+                "political_credit": 10,
+                "cadre_execution_index": 15
+              },
+              "npc_villager_03": {
+                "trust_to_player": 20
+              },
+              "npc_cadre_02": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "合作社经营风险高，一旦亏损将导致困难户血本无归，引发严重信任危机与群体性上访。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP17_O2",
+            "label": "对接外部帮扶车间",
+            "description": "绕过本地利益网，直接引入劳动密集型企业进驻社区，提供稳定低薪岗位。",
+            "cost_action_points": 2,
+            "budget_cost": 40,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": -5,
+                "cadre_execution_index": 10
+              },
+              "npc_villager_02": {
+                "trust_to_player": 15
+              },
+              "npc_villager_05": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "得罪李主任与周致富，遭遇暗中掣肘，且岗位技能要求与留守老人妇女不匹配。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP17_O3",
+            "label": "支持劳务输出",
+            "description": "为有意愿外出务工者提供交通补贴与技能培训，鼓励像吴青年那样通过务工增收。",
+            "cost_action_points": 1,
+            "budget_cost": 15,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 5,
+                "political_credit": 5,
+                "cadre_execution_index": 5
+              },
+              "npc_villager_04": {
+                "trust_to_player": 25
+              },
+              "npc_villager_02": {
+                "trust_to_player": -10
+              }
+            },
+            "risks": [
+              "社区空心化加剧，留守老幼照料问题凸显，不符合“稳得住”与就地城镇化的初衷。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          }
+        ],
+        "affected_npc_ids": [
+          "villager_04",
+          "villager_03",
+          "villager_02",
+          "villager_05",
+          "cadre_02"
+        ],
+        "trigger_condition": "",
+        "is_critical": false,
+        "citations": [
+          "query - 父母官：生态搬迁中的权衡与抉择"
+        ]
+      },
+      {
+        "decision_id": "DP18",
+        "title": "终极考核与验收迎检",
+        "day_window": "第81-90天",
+        "situation": "终极考核验收在即，考核组将对入住率、满意度及旧房拆除进行综合评分。此时仍有零星旧房未拆，且部分群众对后续生计存在焦虑，扬言要在考核组面前反映实情。",
+        "options": [
+          {
+            "option_id": "DP18_O1",
+            "label": "形象包装",
+            "description": "集中资源打造“样板楼栋”，安排村民按剧本回答问题，掩盖真实矛盾，确保一次性高分通过。",
+            "cost_action_points": 2,
+            "budget_cost": 100,
+            "payoffs": {
+              "global": {
+                "social_stability_index": -20,
+                "political_credit": 20,
+                "cadre_execution_index": 30
+              },
+              "npc_external_02": {
+                "trust_to_player": -30
+              }
+            },
+            "risks": [
+              "极高政治风险，一旦被媒体暗访或考核组识破，政治信用直接清零，面临严厉问责。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP18_O2",
+            "label": "坦诚迎检与争取",
+            "description": "如实汇报搬迁成效与后续扶持短板，提交详实的产业培育计划书，争取考核组的理解与后续政策倾斜。",
+            "cost_action_points": 1,
+            "budget_cost": 0,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 10,
+                "political_credit": -10,
+                "cadre_execution_index": 0
+              },
+              "npc_villager_01": {
+                "trust_to_player": 15
+              },
+              "npc_villager_06": {
+                "trust_to_player": 10
+              }
+            },
+            "risks": [
+              "考核排名可能靠后，影响个人短期政绩，但能保住政治信用底线与群众长期信任。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          },
+          {
+            "option_id": "DP18_O3",
+            "label": "重点攻坚与安抚",
+            "description": "紧急动用剩余预算解决陈大娘等极端困难户的燃眉之急，并提前做通冯老汉、刘老根等关键人物的思想工作。",
+            "cost_action_points": 2,
+            "budget_cost": 50,
+            "payoffs": {
+              "global": {
+                "social_stability_index": 8,
+                "political_credit": 5,
+                "cadre_execution_index": 15
+              },
+              "npc_villager_02": {
+                "trust_to_player": 25
+              },
+              "npc_villager_06": {
+                "trust_to_player": 15
+              }
+            },
+            "risks": [
+              "预算捉襟见肘，若安抚不到位可能引发反效果，被指责搞“选择性救济”。"
+            ],
+            "citation": "query - 父母官：生态搬迁中的权衡与抉择"
+          }
+        ],
+        "affected_npc_ids": [
+          "external_02",
+          "villager_06",
+          "villager_01",
+          "villager_02"
+        ],
+        "trigger_condition": "",
+        "is_critical": true,
+        "citations": [
+          "query - 父母官：生态搬迁中的权衡与抉择"
+        ]
+      }
+    ],
+    "acts": [
+      {
+        "act_number": 1,
+        "title": "开局破冰",
+        "day_range": "第1-15天",
+        "goal": "完成精准识别与动员签约，突破“精英俘获”与“畏难情绪”困境，实现首批关键户签约，建立初步信任{doc#1}{doc#18}。",
+        "description": "面对政策宣传初期的信息不对称与村民观望态度，玩家需通过入户走访、院坝会等形式进行科层动员与社会动员{doc#18}。此阶段主要挑战在于识别真正的贫困对象，避免“搬富不搬穷”的政策偏差{doc#14}，同时应对部分村干部的执行惰性与能力不足{doc#1}。玩家需在有限行动点下，平衡宣传成本与签约进度，防止因动员方式不当引发早期舆情风险{doc#3}。",
+        "decision_point_ids": [
+          "DP01",
+          "DP02",
+          "DP03",
+          "DP04",
+          "DP05",
+          "DP06"
+        ],
+        "estimated_duration_minutes": 15
+      },
+      {
+        "act_number": 2,
+        "title": "矛盾升级",
+        "day_range": "第16-50天",
+        "goal": "化解安置选址争议与资金筹措压力，应对“数字竞赛”下的层层加码，确保工程进度与群众满意度平衡{doc#8}{doc#23}。",
+        "description": "随着搬迁进入深水区，矛盾集中于安置点选择（城镇化集中安置vs就近安置）与旧房拆除复垦{doc#8}{doc#47}。上级政府可能施加“多搬快搬”的压力，导致玩家面临预算紧张与政策变动的双重挤压{doc#4}{doc#23}。同时，搬迁户对生计转换的焦虑、对安置社区生活的不适应（如就业难、社交隔离）开始显现，可能引发抵制或返迁倾向{doc#24}。玩家需在多方博弈中寻求资源下沉与政策变通的平衡点{doc#38}。",
+        "decision_point_ids": [
+          "DP07",
+          "DP08",
+          "DP09",
+          "DP10",
+          "DP11",
+          "DP12",
+          "DP13",
+          "DP14"
+        ],
+        "estimated_duration_minutes": 15
+      },
+      {
+        "act_number": 3,
+        "title": "收束结局",
+        "day_range": "第51-90天",
+        "goal": "完成全部搬迁入住与旧房腾退，构建后续扶持体系雏形，实现“稳得住”的初步社会融合{doc#12}{doc#21}。",
+        "description": "收官阶段聚焦于搬迁后的社会适应与社区治理。玩家需处理安置社区的公共服务配套、就业机会对接及邻里关系重构{doc#18}{doc#36}。此时，前期积累的政治信用与社会稳定性将接受最终检验。若前期执行存在偏差（如强制搬迁、承诺未兑现），可能爆发群体性事件或导致高返贫风险{doc#4}{doc#24}。玩家需通过整合政企资源、引入后续扶持项目，确保搬迁户在新空间中的生计可持续性与身份认同{doc#42}{doc#43}。",
+        "decision_point_ids": [
+          "DP15",
+          "DP16",
+          "DP17",
+          "DP18"
+        ],
+        "estimated_duration_minutes": 15
+      }
+    ],
+    "endings": [
+      {
+        "ending_id": "END_GOOD_01",
+        "title": "安居乐业：破茧重生的新家园",
+        "description": "玩家在90天内不仅完成了搬迁任务，更通过耐心的利益协调与资源倾斜，化解了宗族与干群矛盾。三年后，安置点配套产业成熟，搬迁户实现就近就业。张书记升迁前力荐你主政一方，冯老汉与刘老根在社区的微菜园里握手言和。游戏启示：真正的“父母官”不是指标的完成者，而是民心的缝合者。",
+        "conditions": [
+          "signed_households >= 34",
+          "social_stability_index >= 60",
+          "political_credit >= 60",
+          "budget_remaining >= 0"
+        ],
+        "ending_type": "good"
+      },
+      {
+        "ending_id": "END_NEUTRAL_01",
+        "title": "夹缝生存：勉强上岸的隐患",
+        "description": "依靠行政强压与透支预算，你在截止日期前“清零”了签约名单。然而，后续产业扶持缺位导致部分年轻劳动力被迫回流或再次外出务工。安置房出现裂缝，上访信不断飞往省城。你虽保住了考核排名，却陷入了无休止的维稳泥潭。游戏启示：用战术上的勤奋掩盖战略上的懒惰，终究无法填补治理能力的短板。",
+        "conditions": [
+          "signed_households >= 30",
+          "social_stability_index < 60",
+          "political_credit >= 40"
+        ],
+        "ending_type": "neutral"
+      },
+      {
+        "ending_id": "END_BAD_01",
+        "title": "民怨沸腾：被撕裂的乡土",
+        "description": "在层层加码的考核下，你选择了牺牲群众诉求换取工程进度。强拆引发群体性事件，褚小妹将真相曝光网络，孙记者的深度报道引发舆论海啸。上级介入调查，项目全面叫停。你被调离岗位接受审查，村庄成为烂尾楼下的“空心孤岛”。游戏启示：脱离乡土社会的刚性行政命令，终将遭到现实的无情反噬。",
+        "conditions": [
+          "social_stability_index < 40"
+        ],
+        "ending_type": "bad"
+      },
+      {
+        "ending_id": "END_BAD_02",
+        "title": "信用破产：运动式治理的代价",
+        "description": "沉迷于“形象包装”与“数字竞赛”，你与承建商、地方精英结成利益同盟，挪用民生资金填补政绩窟窿。审计组进驻揭开了资金黑洞，李主任倒戈作证。面对巨额债务违约与群众断水断电的抗议，你的政治信用彻底清零。游戏启示：当政策执行异化为权力与资本的博弈游戏，买单的永远是沉默的大多数。",
+        "conditions": [
+          "political_credit < 30"
+        ],
+        "ending_type": "bad"
+      }
+    ]
+  },
+  "contexts_used": [],
+  "rewritten_queries": [
+    "生态搬迁 乡镇党委副书记 政策执行",
+    "基层多重压力 权衡抉择 治理困境",
+    "搬迁指挥部 群众工作 矛盾调解"
+  ],
+  "generation_notes": [
+    "通过分阶段流水线生成完整结构化初稿。",
+    "包含三幕结构、NPC 关系网、决策点序列和多结局条件。"
+  ],
+  "original_query": "基于生态搬迁主题，生成一个严肃游戏《父母官》的剧本。玩家扮演乡镇党委副书记兼搬迁指挥部副总指挥。教育目标：体验基层政策执行中多重压力的权衡与抉择。目标游戏时长约45分钟，复杂度为medium。",
+  "feedback": "",
+  "revision_round": 0,
+  "generation_mode": "full"
+}
