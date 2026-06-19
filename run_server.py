@@ -11,6 +11,7 @@ def main() -> None:
     args = parser.parse_args()
 
     import uvicorn
+    print(f"\n  访问地址: http://localhost:{args.port}\n")
     uvicorn.run(
         "src.api.server:app",
         host=args.host,

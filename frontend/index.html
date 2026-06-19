@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>父母官 · 剧本生成器</title>
+<title>剧本生成器</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏛️</text></svg>">
 <style>
 :root {
@@ -121,13 +121,33 @@ textarea { resize: vertical; min-height: 60px; }
 .ai-feedback-row { margin-top: 8px; display: flex; gap: 6px; align-items: center; }
 .ai-feedback-row input { flex: 1; font-size: 12px; padding: 6px 8px; }
 
+
+/* 分叉树 */
+.tree-container { position: relative; width: 100%; height: 550px; border: 1px solid var(--border); border-radius: var(--radius); background: #fdfaf7; overflow: hidden; cursor: grab; user-select: none; }
+.tree-container:active { cursor: grabbing; }
+.tree-container svg { display: block; }
+.tree-node { cursor: pointer; transition: stroke .2s; }
+.tree-node:hover { stroke-width: 3px; }
+.tree-node.critical { stroke: var(--danger); stroke-width: 2.5px; }
+.tree-link { stroke: var(--accent-light); fill: none; stroke-width: 1.5px; }
+.tree-link.option { stroke: var(--text-muted); stroke-dasharray: 6 3; stroke-width: 1px; }
+.tree-ending.good .tree-node-bg { fill: #27ae6022; stroke: var(--success); }
+.tree-ending.bad .tree-node-bg { fill: #e74c3c22; stroke: var(--danger); }
+.tree-ending.neutral .tree-node-bg { fill: #f39c1222; stroke: #d68910; }
+.tree-label { font-size: 12px; fill: var(--text); pointer-events: none; }
+.tree-label-sm { font-size: 10px; fill: var(--text-muted); pointer-events: none; }
+.tree-tooltip { position: absolute; padding: 8px 12px; background: var(--card); border: 1px solid var(--accent-light); border-radius: var(--radius); box-shadow: var(--shadow); font-size: 12px; max-width: 300px; pointer-events: none; z-index: 100; display: none; }
+.tree-legend { display: flex; gap: 16px; padding: 8px 0; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+.tree-legend span { display: flex; align-items: center; gap: 4px; }
+.tree-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+
 </style>
 </head>
 <body>
 <div class="container">
 
 <header>
-  <h1>🏛️ 父母官 · 剧本生成器</h1>
+  <h1>🏛️ 剧本生成器</h1>
   <p>严肃游戏结构化剧本生成与修订工具</p>
 </header>
 
@@ -164,17 +184,56 @@ textarea { resize: vertical; min-height: 60px; }
         <option value="complex">复杂</option>
       </select>
     </div>
+    <div>
+      <label for="npcCount">NPC 数量</label>
+      <select id="npcCount">
+        <option value="8">8 人</option>
+        <option value="10">10 人</option>
+        <option value="12" selected>12 人</option>
+        <option value="15">15 人</option>
+      </select>
+    </div>
+    <div>
+      <label for="chapterCount">章节数量</label>
+      <select id="chapterCount">
+        <option value="4">4 章</option>
+        <option value="5">5 章</option>
+        <option value="6" selected>6 章</option>
+        <option value="7">7 章</option>
+        <option value="8">8 章</option>
+      </select>
+    </div>
+    <div>
+      <label for="endingCount">结局数量</label>
+      <select id="endingCount">
+        <option value="3">3 个</option>
+        <option value="4" selected>4 个</option>
+        <option value="5">5 个</option>
+        <option value="6">6 个</option>
+      </select>
+    </div>
+    <div class="full">
+      <label for="characterSettings">人物设定（可选）</label>
+      <input id="characterSettings" placeholder="如：县委书记是改革派，村支书是保守派，两个家族有世仇…">
+    </div>
+    <div class="full">
+      <label for="storyBackground">故事背景（可选）</label>
+      <textarea id="storyBackground" placeholder="如：2024年，某县因水源地保护需要搬迁3个村共36户居民，县财政紧张，上级要求年底前完成…"></textarea>
+    </div>
     <div class="full">
       <label for="extra">额外要求（可选）</label>
       <textarea id="extra" placeholder="如：需要涉及宗族矛盾、加入媒体监督角色"></textarea>
     </div>
   </div>
   <div style="display:flex; gap:12px;">
-    <button class="btn btn-primary" id="generateBtn" onclick="startGeneration()" style="flex:1;">
-      ▶ 生成剧本
+    <button class="btn btn-primary" id="generateMdBtn" onclick="startMdGeneration()" style="flex:1;">
+      📝 生成剧本 MD
+    </button>
+    <button class="btn btn-secondary" id="oneClickBtn" onclick="startOneClickGeneration()">
+      ⚡ 一键生成
     </button>
     <button class="btn btn-secondary" id="loadBtn" onclick="loadLatestResult()">
-      📂 加载最近结果
+      📂 加载
     </button>
   </div>
 </div>
@@ -206,13 +265,13 @@ textarea { resize: vertical; min-height: 60px; }
   <div class="tabs" id="tabs">
     <div class="tab active" data-panel="overview">📊 概览</div>
     <div class="tab" data-panel="npcs">👥 NPC 网络</div>
-    <div class="tab" data-panel="decisions">🎯 决策点</div>
-    <div class="tab" data-panel="endings">🏁 多结局</div>
+    <div class="tab" data-panel="tree">🌳 剧情分叉树</div>
+    <div class="tab" data-panel="mdtext">📝 剧本原文</div>
   </div>
   <div id="panel-overview" class="panel active"></div>
   <div id="panel-npcs" class="panel"></div>
-  <div id="panel-decisions" class="panel"></div>
-  <div id="panel-endings" class="panel"></div>
+  <div id="panel-tree" class="panel"></div>
+  <div id="panel-mdtext" class="panel"></div>
 
   <!-- 反馈修订 -->
   <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
@@ -303,7 +362,7 @@ function setButtonLoading(btn, loading) {
     btn.innerHTML = '<span class="spinner"></span> 生成中...';
   } else {
     btn.disabled = false;
-    btn.textContent = btn.dataset.origText || '▶ 生成剧本';
+    btn.textContent = btn.dataset.origText || '⚡ 一键生成';
   }
 }
 
@@ -320,8 +379,8 @@ async function cancelGeneration() {
     activeTaskId = null;
   }
   hide('progress-card');
-  document.getElementById('generateBtn').disabled = false;
-  document.getElementById('generateBtn').textContent = '▶ 生成剧本';
+  document.getElementById('generateMdBtn').disabled = false;
+  document.getElementById('generateMdBtn').textContent = '📝 生成剧本 MD';
 }
 
 // ===== 加载已有结果 =====
@@ -340,6 +399,9 @@ async function loadLatestResult() {
     }
     const data = await resp.json();
     lastResult = data;
+    if (data.full_md) {
+      lastFullMD = normalizeFullMD(data.full_md);
+                }
     renderResult(data);
     show('result-card');
     updateVersionLabel(data.filename || data.saved_as || '');
@@ -601,10 +663,14 @@ function updateVersionLabel(filename) {
   if (!el) return;
   if (!filename) { el.style.display = 'none'; return; }
   const sourceLabel = { script_generate:'初始生成', script_revise:'全局修订', script_ai_element:'局部AI', script_manual:'手动修改' };
-  const match = filename.match(/^(v\d+-\d+)_(script_[a-z_]+?)_\d/);
-  if (!match) { el.style.display = 'none'; return; }
-  el.style.display = 'inline';
-  el.innerHTML = `<span style="font-weight:700;">${esc(match[1].toUpperCase())}</span> <span style="color:var(--text-muted);">${esc(sourceLabel[match[2]] || match[2])}</span>`;
+  // 格式: v06/script_generate_20260619_151126.json
+  const match = filename.match(/^(v\d{2})\/(script_[a-z_]+?)_\d/);
+  if (match) {
+    el.style.display = 'inline';
+    el.innerHTML = `<span style="font-weight:700;">${esc(match[1].toUpperCase())}</span> <span style="color:var(--text-muted);">${esc(sourceLabel[match[2]] || match[2])}</span>`;
+    return;
+  }
+  el.style.display = 'none';
 }
 
 // ===== 版本历史 =====
@@ -644,7 +710,7 @@ async function toggleVersions() {
             <span style="font-size:12px;">${esc(label)}</span>
           </div>
           <strong style="font-size:14px;">${esc(v.title)}</strong>
-          <br><small style="color:var(--text-muted);">${v.timestamp?.replace('T',' ').slice(0,19)||''} | NPC×${v.npc_count} 决策×${v.decision_count}</small>
+          <br><small style="color:var(--text-muted);">${v.timestamp?.replace('T',' ').slice(0,19)||''}${v.chapters_count ? ` | 章节×${v.chapters_count}` : ''}${v.npc_count ? ` | NPC×${v.npc_count}` : ''}${v.decision_count ? ` | 决策×${v.decision_count}` : ''}</small>
         </div>
         <span style="font-size:11px; color:var(--accent); flex-shrink:0; margin-left:8px;">加载 →</span>
       </div>`;
@@ -660,6 +726,9 @@ async function loadVersion(filename) {
     if (!resp.ok) throw new Error('加载失败 ' + resp.status);
     const data = await resp.json();
     lastResult = data;
+    if (data.full_md) {
+      lastFullMD = normalizeFullMD(data.full_md);
+                }
     renderResult(data);
     show('result-card');
     updateVersionLabel(data.filename || data.saved_as || '');
@@ -838,7 +907,7 @@ async function startGeneration() {
 
   hide('error-card');
   hide('result-card');
-  const btn = document.getElementById('generateBtn');
+  const btn = document.getElementById('oneClickBtn');
   setButtonLoading(btn, true);
 
   activeAbortController = new AbortController();
@@ -853,6 +922,11 @@ async function startGeneration() {
         learning_goal: learningGoal,
         duration_minutes: parseInt(document.getElementById('duration').value),
         complexity: document.getElementById('complexity').value,
+        npc_count: parseInt(document.getElementById('npcCount').value),
+        chapter_count: parseInt(document.getElementById('chapterCount').value),
+        ending_count: parseInt(document.getElementById('endingCount').value),
+        character_settings: document.getElementById('characterSettings').value.trim(),
+        story_background: document.getElementById('storyBackground').value.trim(),
         extra_requirements: document.getElementById('extra').value.trim(),
       }),
       signal: activeAbortController.signal,
@@ -871,6 +945,9 @@ async function startGeneration() {
         setProgress(data.stage, data.total, data.name);
       } else if (event === 'result') {
         lastResult = data;
+        if (data.full_md) {
+          lastFullMD = normalizeFullMD(data.full_md);
+                            }
         renderResult(data);
         hide('progress-card');
         show('result-card');
@@ -924,6 +1001,9 @@ async function startRevision() {
     for await (const { event, data } of readSSE(resp)) {
       if (event === 'result') {
         lastResult = data;
+        if (data.full_md) {
+          lastFullMD = normalizeFullMD(data.full_md);
+                            }
         renderResult(data);
         hide('progress-card');
         show('result-card');
@@ -943,8 +1023,145 @@ async function startRevision() {
 }
 
 // ===== 结果渲染 =====
+// ===== 章节式剧本渲染 =====
+function renderChapterResult(data) {
+  const s = data.script;
+  const chapters = s.chapters || [];
+  const state = s.initial_game_state || {};
+  const varnames = ['signed','social_stability','political_credit','public_trust','env_clue','media_pressure','budget','days_left'];
+  const varChinese = { signed:'签约户数', social_stability:'社会稳定', political_credit:'政治信用', public_trust:'群众信任', env_clue:'环评线索', media_pressure:'舆情压力', budget:'财政预算', days_left:'剩余天数' };
+
+  // 概览面板
+  document.getElementById('panel-overview').innerHTML = `
+    <p><strong>标题：</strong>${esc(s.title)}</p>
+    <p><strong>玩家角色：</strong>${esc(s.player_role)}</p>
+    <p><strong>核心冲突：</strong>${esc(s.core_conflict)}</p>
+    <p><strong>初始状态：</strong>第${state.day || 1}天 | 预算=${state.budget_remaining || 8000}${state.budget_unit || '万元'} | 签约=${state.signed_households || 0}/${state.total_households || 36} | 稳定=${state.social_stability_index || 70} | 信用=${state.political_credit || 70}</p>
+    <h3 style="margin-top:16px;">📖 章节结构（${chapters.length} 章）</h3>
+    ${chapters.map((ch, i) => {
+      const dp = ch.decision_point || {};
+      const cp = ch.checkpoint || {};
+      const snap = cp.variable_snapshot || ch.state_snapshot || {};
+      const options = dp.options || [];
+      return `
+      <div class="act-card" style="border-left:3px solid var(--accent);">
+        <h3>第${i+1}章：${esc(ch.title)} <small style="color:var(--text-muted);">${esc(ch.day_range || '')}</small></h3>
+        <p class="act-meta">核心任务：${esc(ch.core_task || '')}</p>
+        <p style="font-size:13px;"><strong>决策问题：</strong>${esc(dp.question || ch.main_question || '')}</p>
+        ${options.length ? `
+        <p class="act-meta">选项（${options.length} 个）：</p>
+        <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:4px;">
+          <tr style="background:var(--bg);">
+            <th style="padding:4px 8px; text-align:left;">选项</th>
+            <th style="padding:4px 8px; text-align:left;">${varnames.map(v => varChinese[v]).join('</th><th style="padding:4px 8px; text-align:left;">')}</th>
+            <th style="padding:4px 8px; text-align:left;">flag</th>
+          </tr>
+          ${options.map(opt => `
+          <tr style="border-top:1px solid var(--border);">
+            <td style="padding:4px 8px; font-weight:600;">${esc(opt.option_label || opt.choice_id)}</td>
+            ${varnames.map(v => {
+              const eff = opt.effects || {};
+              const val = eff[v] || 0;
+              const color = val > 0 ? 'var(--success)' : val < 0 ? 'var(--danger)' : 'var(--text-muted)';
+              return `<td style="padding:4px 8px; color:${color};">${val > 0 ? '+' : ''}${val}</td>`;
+            }).join('')}
+            <td style="padding:4px 8px; font-size:11px;">${esc((opt.flags_added || []).join(', ') || '-')}</td>
+          </tr>
+          `).join('')}
+        </table>
+        ` : ''}
+        ${cp.summary ? `<p style="font-size:12px; margin-top:8px;"><strong>章节结算：</strong>${esc(cp.summary)}</p>` : ''}
+        ${cp.next_chapter ? `<p class="act-meta">→ ${esc(cp.next_chapter)}</p>` : ''}
+      </div>
+    `}).join('')}
+    ${data.generation_notes ? `<p style="margin-top:8px;font-size:12px;color:var(--text-muted);">📝 ${data.generation_notes.join('；')}</p>` : ''}
+  `;
+
+  // NPC 面板 — 章节式剧本从各章 info_nodes 提取 NPC
+  const npcNodes = [];
+  chapters.forEach(ch => {
+    (ch.info_nodes || []).forEach(n => {
+      if (n.title && n.text) npcNodes.push(n);
+    });
+  });
+  document.getElementById('panel-npcs').innerHTML = npcNodes.length
+    ? `<h3>情报节点（${npcNodes.length} 个）</h3>
+       <div class="npc-list">${npcNodes.map(n => `
+         <div class="npc-chip">
+           <span class="name">${esc(n.title)}</span>
+           <br><small>${esc((n.text || '').slice(0, 80))}${(n.text||'').length > 80 ? '...' : ''}</small>
+           ${n.unlock_condition ? `<br><small style="color:var(--accent);">🔓 ${esc(n.unlock_condition)}</small>` : ''}
+         </div>
+       `).join('')}</div>`
+    : '<p style="color:var(--text-muted); padding:20px; text-align:center;">章节式剧本的 NPC 信息嵌入在各章正文中<br><small>请查看「📄 剧本原文」面板</small></p>';
+
+  // 分叉树 — 章节式用简化流程
+  document.getElementById('panel-tree').innerHTML = `
+    <h3>📊 章节流程</h3>
+    <div style="padding:16px;">
+      ${chapters.map((ch, i) => {
+        const cp = ch.checkpoint || {};
+        return `
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+          <div style="min-width:40px; height:40px; border-radius:50%; background:var(--accent); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">${i+1}</div>
+          <div style="flex:1; background:var(--bg); border-radius:var(--radius); padding:8px 12px;">
+            <strong>${esc(ch.title)}</strong>
+            <small style="color:var(--text-muted); display:block;">${esc(ch.day_range || '')} · ${esc(ch.core_task || '')}</small>
+            ${cp.next_chapter ? `<small style="color:var(--accent);">→ ${esc(cp.next_chapter)}</small>` : ''}
+          </div>
+        </div>
+        ${i < chapters.length - 1 ? '<div style="text-align:center; color:var(--text-muted); margin:4px 0 12px 24px;">↓</div>' : ''}
+      `}).join('')}
+    </div>
+  `;
+
+  // 剧本原文面板（保持原有逻辑）
+  const md = normalizeFullMD(data.full_md) || lastFullMD || '';
+  if (md) {
+    document.getElementById('panel-mdtext').innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span style="font-size:12px; color:var(--text-muted);">${md.length} 字符</span>
+        <button class="btn btn-secondary btn-sm" id="mdEditToggle" onclick="toggleMdEdit()">✏️ 编辑</button>
+      </div>
+      <div id="mdRendered" style="font-size:14px; line-height:1.9; padding:16px; background:var(--bg); border-radius:var(--radius); max-height:600px; overflow-y:auto;">${renderMarkdown(md)}</div>
+      <textarea id="mdEditor" style="display:none; width:100%; min-height:400px; font-size:13px; line-height:1.8; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); resize:vertical;">${esc(md)}</textarea>
+    `;
+    lastFullMD = md;
+  }
+}
+
 function renderResult(data) {
   const s = data.script;
+
+  // Handle null script (MD-only result)
+  if (!s) {
+    document.getElementById('panel-overview').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">📝 剧本原文已生成<br><small>请审核后点击「📦 提取结构化 JSON」完成结构化提取</small></p>';
+    document.getElementById('panel-npcs').innerHTML = '';
+    document.getElementById('panel-tree').innerHTML = '';
+    // Show MD in mdtext panel with markdown
+    const md = normalizeFullMD(data.full_md) || lastFullMD || '';
+    if (md) {
+      document.getElementById('panel-mdtext').innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12px; color:var(--text-muted);">${md.length} 字符</span>
+          <button class="btn btn-primary btn-sm" onclick="extractFromMD()">📦 提取结构化 JSON</button>
+        </div>
+        <div id="mdRendered" style="font-size:14px; line-height:1.9; padding:16px; background:var(--bg); border-radius:var(--radius); max-height:600px; overflow-y:auto;">${renderMarkdown(md)}</div>
+        <textarea id="mdEditor" style="display:none; width:100%; min-height:400px; font-size:13px; line-height:1.8; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); resize:vertical;">${esc(md)}</textarea>
+      `;
+      lastFullMD = md;
+    } else {
+      document.getElementById('panel-mdtext').innerHTML = '<p style="color:var(--text-muted);">暂无剧本原文</p>';
+    }
+    return;
+  }
+
+  // 章节式剧本：使用独立的渲染路径
+  if (s.chapters && s.chapters.length) {
+    renderChapterResult(data);
+    return;
+  }
+
   const state = s.initial_game_state;
   const typeLabels = { cadre: '干部', external: '外部', villager: '村民' };
   const nameMap = {};
@@ -1004,47 +1221,544 @@ function renderResult(data) {
     `).join('')}
   `;
 
-  // 决策点面板
-  document.getElementById('panel-decisions').innerHTML = `
-    <p style="margin-bottom:12px;">共 ${(s.decision_points||[]).length} 个决策点</p>
-    ${(s.decision_points||[]).map(dp => `
-      <div class="decision-card${dp.is_critical?' critical':''}" id="dp-${esc(dp.decision_id)}">
-        <h3>${esc(dp.decision_id)} ${dp.is_critical?'★ ':''}${esc(dp.title)}</h3>
-        <p class="dp-meta">${esc(dp.day_window)} | 关联NPC: ${(dp.affected_npc_ids||[]).map(id=>esc(nameMap[id]||id)).join('、')||'无'}</p>
-        <div class="situation">${esc(dp.situation)}</div>
-        <strong>选项（${(dp.options||[]).length} 个）：</strong>
-        ${(dp.options||[]).map((o, oi) => {
-          const costs = [];
-          if (o.cost_action_points) costs.push(`AP×${o.cost_action_points}`);
-          if (o.budget_cost) costs.push(`预算${o.budget_cost}${state.budget_unit||'万元'}`);
-          const optDomId = `opt-${esc(dp.decision_id)}-${oi}`;
-          const optId = `${esc(dp.decision_id)}|${esc(o.option_id)}`;
-          return `
-          <div class="option-card" id="${optDomId}">
-            <button class="inline-edit-btn-sm" onclick="event.stopPropagation();openManualEdit(document.getElementById('${optDomId}'),'选项','${optId}','${esc(o.label)}')">✏️</button>
-            <strong>${esc(o.label)}</strong>
-            <span class="opt-cost">${costs.join('，')||'无消耗'}</span>
-            <br><small>${esc(o.description)}</small>
-            ${(o.risks||[]).length?`<div class="opt-risk">⚠️ ${o.risks.map(esc).join('；')}</div>`:''}
-          </div>`;
-        }).join('')}
-        <button class="inline-edit-btn" onclick="event.stopPropagation();openManualEdit(document.getElementById('dp-${esc(dp.decision_id)}'),'决策点','${esc(dp.decision_id)}','${esc(dp.title)}')" style="margin-top:8px;">✏️ 编辑此决策</button>
-      </div>
-    `).join('')}
-  `;
+  // 分叉树面板
+  renderTree(s);
 
-  // 结局面板
-  const statusLabels = { good:'好结局', neutral:'中性结局', bad:'坏结局' };
-  document.getElementById('panel-endings').innerHTML = `
-    ${(s.endings||[]).map(e => `
-      <div class="ending-card ${e.ending_type}" id="ending-${esc(e.ending_id)}">
-        <button class="inline-edit-btn" onclick="event.stopPropagation();openManualEdit(document.getElementById('ending-${esc(e.ending_id)}'),'结局','${esc(e.ending_id)}','${esc(e.title)}')">✏️ 编辑此结局</button>
-        <h3><span class="status-badge badge-${e.ending_type}">${statusLabels[e.ending_type]||e.ending_type}</span> ${esc(e.title)}</h3>
-        <p style="font-size:14px;">${esc(e.description)}</p>
-        <p class="conditions">📋 条件：${(e.conditions||[]).map(esc).join(' <strong>AND</strong> ')||'无条件'}</p>
+  // 剧本原文面板（Markdown 渲染 + 可切换编辑）
+  const md = normalizeFullMD(data.full_md) || lastFullMD || '';
+  if (md) {
+    document.getElementById('panel-mdtext').innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span style="font-size:12px; color:var(--text-muted);">${md.length} 字符</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary btn-sm" id="mdEditToggle" onclick="toggleMdEdit()">✏️ 编辑</button>
+          ${!data.script ? '<button class="btn btn-primary btn-sm" onclick="extractFromMD()">📦 提取结构化 JSON</button>' : ''}
+        </div>
       </div>
-    `).join('')}
-  `;
+      <div id="mdRendered" style="font-size:14px; line-height:1.9; padding:16px; background:var(--bg); border-radius:var(--radius); max-height:600px; overflow-y:auto;">${renderMarkdown(md)}</div>
+      <textarea id="mdEditor" style="display:none; width:100%; min-height:400px; font-size:13px; line-height:1.8; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); resize:vertical;">${esc(md)}</textarea>
+    `;
+    lastFullMD = md;
+  } else {
+    document.getElementById('panel-mdtext').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">暂无剧本原文<br><small>可通过「📝 生成剧本 MD」先行生成</small></p>';
+  }
+
+  // Show MD area with content
+  if (md) {
+        lastFullMD = md;
+  }
+}
+
+// ===== 数据规范化 =====
+function normalizeFullMD(raw) {
+  if (!raw) return '';
+  // 如果 full_md 是不小心存进去的 JSON，提取内层 full_md
+  if (raw.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.full_md && typeof parsed.full_md === 'string') {
+        return parsed.full_md;
+      }
+    } catch {}
+  }
+  return raw;
+}
+
+// ===== 分叉树渲染 =====
+let treeState = { offsetX: 0, offsetY: 0, scale: 1, dragging: false, startX: 0, startY: 0, collapsed: {} };
+let lastFullMD = '';
+
+function buildTreeData(script) {
+  const decisions = (script.decision_points || []).slice().sort((a, b) => {
+    const da = parseInt((a.day_window || '1').replace(/[^0-9]/g, '')) || 1;
+    const db = parseInt((b.day_window || '1').replace(/[^0-9]/g, '')) || 1;
+    return da - db;
+  });
+  const endings = script.endings || [];
+  // Group by act, then split into visual rows (max 4 per row)
+  const actGroups = [[], [], []];
+  decisions.forEach(d => {
+    const day = parseInt((d.day_window || '1').replace(/[^0-9]/g, '')) || 1;
+    if (day <= 20) actGroups[0].push(d);
+    else if (day <= 55) actGroups[1].push(d);
+    else actGroups[2].push(d);
+  });
+  // Flatten acts into visual rows
+  const MAX_PER_ROW = 4;
+  const visualRows = [];  // [{nodes, actLabel}]
+  for (let a = 0; a < 3; a++) {
+    const nodes = actGroups[a];
+    if (!nodes.length) continue;
+    const actNames = ['第一幕：开局破冰', '第二幕：矛盾激化', '第三幕：收束结局'];
+    for (let i = 0; i < nodes.length; i += MAX_PER_ROW) {
+      visualRows.push({
+        nodes: nodes.slice(i, i + MAX_PER_ROW),
+        actLabel: i === 0 ? actNames[a] : '',
+      });
+    }
+  }
+  return { decisions, endings, visualRows };
+}
+
+function renderTree(script) {
+	  const panel = document.getElementById('panel-tree');
+	  if (!panel) return;
+	  if (!script || !script.decision_points || !script.decision_points.length) {
+	    panel.innerHTML = '<p style="color:var(--text-muted); padding:40px; text-align:center;">暂无决策点数据，无法生成分叉树</p>';
+	    return;
+	  }
+	  const { decisions, endings, visualRows } = buildTreeData(script);
+	  const MAX_PER_COL = 4;
+	  const NODE_W = 170, NODE_H = 50, COL_W = 200, SLOT_H = 90, PAD_X = 60, PAD_Y = 30;
+
+	  // Build columns: each visualRows entry becomes a column (left→right)
+	  const columns = visualRows;  // [{nodes, actLabel}]
+	  const numCols = columns.length;
+	  const endingsCol = numCols;  // endings column index
+
+	  const totalW = PAD_X + COL_W * (numCols + 1) + PAD_X;
+	  const totalH = PAD_Y + MAX_PER_COL * SLOT_H + PAD_Y;
+
+	  treeState = { offsetX: 0, offsetY: 0, scale: 1, dragging: false, startX: 0, startY: 0, collapsed: {} };
+
+	  let svg = '<svg viewBox="0 0 ' + totalW + ' ' + totalH + '" style="width:100%; height:100%;">';
+
+	  // Act background bands (vertical)
+	  const actColors = ['#e8f0fe22', '#fef7e022', '#fce8e622'];
+	  let lastActLabel = '';
+	  for (let c = 0; c < numCols; c++) {
+	    const col = columns[c];
+	    if (col.actLabel && col.actLabel !== lastActLabel) {
+	      const x = PAD_X + COL_W * c;
+	      const w = COL_W;  // minimum width, will be extended
+	      svg += '<rect x="' + x + '" y="' + PAD_Y + '" width="' + w + '" height="' + (totalH - PAD_Y * 2) + '" rx="8" fill="' + actColors[c % 3] + '" stroke="var(--border)" stroke-dasharray="6 3" opacity="0.5"/>';
+	      svg += '<text x="' + (x + 8) + '" y="' + (PAD_Y + 14) + '" class="tree-label-sm" font-weight="600" fill="var(--text-muted)">' + col.actLabel + '</text>';
+	      lastActLabel = col.actLabel;
+	    }
+	  }
+
+	  // Helper: get node Y position within a column
+	  function nodeY(nodes, i) {
+	    const totalH_inner = nodes.length * SLOT_H;
+	    const startY = PAD_Y + (MAX_PER_COL * SLOT_H - totalH_inner) / 2;
+	    return startY + SLOT_H * i + SLOT_H / 2;
+	  }
+
+	  // Helper: get column center X
+	  function colX(colIndex) {
+	    return PAD_X + COL_W * colIndex + COL_W / 2;
+	  }
+
+	  // Root node (far left)
+	  const rootCX = PAD_X - 10, rootCY = totalH / 2;
+	  svg += '<rect x="' + (rootCX - 20) + '" y="' + (rootCY - 18) + '" width="70" height="36" rx="18" fill="var(--accent)" opacity="0.9"/>';
+	  svg += '<text x="' + rootCX + '" y="' + (rootCY + 5) + '" text-anchor="middle" class="tree-label" fill="#fff" font-weight="600" font-size="11">开始</text>';
+
+	  // Links root → first column
+	  if (numCols > 0) {
+	    const firstCol = columns[0].nodes;
+	    firstCol.forEach((d, i) => {
+	      const tx = colX(0) - NODE_W / 2;
+	      const ty = nodeY(firstCol, i);
+	      svg += '<line x1="' + (rootCX + 35) + '" y1="' + rootCY + '" x2="' + tx + '" y2="' + ty + '" class="tree-link" opacity="0.3"/>';
+	    });
+	  }
+
+	  // Build flat sequential list
+	  const flatNodes = [];
+	  columns.forEach((col, c) => {
+	    col.nodes.forEach((d, i) => {
+	      flatNodes.push({ node: d, col: c, idx: i });
+	    });
+	  });
+
+	  // Sequential chain links: DP1→DP2→DP3→...→DPn
+	  for (let i = 0; i < flatNodes.length - 1; i++) {
+	    const from = flatNodes[i];
+	    const to = flatNodes[i + 1];
+	    const fromNodes = columns[from.col].nodes;
+	    const toNodes = columns[to.col].nodes;
+	    const x1 = colX(from.col) + NODE_W / 2;
+	    const y1 = nodeY(fromNodes, from.idx);
+	    const x2 = colX(to.col) - NODE_W / 2;
+	    const y2 = nodeY(toNodes, to.idx);
+	    const sameCol = from.col === to.col;
+	    svg += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" class="tree-link" opacity="' + (sameCol ? '0.3' : '0.5') + '" stroke-width="' + (sameCol ? '1' : '1.5') + '"/>';
+	    if (!sameCol) {
+	      svg += '<text x="' + ((x1 + x2) / 2) + '" y="' + ((y1 + y2) / 2 + 4) + '" text-anchor="middle" class="tree-label-sm" fill="var(--text-muted)" font-size="9">▶</text>';
+	    }
+	  }
+
+	  // Links last decision → each ending
+	  if (flatNodes.length > 0 && endings.length > 0) {
+	    const lastNode = flatNodes[flatNodes.length - 1];
+	    const lastNodes = columns[lastNode.col].nodes;
+	    const lx = colX(lastNode.col) + NODE_W / 2;
+	    const ly = nodeY(lastNodes, lastNode.idx);
+	    endings.forEach((e, ei) => {
+	      const ex = colX(endingsCol) - NODE_W / 2;
+	      const ey = nodeY(endings, ei);
+	      const ec = e.ending_type === 'good' ? '#27ae60' : e.ending_type === 'bad' ? '#c0392b' : '#d68910';
+	      svg += '<line x1="' + lx + '" y1="' + ly + '" x2="' + ex + '" y2="' + ey + '" class="tree-link" stroke="' + ec + '" opacity="0.5" stroke-width="2"/>';
+	      const label = e.ending_type === 'good' ? '✓真结局' : e.ending_type === 'bad' ? '✗坏结局' : '≈中性';
+	      svg += '<text x="' + ((lx + ex) / 2) + '" y="' + ((ly + ey) / 2 - 4) + '" text-anchor="middle" class="tree-label-sm" fill="' + ec + '" font-size="9">' + label + '</text>';
+	    });
+	  }
+
+	  // Draw decision nodes
+	  columns.forEach((col, c) => {
+	    col.nodes.forEach((d, i) => {
+	      const cx = colX(c);
+	      const cy = nodeY(col.nodes, i);
+	      const x = cx - NODE_W / 2;
+	      const y = cy - NODE_H / 2;
+	      const bgColor = d.is_critical ? '#fde8e8' : '#fff';
+	      svg += '<g class="tree-node' + (d.is_critical ? ' critical' : '') + '" data-id="' + d.decision_id + '" data-type="decision" onclick="treeToggleCollapse(\'' + d.decision_id + '\')">';
+	      svg += '<rect x="' + x + '" y="' + y + '" width="' + NODE_W + '" height="' + NODE_H + '" rx="6" fill="' + bgColor + '" stroke="' + (d.is_critical ? 'var(--danger)' : 'var(--accent-light)') + '" stroke-width="' + (d.is_critical ? 2.5 : 1.5) + '" class="tree-node-bg"/>';
+	      const title = d.title.length > 12 ? d.title.slice(0, 12) + '…' : d.title;
+	      svg += '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" class="tree-label" font-weight="600">' + esc(d.decision_id) + ' ' + esc(title) + '</text>';
+	      svg += '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" class="tree-label-sm">' + esc(d.day_window) + ' | ' + (d.options || []).length + ' 选项</text>';
+	      svg += '</g>';
+	    });
+	  });
+
+	  // Ending nodes
+	  if (endings.length) {
+	    endings.forEach((e, i) => {
+	      const cx = colX(endingsCol);
+	      const cy = nodeY(endings, i);
+	      const x = cx - NODE_W / 2;
+	      const y = cy - NODE_H / 2;
+	      const ec = e.ending_type === 'good' ? '#27ae60' : e.ending_type === 'bad' ? '#c0392b' : '#d68910';
+	      const statusLabel = e.ending_type === 'good' ? '好结局' : e.ending_type === 'bad' ? '坏结局' : '中性';
+	      svg += '<g class="tree-ending ' + e.ending_type + '" data-id="' + e.ending_id + '" data-type="ending">';
+	      svg += '<rect x="' + x + '" y="' + y + '" width="' + NODE_W + '" height="' + NODE_H + '" rx="20" fill="' + ec + '22" stroke="' + ec + '" stroke-width="2" class="tree-node-bg"/>';
+	      svg += '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" class="tree-label" font-weight="600">' + esc(e.title) + '</text>';
+	      svg += '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" class="tree-label-sm">' + statusLabel + ' | ' + (e.conditions || []).length + ' 条件</text>';
+	      svg += '</g>';
+	    });
+	  }
+
+	  svg += '</svg>';
+
+	  const legend = '<div class="tree-legend">'
+	    + '<span><span class="dot" style="background:var(--danger);"></span> 关键决策</span>'
+	    + '<span><span class="dot" style="background:var(--accent-light);"></span> 普通决策</span>'
+	    + '<span><span class="dot" style="background:var(--success);"></span> 好结局</span>'
+	    + '<span><span class="dot" style="background:#d68910;"></span> 中性结局</span>'
+	    + '<span><span class="dot" style="background:var(--danger);"></span> 坏结局</span>'
+	    + '<span style="margin-left:8px;">🖱 拖拽平移 | 滚轮缩放 | 点击折叠</span>'
+	    + '</div>';
+
+	  panel.innerHTML = '<div class="tree-container" id="treeContainer">' + svg + '</div>' + legend;
+
+	  // Tooltip
+	  const oldTooltip = document.getElementById('treeTooltip');
+	  if (oldTooltip) oldTooltip.remove();
+	  const tooltip = document.createElement('div');
+	  tooltip.className = 'tree-tooltip';
+	  tooltip.id = 'treeTooltip';
+	  panel.appendChild(tooltip);
+
+	  const container = document.getElementById('treeContainer');
+	  if (!container) return;
+  container.addEventListener('mousedown', function(e) {
+    treeState.dragging = true;
+    treeState.startX = e.clientX - treeState.offsetX;
+    treeState.startY = e.clientY - treeState.offsetY;
+  });
+
+  container.addEventListener('mouseover', function(e) {
+    const g = e.target.closest('g[data-id]');
+    if (!g) { tooltip.style.display = 'none'; return; }
+    const id = g.dataset.id, type = g.dataset.type;
+    let html = '';
+    if (type === 'decision') {
+      const dp = decisions.find(function(d) { return d.decision_id === id; });
+      if (dp) {
+        html = '<strong>' + esc(dp.decision_id) + ' ' + esc(dp.title) + '</strong><br>';
+        html += '<small>' + esc(dp.day_window) + (dp.is_critical ? ' ★ 关键决策' : '') + '</small><br>';
+        html += '<p style="margin:4px 0;">' + esc(dp.situation) + '</p>';
+        html += (dp.options || []).map(function(o) { return '· ' + esc(o.label) + ': ' + esc(o.description).slice(0, 40) + '…'; }).join('<br>');
+      }
+    } else if (type === 'ending') {
+      const ending = endings.find(function(e) { return e.ending_id === id; });
+      if (ending) {
+        const sl = ending.ending_type === 'good' ? '好结局' : ending.ending_type === 'bad' ? '坏结局' : '中性';
+        html = '<strong>' + esc(ending.title) + '</strong> <span style="color:var(--text-muted);">' + sl + '</span><br>';
+        html += '<p style="margin:4px 0;">' + esc(ending.description) + '</p>';
+        html += (ending.conditions || []).map(function(c) { return '📋 ' + esc(c); }).join('<br>');
+      }
+    }
+    tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.offsetX + 15) + 'px';
+    tooltip.style.top = (e.offsetY - 10) + 'px';
+  });
+
+  container.addEventListener('mouseout', function(e) {
+    if (!e.target.closest('g[data-id]')) tooltip.style.display = 'none';
+  });
+
+  container.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    treeState.scale = Math.max(0.3, Math.min(3, treeState.scale - e.deltaY * 0.001));
+    const svgEl = container.querySelector('svg');
+    if (svgEl) svgEl.style.transform = 'translate(' + treeState.offsetX + 'px, ' + treeState.offsetY + 'px) scale(' + treeState.scale + ')';
+  });
+}
+
+function treeToggleCollapse(decisionId) {
+  treeState.collapsed[decisionId] = !treeState.collapsed[decisionId];
+  if (lastResult && lastResult.script) renderTree(lastResult.script);
+}
+
+// ===== 分步生成 API =====
+
+async function startMdGeneration() {
+  const scenario = document.getElementById('scenario').value.trim();
+  const playerRole = document.getElementById('playerRole').value.trim();
+  const learningGoal = document.getElementById('learningGoal').value.trim();
+  if (!scenario || !playerRole || !learningGoal) {
+    showError('请填写政策场景、玩家角色和教育目标');
+    return;
+  }
+
+  hide('error-card'); hide('result-card');
+  const btn = document.getElementById('generateMdBtn');
+  setButtonLoading(btn, true);
+  btn.dataset.origText = '📝 生成剧本 MD';
+  activeAbortController = new AbortController();
+
+  try {
+    const resp = await fetch('/api/generate-md', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scenario, player_role: playerRole, learning_goal: learningGoal,
+        duration_minutes: parseInt(document.getElementById('duration').value),
+        complexity: document.getElementById('complexity').value,
+        npc_count: parseInt(document.getElementById('npcCount').value),
+        chapter_count: parseInt(document.getElementById('chapterCount').value),
+        ending_count: parseInt(document.getElementById('endingCount').value),
+        character_settings: document.getElementById('characterSettings').value.trim(),
+        story_background: document.getElementById('storyBackground').value.trim(),
+        extra_requirements: document.getElementById('extra').value.trim(),
+      }),
+      signal: activeAbortController.signal,
+    });
+    activeTaskId = resp.headers.get('X-Task-Id');
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || '请求失败 ' + resp.status);
+    }
+
+    for await (const { event, data } of readSSE(resp)) {
+      if (event === 'progress') {
+        setProgress(data.stage, data.total, data.name);
+      } else if (event === 'result') {
+        lastFullMD = normalizeFullMD(data.full_md) || '';
+        lastResult = data;
+                if (data.script) {
+          renderResult(data);
+        } else {
+          show('result-card');
+          document.getElementById('panel-overview').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">📝 剧本原文已生成<br><small>请审核后点击「📦 提取结构化 JSON」完成结构化提取</small></p>';
+          document.getElementById('panel-npcs').innerHTML = '';
+          document.getElementById('panel-tree').innerHTML = '';
+          document.getElementById('panel-mdtext').innerHTML = '';
+          updateVersionLabel(data.saved_as || '');
+        }
+        hide('progress-card');
+      } else if (event === 'error') {
+        showError(data.message);
+      } else if (event === 'cancelled') {
+        hide('progress-card');
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') showError(err.message);
+  } finally {
+    setButtonLoading(btn, false);
+    btn.textContent = '📝 生成剧本 MD';
+    btn.disabled = false;
+    activeAbortController = null;
+    activeTaskId = null;
+  }
+}
+
+async function startOneClickGeneration() {
+  return startGeneration();
+}
+
+async function extractFromMD() {
+  const fullMd = document.getElementById('mdEditor').value.trim();
+  if (!fullMd) { showError('没有可提取的剧本原文'); return; }
+
+  hide('error-card');
+  const btn = document.getElementById('extractBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 提取中...';
+
+  activeAbortController = new AbortController();
+
+  try {
+    const resp = await fetch('/api/extract-from-md', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_md: fullMd,
+        npc_count: parseInt(document.getElementById('npcCount').value),
+        query: lastResult ? (lastResult.original_query || '') : '',
+        scenario: document.getElementById('scenario').value.trim(),
+        player_role: document.getElementById('playerRole').value.trim(),
+        learning_goal: document.getElementById('learningGoal').value.trim(),
+      }),
+      signal: activeAbortController.signal,
+    });
+    activeTaskId = resp.headers.get('X-Task-Id');
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || '提取失败 ' + resp.status);
+    }
+
+    show('progress-card');
+    for await (const { event, data } of readSSE(resp)) {
+      if (event === 'progress') {
+        setProgress(data.stage, data.total, data.name);
+      } else if (event === 'result') {
+        lastResult = data;
+        lastFullMD = normalizeFullMD(data.full_md) || fullMd;
+        renderResult(data);
+        hide('progress-card');
+        show('result-card');
+        updateVersionLabel(data.saved_as || '');
+              } else if (event === 'error') {
+        showError(data.message);
+      } else if (event === 'cancelled') {
+        hide('progress-card');
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') showError(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📦 提取结构化 JSON';
+    activeAbortController = null;
+    activeTaskId = null;
+  }
+}
+
+
+function renderMarkdown(md) {
+  if (!md) return '';
+  let html = '';
+  const lines = md.split('\n');
+  let inList = false;
+  let inBlockquote = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Empty line
+    if (!line.trim()) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+      continue;
+    }
+    
+    // Headings
+    if (line.match(/^### /)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+      html += '<h3 style="margin:16px 0 8px; color:var(--accent); font-size:16px;">' + processInline(line.slice(4)) + '</h3>';
+      continue;
+    }
+    if (line.match(/^## /)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+      html += '<h2 style="margin:20px 0 10px; color:var(--accent); font-size:18px; border-bottom:1px solid var(--border); padding-bottom:6px;">' + processInline(line.slice(3)) + '</h2>';
+      continue;
+    }
+    if (line.match(/^# /)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+      html += '<h1 style="margin:24px 0 12px; color:var(--accent); font-size:20px;">' + processInline(line.slice(2)) + '</h1>';
+      continue;
+    }
+    
+    // Horizontal rule
+    if (line.match(/^---+$/)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+      html += '<hr style="border:none; border-top:1px solid var(--border); margin:16px 0;">';
+      continue;
+    }
+    
+    // Blockquote
+    if (line.match(/^> /)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (!inBlockquote) { html += '<blockquote style="margin:8px 0; padding:8px 16px; border-left:3px solid var(--accent-light); background:#fdfaf5; border-radius:0 var(--radius) var(--radius) 0;">'; inBlockquote = true; }
+      html += '<p style="margin:4px 0; color:var(--text-muted);">' + processInline(line.slice(2)) + '</p>';
+      continue;
+    }
+    
+    // Unordered list
+    if (line.match(/^[-*] /)) {
+      if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+      if (!inList) { html += '<ul style="margin:4px 0; padding-left:24px;">'; inList = true; }
+      html += '<li style="margin:2px 0;">' + processInline(line.slice(2)) + '</li>';
+      continue;
+    }
+    
+    // Data point / special markup
+    if (line.match(/^> \*\*/) || line.match(/^> \*\*/)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      if (!inBlockquote) { html += '<blockquote style="margin:8px 0; padding:8px 16px; border-left:3px solid var(--accent-light); background:#fdfaf5; border-radius:0 var(--radius) var(--radius) 0;">'; inBlockquote = true; }
+      html += '<p style="margin:4px 0; color:var(--text-muted);">' + processInline(line.replace(/^> /, '')) + '</p>';
+      continue;
+    }
+    
+    // Regular paragraph
+    if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; }
+    if (inList) { html += '</ul>'; inList = false; }
+    html += '<p style="margin:4px 0;">' + processInline(line) + '</p>';
+  }
+  
+  if (inList) html += '</ul>';
+  if (inBlockquote) html += '</blockquote>';
+  return html;
+}
+
+function processInline(text) {
+  // Bold
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--accent);">$1</strong>');
+  // Inline code
+  text = text.replace(/`([^`]+)`/g, '<code style="background:var(--bg); padding:1px 5px; border-radius:3px; font-size:0.9em;">$1</code>');
+  // Em dash
+  text = text.replace(/---/g, '—');
+  return text;
+}
+
+function toggleMdEdit() {
+  const rendered = document.getElementById('mdRendered');
+  const editor = document.getElementById('mdEditor');
+  const btn = document.getElementById('mdEditToggle');
+  if (!rendered || !editor) return;
+  if (editor.style.display === 'none') {
+    // Switch to edit mode
+    rendered.style.display = 'none';
+    editor.style.display = 'block';
+    btn.textContent = '👁 预览';
+    editor.value = lastFullMD || '';
+  } else {
+    // Switch to preview mode
+    lastFullMD = editor.value;
+    rendered.innerHTML = renderMarkdown(lastFullMD);
+    rendered.style.display = 'block';
+    editor.style.display = 'none';
+    btn.textContent = '✏️ 编辑';
+  }
 }
 
 function esc(s) {

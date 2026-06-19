@@ -5,7 +5,7 @@ import os
 import threading
 
 from src.config import load_dotenv
-from src.domain.script_design import ScriptGenerationRequest, ScriptGenerationResult
+from src.domain.script_design import ScriptDesign, ScriptGenerationRequest, ScriptGenerationResult
 from src.domain.source_context import SourceContext
 from src.generation.iterative_agent_context_provider import IterativeAgentContextProvider
 from src.generation.opensearch_agent_context_provider import OpenSearchAgentContextProvider
@@ -61,11 +61,14 @@ class ScriptGenService:
             contexts = self._search.find_contexts_for_queries(rewritten_queries)
             contexts = contexts[: request.max_contexts]
         if request.full_draft:
-            script = self._generator.generate_full(
+            script, full_md = self._generator.generate_full(
                 query,
                 contexts,
                 request.feedback,
                 progress_callback=progress_callback,
+                npc_count=request.npc_count,
+                character_settings=request.character_settings,
+                story_background=request.story_background,
             )
             generation_notes = [
                 "通过分阶段流水线生成完整结构化初稿。",
@@ -79,10 +82,12 @@ class ScriptGenService:
                 "输出为小规模结构化草稿，便于快速迭代。",
             ]
             generation_mode = "compact"
+            full_md = ""
 
         self._validator.validate(script, contexts, full_draft=request.full_draft)
         return ScriptGenerationResult(
             script=script,
+            full_md=full_md,
             contexts_used=contexts,
             rewritten_queries=rewritten_queries,
             generation_notes=generation_notes,
@@ -91,6 +96,91 @@ class ScriptGenService:
             generation_mode=generation_mode,
         )
 
+    def generate_md_only(
+        self,
+        request: ScriptGenerationRequest,
+        progress_callback: GenerationProgressCallback | None = None,
+    ) -> tuple[str, str]:
+        """Phase 1 only：生成 MD 剧本，返回 (full_md, query)。
+
+        MD 生成后立即存盘（script 字段为 null，标记尚未提取）。
+        """
+        query = self._effective_query(request)
+        rewritten_queries = self.resolve_queries(request)
+        if self._uses_pa_backend_generation() and not request.manual_queries:
+            contexts = []
+        else:
+            contexts = self._search.find_contexts_for_queries(rewritten_queries)
+            contexts = contexts[: request.max_contexts]
+
+        full_md = self._generator.generate_md(
+            query,
+            contexts,
+            request.feedback,
+            progress_callback=progress_callback,
+            npc_count=request.npc_count,
+            character_settings=request.character_settings,
+            story_background=request.story_background,
+        )
+        return full_md, query
+
+    def extract_from_md(
+        self,
+        full_md: str,
+        query: str,
+        npc_count: int,
+        progress_callback: GenerationProgressCallback | None = None,
+    ) -> ScriptDesign:
+        """Phase 2 only：从 MD 提取结构化 JSON。"""
+        script = self._generator.extract_json_from_md(
+            full_md,
+            query=query,
+            npc_count=npc_count,
+            progress_callback=progress_callback,
+        )
+        return script
+
+    def generate_chapter_script(
+        self,
+        request: ScriptGenerationRequest,
+        progress_callback: GenerationProgressCallback | None = None,
+        output_dir: str | None = None,
+    ) -> ScriptGenerationResult:
+        """使用新的 6-Call 章节式管线生成剧本。
+
+        Call 1-3 使用 PA Backend（创作），Call 4-6 使用 Qwen Flash（审校与抽取）。
+
+        Args:
+            output_dir: 如果提供，每步中间产物（设定、大纲、各章、修订前后…）写入此目录
+        """
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        chapter_generator = ChapterScriptGenerator(cancel_event=self._get_cancel_event())
+        script, full_md = chapter_generator.generate_full(
+            request, progress_callback, output_dir=output_dir,
+        )
+
+        return ScriptGenerationResult(
+            script=script,
+            full_md=full_md,
+            contexts_used=[],
+            rewritten_queries=[],
+            generation_notes=[
+                "通过 6 步章节式管线生成完整剧本。",
+                "Call 1-3: PA Backend 负责创作（全局设定 → 章节大纲 → 逐章生成）。",
+                "Call 4-6: Qwen Flash 负责审校与抽取（一致性修订 → JSON 抽取 → 校验）。",
+            ],
+            original_query=self._effective_query(request),
+            feedback=request.feedback,
+            generation_mode="chapter",
+        )
+
+    def _get_cancel_event(self) -> threading.Event | None:
+        """获取取消事件（如果 generator 有的话）。"""
+        if hasattr(self._generator, '_cancel_event'):
+            return self._generator._cancel_event
+        return None
+
     def _effective_query(self, request: ScriptGenerationRequest) -> str:
         """根据请求构建有效 query。
 
@@ -98,15 +188,20 @@ class ScriptGenService:
         """
         if request.scenario.strip() and request.player_role.strip():
             parts = [
-                f"基于{request.scenario}主题，生成一个严肃游戏《父母官》的剧本。",
+                f"基于{request.scenario}主题，生成一个严肃游戏的剧本。",
                 f"玩家扮演{request.player_role}。",
             ]
             if request.learning_goal.strip():
                 parts.append(f"教育目标：{request.learning_goal}。")
             parts.append(
-                f"目标游戏时长约{request.duration_minutes}分钟，"
-                f"复杂度为{request.complexity}。"
+                f"目标游戏时长约{request.duration_minutes}分钟。"
             )
+            if request.npc_count:
+                parts.append(f"NPC数量约{request.npc_count}人。")
+            if request.character_settings.strip():
+                parts.append(f"人物设定：{request.character_settings}")
+            if request.story_background.strip():
+                parts.append(f"故事背景：{request.story_background}")
             if request.extra_requirements.strip():
                 parts.append(f"额外要求：{request.extra_requirements}")
             return "".join(parts)
@@ -146,6 +241,7 @@ class ScriptGenService:
         self._validator.validate(script, contexts, full_draft=generation_mode == "full")
         return ScriptGenerationResult(
             script=script,
+            full_md=previous_result.get("full_md", ""),
             contexts_used=contexts,
             rewritten_queries=rewritten_queries,
             generation_notes=[

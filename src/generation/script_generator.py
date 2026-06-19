@@ -1,9 +1,15 @@
-"""基于 LLM 的剧本初稿生成器。"""
+"""基于 LLM 的剧本初稿生成器。
+
+支持两种工作流：
+1. 新流程（full_draft=True）：3 轮 ReAct Agent 生成 MD 剧本 → Qwen Flash 分步提取 JSON
+2. 旧流程（full_draft=False）：单次 prompt 生成紧凑 JSON 草稿
+"""
 
 from dataclasses import asdict, replace
 import json
 import os
 import threading
+from pathlib import Path
 from typing import Any, Callable
 
 from src.config import QwenConfig, load_dotenv
@@ -27,6 +33,29 @@ class ScriptGenerationError(RuntimeError):
 GenerationProgressCallback = Callable[[int, int, str, int], None]
 
 
+def _load_chapter_four() -> str:
+    """从 剧本写作参考.md 加载第四章（典型真实案例）。"""
+    candidates = [
+        Path(__file__).resolve().parent.parent.parent / "剧本写作参考.md",
+        Path.cwd() / "剧本写作参考.md",
+    ]
+    for path in candidates:
+        if path.exists():
+            text = path.read_text(encoding="utf-8")
+            # 提取第四章：从 "## 四、" 到下一个 "## " 或文件末尾
+            marker = "## 四、"
+            idx = text.find(marker)
+            if idx == -1:
+                return ""
+            chapter4 = text[idx:]
+            # 截断到下一个大标题
+            next_section = chapter4.find("\n## ", len(marker))
+            if next_section != -1:
+                chapter4 = chapter4[:next_section]
+            return chapter4.strip()
+    return ""
+
+
 class QwenScriptGenerator:
     """根据检索资料生成结构化剧本初稿。"""
 
@@ -47,10 +76,24 @@ class QwenScriptGenerator:
             raise ValueError(f"Unsupported SCRIPT_GENERATION_BACKEND: {backend}")
         return QwenChatClient(QwenConfig.from_env())
 
+    def _flash_client(self) -> QwenChatClient:
+        """创建一个 Qwen Flash 客户端，用于 Phase 2 的轻量提取任务。"""
+        config = QwenConfig.from_env()
+        return QwenChatClient(QwenConfig(
+            api_key=config.api_key,
+            base_url=config.base_url,
+            model="qwen-flash",
+            timeout_seconds=config.timeout_seconds,
+        ))
+
     def cancel_active_request(self) -> None:
-        """取消正在进行的 HTTP 请求（委托给底层 PABackendScriptClient）。"""
+        """取消正在进行的 HTTP 请求（委托给底层客户端）。"""
         if hasattr(self._client, 'cancel_active_request'):
             self._client.cancel_active_request()
+
+    # ============================================================
+    # 旧方法（保留向后兼容）
+    # ============================================================
 
     def generate(
         self,
@@ -60,10 +103,207 @@ class QwenScriptGenerator:
     ) -> ScriptDesign:
         if not query.strip():
             raise ValueError("query must not be empty")
-
-        content = self._client.complete(self._build_messages(query, contexts, feedback), temperature=0.2)
+        content = self._client.complete(
+            self._build_messages(query, contexts, feedback), temperature=0.2
+        )
         payload = self._parse_json_object(content)
         return self._build_script_design(payload)
+
+    # ============================================================
+    # 新流程：3 轮 MD + 5 步 JSON 提取
+    # ============================================================
+
+    def generate_md(
+        self,
+        query: str,
+        contexts: list[SourceContext],
+        feedback: str = "",
+        progress_callback: GenerationProgressCallback | None = None,
+        npc_count: int = 12,
+        character_settings: str = "",
+        story_background: str = "",
+    ) -> str:
+        """Phase 1 only：3 轮 ReAct Agent 生成完整 MD 剧本。
+
+        返回三幕完整 MD 字符串，供前端审核编辑。
+        progress: 1/3, 2/3, 3/3
+        """
+        chapter_four = _load_chapter_four()
+
+        self._report_progress(progress_callback, 1, 3, "第一幕：开局破冰（检索+写作）", [])
+        act1_md = self._generate_round_md(
+            round_num=1,
+            act_name="第一幕：开局破冰",
+            act_goal="建立世界观，引入核心冲突，展示玩家角色和关键NPC，铺设决策困境",
+            day_range="第1-20天",
+            chapter_four=chapter_four,
+            query=query,
+            previous_md="",
+            npc_count=npc_count,
+            character_settings=character_settings,
+            story_background=story_background,
+        )
+
+        self._report_progress(progress_callback, 2, 3, "第二幕：矛盾激化+博弈转折（检索+写作）", [])
+        act2_md = self._generate_round_md(
+            round_num=2,
+            act_name="第二幕：矛盾激化与博弈转折",
+            act_goal="激化冲突，展现NPC之间的利益博弈，增加玩家的道德困境，推动剧情向高潮发展",
+            day_range="第21-55天",
+            chapter_four=chapter_four,
+            query=query,
+            previous_md=act1_md,
+            npc_count=npc_count,
+            character_settings=character_settings,
+            story_background=story_background,
+        )
+
+        self._report_progress(progress_callback, 3, 3, "第三幕：收束结局（检索+写作）", [])
+        act3_md = self._generate_round_md(
+            round_num=3,
+            act_name="第三幕：收束结局",
+            act_goal="收束故事线，展现不同分支结局，给玩家留下反思空间",
+            day_range="第56-90天",
+            chapter_four=chapter_four,
+            query=query,
+            previous_md=act1_md + "\n\n" + act2_md,
+            npc_count=npc_count,
+            character_settings=character_settings,
+            story_background=story_background,
+        )
+
+        return f"# 第一幕：开局破冰\n\n{act1_md}\n\n# 第二幕：矛盾激化与博弈转折\n\n{act2_md}\n\n# 第三幕：收束结局\n\n{act3_md}"
+
+    def _split_md_by_act(self, full_md: str) -> tuple[str, str, str]:
+        """将完整 MD 拆分为三幕，返回 (act1_md, act2_md, act3_md)。
+
+        处理可能的重复标题（generate_md 拼接的标题 + 模型输出自带标题）。
+        """
+        import re
+        # 先去掉明显的重复标题行（连续两个相同的 "# 第X幕"）
+        cleaned = re.sub(r'(# 第[一二三]幕[^\n]*)\n\n\1', r'\1', full_md)
+        # 按 "# 第X幕" 标题拆分
+        parts = re.split(r'\n(?=# 第[一二三]幕)', cleaned)
+        act_map: dict[int, list[str]] = {1: [], 2: [], 3: []}
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            m = re.match(r'# 第([一二三])幕', part)
+            if m:
+                num = {"一": 1, "二": 2, "三": 3}[m.group(1)]
+                # 去掉标题行本身，只保留内容
+                body = re.sub(r'^# 第[一二三]幕[^\n]*\n?', '', part).strip()
+                if body:
+                    act_map[num].append(body)
+        return (
+            "\n\n".join(act_map[1]),
+            "\n\n".join(act_map[2]),
+            "\n\n".join(act_map[3]),
+        )
+
+    def _merge_npc_data(self, all_npc_data: list[dict]) -> dict:
+        """合并多幕的 NPC 提取结果，按名称去重。"""
+        seen_names: set[str] = set()
+        merged_npcs: list[dict] = []
+        merged_rels: list[dict] = []
+        seen_rel_keys: set[tuple[str, str, str]] = set()
+
+        for data in all_npc_data:
+            for npc in data.get("npc_seed", []):
+                name = npc.get("name", "").strip()
+                if name and name not in seen_names:
+                    seen_names.add(name)
+                    merged_npcs.append(npc)
+                elif name:
+                    # 同名 NPC：补充缺失字段
+                    for existing in merged_npcs:
+                        if existing.get("name", "").strip() == name:
+                            for k, v in npc.items():
+                                if k not in existing or not existing[k]:
+                                    existing[k] = v
+                            break
+
+            for rel in data.get("npc_relationships", []):
+                key = (rel.get("from_npc_id", ""), rel.get("to_npc_id", ""), rel.get("relation_type", ""))
+                if key not in seen_rel_keys:
+                    seen_rel_keys.add(key)
+                    merged_rels.append(rel)
+
+        return {"npc_seed": merged_npcs, "npc_relationships": merged_rels}
+
+    def _merge_decision_data(self, all_decision_data: list[dict]) -> dict:
+        """合并多幕的决策点，保持时间顺序。"""
+        merged: list[dict] = []
+        seen_ids: set[str] = set()
+        for data in all_decision_data:
+            for dp in data.get("decision_points", []):
+                did = dp.get("decision_id", "")
+                if did and did not in seen_ids:
+                    seen_ids.add(did)
+                    merged.append(dp)
+        # 按 day_window 排序
+        def _day(d: dict) -> int:
+            dw = d.get("day_window", "1")
+            try:
+                return int(dw.replace("第", "").split("-")[0].replace("天", ""))
+            except (ValueError, IndexError):
+                return 999
+        merged.sort(key=_day)
+        return {"decision_points": merged}
+
+    def extract_json_from_md(
+        self,
+        full_md: str,
+        query: str = "",
+        npc_count: int = 12,
+        progress_callback: GenerationProgressCallback | None = None,
+    ) -> ScriptDesign:
+        """Phase 2 only：从 MD 剧本提取结构化 JSON。
+
+        按三幕分别提取 NPC、决策点，再合并；结局从第三幕提取。
+        progress: 1/5 ~ 5/5
+        """
+        flash = self._flash_client()
+        act1, act2, act3 = self._split_md_by_act(full_md)
+        acts_md = [act1, act2, act3]
+        act_names = ["第一幕", "第二幕", "第三幕"]
+
+        # Step 1: 逐幕提取 NPC 并合并
+        self._report_progress(progress_callback, 1, 5, "逐幕提取 NPC 与关系网", [])
+        all_npc_data: list[dict] = []
+        for i, (act_md, act_name) in enumerate(zip(acts_md, act_names)):
+            if not act_md.strip():
+                continue
+            per_act_count = max(6, npc_count // 3)
+            npc_data = self._extract_npc_from_md(flash, act_md, per_act_count, act_label=act_name)
+            all_npc_data.append(npc_data)
+        merged_npc = self._merge_npc_data(all_npc_data)
+
+        # Step 2: 逐幕提取决策点并合并
+        self._report_progress(progress_callback, 2, 5, "逐幕提取决策点与选项", [])
+        all_decision_data: list[dict] = []
+        for i, (act_md, act_name) in enumerate(zip(acts_md, act_names)):
+            if not act_md.strip():
+                continue
+            dp_data = self._extract_decisions_from_md(flash, act_md, merged_npc, act_label=act_name)
+            all_decision_data.append(dp_data)
+        merged_decisions = self._merge_decision_data(all_decision_data)
+
+        # Step 3: 结局（仅从第三幕提取）
+        self._report_progress(progress_callback, 3, 5, "提取结局条件", [])
+        ending_source = act3 if act3.strip() else full_md
+        ending_data = self._extract_endings_from_md(flash, ending_source, merged_decisions)
+
+        # Step 4: 三幕结构（从全文提取）
+        self._report_progress(progress_callback, 4, 5, "提取三幕结构", [])
+        skeleton_data = self._extract_skeleton_from_md(flash, full_md, query)
+
+        # Step 5: 组装
+        self._report_progress(progress_callback, 5, 5, "组装最终 JSON", [])
+        return self._assemble_script(
+            skeleton_data, merged_npc, merged_decisions, ending_data
+        )
 
     def generate_full(
         self,
@@ -71,539 +311,536 @@ class QwenScriptGenerator:
         contexts: list[SourceContext],
         feedback: str = "",
         progress_callback: GenerationProgressCallback | None = None,
-    ) -> ScriptDesign:
-        """通过模块化多阶段生成完整结构化初稿。
+        npc_count: int = 12,
+        character_settings: str = "",
+        story_background: str = "",
+    ) -> tuple[ScriptDesign, str]:
+        """一键完成 Phase 1 + Phase 2，返回 (ScriptDesign, full_md)。
 
-        新流程（7 阶段）：
-        1. 总体设计 + 三幕结构
-        2. NPC 网络（NPC + 关系网）
-        3. 第一幕决策点（开局破冰）
-        4. 第二幕决策点 A（矛盾升级前半）
-        5. 第二幕决策点 B（矛盾升级后半）
-        6. 第三幕决策点（收束结局）
-        7. 多结局条件
+        Phase 1: 3 轮 MD 生成（进度 1-3/8）
+        Phase 2: 5 步 JSON 提取（进度 4-8/8）
         """
 
-        # 阶段 1：总体设计 + 三幕结构
-        messages = self._build_skeleton_stage_messages(query, contexts, feedback)
-        self._report_progress(progress_callback, 1, 7, "总体设计与三幕结构", messages)
-        skeleton_payload = self._parse_json_object(self._client.complete(messages, temperature=0.2))
-        script = self._build_script_design(skeleton_payload)
-        acts = self._build_acts(skeleton_payload.get("acts", []))
-        if len(acts) != 3:
-            raise ScriptGenerationError(
-                f"骨架阶段必须返回 3 幕，实际返回 {len(acts)} 幕"
-            )
-        script = replace(script, acts=acts)
+        def _md_progress(stage: int, _total: int, name: str, req_bytes: int) -> None:
+            if progress_callback:
+                progress_callback(stage, 8, name, req_bytes)
 
-        # 阶段 2：NPC 网络
-        npc_messages = self._build_npc_network_stage_messages(query, contexts, script, feedback)
-        self._report_progress(progress_callback, 2, 7, "NPC 关系网络", npc_messages)
-        npc_payload = self._parse_json_object(self._client.complete(npc_messages, temperature=0.2))
-        npc_seed = self._build_npc_states(
-            self._module_value(npc_payload, "npc_seed", "npcs")
-        )
-        if not npc_seed:
-            raise ScriptGenerationError(
-                f"NPC 阶段返回空 npc_seed: {self._payload_preview(npc_payload)}"
-            )
-        npc_relationships = self._build_npc_relationships(
-            self._module_value(npc_payload, "npc_relationships", "relationships"),
-            {npc.npc_id for npc in npc_seed},
-        )
-        script = replace(script, npc_seed=npc_seed, npc_relationships=npc_relationships)
+        def _extract_progress(stage: int, _total: int, name: str, req_bytes: int) -> None:
+            if progress_callback:
+                progress_callback(stage + 3, 8, name, req_bytes)
 
-        # 阶段 3-6：按幕生成决策点
-        act_decision_batches = [
-            (3, acts[0], "第一幕：开局破冰"),
-            (4, acts[1], "第二幕前半：矛盾激化"),
-            (5, acts[1], "第二幕后半：博弈转折"),
-            (6, acts[2], "第三幕：收束结局"),
+        full_md = self.generate_md(
+            query, contexts, feedback, _md_progress,
+            npc_count, character_settings, story_background,
+        )
+        script = self.extract_json_from_md(
+            full_md, query, npc_count, _extract_progress,
+        )
+        return script, full_md
+
+    # ============================================================
+    # Phase 1: MD 生成
+    # ============================================================
+
+    def _generate_round_md(
+        self,
+        round_num: int,
+        act_name: str,
+        act_goal: str,
+        day_range: str,
+        chapter_four: str,
+        query: str,
+        previous_md: str,
+        npc_count: int,
+        character_settings: str,
+        story_background: str,
+    ) -> str:
+        """调用 ReAct Agent 生成一幕 MD 叙事。"""
+        system_prompt = self._build_round_system_prompt(
+            round_num, act_name, act_goal, day_range,
+            chapter_four, query, previous_md,
+            npc_count, character_settings, story_background,
+        )
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
         ]
-        all_decision_points: list[DecisionPoint] = []
-        all_citations = list(script.citations)
-        for stage, act, batch_name in act_decision_batches:
-            is_second_half = (stage == 5)
-            decision_messages = self._build_decision_stage_messages(
-                query, contexts, script, feedback,
-                act=act,
-                existing_decision_ids=[dp.decision_id for dp in all_decision_points],
-                is_second_half_of_act=is_second_half,
-            )
-            self._report_progress(progress_callback, stage, 7, batch_name, decision_messages)
-            decision_payload = self._parse_json_object(
-                self._client.complete(decision_messages, temperature=0.2)
-            )
-            batch_decisions = self._build_decision_points(
-                self._module_value(decision_payload, "decision_points", "decisions"),
-                {npc.npc_id for npc in script.npc_seed},
-            )
-            if not batch_decisions:
-                raise ScriptGenerationError(
-                    f"{batch_name} 阶段返回空 decision_points: "
-                    f"{self._payload_preview(decision_payload)}"
-                )
-            all_decision_points.extend(batch_decisions)
-            batch_citations = self._build_citations(
-                self._module_value(decision_payload, "citations")
-            )
-            all_citations = self._merge_citations(all_citations, batch_citations)
+        result = self._client.complete(messages, temperature=0.4)
+        # 清理可能的前后缀
+        result = result.strip()
+        if result.startswith("```"):
+            lines = result.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            result = "\n".join(lines)
+        return result.strip()
 
-        # 将决策点 ID 分配回各幕
+    def _build_round_system_prompt(
+        self,
+        round_num: int,
+        act_name: str,
+        act_goal: str,
+        day_range: str,
+        chapter_four: str,
+        query: str,
+        previous_md: str,
+        npc_count: int,
+        character_settings: str,
+        story_background: str,
+    ) -> str:
+        """构建每轮 MD 生成的系统 prompt。"""
+        parts = [
+            f"你是一个严肃游戏的剧本作家，正在为游戏撰写第{round_num}幕的叙事剧本。",
+            "",
+            "## 本幕信息",
+            f"- 名称：{act_name}",
+            f"- 时间跨度：{day_range}",
+            f"- 目标：{act_goal}",
+            f"- NPC数量：约{npc_count}人",
+        ]
+
+        if story_background:
+            parts.append(f"- 故事背景：{story_background}")
+        if character_settings:
+            parts.append(f"- 人物设定：{character_settings}")
+
+        parts.append("")
+        parts.append("## 原始需求")
+        parts.append(query)
+
+        if previous_md:
+            parts.append("")
+            parts.append("## 前面各幕的剧情（必须承接）")
+            parts.append(previous_md[-5000:])  # 只取最后5000字作为上下文
+
+        parts.append("")
+        parts.append("## 检索要求")
+        parts.append("在开始写作之前，你必须完成以下两步检索：")
+        parts.append("")
+        parts.append("### 1. 经典文献检索")
+        parts.append("使用 os_search 在指定的知识库中搜索与本幕主题相关的学术/政策文献。")
+        parts.append("对有价值的文献调用 fetch_os_document_fulltext 读取全文。")
+        parts.append("提取可用的理论框架、政策背景和制度性知识。")
+        parts.append("")
+        parts.append("### 2. 真实事件检索")
+        parts.append("使用 w_baidu_search 搜索以下典型真实案例，了解事件经过和关键细节。")
+
+        if chapter_four:
+            # 嵌入第四章全文（截断到合理长度）
+            parts.append("")
+            parts.append("以下是可参考的典型案例清单及搜索关键词：")
+            parts.append("```")
+            parts.append(chapter_four[:8000])
+            parts.append("```")
+
+        parts.append("")
+        parts.append("请根据本幕主题，从上述清单中选择 3-5 个最相关的案例，")
+        parts.append("使用 w_baidu_search 搜索其详细信息。")
+
+        parts.append("")
+        parts.append("## 写作要求")
+        parts.append(f"综合以上两方面检索结果，以小说笔法写出{act_name}的完整叙事。")
+        parts.append("")
+        parts.append("必须包含以下要素：")
+        parts.append("1. 场景描写：营造时代和地域氛围，让读者身临其境")
+        parts.append("2. NPC 对话：每个主要 NPC 都应有符合其身份的台词和互动")
+        parts.append("3. 决策节点：在关键情节处嵌入决策点，标注为 【决策点：标题】")
+        parts.append("   - 每个决策点下列出 3-5 个选项，每个选项说明代价和可能后果")
+        parts.append("   - 至少包含 5 个决策点")
+        parts.append("4. 分支暗示：不同选择暗示不同的后续走向")
+        parts.append("5. 数据埋点：在叙事中提及相关的 GameState 数值变化")
+        parts.append("   （如：社会稳定指数、财政预算、签约户数、政治信用等）")
+        parts.append("")
+        parts.append("写作风格：")
+        parts.append("- 使用小说的叙事笔法，不仅仅是知识堆砌")
+        parts.append("- NPC 是有血有肉的人，有各自的动机、弱点和成长")
+        parts.append("- 决策困境应是真实的两难，不存在明显正确或错误的选项")
+        parts.append("- 适当引用检索到的真实事件细节增强真实感")
+        parts.append("")
+        parts.append("直接输出剧本正文，不要输出其他内容。")
+        parts.append("不要使用 request_clarification 追问用户——信息不足时基于常识做出合理假设。")
+
+        return "\n".join(parts)
+
+    # ============================================================
+    # Phase 2: MD → JSON 提取（Qwen Flash）
+    # ============================================================
+
+    def _extract_npc_from_md(
+        self, flash: QwenChatClient, full_md: str, npc_count: int, act_label: str = ""
+    ) -> dict:
+        """Step 1: 从 MD 提取 NPC 列表和关系网。"""
+        scope = f"仅提取{act_label}中新出现或重点描写的 NPC" if act_label else "提取所有 NPC 角色"
+        prompt = f"""{scope}及其关系。
+
+## 剧本
+{full_md}
+
+## 输出格式
+请输出一个 JSON 对象：
+{{
+  "npc_seed": [
+    {{
+      "npc_id": "唯一ID，如 NPC_01",
+      "name": "角色名",
+      "npc_type": "cadre | external | villager",
+      "group": "所属群体，如 镇干部、上访户、搬迁村民",
+      "trust_to_player": 0-100,
+      "attitude_score": 0-100,
+      "anxiety_level": 0-100,
+      "reference_point": 0,
+      "granovetter_threshold": 0-100,
+      "core_demand_satisfied": false,
+      "signed": false,
+      "known_info": ["该角色已知的关键信息"],
+      "player_promises": []
+    }}
+  ],
+  "npc_relationships": [
+    {{
+      "from_npc_id": "NPC_01",
+      "to_npc_id": "NPC_02",
+      "relation_type": "亲属 | 上下级 | 利益同盟 | 矛盾对立 | 信息渠道 | 情感纽带",
+      "strength": 0-100,
+      "description": "一句话描述关系"
+    }}
+  ]
+}}
+
+## 规则
+- 提取 {npc_count} 个左右的 NPC，覆盖 cadre、external、villager 三类
+- 每个 NPC 的数值基于剧本中的表现推断
+- 关系至少 12 条，形成立体的社会网络
+- 只输出 JSON，不要 Markdown"""
+        content = flash.complete(
+            [
+                ChatMessage(role="system", content="你是剧本结构化提取器。只输出合法 JSON。"),
+                ChatMessage(role="user", content=prompt),
+            ],
+            temperature=0.1,
+        )
+        return self._parse_json_object(content)
+
+    def _extract_decisions_from_md(
+        self, flash: QwenChatClient, full_md: str, npc_data: dict, act_label: str = ""
+    ) -> dict:
+        """Step 2: 从 MD 提取决策点和选项。"""
+        scope = f"仅提取{act_label}中的决策点" if act_label else "提取所有决策点"
+        npc_ids = [
+            n.get("npc_id", "") for n in npc_data.get("npc_seed", [])
+        ]
+        prompt = f"""{scope}。
+
+## 剧本
+{full_md}
+
+## 已有的 NPC ID 列表
+{npc_ids}
+
+## 输出格式
+{{
+  "decision_points": [
+    {{
+      "decision_id": "唯一ID，如 DP_01",
+      "title": "决策点标题",
+      "day_window": "时间窗口，如 第3-5天",
+      "situation": "当前面临的具体困境描述",
+      "options": [
+        {{
+          "option_id": "DP_01_A",
+          "label": "简短选项标签",
+          "description": "具体行动说明",
+          "cost_action_points": 1,
+          "budget_cost": 0,
+          "payoffs": {{
+            "global": {{"social_stability_index": 5, "political_credit": -3}},
+            "npc_具体ID": {{"trust_to_player": 10}}
+          }},
+          "risks": ["风险说明"],
+          "citation": ""
+        }}
+      ],
+      "affected_npc_ids": ["NPC_01"],
+      "trigger_condition": "",
+      "is_critical": false,
+      "citations": []
+    }}
+  ]
+}}
+
+## 规则
+- 从剧本中找到所有【决策点：标题】标记的位置
+- 每个决策点 3-5 个选项，选项之间有明显策略差异
+- payoffs 需包含全局影响和具体 NPC 影响
+- is_critical 标记 3-5 个对结局影响最大的决策
+- affected_npc_ids 只用上面列表中的 ID
+- 只输出 JSON，不要 Markdown"""
+        content = flash.complete(
+            [
+                ChatMessage(role="system", content="你是剧本结构化提取器。只输出合法 JSON。"),
+                ChatMessage(role="user", content=prompt),
+            ],
+            temperature=0.1,
+        )
+        return self._parse_json_object(content)
+
+    def _extract_endings_from_md(
+        self, flash: QwenChatClient, full_md: str, decision_data: dict
+    ) -> dict:
+        """Step 3: 从 MD 提取结局条件。"""
+        critical_ids = [
+            d.get("decision_id", "") for d in decision_data.get("decision_points", [])
+            if d.get("is_critical")
+        ]
+        prompt = f"""从以下剧本中提取所有结局条件。
+
+## 剧本
+{full_md}
+
+## 关键决策点
+{critical_ids}
+
+## 输出格式
+{{
+  "endings": [
+    {{
+      "ending_id": "唯一ID，如 END_01",
+      "title": "结局标题",
+      "description": "结局叙述",
+      "conditions": [
+        "signed_households >= 34",
+        "social_stability_index >= 60"
+      ],
+      "ending_type": "good | neutral | bad"
+    }}
+  ]
+}}
+
+## 规则
+- 至少 3 个结局（good + neutral + bad）
+- 建议 4 个：1 good + 1 neutral + 2 bad
+- conditions 使用量化指标（signed_households、social_stability_index、political_credit、budget_remaining 等）
+- 好结局条件严格但可达
+- 只输出 JSON，不要 Markdown"""
+        content = flash.complete(
+            [
+                ChatMessage(role="system", content="你是剧本结构化提取器。只输出合法 JSON。"),
+                ChatMessage(role="user", content=prompt),
+            ],
+            temperature=0.1,
+        )
+        return self._parse_json_object(content)
+
+    def _extract_skeleton_from_md(
+        self, flash: QwenChatClient, full_md: str, query: str
+    ) -> dict:
+        """Step 4: 从 MD 提取三幕结构和 GameState。"""
+        prompt = f"""从以下剧本中提取总体设定、三幕结构和初始游戏状态。
+
+## 剧本
+{full_md}
+
+## 原始需求
+{query}
+
+## 输出格式
+{{
+  "title": "剧本标题",
+  "premise": "世界观设定简介",
+  "player_role": "玩家角色",
+  "core_conflict": "核心冲突",
+  "initial_game_state": {{
+    "day": 1,
+    "action_points": 3,
+    "budget_remaining": 8000,
+    "budget_unit": "万元",
+    "signed_households": 0,
+    "total_households": 36,
+    "social_stability_index": 70,
+    "political_credit": 70,
+    "cadre_execution_index": 60
+  }},
+  "acts": [
+    {{
+      "act_number": 1,
+      "title": "开局破冰",
+      "day_range": "第1-20天",
+      "goal": "本幕目标",
+      "description": "本幕概述"
+    }},
+    {{
+      "act_number": 2,
+      "title": "矛盾激化与博弈转折",
+      "day_range": "第21-55天",
+      "goal": "本幕目标",
+      "description": "本幕概述"
+    }},
+    {{
+      "act_number": 3,
+      "title": "收束结局",
+      "day_range": "第56-90天",
+      "goal": "本幕目标",
+      "description": "本幕概述"
+    }}
+  ]
+}}
+
+## 规则
+- 从剧本中推断初始 GameState 的具体数值
+- 三幕的 day_range 必须连续覆盖全部时间
+- 只输出 JSON，不要 Markdown"""
+        content = flash.complete(
+            [
+                ChatMessage(role="system", content="你是剧本结构化提取器。只输出合法 JSON。"),
+                ChatMessage(role="user", content=prompt),
+            ],
+            temperature=0.1,
+        )
+        return self._parse_json_object(content)
+
+    def _assemble_script(
+        self,
+        skeleton: dict,
+        npc_data: dict,
+        decision_data: dict,
+        ending_data: dict,
+    ) -> ScriptDesign:
+        """Step 5: 组装所有提取结果为 ScriptDesign。"""
+        # 先构建基本骨架
+        script = self._build_script_design(skeleton)
+
+        # 覆盖 NPC
+        npc_seed = self._build_npc_states(
+            npc_data.get("npc_seed", npc_data.get("npcs", []))
+        )
+        valid_ids = {n.npc_id for n in npc_seed}
+        npc_relationships = self._build_npc_relationships(
+            npc_data.get("npc_relationships", npc_data.get("relationships", [])),
+            valid_ids,
+        )
+
+        # 覆盖决策点
+        decision_points = self._build_decision_points(
+            decision_data.get("decision_points", decision_data.get("decisions", [])),
+            valid_ids,
+        )
+
+        # 覆盖结局
+        endings = self._build_endings(
+            ending_data.get("endings", ending_data.get("ending_conditions", []))
+        )
+
+        # 覆盖三幕（保留骨架中的 acts 或从 decision day_window 推断）
+        acts = self._build_acts(skeleton.get("acts", []))
+        if len(acts) != 3:
+            # 回退到旧逻辑：根据决策点 day_window 分配
+            acts = self._distribute_decisions_to_acts(acts, decision_points)
+
+        return replace(
+            script,
+            npc_seed=npc_seed,
+            npc_relationships=npc_relationships,
+            decision_points=decision_points,
+            endings=endings,
+            acts=acts,
+        )
+
+    def _distribute_decisions_to_acts(
+        self, acts: list[ActStructure], decision_points: list[DecisionPoint]
+    ) -> list[ActStructure]:
+        """根据决策点的 day_window 分配回三幕。"""
         decision_ids_per_act: dict[int, list[str]] = {1: [], 2: [], 3: []}
-        act1_count = 0
-        act2_count = 0
-        act3_count = 0
-        for dp in all_decision_points:
-            # 按 day_window 判断归属
-            window = dp.day_window
-            if "第1-" in window or "第2-" in window or "第5-" in window or "第10-" in window:
-                # 粗略判断：如果窗口起点在 1-15 天，归第一幕
-                try:
-                    start_day = int(window.replace("第", "").split("-")[0].split("天")[0])
-                except (ValueError, IndexError):
-                    start_day = 1
-                if start_day <= 15:
-                    decision_ids_per_act[1].append(dp.decision_id)
-                    act1_count += 1
-                elif start_day <= 50:
-                    decision_ids_per_act[2].append(dp.decision_id)
-                    act2_count += 1
-                else:
-                    decision_ids_per_act[3].append(dp.decision_id)
-                    act3_count += 1
+        for dp in decision_points:
+            try:
+                window = dp.day_window
+                # 尝试从 "第X-Y天" 中提取起始天
+                day_str = window.replace("第", "").split("-")[0].split("天")[0]
+                start_day = int(day_str)
+            except (ValueError, IndexError):
+                start_day = 1
+            if start_day <= 20:
+                decision_ids_per_act[1].append(dp.decision_id)
+            elif start_day <= 55:
+                decision_ids_per_act[2].append(dp.decision_id)
             else:
-                # 回退：按顺序分配
-                if act1_count < 6:
-                    decision_ids_per_act[1].append(dp.decision_id)
-                    act1_count += 1
-                elif act2_count < 8:
-                    decision_ids_per_act[2].append(dp.decision_id)
-                    act2_count += 1
-                else:
-                    decision_ids_per_act[3].append(dp.decision_id)
-                    act3_count += 1
+                decision_ids_per_act[3].append(dp.decision_id)
 
-        updated_acts = [
+        return [
             replace(act, decision_point_ids=decision_ids_per_act.get(act.act_number, []))
             for act in acts
         ]
 
-        script = replace(
-            script,
-            decision_points=all_decision_points,
-            acts=updated_acts,
-            citations=all_citations,
+    # ============================================================
+    # 修订方法（保留）
+    # ============================================================
+
+    def revise(
+        self,
+        query: str,
+        previous_script: dict[str, Any],
+        contexts: list[SourceContext],
+        feedback: str,
+    ) -> ScriptDesign:
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        if not feedback.strip():
+            raise ValueError("feedback must not be empty")
+        if not previous_script:
+            raise ValueError("previous_script must not be empty")
+        content = self._client.complete(
+            self._build_messages(query, contexts, feedback, previous_script=previous_script),
+            temperature=0.2,
         )
+        payload = self._parse_json_object(content)
+        return self._build_script_design(payload)
 
-        # 阶段 7：多结局条件
-        endings_messages = self._build_endings_stage_messages(query, contexts, script, feedback)
-        self._report_progress(progress_callback, 7, 7, "多结局条件", endings_messages)
-        endings_payload = self._parse_json_object(
-            self._client.complete(endings_messages, temperature=0.2)
+    def revise_element(
+        self,
+        element_type: str,
+        element_id: str,
+        current_element: dict[str, Any],
+        context: dict[str, Any],
+        feedback: str,
+    ) -> dict[str, Any]:
+        if not feedback.strip():
+            raise ValueError("feedback must not be empty")
+        if not current_element:
+            raise ValueError("current_element must not be empty")
+        messages = self._build_revise_element_messages(
+            element_type, element_id, current_element, context, feedback,
         )
-        endings = self._build_endings(
-            self._module_value(endings_payload, "endings", "ending_conditions")
+        content = self._client.complete(messages, temperature=0.2)
+        revised = self._parse_json_object(content)
+        return revised
+
+    def revise_structured(
+        self,
+        query: str,
+        previous_result: dict[str, Any],
+        contexts: list[SourceContext],
+        feedback: str,
+    ) -> ScriptDesign:
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        if not feedback.strip():
+            raise ValueError("feedback must not be empty")
+        if not previous_result:
+            raise ValueError("previous_result must not be empty")
+        content = self._client.complete(
+            self._build_revise_structured_messages(query, previous_result, contexts, feedback),
+            temperature=0.2,
         )
-        if len(endings) < 3:
-            raise ScriptGenerationError(
-                f"结局阶段至少需要 3 个结局，实际返回 {len(endings)} 个"
-            )
-        script = replace(script, endings=endings)
+        payload = self._parse_json_object(content)
+        return self._build_script_design(payload)
 
-        return script
-
-    def _build_skeleton_stage_messages(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        feedback: str,
-    ) -> list[ChatMessage]:
-        """阶段 1：生成总体设定、GameState 和三幕结构。"""
-        payload = {
-            "query": query,
-            "source_contexts": self._context_payload(contexts),
-            "human_feedback": feedback.strip(),
-            "output_contract": {
-                "title": "string",
-                "premise": "string",
-                "player_role": "string",
-                "core_conflict": "string",
-                "initial_game_state": {
-                    "day": 1,
-                    "action_points": 3,
-                    "budget_remaining": 8000,
-                    "budget_unit": "万元",
-                    "signed_households": 0,
-                    "total_households": 36,
-                    "social_stability_index": 70,
-                    "political_credit": 70,
-                    "cadre_execution_index": 60,
-                },
-                "acts": [
-                    {
-                        "act_number": 1,
-                        "title": "开局破冰",
-                        "day_range": "第1-15天",
-                        "goal": "本幕要达成的阶段性目标",
-                        "description": "当前形势概述",
-                    },
-                    {
-                        "act_number": 2,
-                        "title": "矛盾升级",
-                        "day_range": "第16-50天",
-                        "goal": "本幕要达成的阶段性目标",
-                        "description": "当前形势概述",
-                    },
-                    {
-                        "act_number": 3,
-                        "title": "收束结局",
-                        "day_range": "第51-90天",
-                        "goal": "本幕要达成的阶段性目标",
-                        "description": "当前形势概述",
-                    },
-                ],
-                "citations": [
-                    {
-                        "citation_id": "string",
-                        "source_context_id": "string",
-                        "title": "string",
-                        "note": "string",
-                    }
-                ],
-            },
-            "rules": [
-                "只输出总体设定、玩家角色、核心冲突、初始状态、三幕结构和 citations。",
-                "不要生成 NPC、决策点或结局，这些模块会在后续阶段生成。",
-                "三幕的 day_range 必须连续覆盖全部剧情时间。",
-                "budget_unit 必须明确填写（如'万元'），所有数额字段为整数。",
-                "citations 只能使用 source_contexts 中的 reference_id，或使用 query 表示原始需求。",
-                "语言必须是中文，输出必须是合法 JSON 对象，不要 Markdown。",
-            ],
-        }
-        return self._stage_messages("总体设计与三幕规划器", payload)
-
-    def _build_npc_network_stage_messages(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        script: ScriptDesign,
-        feedback: str,
-    ) -> list[ChatMessage]:
-        """阶段 2：生成 NPC 列表和 NPC 之间的关系网络。"""
-        payload = self._stage_payload(query, contexts, script, feedback)
-        payload["act_structure"] = [
-            {
-                "act_number": act.act_number,
-                "title": act.title,
-                "day_range": act.day_range,
-                "goal": act.goal,
-            }
-            for act in script.acts
-        ] if script.acts else []
-        payload["output_contract"] = {
-            "npc_seed": [
-                {
-                    "npc_id": "string",
-                    "name": "string",
-                    "npc_type": "cadre | external | villager",
-                    "group": "string",
-                    "trust_to_player": 0,
-                    "attitude_score": 0,
-                    "anxiety_level": 0,
-                    "reference_point": 0,
-                    "granovetter_threshold": 0,
-                    "core_demand_satisfied": False,
-                    "signed": False,
-                    "known_info": ["string"],
-                    "player_promises": [],
-                }
-            ],
-            "npc_relationships": [
-                {
-                    "from_npc_id": "string",
-                    "to_npc_id": "string",
-                    "relation_type": "亲属 | 上下级 | 利益同盟 | 矛盾对立 | 信息渠道 | 情感纽带",
-                    "strength": 50,
-                    "description": "一句话描述关系",
-                }
-            ],
-        }
-        payload["rules"] = [
-            "只输出 npc_seed 和 npc_relationships，不要输出剧本的其他字段。",
-            "生成 12 至 15 个 NPC，完整替换骨架中的 npc_seed。",
-            "必须同时覆盖干部、外部角色和村民三类，并形成利益冲突和信息不对称。",
-            "NPC 类型只能使用 cadre、external、villager，所有分数字段使用 0 到 100 的整数。",
-            "npc_relationships 至少 15 条，构建一个立体的社会关系网络：",
-            "  - 亲属关系连接村民 NPC；",
-            "  - 上下级关系连接不同层级的干部和外部角色；",
-            "  - 利益同盟连接在搬迁中有共同利益的 NPC；",
-            "  - 矛盾对立连接利益冲突或历史恩怨的 NPC；",
-            "  - 信息渠道连接消息传递链上的 NPC；",
-            "  - 情感纽带（恩情、友情等）丰富人物层次。",
-            "每条关系的 from_npc_id 和 to_npc_id 必须来自 npc_seed 中的 npc_id。",
-            "关系强度 strength 应反映该关系在当前情境下的紧密度（0=形同陌路，100=牢不可破）。",
-            "输出必须是合法 JSON 对象，不要 Markdown。",
-        ]
-        return self._stage_messages("NPC 关系网络设计器", payload)
-
-    def _build_action_stage_messages(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        script: ScriptDesign,
-        feedback: str,
-        categories: str,
-        existing_action_ids: list[str],
-    ) -> list[ChatMessage]:
-        payload = self._stage_payload(query, contexts, script, feedback)
-        payload["npc_seed"] = [asdict(npc) for npc in script.npc_seed]
-        payload["action_categories"] = categories
-        payload["existing_action_ids"] = existing_action_ids
-        payload["output_contract"] = {
-            "action_rules": [
-                {
-                    "action_id": "string",
-                    "name": "string",
-                    "cost_action_points": 1,
-                    "budget_cost": 0,
-                    "allowed_targets": ["villager"],
-                    "preconditions": ["string"],
-                    "forbidden_conditions": ["string"],
-                    "direct_payoff": {},
-                    "side_effects": ["string"],
-                    "risk_notes": ["string"],
-                    "citations": ["reference_id - title"],
-                }
-            ]
-        }
-        payload["rules"] = [
-            "只输出 action_rules，不要输出剧本或 NPC 的其他字段。",
-            "为 action_categories 指定的类别生成 6 至 8 条行动规则。",
-            "action_id 不能与 existing_action_ids 重复。",
-            "每条行动都必须有成本、条件、payoff、副作用、风险和资料引用。",
-            "citations 只能使用 source_contexts 中的 reference_id，或使用 query 表示原始需求。",
-            "输出必须是合法 JSON 对象，不要 Markdown。",
-        ]
-        return self._stage_messages("行动规则设计器", payload)
-
-    def _build_event_stage_messages(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        script: ScriptDesign,
-        feedback: str,
-        period: str,
-        existing_event_ids: list[str],
-        include_summary: bool,
-    ) -> list[ChatMessage]:
-        payload = self._stage_payload(query, contexts, script, feedback)
-        payload["npc_seed"] = [
-            {
-                "npc_id": npc.npc_id,
-                "name": npc.name,
-                "npc_type": npc.npc_type,
-                "group": npc.group,
-            }
-            for npc in script.npc_seed
-        ]
-        payload["action_rules"] = [
-            {
-                "action_id": rule.action_id,
-                "name": rule.name,
-                "allowed_targets": rule.allowed_targets,
-            }
-            for rule in script.action_rules
-        ]
-        payload["event_period"] = period
-        payload["existing_event_ids"] = existing_event_ids
-        output_contract: dict[str, Any] = {
-            "event_outline": [
-                {
-                    "event_id": "string",
-                    "name": "string",
-                    "day_window": "string",
-                    "trigger_condition": "string",
-                    "description": "string",
-                    "payoff": {},
-                    "citations": ["reference_id - title"],
-                }
-            ]
-        }
-        if include_summary:
-            output_contract["night_rules"] = ["string"]
-            output_contract["payoff_notes"] = ["string"]
-            output_contract["citations"] = [
-                {
-                    "citation_id": "string",
-                    "source_context_id": "string",
-                    "title": "string",
-                    "note": "string",
-                }
-            ]
-        payload["output_contract"] = output_contract
-        payload["rules"] = [
-            "只为 event_period 指定的时间段生成 5 至 7 个事件。",
-            "event_id 不能与 existing_event_ids 重复。",
-            "事件应引用已给出的 NPC ID 和行动 ID，形成前后相连的触发链。",
-            "每个事件必须有 payoff 和资料引用。",
-            "citations 只能使用 source_contexts 中的 reference_id，或使用 query 表示原始需求。",
-            "输出必须是合法 JSON 对象，不要 Markdown。",
-        ]
-        if include_summary:
-            payload["rules"].append(
-                "同时生成至少 3 条夜间互动规则和完整 payoff_notes。"
-            )
-        return self._stage_messages("事件与夜间推演设计器", payload)
-
-    def _build_decision_stage_messages(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        script: ScriptDesign,
-        feedback: str,
-        act: ActStructure,
-        existing_decision_ids: list[str],
-        is_second_half_of_act: bool = False,
-    ) -> list[ChatMessage]:
-        """阶段 3-6：为指定幕生成决策点序列。"""
-        payload = self._stage_payload(query, contexts, script, feedback)
-        payload["target_act"] = {
-            "act_number": act.act_number,
-            "title": act.title,
-            "day_range": act.day_range,
-            "goal": act.goal,
-        }
-        payload["is_second_half"] = is_second_half_of_act
-        payload["existing_decision_ids"] = existing_decision_ids
-        payload["npc_summary"] = [
-            {
-                "npc_id": npc.npc_id,
-                "name": npc.name,
-                "npc_type": npc.npc_type,
-                "group": npc.group,
-            }
-            for npc in script.npc_seed
-        ]
-        payload["relationship_summary"] = [
-            {
-                "from": rel.from_npc_id,
-                "to": rel.to_npc_id,
-                "type": rel.relation_type,
-            }
-            for rel in script.npc_relationships[:30]
-        ] if script.npc_relationships else []
-        payload["output_contract"] = {
-            "decision_points": [
-                {
-                    "decision_id": "string",
-                    "title": "决策点标题",
-                    "day_window": "时间窗口，如 第3-5天",
-                    "situation": "当前面临的具体困境描述",
-                    "options": [
-                        {
-                            "option_id": "string",
-                            "label": "简短选项标签，如 亲自上门劝说",
-                            "description": "该选项的具体行动说明",
-                            "cost_action_points": 1,
-                            "budget_cost": 0,
-                            "payoffs": {
-                                "global": {"social_stability_index": 5, "political_credit": -3},
-                                "npc_V01": {"trust_to_player": 10},
-                            },
-                            "risks": ["风险说明"],
-                            "citation": "reference_id - title",
-                        }
-                    ],
-                    "affected_npc_ids": ["npc_id"],
-                    "trigger_condition": "触发条件（可为空字符串表示必定触发）",
-                    "is_critical": False,
-                    "citations": ["reference_id - title"],
-                }
-            ]
-        }
-        # 根据幕和复杂度调整决策点数量
-        if act.act_number == 1:
-            count_range = "4 至 6 个"
-        elif act.act_number == 2:
-            count_range = "3 至 4 个" if is_second_half_of_act else "4 至 5 个"
-        else:
-            count_range = "4 至 5 个"
-
-        payload["rules"] = [
-            f"为第{act.act_number}幕（{act.title}，{act.day_range}）生成 {count_range} 决策点。",
-            "每个决策点必须有 3 至 5 个选项，选项之间应有明显的策略差异",
-            "（如：强硬 vs 怀柔、公开 vs 私下、花钱 vs 省钱的权衡）。",
-            "decision_id 不能与 existing_decision_ids 重复。",
-            "选项的 payoffs 必须同时包含对全局状态（global）和具体 NPC 的影响。",
-            "cost_action_points 和 budget_cost 必须真实反映该选项的代价。",
-            "is_critical 标记其中 1-2 个对结局走向有重大影响的关键决策。",
-            "决策点之间应有因果关联，后续决策的情境应反映前面选择的后果。",
-            "affected_npc_ids 只使用上面 npc_summary 中给出的 npc_id。",
-            "citations 只能使用 source_contexts 中的 reference_id，或使用 query。",
-            "输出必须是合法 JSON 对象，不要 Markdown。",
-        ]
-        return self._stage_messages(f"第{act.act_number}幕决策点设计器", payload)
-
-    def _build_endings_stage_messages(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        script: ScriptDesign,
-        feedback: str,
-    ) -> list[ChatMessage]:
-        """阶段 7：生成多结局条件。"""
-        payload = self._stage_payload(query, contexts, script, feedback)
-        payload["act_structure"] = [
-            {
-                "act_number": act.act_number,
-                "title": act.title,
-                "goal": act.goal,
-            }
-            for act in script.acts
-        ] if script.acts else []
-        payload["key_decisions"] = [
-            {
-                "decision_id": dp.decision_id,
-                "title": dp.title,
-                "is_critical": dp.is_critical,
-            }
-            for dp in script.decision_points
-            if dp.is_critical
-        ] if script.decision_points else []
-        payload["output_contract"] = {
-            "endings": [
-                {
-                    "ending_id": "string",
-                    "title": "结局标题",
-                    "description": "结局叙述",
-                    "conditions": [
-                        "触发条件，如 signed_households >= 34",
-                        "触发条件，如 social_stability_index >= 60",
-                    ],
-                    "ending_type": "good | neutral | bad",
-                }
-            ]
-        }
-        payload["rules"] = [
-            "至少生成 3 个结局，必须覆盖 good（好结局）、neutral（中性结局）、bad（坏结局）三种类型。",
-            "建议生成 4 个结局：1 个 good + 1 个 neutral + 2 个 bad（不同失败路径）。",
-            "每个结局的 conditions 应基于 GameState 中的量化指标（signed_households、",
-            "social_stability_index、political_credit、budget_remaining 等）。",
-            "好结局条件应严格但可达（如签满 34 户以上且社会稳定指数 >= 60）。",
-            "坏结局应反映不同失败模式（如资金断裂、民怨爆发、被上级问责）。",
-            "中性结局应是勉强完成任务但留下隐患的状态。",
-            "描述应体现 45 分钟严肃游戏的反思价值，让玩家在结局中看到选择的长期后果。",
-            "输出必须是合法 JSON 对象，不要 Markdown。",
-        ]
-        return self._stage_messages("多结局设计器", payload)
+    # ============================================================
+    # Prompt 构建（保留旧方法用于 revise / compact 模式）
+    # ============================================================
 
     def _stage_payload(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        script: ScriptDesign,
-        feedback: str,
+        self, query: str, contexts: list[SourceContext],
+        script: ScriptDesign, feedback: str,
     ) -> dict[str, Any]:
         return {
             "query": query,
@@ -623,7 +860,7 @@ class QwenScriptGenerator:
             ChatMessage(
                 role="system",
                 content=(
-                    f"你是严肃游戏《父母官》的{role_name}。"
+                    f"你是严肃游戏的{role_name}。"
                     "只生成当前模块要求的字段，必须输出一个合法 JSON 对象。"
                 ),
             ),
@@ -631,12 +868,8 @@ class QwenScriptGenerator:
         ]
 
     def _report_progress(
-        self,
-        callback: GenerationProgressCallback | None,
-        stage: int,
-        total_stages: int,
-        name: str,
-        messages: list[ChatMessage],
+        self, callback: GenerationProgressCallback | None,
+        stage: int, total: int, name: str, messages: list[ChatMessage],
     ) -> None:
         if callback is None:
             return
@@ -644,163 +877,29 @@ class QwenScriptGenerator:
         if callable(size_method):
             request_bytes = size_method(messages, temperature=0.2)
         else:
-            request_bytes = sum(len(message.content.encode("utf-8")) for message in messages)
-        callback(stage, total_stages, name, request_bytes)
+            request_bytes = sum(len(m.content.encode("utf-8")) for m in messages)
+        callback(stage, total, name, request_bytes)
 
-    def revise(
-        self,
-        query: str,
-        previous_script: dict[str, Any],
-        contexts: list[SourceContext],
-        feedback: str,
-    ) -> ScriptDesign:
-        """根据旧稿和人工反馈生成修订稿（旧格式兼容）。"""
-
-        if not query.strip():
-            raise ValueError("query must not be empty")
-        if not feedback.strip():
-            raise ValueError("feedback must not be empty")
-        if not previous_script:
-            raise ValueError("previous_script must not be empty")
-
-        content = self._client.complete(
-            self._build_messages(
-                query,
-                contexts,
-                feedback,
-                previous_script=previous_script,
-            ),
-            temperature=0.2,
-        )
-        payload = self._parse_json_object(content)
-        return self._build_script_design(payload)
-
-    def revise_element(
-        self,
-        element_type: str,
-        element_id: str,
-        current_element: dict[str, Any],
-        context: dict[str, Any],
-        feedback: str,
-    ) -> dict[str, Any]:
-        """局部定向修订：只修改目标元素，返回修改后的元素 JSON。
-
-        不发送完整剧本，只发送目标元素 + 最小上下文，
-        LLM 返回修改后的元素，前端做局部 merge。
-        """
-        if not feedback.strip():
-            raise ValueError("feedback must not be empty")
-        if not current_element:
-            raise ValueError("current_element must not be empty")
-
-        messages = self._build_revise_element_messages(
-            element_type, element_id, current_element, context, feedback,
-        )
-        content = self._client.complete(messages, temperature=0.2)
-        revised = self._parse_json_object(content)
-        return revised
-
-    def _build_revise_element_messages(
-        self,
-        element_type: str,
-        element_id: str,
-        current_element: dict[str, Any],
-        context: dict[str, Any],
-        feedback: str,
-    ) -> list[ChatMessage]:
-        """构建局部修订 prompt：只包含目标元素和必要上下文。"""
-        npc_summary = context.get("npc_summary", [])
-        script_title = context.get("script_title", "")
-        script_premise = context.get("script_premise", "")
-
-        element_labels = {
-            "decision_point": "决策点",
-            "npc": "NPC",
-            "relationship": "关系",
-            "option": "决策选项",
-            "ending": "结局",
-            "act": "幕",
-        }
-        label = element_labels.get(element_type, element_type)
-
-        user_payload = {
-            "element_type": element_type,
-            "element_id": element_id,
-            "label": label,
-            "feedback": feedback.strip(),
-            "current_element": current_element,
-            "context": {
-                "script_title": script_title,
-                "script_premise": script_premise,
-                "npc_summary": npc_summary,
-            },
-            "output_contract": current_element,
-            "rules": [
-                f"你是严肃游戏《父母官》剧本的定向修订器。",
-                f"只修改上面这个{label}，不要改动未提及的内容。",
-                f"根据 feedback 中的要求进行定向修改。",
-                f"保留元素的原始结构（相同的 key），只改需要改的值。",
-                f"如果 feedback 要求增加内容（如增加选项），在现有内容基础上追加。",
-                f"如果 feedback 要求删除内容，明确执行删除。",
-                f"返回修改后的完整{label} JSON 对象，不要 Markdown，不要解释。",
-                f"所有数值字段必须是整数。",
-            ],
-        }
+    def _context_payload(self, contexts: list[SourceContext]) -> list[dict[str, Any]]:
         return [
-            ChatMessage(
-                role="system",
-                content=(
-                    f"你是严肃游戏《父母官》的{label}修订器。"
-                    "只修改指定的元素，返回修改后的完整 JSON 对象。"
-                ),
-            ),
-            ChatMessage(role="user", content=json.dumps(user_payload, ensure_ascii=False)),
+            {
+                "reference_id": c.id, "title": c.title,
+                "content": c.content, "metadata": c.metadata,
+            }
+            for c in contexts
         ]
 
-    def revise_structured(
-        self,
-        query: str,
-        previous_result: dict[str, Any],
-        contexts: list[SourceContext],
-        feedback: str,
-    ) -> ScriptDesign:
-        """根据完整旧稿和新格式反馈生成修订稿。
-
-        单次 prompt，保留新结构（三幕、决策点、关系网、结局），
-        只对反馈指出的部分做定向修改。
-        """
-        if not query.strip():
-            raise ValueError("query must not be empty")
-        if not feedback.strip():
-            raise ValueError("feedback must not be empty")
-        if not previous_result:
-            raise ValueError("previous_result must not be empty")
-
-        content = self._client.complete(
-            self._build_revise_structured_messages(query, previous_result, contexts, feedback),
-            temperature=0.2,
-        )
-        payload = self._parse_json_object(content)
-        return self._build_script_design(payload)
-
-    def _build_revise_structured_messages(
-        self,
-        query: str,
-        previous_result: dict[str, Any],
-        contexts: list[SourceContext],
-        feedback: str,
+    def _build_messages(
+        self, query: str, contexts: list[SourceContext],
+        feedback: str = "", previous_script: dict[str, Any] | None = None,
     ) -> list[ChatMessage]:
-        """构建新格式修订 prompt：保留结构，定向修改。"""
-        previous_script = previous_result.get("script") if isinstance(previous_result, dict) else None
         user_payload = {
             "query": query,
+            "source_contexts": self._context_payload(contexts),
             "human_feedback": feedback.strip(),
             "previous_script": previous_script,
-            "source_contexts": self._context_payload(contexts),
             "output_contract": {
-                "title": "string",
-                "premise": "string",
-                "player_role": "string",
+                "title": "string", "premise": "string", "player_role": "string",
                 "core_conflict": "string",
                 "initial_game_state": {
                     "day": 1, "action_points": 3, "budget_remaining": 8000,
@@ -808,185 +907,120 @@ class QwenScriptGenerator:
                     "total_households": 36, "social_stability_index": 70,
                     "political_credit": 70, "cadre_execution_index": 60,
                 },
-                "acts": [
-                    {"act_number": 1, "title": "string", "day_range": "string",
-                     "goal": "string", "description": "string"},
-                ],
-                "npc_seed": [
-                    {"npc_id": "string", "name": "string", "npc_type": "cadre | external | villager",
-                     "group": "string", "trust_to_player": 0, "attitude_score": 0,
-                     "anxiety_level": 0, "reference_point": 0, "granovetter_threshold": 0,
-                     "core_demand_satisfied": False, "signed": False,
-                     "known_info": ["string"], "player_promises": []},
-                ],
-                "npc_relationships": [
-                    {"from_npc_id": "string", "to_npc_id": "string",
-                     "relation_type": "亲属 | 上下级 | 利益同盟 | 矛盾对立 | 信息渠道 | 情感纽带",
-                     "strength": 50, "description": "string"},
-                ],
-                "decision_points": [
-                    {"decision_id": "string", "title": "string", "day_window": "string",
-                     "situation": "string",
-                     "options": [
-                         {"option_id": "string", "label": "string", "description": "string",
-                          "cost_action_points": 1, "budget_cost": 0,
-                          "payoffs": {}, "risks": ["string"], "citation": "string"},
-                     ],
-                     "affected_npc_ids": ["string"], "trigger_condition": "",
-                     "is_critical": False, "citations": ["string"]},
-                ],
-                "endings": [
-                    {"ending_id": "string", "title": "string", "description": "string",
-                     "conditions": ["string"], "ending_type": "good | neutral | bad"},
-                ],
-                "citations": [
-                    {"citation_id": "string", "source_context_id": "string",
-                     "title": "string", "note": "string"},
-                ],
+                "npc_seed": [{
+                    "npc_id": "string", "name": "string",
+                    "npc_type": "cadre | external | villager", "group": "string",
+                    "trust_to_player": 0, "attitude_score": 0, "anxiety_level": 0,
+                    "reference_point": 0, "granovetter_threshold": 0,
+                    "core_demand_satisfied": False, "signed": False,
+                    "known_info": ["string"], "player_promises": [],
+                }],
+                "action_rules": [], "event_outline": [], "night_rules": [],
+                "payoff_notes": [], "citations": [],
             },
             "rules": [
-                "你是严肃游戏《父母官》的剧本修订器。",
-                "在 previous_script 基础上，根据 human_feedback 进行定向修订。",
-                "保留不受反馈影响的所有原有内容，不要无故从零重写。",
-                "如果反馈要求增加 NPC 关系，只改 npc_relationships 和相关 NPC。",
-                "如果反馈要求修改某个决策点的选项，只改那个决策点。",
-                "如果反馈要求调整结局条件，只改 endings。",
-                "确保修订后 NPC、决策点和关系网之间的交叉引用仍然一致。",
-                "输出完整剧本 JSON（不是部分更新），包含所有字段。",
-                "所有数值字段必须是整数，语言必须是中文，不要 Markdown。",
+                "生成严肃游戏剧本初稿。",
+                "输出必须是一个合法 JSON 对象，不要 Markdown。",
+                "NPC 类型只能使用 cadre、external、villager。",
+                "所有数值字段必须是整数。",
+                "语言必须是中文。",
             ],
         }
         return [
             ChatMessage(
                 role="system",
-                content=(
-                    "你是严肃游戏《父母官》的剧本修订器。"
-                    "在已有剧本基础上根据反馈定向修改，保留未提及的内容。"
-                    "必须输出完整合法 JSON 对象。"
-                ),
+                content="你是严肃游戏的剧本生成器。必须只输出一个合法 JSON 对象。",
             ),
             ChatMessage(role="user", content=json.dumps(user_payload, ensure_ascii=False)),
         ]
 
-    def _build_messages(
-        self,
-        query: str,
-        contexts: list[SourceContext],
-        feedback: str = "",
-        previous_script: dict[str, Any] | None = None,
+    def _build_revise_element_messages(
+        self, element_type: str, element_id: str,
+        current_element: dict[str, Any], context: dict[str, Any], feedback: str,
     ) -> list[ChatMessage]:
+        npc_summary = context.get("npc_summary", [])
+        script_title = context.get("script_title", "")
+        script_premise = context.get("script_premise", "")
+        element_labels = {
+            "decision_point": "决策点", "npc": "NPC", "relationship": "关系",
+            "option": "决策选项", "ending": "结局", "act": "幕",
+        }
+        label = element_labels.get(element_type, element_type)
         user_payload = {
-            "query": query,
-            "source_contexts": self._context_payload(contexts),
-            "human_feedback": feedback.strip(),
+            "element_type": element_type, "element_id": element_id, "label": label,
+            "feedback": feedback.strip(), "current_element": current_element,
+            "context": {
+                "script_title": script_title, "script_premise": script_premise,
+                "npc_summary": npc_summary,
+            },
+            "output_contract": current_element,
+            "rules": [
+                f"你是严肃游戏剧本的定向修订器。",
+                f"只修改上面这个{label}，不要改动未提及的内容。",
+                f"根据 feedback 中的要求进行定向修改。",
+                f"保留元素的原始结构（相同的 key），只改需要改的值。",
+                f"如果 feedback 要求增加内容，在现有内容基础上追加。",
+                f"返回修改后的完整{label} JSON 对象，不要 Markdown，不要解释。",
+            ],
+        }
+        return [
+            ChatMessage(
+                role="system",
+                content=f"你是严肃游戏的{label}修订器。只修改指定元素，返回完整 JSON。",
+            ),
+            ChatMessage(role="user", content=json.dumps(user_payload, ensure_ascii=False)),
+        ]
+
+    def _build_revise_structured_messages(
+        self, query: str, previous_result: dict[str, Any],
+        contexts: list[SourceContext], feedback: str,
+    ) -> list[ChatMessage]:
+        previous_script = previous_result.get("script") if isinstance(previous_result, dict) else None
+        user_payload = {
+            "query": query, "human_feedback": feedback.strip(),
             "previous_script": previous_script,
+            "source_contexts": self._context_payload(contexts),
             "output_contract": {
-                "title": "string",
-                "premise": "string",
-                "player_role": "string",
+                "title": "string", "premise": "string", "player_role": "string",
                 "core_conflict": "string",
                 "initial_game_state": {
-                    "day": 1,
-                    "action_points": 3,
-                    "budget_remaining": 8000,
-                    "signed_households": 0,
-                    "total_households": 36,
-                    "social_stability_index": 70,
-                    "political_credit": 70,
-                    "cadre_execution_index": 60,
+                    "day": 1, "action_points": 3, "budget_remaining": 8000,
+                    "budget_unit": "万元", "signed_households": 0,
+                    "total_households": 36, "social_stability_index": 70,
+                    "political_credit": 70, "cadre_execution_index": 60,
                 },
-                "npc_seed": [
-                    {
-                        "npc_id": "string",
-                        "name": "string",
-                        "npc_type": "cadre | external | villager",
-                        "group": "string",
-                        "trust_to_player": 0,
-                        "attitude_score": 0,
-                        "anxiety_level": 0,
-                        "reference_point": 0,
-                        "granovetter_threshold": 0,
-                        "core_demand_satisfied": False,
-                        "signed": False,
-                        "known_info": ["string"],
-                        "player_promises": [],
-                    }
-                ],
-                "action_rules": [
-                    {
-                        "action_id": "string",
-                        "name": "string",
-                        "cost_action_points": 1,
-                        "budget_cost": 0,
-                        "allowed_targets": ["villager"],
-                        "preconditions": ["string"],
-                        "forbidden_conditions": ["string"],
-                        "direct_payoff": {},
-                        "side_effects": ["string"],
-                        "risk_notes": ["string"],
-                        "citations": ["reference_id - title"],
-                    }
-                ],
-                "event_outline": [
-                    {
-                        "event_id": "string",
-                        "name": "string",
-                        "day_window": "string",
-                        "trigger_condition": "string",
-                        "description": "string",
-                        "payoff": {},
-                        "citations": ["reference_id - title"],
-                    }
-                ],
-                "night_rules": ["string"],
-                "payoff_notes": ["string"],
-                "citations": [
-                    {
-                        "citation_id": "string",
-                        "source_context_id": "string",
-                        "title": "string",
-                        "note": "string",
-                    }
-                ],
+                "acts": [{"act_number": 1, "title": "string", "day_range": "string",
+                         "goal": "string", "description": "string"}],
+                "npc_seed": [{"npc_id": "string", "name": "string",
+                             "npc_type": "cadre | external | villager", "group": "string"}],
+                "npc_relationships": [{"from_npc_id": "string", "to_npc_id": "string",
+                                      "relation_type": "string", "strength": 50}],
+                "decision_points": [{"decision_id": "string", "title": "string",
+                                    "day_window": "string", "situation": "string",
+                                    "options": [], "is_critical": False}],
+                "endings": [{"ending_id": "string", "title": "string",
+                            "description": "string", "conditions": [], "ending_type": "string"}],
+                "citations": [{"citation_id": "string", "source_context_id": "string"}],
             },
             "rules": [
-                "生成《父母官》方向的剧本初稿，重点是规则、约束和 payoff，不要只写文学设定。",
-                "输出必须是一个合法 JSON 对象，不要 Markdown。",
-                "首版控制规模：7 个左右 NPC、8 个左右行动规则、5 个左右事件概要。",
-                "所有 action_rules 和 event_outline 都必须带 citations。",
-                "citations 只能引用 source_contexts 中真实存在的 reference_id 和 title。",
-                "如果资料不足，允许使用 query 本身作为设定来源，并在 citation note 中写明来自原始需求。",
-                "NPC 类型只能使用 cadre、external、villager。",
-                "所有数值字段必须是整数，不要使用百分号字符串。",
-                "语言必须是中文。",
-                "如果 human_feedback 非空，必须优先满足其中的人工反馈，但不能破坏 JSON 输出结构。",
-                "如果 previous_script 非空，应在旧稿基础上修订，保留不受反馈影响且合理的内容，不要无故从零重写。",
-                "修订后仍需保证行动规则、事件、NPC 和全局状态之间的数据约束一致。",
+                "你是严肃游戏的剧本修订器。",
+                "在 previous_script 基础上根据 feedback 定向修订。",
+                "保留不受反馈影响的所有原有内容。",
+                "输出完整剧本 JSON，包含所有字段。",
+                "语言必须是中文，不要 Markdown。",
             ],
         }
-
         return [
             ChatMessage(
                 role="system",
-                content=(
-                    "你是严肃游戏《父母官》的剧本生成器。"
-                    "你的输出要服务后续代码实现：规则、约束、payoff、NPC 初始状态必须结构化。"
-                    "必须只输出一个合法 JSON 对象。"
-                ),
+                content="你是严肃游戏剧本修订器。在已有基础上定向修改，输出完整 JSON。",
             ),
             ChatMessage(role="user", content=json.dumps(user_payload, ensure_ascii=False)),
         ]
 
-    def _context_payload(self, contexts: list[SourceContext]) -> list[dict[str, Any]]:
-        return [
-            {
-                "reference_id": context.id,
-                "title": context.title,
-                "content": context.content,
-                "metadata": context.metadata,
-            }
-            for context in contexts
-        ]
+    # ============================================================
+    # JSON 解析与构建（保留）
+    # ============================================================
 
     def _parse_json_object(self, content: str) -> dict[str, Any]:
         cleaned = content.strip()
@@ -994,7 +1028,6 @@ class QwenScriptGenerator:
             cleaned = cleaned.strip("`").strip()
             if cleaned.lower().startswith("json"):
                 cleaned = cleaned[4:].strip()
-
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError as exc:
@@ -1003,7 +1036,6 @@ class QwenScriptGenerator:
             raise ScriptGenerationError(
                 f"Script generation response was not valid JSON: start={preview!r}, end={suffix!r}"
             ) from exc
-
         if not isinstance(parsed, dict):
             raise ScriptGenerationError("Script generation response must be a JSON object")
         return parsed
@@ -1015,19 +1047,17 @@ class QwenScriptGenerator:
             player_role=self._required_str(payload, "player_role"),
             core_conflict=self._required_str(payload, "core_conflict"),
             initial_game_state=self._build_game_state(payload.get("initial_game_state", {})),
-            # 旧字段
             npc_seed=self._build_npc_states(payload.get("npc_seed", [])),
             action_rules=self._build_action_rules(payload.get("action_rules", [])),
             event_outline=self._build_event_outline(payload.get("event_outline", [])),
             night_rules=self._string_list(payload.get("night_rules")),
             payoff_notes=self._string_list(payload.get("payoff_notes")),
             citations=self._build_citations(payload.get("citations", [])),
-            # 新字段（阶段 1 骨架输出中已包含 acts）
             npc_relationships=self._build_npc_relationships(
-                payload.get("npc_relationships", []), set()
+                payload.get("npc_relationships", []), set(),
             ),
             decision_points=self._build_decision_points(
-                payload.get("decision_points", []), set()
+                payload.get("decision_points", []), set(),
             ),
             acts=self._build_acts(payload.get("acts", [])),
             endings=self._build_endings(payload.get("endings", [])),
@@ -1051,78 +1081,68 @@ class QwenScriptGenerator:
     def _build_npc_states(self, value: Any) -> list[NPCState]:
         if not isinstance(value, list):
             return []
-
         npcs = []
         for item in value:
             if not isinstance(item, dict):
                 continue
-            npcs.append(
-                NPCState(
-                    npc_id=self._required_str(item, "npc_id"),
-                    name=self._required_str(item, "name"),
-                    npc_type=self._required_str(item, "npc_type"),
-                    group=self._required_str(item, "group"),
-                    trust_to_player=self._int_value(item.get("trust_to_player"), 50),
-                    attitude_score=self._int_value(item.get("attitude_score"), 50),
-                    anxiety_level=self._int_value(item.get("anxiety_level"), 50),
-                    reference_point=self._int_value(item.get("reference_point"), 0),
-                    granovetter_threshold=self._int_value(item.get("granovetter_threshold"), 50),
-                    core_demand_satisfied=bool(item.get("core_demand_satisfied", False)),
-                    signed=bool(item.get("signed", False)),
-                    known_info=self._string_list(item.get("known_info")),
-                    player_promises=self._string_list(item.get("player_promises")),
-                )
-            )
+            npcs.append(NPCState(
+                npc_id=self._required_str(item, "npc_id"),
+                name=self._required_str(item, "name"),
+                npc_type=self._required_str(item, "npc_type"),
+                group=self._required_str(item, "group"),
+                trust_to_player=self._int_value(item.get("trust_to_player"), 50),
+                attitude_score=self._int_value(item.get("attitude_score"), 50),
+                anxiety_level=self._int_value(item.get("anxiety_level"), 50),
+                reference_point=self._int_value(item.get("reference_point"), 0),
+                granovetter_threshold=self._int_value(item.get("granovetter_threshold"), 50),
+                core_demand_satisfied=bool(item.get("core_demand_satisfied", False)),
+                signed=bool(item.get("signed", False)),
+                known_info=self._string_list(item.get("known_info")),
+                player_promises=self._string_list(item.get("player_promises")),
+            ))
         return npcs
 
     def _build_action_rules(self, value: Any) -> list[GameActionRule]:
         if not isinstance(value, list):
             return []
-
         rules = []
         for item in value:
             if not isinstance(item, dict):
                 continue
-            rules.append(
-                GameActionRule(
-                    action_id=self._required_str(item, "action_id"),
-                    name=self._required_str(item, "name"),
-                    cost_action_points=self._int_value(item.get("cost_action_points"), 1),
-                    budget_cost=self._int_value(item.get("budget_cost"), 0),
-                    allowed_targets=self._string_list(item.get("allowed_targets")),
-                    preconditions=self._string_list(item.get("preconditions")),
-                    forbidden_conditions=self._string_list(item.get("forbidden_conditions")),
-                    direct_payoff=item.get("direct_payoff", {}) if isinstance(item.get("direct_payoff"), dict) else {},
-                    side_effects=self._string_list(item.get("side_effects")),
-                    risk_notes=self._string_list(item.get("risk_notes")),
-                    citations=self._string_list(item.get("citations")),
-                )
-            )
+            rules.append(GameActionRule(
+                action_id=self._required_str(item, "action_id"),
+                name=self._required_str(item, "name"),
+                cost_action_points=self._int_value(item.get("cost_action_points"), 1),
+                budget_cost=self._int_value(item.get("budget_cost"), 0),
+                allowed_targets=self._string_list(item.get("allowed_targets")),
+                preconditions=self._string_list(item.get("preconditions")),
+                forbidden_conditions=self._string_list(item.get("forbidden_conditions")),
+                direct_payoff=item.get("direct_payoff", {}) if isinstance(item.get("direct_payoff"), dict) else {},
+                side_effects=self._string_list(item.get("side_effects")),
+                risk_notes=self._string_list(item.get("risk_notes")),
+                citations=self._string_list(item.get("citations")),
+            ))
         return rules
 
     def _build_event_outline(self, value: Any) -> list[ScriptEventOutline]:
         if not isinstance(value, list):
             return []
-
         events = []
         for item in value:
             if not isinstance(item, dict):
                 continue
-            events.append(
-                ScriptEventOutline(
-                    event_id=self._required_str(item, "event_id"),
-                    name=self._required_str(item, "name"),
-                    day_window=self._required_str(item, "day_window"),
-                    trigger_condition=self._required_str(item, "trigger_condition"),
-                    description=self._required_str(item, "description"),
-                    payoff=item.get("payoff", {}) if isinstance(item.get("payoff"), dict) else {},
-                    citations=self._string_list(item.get("citations")),
-                )
-            )
+            events.append(ScriptEventOutline(
+                event_id=self._required_str(item, "event_id"),
+                name=self._required_str(item, "name"),
+                day_window=self._required_str(item, "day_window"),
+                trigger_condition=self._required_str(item, "trigger_condition"),
+                description=self._required_str(item, "description"),
+                payoff=item.get("payoff", {}) if isinstance(item.get("payoff"), dict) else {},
+                citations=self._string_list(item.get("citations")),
+            ))
         return events
 
     def _build_acts(self, value: Any) -> list[ActStructure]:
-        """从 LLM 响应解析三幕结构。"""
         if not isinstance(value, list):
             return []
         acts = []
@@ -1142,11 +1162,8 @@ class QwenScriptGenerator:
         return acts
 
     def _build_npc_relationships(
-        self,
-        value: Any,
-        valid_npc_ids: set[str],
+        self, value: Any, valid_npc_ids: set[str],
     ) -> list[NPCRelationship]:
-        """从 LLM 响应解析 NPC 关系网。"""
         if not isinstance(value, list):
             return []
         relationships = []
@@ -1158,7 +1175,7 @@ class QwenScriptGenerator:
             if not from_id or not to_id:
                 continue
             if valid_npc_ids and (from_id not in valid_npc_ids or to_id not in valid_npc_ids):
-                continue  # 跳过引用不存在 NPC 的关系
+                continue
             if from_id == to_id:
                 continue
             relation_type = str(item.get("relation_type", "")).strip()
@@ -1166,8 +1183,7 @@ class QwenScriptGenerator:
                 continue
             try:
                 relationships.append(NPCRelationship(
-                    from_npc_id=from_id,
-                    to_npc_id=to_id,
+                    from_npc_id=from_id, to_npc_id=to_id,
                     relation_type=relation_type,
                     strength=self._int_value(item.get("strength"), 50),
                     description=str(item.get("description", "")).strip(),
@@ -1177,11 +1193,8 @@ class QwenScriptGenerator:
         return relationships
 
     def _build_decision_points(
-        self,
-        value: Any,
-        valid_npc_ids: set[str],
+        self, value: Any, valid_npc_ids: set[str],
     ) -> list[DecisionPoint]:
-        """从 LLM 响应解析决策点列表。"""
         if not isinstance(value, list):
             return []
         decisions = []
@@ -1189,12 +1202,9 @@ class QwenScriptGenerator:
             if not isinstance(item, dict):
                 continue
             try:
-                options = self._build_decision_options(
-                    item.get("options", []),
-                    valid_npc_ids,
-                )
+                options = self._build_decision_options(item.get("options", []), valid_npc_ids)
                 if len(options) < 2:
-                    continue  # 选项不足，跳过
+                    continue
                 affected_ids = [
                     nid.strip() for nid in self._string_list(item.get("affected_npc_ids"))
                     if not valid_npc_ids or nid.strip() in valid_npc_ids
@@ -1215,11 +1225,8 @@ class QwenScriptGenerator:
         return decisions
 
     def _build_decision_options(
-        self,
-        value: Any,
-        valid_npc_ids: set[str],
+        self, value: Any, valid_npc_ids: set[str],
     ) -> list[DecisionOption]:
-        """从 LLM 响应解析决策选项。"""
         if not isinstance(value, list):
             return []
         options = []
@@ -1242,7 +1249,6 @@ class QwenScriptGenerator:
         return options
 
     def _build_endings(self, value: Any) -> list[EndingCondition]:
-        """从 LLM 响应解析多结局条件。"""
         if not isinstance(value, list):
             return []
         endings = []
@@ -1267,7 +1273,6 @@ class QwenScriptGenerator:
     def _build_citations(self, value: Any) -> list[ScriptCitation]:
         if not isinstance(value, list):
             return []
-
         citations = []
         for item in value:
             if not isinstance(item, dict):
@@ -1275,44 +1280,31 @@ class QwenScriptGenerator:
             source_context_id = str(item.get("source_context_id", "")).strip()
             if not source_context_id:
                 source_context_id = "query"
-            citations.append(
-                ScriptCitation(
-                    citation_id=self._required_str(item, "citation_id"),
-                    source_context_id=source_context_id,
-                    title=self._required_str(item, "title"),
-                    note=self._required_str(item, "note"),
-                )
-            )
+            citations.append(ScriptCitation(
+                citation_id=self._required_str(item, "citation_id"),
+                source_context_id=source_context_id,
+                title=self._required_str(item, "title"),
+                note=self._required_str(item, "note"),
+            ))
         return citations
 
     def _merge_citations(
-        self,
-        existing: list[ScriptCitation],
-        additions: list[ScriptCitation],
+        self, existing: list[ScriptCitation], additions: list[ScriptCitation],
     ) -> list[ScriptCitation]:
-        merged: dict[str, ScriptCitation] = {
-            citation.citation_id: citation for citation in existing
-        }
-        for citation in additions:
-            merged[citation.citation_id] = citation
+        merged = {c.citation_id: c for c in existing}
+        for c in additions:
+            merged[c.citation_id] = c
         return list(merged.values())
 
-    def _module_value(
-        self,
-        payload: dict[str, Any],
-        key: str,
-        *aliases: str,
-    ) -> Any:
-        candidate_keys = (key, *aliases)
-        for candidate in candidate_keys:
+    def _module_value(self, payload: dict[str, Any], key: str, *aliases: str) -> Any:
+        for candidate in (key, *aliases):
             if candidate in payload:
                 return payload[candidate]
-
         for wrapper in ("data", "result", "script"):
             nested = payload.get(wrapper)
             if not isinstance(nested, dict):
                 continue
-            for candidate in candidate_keys:
+            for candidate in (key, *aliases):
                 if candidate in nested:
                     return nested[candidate]
         return None

@@ -1,12 +1,15 @@
-"""Use pa_backend agent as the staged script-generation backend."""
+"""Use pa_backend ReAct agent as the script-generation backend.
+
+The ReAct agent supports os_search (with collection_ids) for classic literature,
+and w_baidu_search for real-world event retrieval.
+"""
 
 from dataclasses import dataclass
 from http.client import HTTPSConnection, HTTPConnection, RemoteDisconnected
 import json
 import ssl
 import threading
-from typing import Any
-from urllib import error, request
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from src.config import PABackendConfig
@@ -24,11 +27,12 @@ class _PABackendAuth:
 
 
 class PABackendScriptClient:
-    """Minimal ChatClient-compatible adapter for pa_backend OS agent.
+    """Minimal ChatClient-compatible adapter for pa_backend ReAct agent.
 
-    QwenScriptGenerator already breaks full-draft generation into seven
-    independent JSON stages. This adapter keeps one pa_backend conversation for
-    the whole draft and sends each stage prompt to that conversation.
+    Uses the ReAct agent (/agent/os-search/react) which supports:
+    - os_search with collection_ids constraint → classic literature
+    - fetch_os_document_fulltext → read full documents from knowledge base
+    - w_baidu_search → real-world event search
     """
 
     def __init__(
@@ -39,8 +43,7 @@ class PABackendScriptClient:
         self._config = config or PABackendConfig.from_env()
         self._auth: _PABackendAuth | None = None
         self._conversation_id: str | None = None
-        self._cancel_event = cancel_event  # 外部传入的取消标志
-        # 正在进行的 HTTP 连接引用，供跨线程取消
+        self._cancel_event = cancel_event
         self._active_conn: HTTPConnection | HTTPSConnection | None = None
         self._active_conn_lock = threading.Lock()
 
@@ -48,8 +51,16 @@ class PABackendScriptClient:
     def conversation_id(self) -> str | None:
         return self._conversation_id
 
+    def reset_conversation(self) -> None:
+        """重置对话 ID，使下一次 complete() 调用创建全新的 Supabase 对话。
+
+        用于 Call 3 逐章生成场景——每章应是独立的全新对话，
+        避免前序章节的上下文污染当前章节的生成。
+        """
+        self._conversation_id = None
+
     def cancel_active_request(self) -> None:
-        """从外部线程调用，关闭正在进行的 HTTP 连接以中断阻塞的请求。"""
+        """Close any in-flight HTTP connection from another thread."""
         with self._active_conn_lock:
             conn = self._active_conn
         if conn is not None:
@@ -58,24 +69,45 @@ class PABackendScriptClient:
             except Exception:
                 pass
 
-    def complete(self, messages: list[ChatMessage], temperature: float = 0.2) -> str:
+    def complete(
+        self,
+        messages: list[ChatMessage],
+        temperature: float = 0.2,
+        stream_callback: Callable[[int], None] | None = None,
+    ) -> str:
         if self._cancel_event and self._cancel_event.is_set():
             raise PABackendClientError("生成已被用户取消")
         if not self._config.base_url:
             raise PABackendClientError("PA_BACKEND_BASE_URL is required")
         auth = self._ensure_auth()
         conversation_id = self._ensure_conversation(auth, self._stage_title(messages))
+
+        collection_ids = []
+        if self._config.collection_id:
+            collection_ids = [self._config.collection_id]
+
         payload = {
             "query": self._stage_prompt(messages),
-            "collection_ids": [],
+            "collection_ids": collection_ids,
             "conversation_id": conversation_id,
             "search_preference": self._config.search_preference,
-            "enable_web_search": self._config.enable_web_search,
+            "enable_web_search": True,
             "attachments_id": [],
             "oss_keys": [],
         }
-        response_text = self._post(self._url(self._config.agent_endpoint), payload, auth.access_token)
-        content = self._content_from_sse(response_text)
+        if stream_callback is None:
+            content = self._post(
+                self._url(self._config.agent_endpoint), payload, auth.access_token
+            )
+        else:
+            content = self._post(
+                self._url(self._config.agent_endpoint),
+                payload,
+                auth.access_token,
+                stream_callback=stream_callback,
+            )
+        if not stream_callback:
+            content = self._content_from_sse(content)
         if not content.strip():
             raise PABackendClientError("pa_backend returned empty stage content")
         return content
@@ -85,12 +117,15 @@ class PABackendScriptClient:
         messages: list[ChatMessage],
         temperature: float = 0.2,
     ) -> int:
+        collection_ids = []
+        if self._config.collection_id:
+            collection_ids = [self._config.collection_id]
         payload = {
             "query": self._stage_prompt(messages),
-            "collection_ids": [],
+            "collection_ids": collection_ids,
             "conversation_id": self._conversation_id or "<pending>",
             "search_preference": self._config.search_preference,
-            "enable_web_search": self._config.enable_web_search,
+            "enable_web_search": True,
             "attachments_id": [],
             "oss_keys": [],
         }
@@ -135,7 +170,7 @@ class PABackendScriptClient:
             )
         response_text = self._post(
             f"{self._config.supabase_url}/rest/v1/conversations?select=id",
-            [{"user_id": auth.user_id, "title": title[:40] or "《父母官》分步剧本生成"}],
+            [{"user_id": auth.user_id, "title": title[:40] or "剧本分步生成"}],
             token=auth.access_token,
             extra_headers={
                 "apikey": self._config.supabase_key,
@@ -170,13 +205,9 @@ class PABackendScriptClient:
         payload: dict | list,
         token: str,
         extra_headers: dict[str, str] | None = None,
+        stream_callback: Callable[[int], None] | None = None,
     ) -> str:
-        """发送 POST 请求。使用 http.client 直连以支持跨线程取消。
-
-        取消机制：_active_conn 存储正在使用的连接对象，
-        外部线程调用 cancel_active_request() 关闭连接，
-        getresponse()/read() 会立即抛出异常。
-        """
+        """Send POST request with http.client for cross-thread cancellation."""
         parsed = urlparse(url)
         host = parsed.hostname or ""
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -206,17 +237,17 @@ class PABackendScriptClient:
                 else:
                     conn = HTTPConnection(host, port, timeout=self._config.timeout_seconds)
 
-                # 注册连接，允许跨线程关闭
                 with self._active_conn_lock:
                     self._active_conn = conn
 
                 conn.request("POST", path, body, headers)
                 response = conn.getresponse()
+                if stream_callback is not None:
+                    return self._read_sse_response(response, stream_callback)
                 result = response.read().decode("utf-8", errors="replace")
                 return result
 
             except (RemoteDisconnected, ConnectionError, OSError, TimeoutError) as exc:
-                # 检查是否是被取消触发的
                 if self._cancel_event and self._cancel_event.is_set():
                     raise PABackendClientError("生成已被用户取消") from exc
                 if isinstance(exc, RemoteDisconnected):
@@ -237,6 +268,45 @@ class PABackendScriptClient:
         raise PABackendClientError(
             "pa_backend request failed: remote server closed connection without response"
         ) from last_disconnect
+
+    def _read_sse_response(
+        self,
+        response: Any,
+        stream_callback: Callable[[int], None],
+    ) -> str:
+        """Read a text/event-stream response incrementally and return content text."""
+        content_parts: list[str] = []
+        event_name = ""
+        data_lines: list[str] = []
+        last_content_len = 0
+
+        while True:
+            if self._cancel_event and self._cancel_event.is_set():
+                raise PABackendClientError("生成已被用户取消")
+
+            raw_line = response.readline()
+            if raw_line == b"":
+                break
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                self._consume_event(event_name, data_lines, content_parts)
+                current_len = sum(len(part) for part in content_parts)
+                if current_len != last_content_len:
+                    last_content_len = current_len
+                    stream_callback(current_len)
+                event_name = ""
+                data_lines = []
+                continue
+            if line.startswith("event:"):
+                event_name = line.removeprefix("event:").strip()
+            elif line.startswith("data:"):
+                data_lines.append(line.removeprefix("data:").strip())
+
+        self._consume_event(event_name, data_lines, content_parts)
+        current_len = sum(len(part) for part in content_parts)
+        if current_len != last_content_len:
+            stream_callback(current_len)
+        return "".join(content_parts).strip()
 
     def _content_from_sse(self, response_text: str) -> str:
         content_parts: list[str] = []
@@ -262,6 +332,11 @@ class PABackendScriptClient:
         data_lines: list[str],
         content_parts: list[str],
     ) -> None:
+        if event_name == "clarification":
+            raise PABackendClientError(
+                "ReAct Agent 意外触发追问（request_clarification），"
+                "请检查 prompt 是否包含禁止追问的指令。"
+            )
         if event_name != "content" or not data_lines:
             return
         data = "\n".join(data_lines)
@@ -284,15 +359,16 @@ class PABackendScriptClient:
         sections = []
         for message in messages:
             sections.append(f"[{message.role}]\n{message.content}")
-        return (
-            "你正在为严肃游戏《父母官》执行一个分阶段剧本生成任务。"
-            "请检索并综合知识库/案例资料，但最终必须严格输出本阶段要求的合法 JSON 对象；"
-            "不要输出 Markdown，不要解释 JSON 之外的内容。\n\n"
-            + "\n\n".join(sections)
+        prompt = "\n\n".join(sections)
+
+        anti_clarification = (
+            "绝对不要使用 request_clarification 追问用户。"
+            "如果信息不足，基于常识和已有知识做出合理假设并直接给出结果。"
         )
+        return f"{anti_clarification}\n\n{prompt}"
 
     def _stage_title(self, messages: list[ChatMessage]) -> str:
         for message in messages:
             if message.role == "system":
                 return " ".join(message.content.split())[:40]
-        return "《父母官》分步剧本生成"
+        return "剧本分步生成"

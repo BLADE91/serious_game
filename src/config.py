@@ -9,15 +9,36 @@ DEFAULT_QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_QWEN_MODEL = "qwen-plus"
 DEFAULT_OPENSEARCH_INDEX = "serious_game_sources"
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 def load_dotenv(path: str | Path = ".env", override: bool = True) -> None:
-    """从 .env 文件加载简单的 KEY=VALUE 配置，默认覆盖已有环境变量。"""
+    """从 .env 文件加载简单的 KEY=VALUE 配置，默认覆盖已有环境变量。
+
+    先用工作目录查找，找不到再回退到项目根目录。
+    """
 
     env_path = Path(path)
-    if not env_path.exists():
+    if not env_path.is_absolute():
+        # 相对路径：先尝试 CWD，再尝试项目根目录
+        candidates = [Path.cwd() / env_path, _PROJECT_ROOT / env_path]
+    else:
+        candidates = [env_path]
+
+    resolved = None
+    for candidate in candidates:
+        if candidate.exists():
+            resolved = candidate
+            break
+
+    if resolved is None:
+        print(f"[load_dotenv] ⚠ 未找到 .env 文件（搜索路径: {', '.join(str(c) for c in candidates)}）")
+        print("[load_dotenv]   请将 .env.example 复制为 .env 并填入真实配置。")
         return
 
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+    print(f"[load_dotenv] ✓ 加载配置: {resolved}")
+
+    for raw_line in resolved.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -129,8 +150,9 @@ class PABackendConfig:
     password: str = ""
     timeout_seconds: int = 180
     search_preference: str = "breadth"
-    enable_web_search: bool = False
+    enable_web_search: bool = True
     verify_ssl: bool = True
+    collection_id: str = ""
 
     @classmethod
     def from_env(cls, dotenv_path: str | Path = ".env") -> "PABackendConfig":
@@ -151,8 +173,9 @@ class PABackendConfig:
             password=os.getenv("PA_BACKEND_PASSWORD", "").strip(),
             timeout_seconds=_int_from_env("PA_BACKEND_TIMEOUT_SECONDS", 180),
             search_preference=os.getenv("PA_BACKEND_SEARCH_PREFERENCE", "breadth").strip(),
-            enable_web_search=_bool_from_env("PA_BACKEND_ENABLE_WEB_SEARCH", False),
+            enable_web_search=_bool_from_env("PA_BACKEND_ENABLE_WEB_SEARCH", True),
             verify_ssl=_bool_from_env("PA_BACKEND_VERIFY_SSL", True),
+            collection_id=os.getenv("PA_BACKEND_COLLECTION_ID", "").strip(),
         )
 
 

@@ -1,4 +1,4 @@
-"""父母官剧本生成器 HTTP API —— FastAPI + SSE 进度推送。"""
+"""剧本生成器 HTTP API —— FastAPI + SSE 进度推送。"""
 
 from __future__ import annotations
 
@@ -85,10 +85,14 @@ class GenerateRequest(BaseModel):
         default="", description="自由文本查询（兼容旧版，与结构化字段二选一）",
     )
     duration_minutes: int = Field(default=45, ge=10, le=120)
-    complexity: str = Field(default="medium", pattern=r"^(simple|medium|complex)$")
     extra_requirements: str = Field(default="")
+    npc_count: int = Field(default=12, ge=8, le=20, description="NPC 数量")
+    character_settings: str = Field(default="", description="人物设定")
+    story_background: str = Field(default="", description="故事背景")
     feedback: str = Field(default="")
     full_draft: bool = Field(default=True)
+    chapter_count: int = Field(default=6, ge=3, le=12, description="章节数量（章节式管线使用）")
+    ending_count: int = Field(default=4, ge=2, le=8, description="结局数量（章节式管线使用）")
 
 
 class ReviseRequest(BaseModel):
@@ -114,6 +118,16 @@ class ReviseElementRequest(BaseModel):
 class SaveManualRequest(BaseModel):
     result: dict[str, Any] = Field(..., description="完整的 lastResult 对象")
     source: str = Field(default="manual", description="manual | ai_element | ai_full")
+
+
+class ExtractFromMDRequest(BaseModel):
+    full_md: str = Field(..., min_length=1, description="完整 MD 剧本原文")
+    npc_count: int = Field(default=12, ge=8, le=20)
+    query: str = Field(default="", description="原始查询/需求描述")
+    scenario: str = Field(default="")
+    player_role: str = Field(default="")
+    learning_goal: str = Field(default="")
+    duration_minutes: int = Field(default=45)
 
 
 # ---- SSE 工具 ----
@@ -179,18 +193,27 @@ def _next_version(prefix: str) -> tuple[str, int, int]:
     return f"v{gen:02d}-{rev:02d}_{prefix}", gen, rev
 
 
-def _save_script_draft(script_dict: dict, prefix: str = "script_revision") -> str:
-    """将剧本保存到 outputs/script_drafts/，返回文件名。"""
-    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+def _save_script_draft(script_dict: dict, prefix: str = "script_revision", full_md: str = "") -> str:
+    """将剧本保存到 outputs/script_drafts/v{gen}/，返回文件名。
+
+    Args:
+        script_dict: 包含 script / contexts_used 等的完整结果字典
+        prefix: 版本前缀
+        full_md: MD 原文（可选，写入 saved JSON 的顶层字段）
+    """
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     base, gen, rev = _next_version(prefix)
+    version_dir = OUTPUTS_DIR / f"v{gen:02d}"
+    version_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{base}_{ts}.json"
-    filepath = OUTPUTS_DIR / filename
+    filepath = version_dir / filename
     # 剔除前端传入的 filename 元数据，避免下次加载时覆盖真实文件名
     clean = {k: v for k, v in script_dict.items() if k != "filename"}
+    if full_md:
+        clean["full_md"] = full_md
     payload = json.dumps(clean, ensure_ascii=False, indent=2)
     filepath.write_text(payload, encoding="utf-8")
-    return filename
+    return f"v{gen:02d}/{filename}"
 
 
 # ---- 应用工厂 ----
@@ -199,7 +222,7 @@ def create_app() -> FastAPI:
     load_dotenv(override=True)
 
     app = FastAPI(
-        title="父母官剧本生成器",
+        title="剧本生成器",
         description="严肃游戏剧本结构化生成与修订 API",
         version="2.0.0",
     )
@@ -221,8 +244,10 @@ def create_app() -> FastAPI:
             learning_goal=req.learning_goal,
             query=req.query,
             duration_minutes=req.duration_minutes,
-            complexity=req.complexity,
             extra_requirements=req.extra_requirements,
+            npc_count=req.npc_count,
+            character_settings=req.character_settings,
+            story_background=req.story_background,
             feedback=req.feedback,
             full_draft=req.full_draft,
         )
@@ -261,8 +286,10 @@ def create_app() -> FastAPI:
                     if _is_cancelled(task_id):
                         return
                     script_dict = serialize_script(result.script)
+                    full_md = result.full_md
                     result_payload = {
                         "script": script_dict,
+                        "full_md": full_md,
                         "contexts_used": [
                             {"id": c.id, "title": c.title, "content": c.content, "metadata": c.metadata}
                             for c in result.contexts_used
@@ -273,7 +300,7 @@ def create_app() -> FastAPI:
                         "generation_mode": result.generation_mode,
                     }
                     # 自动保存到磁盘
-                    saved_name = _save_script_draft(result_payload, prefix="script_generate")
+                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=full_md)
                     result_payload["saved_as"] = saved_name
                     loop.call_soon_threadsafe(queue.put_nowait, {
                         "type": "result",
@@ -429,6 +456,316 @@ def create_app() -> FastAPI:
             },
         )
 
+    # ---------- POST /api/generate-md ----------
+
+    @app.post("/api/generate-md")
+    async def generate_md(req: GenerateRequest):
+        """Phase 1 only：生成 MD 剧本，SSE 返回 3 阶段进度 + MD 文本。
+
+        生成后自动存盘（script 为 null，标记尚未提取结构化 JSON）。
+        """
+        request = ScriptGenerationRequest(
+            scenario=req.scenario,
+            player_role=req.player_role,
+            learning_goal=req.learning_goal,
+            query=req.query,
+            duration_minutes=req.duration_minutes,
+            extra_requirements=req.extra_requirements,
+            npc_count=req.npc_count,
+            character_settings=req.character_settings,
+            story_background=req.story_background,
+            feedback=req.feedback,
+            full_draft=True,
+        )
+
+        task_id = _create_task()
+
+        async def event_stream() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue[dict] = asyncio.Queue()
+
+            def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
+                if _is_cancelled(task_id):
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"type": "cancelled", "message": "生成已被用户取消"},
+                    )
+                    return
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    {"type": "progress", "stage": stage, "total": total,
+                     "name": name, "request_bytes": request_bytes},
+                )
+
+            def run_generation() -> None:
+                try:
+                    if _is_cancelled(task_id):
+                        return
+                    cancel_evt = _task_event(task_id)
+                    service = ScriptGenService(cancel_event=cancel_evt)
+                    entry = _active_tasks.get(task_id)
+                    if entry is not None:
+                        entry["service"] = service
+                    full_md, query = service.generate_md_only(request, progress_callback=progress_callback)
+                    if _is_cancelled(task_id):
+                        return
+                    # 存盘（script 为 null，标记尚未提取）
+                    result_payload = {
+                        "script": None,
+                        "full_md": full_md,
+                        "contexts_used": [],
+                        "rewritten_queries": [],
+                        "generation_notes": ["MD 剧本原文（尚未提取结构化 JSON）"],
+                        "original_query": query,
+                        "generation_mode": "md_only",
+                    }
+                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=full_md)
+                    result_payload["saved_as"] = saved_name
+                    result_payload["script"] = None  # 确保序列化后为 null
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "result",
+                        **result_payload,
+                    })
+                except Exception as exc:
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "error", "message": f"生成失败：{exc}", "detail": traceback.format_exc(),
+                    })
+
+            import threading
+            thread = threading.Thread(target=run_generation, daemon=True)
+            thread.start()
+
+            try:
+                while True:
+                    event_data = await queue.get()
+                    event_type = event_data.pop("type")
+                    yield await sse_event(event_type, event_data)
+                    if event_type in ("result", "error", "cancelled"):
+                        break
+            except asyncio.CancelledError:
+                _cancel_task(task_id)
+                yield await sse_event("cancelled", {"message": "客户端断开连接"})
+            finally:
+                _cleanup_task(task_id)
+                thread.join(timeout=5)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Task-Id": task_id,
+            },
+        )
+
+    # ---------- POST /api/generate-chapter ----------
+
+    @app.post("/api/generate-chapter")
+    async def generate_chapter(req: GenerateRequest):
+        """使用 6-Call 章节式管线生成剧本，SSE 流式返回 8 阶段进度。
+
+        Call 1-3: PA Backend 创作（全局设定 → 章节大纲 → 逐章生成）
+        Call 4-6: Qwen Flash 审校与抽取（一致性修订 → JSON 抽取 → 校验）
+        """
+        request = ScriptGenerationRequest(
+            scenario=req.scenario,
+            player_role=req.player_role,
+            learning_goal=req.learning_goal,
+            query=req.query,
+            duration_minutes=req.duration_minutes,
+            extra_requirements=req.extra_requirements,
+            npc_count=req.npc_count,
+            character_settings=req.character_settings,
+            story_background=req.story_background,
+            feedback=req.feedback,
+            full_draft=True,
+            chapter_count=req.chapter_count,
+            ending_count=req.ending_count,
+        )
+
+        task_id = _create_task()
+
+        async def event_stream() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue[dict] = asyncio.Queue()
+
+            def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
+                if _is_cancelled(task_id):
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"type": "cancelled", "message": "生成已被用户取消"},
+                    )
+                    return
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    {"type": "progress", "stage": stage, "total": total,
+                     "name": name, "request_bytes": request_bytes},
+                )
+
+            def run_generation() -> None:
+                try:
+                    if _is_cancelled(task_id):
+                        return
+                    cancel_evt = _task_event(task_id)
+                    service = ScriptGenService(cancel_event=cancel_evt)
+                    entry = _active_tasks.get(task_id)
+                    if entry is not None:
+                        entry["service"] = service
+                    result = service.generate_chapter_script(request, progress_callback=progress_callback)
+                    if _is_cancelled(task_id):
+                        return
+                    script_dict = serialize_script(result.script)
+                    full_md = result.full_md
+                    result_payload = {
+                        "script": script_dict,
+                        "full_md": full_md,
+                        "contexts_used": [],
+                        "rewritten_queries": [],
+                        "generation_notes": result.generation_notes,
+                        "original_query": result.original_query,
+                        "generation_mode": result.generation_mode,
+                    }
+                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=full_md)
+                    result_payload["saved_as"] = saved_name
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "result",
+                        **result_payload,
+                    })
+                except Exception as exc:
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "error", "message": f"生成失败：{exc}", "detail": traceback.format_exc(),
+                    })
+
+            import threading
+            thread = threading.Thread(target=run_generation, daemon=True)
+            thread.start()
+
+            try:
+                while True:
+                    event_data = await queue.get()
+                    event_type = event_data.pop("type")
+                    yield await sse_event(event_type, event_data)
+                    if event_type in ("result", "error", "cancelled"):
+                        break
+            except asyncio.CancelledError:
+                _cancel_task(task_id)
+                yield await sse_event("cancelled", {"message": "客户端断开连接"})
+            finally:
+                _cleanup_task(task_id)
+                thread.join(timeout=5)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Task-Id": task_id,
+            },
+        )
+
+    # ---------- POST /api/extract-from-md ----------
+
+    @app.post("/api/extract-from-md")
+    async def extract_from_md(req: ExtractFromMDRequest):
+        """Phase 2 only：从 MD 提取结构化 JSON，SSE 返回 5 阶段进度 + 完整结果。
+
+        提取后存盘为新版本（同 gen，rev+1）。
+        """
+        task_id = _create_task()
+
+        async def event_stream() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue[dict] = asyncio.Queue()
+
+            def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
+                if _is_cancelled(task_id):
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"type": "cancelled", "message": "提取已被用户取消"},
+                    )
+                    return
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    {"type": "progress", "stage": stage, "total": total,
+                     "name": name, "request_bytes": request_bytes},
+                )
+
+            def run_extraction() -> None:
+                try:
+                    if _is_cancelled(task_id):
+                        return
+                    cancel_evt = _task_event(task_id)
+                    service = ScriptGenService(cancel_event=cancel_evt)
+                    entry = _active_tasks.get(task_id)
+                    if entry is not None:
+                        entry["service"] = service
+                    # 构建 query
+                    query = req.query.strip()
+                    if not query:
+                        parts = [req.scenario, req.player_role, req.learning_goal]
+                        query = " ".join(p for p in parts if p)
+                    script = service.extract_from_md(
+                        full_md=req.full_md,
+                        query=query,
+                        npc_count=req.npc_count,
+                        progress_callback=progress_callback,
+                    )
+                    if _is_cancelled(task_id):
+                        return
+                    script_dict = serialize_script(script)
+                    result_payload = {
+                        "script": script_dict,
+                        "full_md": req.full_md,
+                        "contexts_used": [],
+                        "rewritten_queries": [],
+                        "generation_notes": ["从 MD 剧本提取结构化 JSON。", "包含三幕结构、NPC 关系网、决策点序列和多结局条件。"],
+                        "original_query": query,
+                        "generation_mode": "full",
+                    }
+                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=req.full_md)
+                    result_payload["saved_as"] = saved_name
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "result",
+                        **result_payload,
+                    })
+                except Exception as exc:
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "error", "message": f"提取失败：{exc}", "detail": traceback.format_exc(),
+                    })
+
+            import threading
+            thread = threading.Thread(target=run_extraction, daemon=True)
+            thread.start()
+
+            try:
+                while True:
+                    event_data = await queue.get()
+                    event_type = event_data.pop("type")
+                    yield await sse_event(event_type, event_data)
+                    if event_type in ("result", "error", "cancelled"):
+                        break
+            except asyncio.CancelledError:
+                _cancel_task(task_id)
+                yield await sse_event("cancelled", {"message": "客户端断开连接"})
+            finally:
+                _cleanup_task(task_id)
+                thread.join(timeout=5)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Task-Id": task_id,
+            },
+        )
+
     # ---------- 版本管理 ----------
 
     @app.get("/api/versions")
@@ -437,46 +774,60 @@ def create_app() -> FastAPI:
         if not OUTPUTS_DIR.exists():
             return {"versions": []}
         versions = []
-        for f in sorted(OUTPUTS_DIR.glob("v*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-            try:
-                with open(f, "r", encoding="utf-8") as fh:
-                    data = json.load(fh)
-            except (json.JSONDecodeError, OSError):
+
+        for subdir in sorted(OUTPUTS_DIR.glob("v[0-9][0-9]"), reverse=True):
+            if not subdir.is_dir():
                 continue
-            s = data.get("script", {}) if isinstance(data, dict) else {}
-            # 解析格式：v{gen}-{rev}_{prefix}_{ts}.json
-            fname = f.name
-            m = re.match(r"^(v\d+-\d+)_(script_\w+)_\d{8}_\d{6}\.json$", fname)
-            if not m:
-                continue
-            v_part = m.group(1)
-            prefix = m.group(2)
-            try:
-                gen_num = int(v_part[1:].split("-")[0])
-                rev_num = int(v_part.split("-")[1])
+            # 排除中间产物 JSON（0X_*.json），只列出最终结果
+            json_candidates = [p for p in subdir.glob("*.json")
+                               if not p.name.startswith("0")]
+            for f in sorted(json_candidates, key=lambda p: p.stat().st_mtime, reverse=True):
+                try:
+                    with open(f, "r", encoding="utf-8") as fh:
+                        data = json.load(fh)
+                except (json.JSONDecodeError, OSError):
+                    continue
+                s = data.get("script") if isinstance(data, dict) else {}
+                if not isinstance(s, dict):
+                    s = {}
+                rel_path = str(f.relative_to(OUTPUTS_DIR))
+                gen_num = int(subdir.name[1:]) if subdir.name[1:].isdigit() else None
+                # 从 JSON 读取 revision_round 和 generation_mode
+                rev_num = data.get("revision_round", 0) if isinstance(data, dict) else 0
+                mode = data.get("generation_mode", "") if isinstance(data, dict) else ""
+                mode_labels = {"chapter": "章节式", "full": "三幕式·完整", "compact": "三幕式·紧凑"}
+                mode_tag = mode_labels.get(mode, "")
                 label = f"V{gen_num:02d}-{rev_num:02d}"
-            except (ValueError, IndexError):
-                gen_num, rev_num, label = None, None, fname
-            versions.append({
-                "filename": fname,
-                "label": label,
-                "gen": gen_num,
-                "rev": rev_num,
-                "prefix": prefix,
-                "timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                "title": s.get("title", "无标题"),
-                "npc_count": len(s.get("npc_seed", [])),
-                "decision_count": len(s.get("decision_points", [])),
-                "generation_mode": data.get("generation_mode", "") if isinstance(data, dict) else "",
-            })
+                if mode_tag:
+                    label += f"（{mode_tag}）"
+                versions.append({
+                    "filename": rel_path,
+                    "label": label,
+                    "gen": gen_num,
+                    "rev": rev_num,
+                    "prefix": "script_generate",
+                    "timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                    "title": s.get("title", "（剧本原文，尚未提取）") if s else "（剧本原文，尚未提取）",
+                    "npc_count": len(s.get("npc_seed", [])),
+                    "decision_count": len(s.get("decision_points", [])),
+                    "chapters_count": len(s.get("chapters", [])),
+                    "generation_mode": data.get("generation_mode", "") if isinstance(data, dict) else "",
+                })
         return {"versions": versions}
 
-    @app.get("/api/version/{filename}")
+    @app.get("/api/version/{filename:path}")
     async def load_version(filename: str):
-        """加载指定版本的剧本。"""
-        if ".." in filename or "/" in filename:
+        """加载指定版本的剧本（支持 v06/xxx.json 路径）。"""
+        # 安全检查：禁止路径遍历
+        safe = os.path.normpath(filename)
+        if safe.startswith("..") or os.path.isabs(safe):
             raise HTTPException(400, "非法文件名")
-        filepath = OUTPUTS_DIR / filename
+        filepath = OUTPUTS_DIR / safe
+        # 确保解析后的路径在 OUTPUTS_DIR 之内
+        try:
+            filepath.resolve().relative_to(OUTPUTS_DIR.resolve())
+        except ValueError:
+            raise HTTPException(400, "非法文件路径")
         if not filepath.exists():
             raise HTTPException(404, f"版本 {filename} 不存在")
         try:
@@ -534,7 +885,10 @@ def create_app() -> FastAPI:
         outputs_dir = Path(__file__).resolve().parent.parent.parent / "outputs" / "script_drafts"
         if not outputs_dir.exists():
             raise HTTPException(404, "outputs/script_drafts 目录不存在")
-        json_files = sorted(outputs_dir.glob("v*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        # 排除中间产物 JSON（0X_*.json），只找最终结果
+        json_candidates = [p for p in outputs_dir.glob("v[0-9][0-9]/*.json")
+                           if not p.name.startswith("0")]
+        json_files = sorted(json_candidates, key=lambda p: p.stat().st_mtime, reverse=True)
         if not json_files:
             raise HTTPException(404, "没有找到已生成的剧本")
         latest = json_files[0]
@@ -543,13 +897,15 @@ def create_app() -> FastAPI:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
             raise HTTPException(500, f"读取剧本文件失败：{exc}")
-        # 兼容旧格式：如果顶层没有 script 字段，说明本身就是 script_design
-        if "script" not in data:
+        # 兼容旧格式：如果顶层没有 script 字段（或为 null），包装为完整格式
+        if "script" not in data or data.get("script") is None:
             data = {"script": data, "contexts_used": [], "rewritten_queries": [],
                     "generation_notes": ["从文件加载"], "original_query": "",
                     "generation_mode": "full"}
         data.pop("filename", None)  # 防御：避免 JSON 内嵌的旧 filename 覆盖
-        return {"filename": latest.name, **data}
+        # 返回相对路径（含版本子目录）
+        rel_path = latest.relative_to(outputs_dir)
+        return {"filename": str(rel_path), **data}
 
     # ---------- 静态文件 ----------
 
@@ -560,7 +916,7 @@ def create_app() -> FastAPI:
         frontend_path = Path(__file__).resolve().parent.parent.parent / "frontend" / "index.html"
         if frontend_path.exists():
             return FileResponse(str(frontend_path))
-        return {"message": "父母官剧本生成器 API", "version": "2.0.0", "docs": "/docs"}
+        return {"message": "剧本生成器 API", "version": "2.0.0", "docs": "/docs"}
 
     return app
 

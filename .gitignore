@@ -12,4 +12,5 @@ frontend/tsconfig.tsbuildinfo
 data/
 
 # Runtime state
-outputs/script_drafts/.version_counter
+outputs/
+outputs/history/

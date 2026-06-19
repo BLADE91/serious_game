@@ -51,15 +51,36 @@ def main() -> None:
         help="目标游戏时长（分钟），默认 45",
     )
     parser.add_argument(
-        "--complexity", "-c",
-        choices=["simple", "medium", "complex"],
-        default="medium",
-        help="剧本复杂度，默认 medium",
-    )
-    parser.add_argument(
         "--extra", "-x",
         default="",
         help="额外要求，自由文本",
+    )
+    parser.add_argument(
+        "--npc-count",
+        type=int,
+        default=36,
+        help="NPC 数量，默认 36",
+    )
+    parser.add_argument(
+        "--character-settings",
+        default="",
+        help="人物设定，自由文本",
+    )
+    parser.add_argument(
+        "--story-background",
+        default="",
+        help="故事背景，自由文本",
+    )
+    parser.add_argument(
+        "--md-only",
+        action="store_true",
+        help="只生成 MD 剧本原文，不提取结构化 JSON",
+    )
+    parser.add_argument(
+        "--extract-from-md",
+        default="",
+        metavar="MD_PATH",
+        help="从已有 MD 文件提取结构化 JSON",
     )
     # 旧输入（兼容）
     parser.add_argument(
@@ -107,6 +128,23 @@ def main() -> None:
         help="最多传给剧本生成器的资料数量",
     )
     parser.add_argument(
+        "--chapter",
+        action="store_true",
+        help="使用新的 6-Call 章节式管线生成（PA Backend ×3 + Qwen Flash ×3）",
+    )
+    parser.add_argument(
+        "--chapter-count",
+        type=int,
+        default=6,
+        help="章节数量（仅 --chapter 模式，默认 6）",
+    )
+    parser.add_argument(
+        "--ending-count",
+        type=int,
+        default=4,
+        help="结局数量（仅 --chapter 模式，默认 4）",
+    )
+    parser.add_argument(
         "--out-dir",
         default="outputs/script_drafts",
         help="JSON 输出目录",
@@ -134,8 +172,10 @@ def main() -> None:
                 player_role=args.player_role,
                 learning_goal=args.learning_goal,
                 duration_minutes=args.duration,
-                complexity=args.complexity,
                 extra_requirements=args.extra,
+                npc_count=args.npc_count,
+                character_settings=args.character_settings,
+                story_background=args.story_background,
                 query=args.query,
                 manual_queries=_parse_manual_queries(args.queries),
                 feedback=args.feedback,
@@ -152,18 +192,108 @@ def main() -> None:
                     player_role=args.player_role,
                     learning_goal=args.learning_goal,
                     duration_minutes=args.duration,
-                    complexity=args.complexity,
                     extra_requirements=args.extra,
+                    npc_count=args.npc_count,
+                    character_settings=args.character_settings,
+                    story_background=args.story_background,
                     query=args.query,
                     manual_queries=reviewed_queries,
                     feedback=args.feedback,
                     max_contexts=args.max_contexts,
                     full_draft=full_draft,
                 )
-            result = service.generate_script(
-                request,
-                progress_callback=print_generation_progress if full_draft else None,
-            )
+            if args.chapter:
+                print("=== 6-Call 章节式管线生成 ===")
+                print(f"章节数: {args.chapter_count}，结局数: {args.ending_count}")
+                request = ScriptGenerationRequest(
+                    scenario=args.scenario,
+                    player_role=args.player_role,
+                    learning_goal=args.learning_goal,
+                    duration_minutes=args.duration,
+                    extra_requirements=args.extra,
+                    npc_count=args.npc_count,
+                    character_settings=args.character_settings,
+                    story_background=args.story_background,
+                    query=args.query,
+                    manual_queries=_parse_manual_queries(args.queries),
+                    feedback=args.feedback,
+                    max_contexts=args.max_contexts,
+                    full_draft=True,
+                    chapter_count=args.chapter_count,
+                    ending_count=args.ending_count,
+                )
+                # 如果 out_dir 已是版本目录（如 v06），直接复用；否则新建
+                version_dir = _resolve_version_dir(Path(args.out_dir))
+                result = service.generate_chapter_script(
+                    request,
+                    progress_callback=print_chapter_progress,
+                    output_dir=str(version_dir),
+                )
+                # 把最终 MD 也存进版本目录
+                _save_final_md(result, version_dir)
+            elif args.extract_from_md:
+                md_path = Path(args.extract_from_md)
+                if not md_path.exists():
+                    print(f"MD 文件不存在：{md_path}")
+                    return
+                raw = md_path.read_text(encoding="utf-8")
+                # .md 文件直接读取；.json 文件提取 full_md 字段
+                if md_path.suffix == '.json':
+                    try:
+                        data = json.loads(raw)
+                        md_text = data.get("full_md", raw) if isinstance(data, dict) else raw
+                        print(f"从 JSON 提取 full_md（{len(md_text)} 字符）")
+                    except (json.JSONDecodeError, TypeError):
+                        md_text = raw
+                else:
+                    md_text = raw
+                    print(f"读取 MD 文件（{len(md_text)} 字符）")
+                query = request.query or args.query or DEFAULT_SCRIPT_QUERY
+                script = service.extract_from_md(
+                    full_md=md_text,
+                    query=query,
+                    npc_count=args.npc_count,
+                    progress_callback=print_generation_progress,
+                )
+                from src.domain.script_design import ScriptGenerationResult
+                result = ScriptGenerationResult(
+                    script=script,
+                    full_md=md_text,
+                    generation_notes=["从 MD 文件提取结构化 JSON"],
+                    original_query=query,
+                    generation_mode="full",
+                )
+            elif args.md_only:
+                print("=== Phase 1 only：仅生成 MD 剧本 ===")
+                full_md, query = service.generate_md_only(
+                    request,
+                    progress_callback=print_generation_progress,
+                )
+                print(f"\n=== MD 剧本（共 {len(full_md)} 字符）===")
+                print(full_md[:2000])
+                if len(full_md) > 2000:
+                    print(f"\n...（省略 {len(full_md) - 2000} 字符）...")
+                # 保存为纯 .md 文件
+                out_dir = Path(args.out_dir)
+                out_dir.mkdir(parents=True, exist_ok=True)
+                from src.api.server import _load_counter, _save_counter
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                counter = _load_counter()
+                gen = counter["gen"] + 1
+                rev = 0
+                counter["gen"] = gen
+                counter["rev"] = rev
+                _save_counter(counter)
+                filename = f"v{gen:02d}-{rev:02d}_script_generate_{timestamp}.md"
+                output_path = out_dir / filename
+                output_path.write_text(full_md, encoding="utf-8")
+                print(f"\n=== 已保存 ===\n{output_path}")
+                return
+            else:
+                result = service.generate_script(
+                    request,
+                    progress_callback=print_generation_progress if full_draft else None,
+                )
     except (OSError, json.JSONDecodeError) as exc:
         print_error("读取旧稿失败", exc)
         return
@@ -180,10 +310,33 @@ def main() -> None:
         print_error("剧本生成失败", exc)
         return
 
-    print_queries("检索 query", result.rewritten_queries)
-    print_contexts(result.contexts_used)
-    print_script(result.script)
-    output_path = save_result(result, Path(args.out_dir))
+    if args.chapter:
+        print("\n=== 生成完成 ===")
+        print(f"标题: {result.script.title}")
+        print(f"章节数: {len(result.script.chapters)}")
+        # 从各章 checkpoint 中统计结局引用
+        ending_refs = set()
+        for ch in result.script.chapters:
+            if ch.checkpoint and ch.checkpoint.next_chapter:
+                if ch.checkpoint.next_chapter.startswith("ending_"):
+                    ending_refs.add(ch.checkpoint.next_chapter)
+        print(f"引用结局: {len(ending_refs)} 个（{', '.join(sorted(ending_refs)) if ending_refs else '各章内置'}）")
+        print(f"完整 MD 长度: {len(result.full_md)} 字符")
+        # 打印 MD 开头预览
+        print(f"\n=== MD 剧本预览（前 2000 字符）===")
+        print(result.full_md[:2000])
+        if len(result.full_md) > 2000:
+            print(f"\n...（省略 {len(result.full_md) - 2000} 字符）...")
+    else:
+        print_queries("检索 query", result.rewritten_queries)
+        print_contexts(result.contexts_used)
+        print_script(result.script)
+    if args.chapter:
+        # 章节模式：JSON 直接存入版本目录
+        output_path = save_result(result, version_dir, prefix="script_generate", new_version=False)
+    else:
+        prefix = "script_revise" if args.revise else "script_generate"
+        output_path = save_result(result, Path(args.out_dir), prefix=prefix)
     print(f"\n=== 已保存 JSON ===\n{output_path}")
 
 
@@ -228,6 +381,56 @@ def print_generation_progress(
     print(
         f"\n=== 完整初稿阶段 {stage}/{total_stages}: {name} ===\n"
         f"Qwen 请求体: {request_bytes / 1024:.1f} KiB",
+        flush=True,
+    )
+
+
+def _resolve_version_dir(out_dir: Path) -> Path:
+    """决定版本目录。
+
+    如果 out_dir 本身已经是 v{num} 格式的目录（如 v06），直接复用。
+    否则在 out_dir 下新建 v{gen+1:02d}。
+    """
+    import re
+    from src.api.server import _load_counter, _save_counter
+
+    # 如果传入的就是版本目录（如 outputs/.../v06），直接用它
+    if re.match(r"^v\d{2}$", out_dir.name) and out_dir.is_dir():
+        print(f"\n📁 复用版本目录: {out_dir}")
+        return out_dir
+
+    # 否则新建
+    counter = _load_counter()
+    gen = counter["gen"] + 1
+    counter["gen"] = gen
+    counter["rev"] = 0
+    _save_counter(counter)
+    version_dir = out_dir / f"v{gen:02d}"
+    version_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n📁 新建版本目录: {version_dir}")
+    return version_dir
+
+
+def _save_final_md(result, version_dir: Path) -> Path:
+    """保存最终 MD 到版本目录。"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"final_{timestamp}.md"
+    output_path = version_dir / filename
+    output_path.write_text(result.full_md, encoding="utf-8")
+    print(f"💾 最终 MD: {output_path}（{len(result.full_md)} 字符）")
+    return output_path
+
+
+def print_chapter_progress(
+    stage: int,
+    total_stages: int,
+    name: str,
+    request_bytes: int,
+) -> None:
+    bar = "█" * stage + "░" * (total_stages - stage)
+    kb = f" ({request_bytes / 1024:.1f} KiB)" if request_bytes else ""
+    print(
+        f"\n📖 [{bar}] {stage}/{total_stages}  {name}{kb}",
         flush=True,
     )
 
@@ -330,11 +533,35 @@ def print_script(script) -> None:
                 print(f"  条件: {' AND '.join(end.conditions)}")
 
 
-def save_result(result, out_dir: Path) -> Path:
-    out_dir.mkdir(parents=True, exist_ok=True)
+def save_result(result, out_dir: Path, prefix: str = "script_generate", new_version: bool = True) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = out_dir / f"script_draft_{timestamp}.json"
+
+    if new_version:
+        from src.api.server import _load_counter, _save_counter
+        counter = _load_counter()
+        if prefix == "script_generate":
+            gen = counter["gen"] + 1
+            rev = 0
+        else:
+            gen = counter["gen"] if counter["gen"] > 0 else 1
+            rev = counter["rev"] + 1
+        counter["gen"] = gen
+        counter["rev"] = rev
+        _save_counter(counter)
+        save_dir = out_dir / f"v{gen:02d}"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"v{gen:02d}-{rev:02d}_{prefix}_{timestamp}.json"
+    else:
+        # 直接存入已有目录，不创建版本子目录
+        save_dir = out_dir
+        save_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{prefix}_{timestamp}.json"
+
+    output_path = save_dir / filename
     payload = to_jsonable(result)
+    # 确保 full_md 写入
+    if hasattr(result, 'full_md') and result.full_md:
+        payload["full_md"] = result.full_md
     output_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -349,6 +576,8 @@ def to_jsonable(value: Any) -> Any:
         return [to_jsonable(item) for item in value]
     if isinstance(value, dict):
         return {str(key): to_jsonable(item) for key, item in value.items()}
+    if isinstance(value, set):
+        return sorted(list(value))
     return value
 
 

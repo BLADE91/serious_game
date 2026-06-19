@@ -213,6 +213,43 @@ class PABackendScriptClientTests(unittest.TestCase):
         self.assertEqual(agent_calls[0]["payload"]["conversation_id"], "conversation-1")
         self.assertEqual(agent_calls[1]["payload"]["conversation_id"], "conversation-1")
 
+    def test_reads_sse_response_incrementally(self) -> None:
+        class FakeResponse:
+            def __init__(self, lines):
+                self._lines = [line.encode("utf-8") for line in lines]
+                self._index = 0
+
+            def readline(self):
+                if self._index >= len(self._lines):
+                    return b""
+                line = self._lines[self._index]
+                self._index += 1
+                return line
+
+        client = PABackendScriptClient(
+            PABackendConfig(
+                base_url="http://pa.test",
+                supabase_url="http://supabase.test",
+                supabase_key="supabase-key",
+                account="user@test.com",
+                password="password",
+            )
+        )
+        counts = []
+        response = FakeResponse([
+            "event: content\n",
+            'data: "foo"\n',
+            "\n",
+            "event: content\n",
+            'data: "bar"\n',
+            "\n",
+        ])
+
+        content = client._read_sse_response(response, counts.append)
+
+        self.assertEqual(content, "foobar")
+        self.assertEqual(counts, [3, 6])
+
 
 class FakeMessage:
     def __init__(self, role: str, content: str) -> None:

@@ -53,8 +53,13 @@ class QwenChatClient:
                 http_client=DefaultHttpxClient(trust_env=False),
             )
 
-    def complete(self, messages: list[ChatMessage], temperature: float = 0.2) -> str:
-        payload = self._build_payload(messages, temperature)
+    def complete(
+        self,
+        messages: list[ChatMessage],
+        temperature: float = 0.2,
+        response_format: str = "json_object",
+    ) -> str:
+        payload = self._build_payload(messages, temperature, response_format)
 
         try:
             completion = self._client.chat.completions.create(**payload)
@@ -84,10 +89,11 @@ class QwenChatClient:
         self,
         messages: list[ChatMessage],
         temperature: float = 0.2,
+        response_format: str = "json_object",
     ) -> int:
         """估算 OpenAI SDK 发送给 DashScope 的 JSON 请求体字节数。"""
 
-        payload = self._build_payload(messages, temperature)
+        payload = self._build_payload(messages, temperature, response_format)
         serializable = {
             **payload,
             "extra_body": payload.get("extra_body", {}),
@@ -98,17 +104,23 @@ class QwenChatClient:
         self,
         messages: list[ChatMessage],
         temperature: float,
+        response_format: str = "json_object",
     ) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "model": self._config.model,
             "messages": [
                 {"role": message.role, "content": message.content}
                 for message in messages
             ],
             "temperature": temperature,
-            "response_format": {"type": "json_object"},
-            "extra_body": {"enable_thinking": False},
         }
+        if response_format == "json_object":
+            payload["response_format"] = {"type": "json_object"}
+        elif response_format == "text":
+            # No response_format constraint — model outputs free text
+            pass
+        payload["extra_body"] = {"enable_thinking": False}
+        return payload
 
     def _status_error_detail(self, exc: Any) -> str:
         status_code = getattr(exc, "status_code", "unknown")

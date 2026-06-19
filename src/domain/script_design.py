@@ -1,7 +1,7 @@
 """剧本生成器的结构化输出。"""
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.domain.act_structure import ActStructure
 from src.domain.decision_point import DecisionPoint
@@ -11,6 +11,9 @@ from src.domain.game_state import GameState
 from src.domain.npc_relationship import NPCRelationship
 from src.domain.npc_state import NPCState
 from src.domain.source_context import SourceContext
+
+if TYPE_CHECKING:
+    from src.domain.chapter_structure import Chapter
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,8 @@ class ScriptDesign:
     decision_points: list[DecisionPoint] = field(default_factory=list)
     acts: list[ActStructure] = field(default_factory=list)
     endings: list[EndingCondition] = field(default_factory=list)
+    # --- 章节式生成字段（6-Call 管线填充）---
+    chapters: list[Any] = field(default_factory=list)  # list[Chapter]
 
 
 @dataclass(frozen=True)
@@ -73,8 +78,13 @@ class ScriptGenerationRequest:
     player_role: str = ""        # 玩家角色，如 "乡镇党委副书记"
     learning_goal: str = ""      # 教育目标，如 "体验基层政策执行中的多重压力"
     duration_minutes: int = 45   # 目标游戏时长
-    complexity: str = "medium"   # 复杂度: simple / medium / complex
     extra_requirements: str = "" # 额外要求，自由文本
+    npc_count: int = 12           # NPC 数量
+    character_settings: str = ""   # 人物设定
+    story_background: str = ""     # 故事背景
+    # --- 章节式生成字段 ---
+    chapter_count: int = 6         # 章节数量（6-Call 管线使用）
+    ending_count: int = 4         # 结局数量（6-Call 管线使用）
     # --- 旧字段（保留兼容）---
     query: str = ""
     manual_queries: list[str] = field(default_factory=list)
@@ -92,8 +102,6 @@ class ScriptGenerationRequest:
             )
         if self.duration_minutes < 10 or self.duration_minutes > 120:
             raise ValueError("duration_minutes must be 10-120")
-        if self.complexity not in {"simple", "medium", "complex"}:
-            raise ValueError("complexity must be simple, medium, or complex")
 
 
 @dataclass(frozen=True)
@@ -101,6 +109,7 @@ class ScriptGenerationResult:
     """剧本生成结果。"""
 
     script: ScriptDesign
+    full_md: str = ""
     contexts_used: list[SourceContext] = field(default_factory=list)
     rewritten_queries: list[str] = field(default_factory=list)
     generation_notes: list[str] = field(default_factory=list)
