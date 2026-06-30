@@ -1112,7 +1112,8 @@ async function toggleVersions() {
         : '';
       return `
       <div style="padding:8px 6px; border-bottom:1px dotted var(--border); display:flex; justify-content:space-between; align-items:center; cursor:pointer;"
-           onclick="loadVersion('${esc(v.filename)}')"
+           data-filename="${encodeURIComponent(String(v.filename || '').replace(/\\/g, '/'))}"
+           onclick="loadVersionFromRow(this)"
            onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
         <div style="flex:1; min-width:0;">
           <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
@@ -1130,9 +1131,26 @@ async function toggleVersions() {
   }
 }
 
+function loadVersionFromRow(row) {
+  const encoded = row?.dataset?.filename || '';
+  const filename = encoded ? decodeURIComponent(encoded) : '';
+  if (filename) loadVersion(filename);
+}
+
+function versionApiPath(filename) {
+  return String(filename || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean)
+    .map(segment => encodeURIComponent(segment))
+    .join('/');
+}
+
 async function loadVersion(filename) {
   try {
-    const resp = await fetch(`/api/version/${encodeURIComponent(filename)}`);
+    const apiPath = versionApiPath(filename);
+    if (!apiPath) throw new Error('版本文件名为空');
+    const resp = await fetch(`/api/version/${apiPath}`);
     if (!resp.ok) throw new Error('加载失败 ' + resp.status);
     const data = await resp.json();
     lastResult = data;

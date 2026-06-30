@@ -46,6 +46,7 @@ class PABackendScriptClient:
         self._cancel_event = cancel_event
         self._active_conn: HTTPConnection | HTTPSConnection | None = None
         self._active_conn_lock = threading.Lock()
+        self._search_scope_logged = False
 
     @property
     def conversation_id(self) -> str | None:
@@ -95,6 +96,13 @@ class PABackendScriptClient:
             "attachments_id": [],
             "oss_keys": [],
         }
+        if not self._search_scope_logged:
+            print(
+                "[pa_backend] search scope: "
+                f"collection_ids={json.dumps(collection_ids, ensure_ascii=False)}, "
+                "enable_web_search=true"
+            )
+            self._search_scope_logged = True
         if stream_callback is None:
             content = self._post(
                 self._url(self._config.agent_endpoint), payload, auth.access_token

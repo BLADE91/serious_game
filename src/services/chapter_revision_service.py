@@ -390,7 +390,7 @@ class ChapterRevisionService:
             return {}
 
     def _relative_ref(self, path: Path) -> str:
-        return str(path.resolve().relative_to(self._outputs_dir))
+        return path.resolve().relative_to(self._outputs_dir).as_posix()
 
     @staticmethod
     def _clean_markdown(value: str) -> str:

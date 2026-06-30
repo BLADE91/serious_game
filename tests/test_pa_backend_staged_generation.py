@@ -176,6 +176,7 @@ class PABackendScriptClientTests(unittest.TestCase):
                         supabase_key="supabase-key",
                         account="user@test.com",
                         password="password",
+                        collection_id="collection-1",
                     )
                 )
                 self.calls = []
@@ -212,6 +213,8 @@ class PABackendScriptClientTests(unittest.TestCase):
         self.assertEqual(len(agent_calls), 2)
         self.assertEqual(agent_calls[0]["payload"]["conversation_id"], "conversation-1")
         self.assertEqual(agent_calls[1]["payload"]["conversation_id"], "conversation-1")
+        self.assertEqual(agent_calls[0]["payload"]["collection_ids"], ["collection-1"])
+        self.assertTrue(agent_calls[0]["payload"]["enable_web_search"])
 
     def test_reads_sse_response_incrementally(self) -> None:
         class FakeResponse:

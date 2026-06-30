@@ -37,9 +37,12 @@ DASHSCOPE_API_KEY=your_dashscope_api_key
 PA_BACKEND_BASE_URL=https://apitest.know-pa.cn
 PA_BACKEND_ACCOUNT=your_account
 PA_BACKEND_PASSWORD=your_password
+PA_BACKEND_COLLECTION_ID=your_collection_id
 PA_BACKEND_SUPABASE_URL=https://your-project.supabase.co
 PA_BACKEND_SUPABASE_KEY=your_key
 ```
+
+`PA_BACKEND_COLLECTION_ID` 会作为 `collection_ids` 约束知识库检索；章节创作同时保持网络搜索开启，因此网络来源不受该 collection 限制。服务首次请求时会在终端打印实际生效的 collection 列表。
 
 `SCRIPT_GENERATION_BACKEND` 仍用于旧的非章节式 CLI 流程，不改变上述章节式 Call 分工。
 

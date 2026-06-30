@@ -153,6 +153,10 @@ def serialize_script(script: Any) -> dict[str, Any]:
             return {key: _convert(val) for key, val in asdict(value).items()}
         if isinstance(value, list):
             return [_convert(item) for item in value]
+        if isinstance(value, tuple):
+            return [_convert(item) for item in value]
+        if isinstance(value, (set, frozenset)):
+            return sorted(_convert(item) for item in value)
         if isinstance(value, dict):
             return {str(key): _convert(val) for key, val in value.items()}
         return value
@@ -194,6 +198,12 @@ def _max_existing_generation(outputs_dir: Path | None = None) -> int:
         if path.is_dir() and re.fullmatch(r"v\d+", path.name)
     ]
     return max(generations, default=0)
+
+
+def _relative_output_ref(path: Path, outputs_dir: Path | None = None) -> str:
+    """Return a URL-safe relative artifact path on every operating system."""
+    root = outputs_dir if outputs_dir is not None else OUTPUTS_DIR
+    return path.relative_to(root).as_posix()
 
 
 def _reserve_generation_number(outputs_dir: Path | None = None) -> int:
@@ -603,7 +613,7 @@ def create_app() -> FastAPI:
                 s = data.get("script") if isinstance(data, dict) else {}
                 if not isinstance(s, dict):
                     s = {}
-                rel_path = str(f.relative_to(OUTPUTS_DIR))
+                rel_path = _relative_output_ref(f)
                 gen_num = int(subdir.name[1:]) if subdir.name[1:].isdigit() else None
                 # 从 JSON 读取 revision_round 和 generation_mode
                 rev_num = data.get("revision_round", 0) if isinstance(data, dict) else 0
@@ -694,8 +704,7 @@ def create_app() -> FastAPI:
     @app.get("/api/latest-result")
     async def latest_result():
         """加载最近一次生成的剧本结果（用于前端直接预览和修订）。"""
-        from pathlib import Path
-        outputs_dir = Path(__file__).resolve().parent.parent.parent / "outputs" / "script_drafts"
+        outputs_dir = OUTPUTS_DIR
         if not outputs_dir.exists():
             raise HTTPException(404, "outputs/script_drafts 目录不存在")
         # 排除中间产物 JSON（0X_*.json），只找最终结果
@@ -723,8 +732,8 @@ def create_app() -> FastAPI:
                     "generation_mode": "full"}
         data.pop("filename", None)  # 防御：避免 JSON 内嵌的旧 filename 覆盖
         # 返回相对路径（含版本子目录）
-        rel_path = latest.relative_to(outputs_dir)
-        return {"filename": str(rel_path), **data}
+        rel_path = _relative_output_ref(latest, outputs_dir)
+        return {"filename": rel_path, **data}
 
     # ---------- 静态文件 ----------
 
