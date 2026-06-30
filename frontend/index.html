@@ -221,31 +221,15 @@ body.modal-open { overflow: hidden; }
     </div>
     <div>
       <label for="npcCount">NPC 数量</label>
-      <select id="npcCount">
-        <option value="8">8 人</option>
-        <option value="10">10 人</option>
-        <option value="12" selected>12 人</option>
-        <option value="15">15 人</option>
-      </select>
+      <input type="number" id="npcCount" value="12" min="1" placeholder="如 12">
     </div>
     <div>
       <label for="chapterCount">章节数量</label>
-      <select id="chapterCount">
-        <option value="4">4 章</option>
-        <option value="5">5 章</option>
-        <option value="6" selected>6 章</option>
-        <option value="7">7 章</option>
-        <option value="8">8 章</option>
-      </select>
+      <input type="number" id="chapterCount" value="6" min="1" placeholder="如 6">
     </div>
     <div>
       <label for="endingCount">结局数量</label>
-      <select id="endingCount">
-        <option value="3">3 个</option>
-        <option value="4" selected>4 个</option>
-        <option value="5">5 个</option>
-        <option value="6">6 个</option>
-      </select>
+      <input type="number" id="endingCount" value="4" min="1" placeholder="如 4">
     </div>
     <div class="full">
       <label for="characterSettings">人物设定（可选）</label>

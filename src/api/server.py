@@ -86,13 +86,13 @@ class GenerateRequest(BaseModel):
     )
     duration_minutes: int = Field(default=45, ge=10, le=120)
     extra_requirements: str = Field(default="")
-    npc_count: int = Field(default=12, ge=8, le=20, description="NPC 数量")
+    npc_count: int = Field(default=12, ge=1, description="NPC 数量")
     character_settings: str = Field(default="", description="人物设定")
     story_background: str = Field(default="", description="故事背景")
     feedback: str = Field(default="")
     full_draft: bool = Field(default=True)
-    chapter_count: int = Field(default=6, ge=3, le=12, description="章节数量（章节式管线使用）")
-    ending_count: int = Field(default=4, ge=2, le=8, description="结局数量（章节式管线使用）")
+    chapter_count: int = Field(default=6, ge=1, description="章节数量（章节式管线使用）")
+    ending_count: int = Field(default=4, ge=1, description="结局数量（章节式管线使用）")
 
 
 class ReviseRequest(BaseModel):
