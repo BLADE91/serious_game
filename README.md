@@ -54,6 +54,8 @@ python run_server.py --reload
 
 打开 `http://localhost:8000`。Web 的生成按钮直接运行章节式主流程，结果页可查看概览、剧情分叉树、NPC、结局和 Markdown。
 
+“一键生成”始终创建新版本；旁边的“续跑”按钮会列出全部未完成版本供用户选择，并复用已有阶段产物。新版本会保存原始生成参数，续跑时不会被当前表单中的新值覆盖。
+
 人工修订有两种方式：
 
 - **直接编辑**：在元素旁点击“编辑”，浮层只编辑该 ID 对应的 Markdown 内容块。
@@ -100,7 +102,7 @@ python run_script_generation.py \
 
 ## 输出与续跑
 
-输出位于 `outputs/script_drafts/vNN/`。生成器按文件是否存在决定复用：已有文件跳过，缺失文件重跑。它不会计算内容 hash，也不会因上游文件被手动修改而自动删除下游缓存。
+输出位于 `outputs/script_drafts/vNN/`。`00_generation_request.json` 保存该版本的生成参数。生成器按文件是否存在决定复用：已有文件跳过，缺失文件重跑。它不会计算内容 hash，也不会因上游文件被手动修改而自动删除下游缓存。
 
 需要重跑抽取时，至少删除 `06_script_structure.json` 和目标 `06a_global.json` 或 `06b_chNN.json`；需要重跑校验时删除 `07_validation_report.json`。更完整的文件关系和修订目录说明见 [剧本草稿存储说明](outputs/script_drafts/剧本草稿存储说明.md)。
 
@@ -156,6 +158,7 @@ python run_script_generation.py \
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `POST` | `/api/generate` | SSE 运行章节式生成 |
+| `GET` | `/api/incomplete-versions` | 列出所有可续跑的未完成版本 |
 | `POST` | `/api/cancel/{task_id}` | 取消生成 |
 | `GET` | `/api/revisions/source` | 读取修订目标 Markdown |
 | `POST` | `/api/revisions/preview` | 生成手工 diff 或 AI 候选 |

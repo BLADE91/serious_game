@@ -93,6 +93,7 @@ class GenerateRequest(BaseModel):
     full_draft: bool = Field(default=True)
     chapter_count: int = Field(default=6, ge=1, description="章节数量（章节式管线使用）")
     ending_count: int = Field(default=4, ge=1, description="结局数量（章节式管线使用）")
+    resume_version: str = Field(default="", description="要续跑的未完成版本，如 v02")
 
 
 class ReviseRequest(BaseModel):
@@ -169,6 +170,21 @@ def serialize_script(script: Any) -> dict[str, Any]:
 OUTPUTS_DIR = Path(__file__).resolve().parent.parent.parent / "outputs" / "script_drafts"
 COUNTER_FILE = OUTPUTS_DIR / ".version_counter"
 _VERSION_LOCK = threading.RLock()
+GENERATION_REQUEST_FILE = "00_generation_request.json"
+GENERATION_REQUEST_FIELDS = (
+    "scenario",
+    "player_role",
+    "learning_goal",
+    "query",
+    "duration_minutes",
+    "extra_requirements",
+    "npc_count",
+    "character_settings",
+    "story_background",
+    "feedback",
+    "chapter_count",
+    "ending_count",
+)
 
 
 def _load_counter() -> dict:
@@ -204,6 +220,89 @@ def _relative_output_ref(path: Path, outputs_dir: Path | None = None) -> str:
     """Return a URL-safe relative artifact path on every operating system."""
     root = outputs_dir if outputs_dir is not None else OUTPUTS_DIR
     return path.relative_to(root).as_posix()
+
+
+def _generation_request_values(req: GenerateRequest) -> dict[str, Any]:
+    return {field: getattr(req, field) for field in GENERATION_REQUEST_FIELDS}
+
+
+def _load_generation_request(version_dir: Path) -> dict[str, Any]:
+    path = version_dir / GENERATION_REQUEST_FILE
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _write_generation_request(version_dir: Path, values: dict[str, Any]) -> None:
+    path = version_dir / GENERATION_REQUEST_FILE
+    if path.exists():
+        return
+    path.write_text(
+        json.dumps(values, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _is_completed_generation(version_dir: Path) -> bool:
+    return any(version_dir.glob("script_generate_*.json"))
+
+
+def _incomplete_generation_dirs(outputs_dir: Path | None = None) -> list[Path]:
+    root = outputs_dir if outputs_dir is not None else OUTPUTS_DIR
+    if not root.exists():
+        return []
+    candidates = [
+        path for path in root.iterdir()
+        if path.is_dir()
+        and re.fullmatch(r"v\d+", path.name)
+        and not _is_completed_generation(path)
+    ]
+    return sorted(candidates, key=lambda path: int(path.name[1:]), reverse=True)
+
+
+def _resolve_resume_version(value: str) -> Path:
+    version = value.strip().strip("/")
+    if not re.fullmatch(r"v\d+", version):
+        raise ValueError("resume_version 必须是 vNN 格式")
+    path = (OUTPUTS_DIR / version).resolve()
+    try:
+        path.relative_to(OUTPUTS_DIR.resolve())
+    except ValueError as exc:
+        raise ValueError("非法的续跑版本路径") from exc
+    if not path.is_dir():
+        raise ValueError(f"续跑版本不存在: {version}")
+    if _is_completed_generation(path):
+        raise ValueError(f"{version} 已生成完成，不能续跑")
+    return path
+
+
+def _effective_generation_values(
+    req: GenerateRequest,
+    resume_dir: Path | None,
+) -> dict[str, Any]:
+    values = _generation_request_values(req)
+    if resume_dir is None:
+        return values
+
+    saved = _load_generation_request(resume_dir)
+    if saved:
+        for field in GENERATION_REQUEST_FIELDS:
+            if field in saved:
+                values[field] = saved[field]
+        return values
+
+    chapter_numbers = [
+        int(match.group(1))
+        for path in resume_dir.glob("03_ch[0-9][0-9].md")
+        if (match := re.fullmatch(r"03_ch(\d{2})\.md", path.name))
+    ]
+    if chapter_numbers:
+        values["chapter_count"] = max(chapter_numbers)
+    return values
 
 
 def _reserve_generation_number(outputs_dir: Path | None = None) -> int:
@@ -311,20 +410,25 @@ def create_app() -> FastAPI:
     @app.post("/api/generate")
     async def generate(req: GenerateRequest):
         """使用 6-Call 章节式管线生成剧本，返回 SSE 流：progress → result。"""
+        try:
+            resume_dir = _resolve_resume_version(req.resume_version) if req.resume_version else None
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        request_values = _effective_generation_values(req, resume_dir)
         request = ScriptGenerationRequest(
-            scenario=req.scenario,
-            player_role=req.player_role,
-            learning_goal=req.learning_goal,
-            query=req.query,
-            duration_minutes=req.duration_minutes,
-            extra_requirements=req.extra_requirements,
-            npc_count=req.npc_count,
-            character_settings=req.character_settings,
-            story_background=req.story_background,
-            feedback=req.feedback,
+            scenario=request_values["scenario"],
+            player_role=request_values["player_role"],
+            learning_goal=request_values["learning_goal"],
+            query=request_values["query"],
+            duration_minutes=request_values["duration_minutes"],
+            extra_requirements=request_values["extra_requirements"],
+            npc_count=request_values["npc_count"],
+            character_settings=request_values["character_settings"],
+            story_background=request_values["story_background"],
+            feedback=request_values["feedback"],
             full_draft=True,
-            chapter_count=req.chapter_count,
-            ending_count=req.ending_count,
+            chapter_count=request_values["chapter_count"],
+            ending_count=request_values["ending_count"],
         )
 
         task_id = _create_task()
@@ -350,7 +454,11 @@ def create_app() -> FastAPI:
                 try:
                     if _is_cancelled(task_id):
                         return
-                    version_dir, _, _ = _reserve_generation_version_dir()
+                    if resume_dir is None:
+                        version_dir, _, _ = _reserve_generation_version_dir()
+                    else:
+                        version_dir = resume_dir
+                    _write_generation_request(version_dir, request_values)
                     cancel_evt = _task_event(task_id)
                     service = ScriptGenService(cancel_event=cancel_evt)
                     entry = _active_tasks.get(task_id)
@@ -413,6 +521,21 @@ def create_app() -> FastAPI:
                 "X-Task-Id": task_id,
             },
         )
+
+    @app.get("/api/incomplete-versions")
+    async def incomplete_versions():
+        """List all incomplete generation directories that can be resumed."""
+        versions = []
+        for version_dir in _incomplete_generation_dirs():
+            saved = _load_generation_request(version_dir)
+            chapter_files = sorted(version_dir.glob("03_ch[0-9][0-9].md"))
+            versions.append({
+                "version": version_dir.name,
+                "artifact_count": len([path for path in version_dir.iterdir() if path.is_file()]),
+                "chapter_count": saved.get("chapter_count") or len(chapter_files) or None,
+                "has_saved_request": bool(saved),
+            })
+        return {"versions": versions}
 
     # ---------- POST /api/cancel/{task_id} ----------
 

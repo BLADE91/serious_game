@@ -248,6 +248,9 @@ body.modal-open { overflow: hidden; }
     <button class="btn btn-primary" id="oneClickBtn" onclick="startOneClickGeneration()" style="flex:1;">
       ⚡ 一键生成
     </button>
+    <button class="btn btn-secondary" id="resumeBtn" onclick="openResumeVersionPicker()">
+      ↻ 续跑
+    </button>
     <button class="btn btn-secondary" id="loadBtn" onclick="loadLatestResult()">
       📂 加载
     </button>
@@ -412,6 +415,79 @@ function setButtonLoading(btn, loading) {
     btn.disabled = false;
     btn.textContent = btn.dataset.origText || '⚡ 一键生成';
   }
+}
+
+async function openResumeVersionPicker() {
+  hide('error-card');
+  const btn = document.getElementById('resumeBtn');
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = '检查中...';
+  try {
+    const resp = await fetch('/api/incomplete-versions');
+    if (!resp.ok) throw new Error('检查未完成版本失败 ' + resp.status);
+    const data = await resp.json();
+    if (!data.versions?.length) {
+      showError('当前没有可续跑的未完成版本');
+      return;
+    }
+    showResumeVersionDialog(data.versions);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+function showResumeVersionDialog(candidates) {
+    const overlay = document.createElement('div');
+    overlay.className = 'source-revision-overlay';
+    const panel = document.createElement('div');
+    panel.className = 'source-inline-editor';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', '选择续跑版本');
+    const rows = candidates.map(candidate => {
+      const chapterText = candidate.chapter_count ? ` · 章节 ${candidate.chapter_count}` : '';
+      const requestText = candidate.has_saved_request ? ' · 已保存原始参数' : ' · 使用当前表单补足参数';
+      return `
+        <button type="button" class="btn btn-secondary" data-resume-version="${encodeURIComponent(candidate.version)}"
+                style="width:100%; text-align:left; margin-top:8px;">
+          <strong>${esc(candidate.version.toUpperCase())}</strong>
+          <span style="color:var(--text-muted); margin-left:8px;">阶段产物 ${Number(candidate.artifact_count || 0)}${chapterText}${requestText}</span>
+        </button>`;
+    }).join('');
+    panel.innerHTML = `
+      <div class="source-inline-header">
+        <strong>选择要续跑的版本</strong>
+        <button type="button" class="element-action" data-resume-close>关闭</button>
+      </div>
+      <p style="margin:12px 0 4px; color:var(--text-muted);">续跑会复用已有文件，仅执行缺失步骤。</p>
+      <div>${rows}</div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    document.body.classList.add('modal-open');
+
+    const close = () => {
+      overlay.remove();
+      document.body.classList.remove('modal-open');
+    };
+    overlay.addEventListener('click', event => {
+      const encoded = event.target.closest('[data-resume-version]')?.dataset.resumeVersion;
+      if (encoded) {
+        const version = decodeURIComponent(encoded);
+        close();
+        startGeneration(version);
+      } else if (event.target.closest('[data-resume-close]') || event.target === overlay) {
+        close();
+      }
+    });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') close();
+    });
+    panel.querySelector('[data-resume-version]')?.focus();
 }
 
 // ===== 取消生成 =====
@@ -1323,7 +1399,7 @@ async function startRevisionWithTarget(feedback) {
 }
 
 // ===== 生成 =====
-async function startGeneration() {
+async function startGeneration(resumeVersion = '') {
   const scenario = document.getElementById('scenario').value.trim();
   const playerRole = document.getElementById('playerRole').value.trim();
   const learningGoal = document.getElementById('learningGoal').value.trim();
@@ -1356,6 +1432,7 @@ async function startGeneration() {
         character_settings: document.getElementById('characterSettings').value.trim(),
         story_background: document.getElementById('storyBackground').value.trim(),
         extra_requirements: document.getElementById('extra').value.trim(),
+        resume_version: resumeVersion,
       }),
       signal: activeAbortController.signal,
     });
