@@ -148,7 +148,7 @@ class ScriptGenService:
     ) -> ScriptGenerationResult:
         """使用新的 6-Call 章节式管线生成剧本。
 
-        Call 1-3 使用 PA Backend（创作），Call 4-6 使用 Qwen Flash（审校与抽取）。
+        Call 1-3 使用 PA Backend 创作，Call 4 检查事实连续性，Call 5 结构化抽取，Call 6 程序校验。
 
         Args:
             output_dir: 如果提供，每步中间产物（设定、大纲、各章、修订前后…）写入此目录
@@ -168,7 +168,8 @@ class ScriptGenService:
             generation_notes=[
                 "通过 6 步章节式管线生成完整剧本。",
                 "Call 1-3: PA Backend 负责创作（全局设定 → 章节大纲 → 逐章生成）。",
-                "Call 4-6: Qwen Flash 负责审校与抽取（一致性修订 → JSON 抽取 → 校验）。",
+                "Call 4: Qwen Flash 只检查有原文证据的事实连续性问题。",
+                "Call 5: Qwen Flash 负责结构化抽取；Call 6 使用程序规则校验结构与提取完整性。",
             ],
             original_query=self._effective_query(request),
             feedback=request.feedback,

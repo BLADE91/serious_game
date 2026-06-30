@@ -1,241 +1,177 @@
-# 父母官 · 严肃游戏剧本生成器
+# 父母官严肃游戏剧本生成器
 
-《父母官》是一款基层治理题材的严肃游戏（约 45 分钟）。本工具通过 LLM 自动生成结构化游戏剧本，包括三幕叙事、NPC 关系网络、多选项决策点序列和多结局条件。支持 Web 界面实时预览和人工反馈修订。
+本项目生成基层治理题材的严肃游戏剧本。当前主流程以 Markdown 为创作源，先分阶段生成全局设定、大纲和章节正文，再做事实连续性审查、结构化抽取和确定性校验。Web 与 CLI 共用同一套章节式生成服务。
 
-## 核心能力
+## 当前工作流
 
-- **结构化剧本生成**：7 阶段流水线，产出包含三幕结构、NPC 关系网（6 种关系类型）、18 个左右多选项决策点（每点 3-5 个选项）和 3-4 个结局的完整剧本
-- **Web 界面**：单文件前端，填写场景/角色/目标 → 实时进度条 → 结果分面板展示 → 反馈修订
-- **双后端支持**：DashScope Qwen 或 PA Backend Agent，通过 `.env` 切换
-- **实时取消**：支持中断正在进行的 HTTP 请求，无需等待超时
-- **CLI 工具**：命令行直接生成，适合批量或调试场景
+| 阶段 | 执行方 | 主要产物 | 作用 |
+|---|---|---|---|
+| Call 1 | PA Backend | `01_game_settings.md` | 全局变量、NPC、结局和创作约束 |
+| Call 2 | PA Backend | `02_chapter_outline.md` | 章节大纲、Flag 规划和结局可达性 |
+| Call 3 | PA Backend，逐章 | `03_chNN.md` | 章节正文、情报、决策、结果和结算 |
+| 合并 | 程序 | `04_merged_before_review.md` | 合并全部 Markdown 创作源 |
+| Call 4 | Qwen Flash | `05_continuity_review.json` | 仅报告有两处原文证据的事实矛盾，不自动改稿 |
+| Call 5a | Qwen Flash | `06a_global.json` | 抽取全局结构、NPC 和结局 |
+| Call 5b | Qwen Flash，逐章 | `06b_chNN.json` | 抽取各章剧情树 |
+| Call 5 合并 | 程序 | `06_script_structure.json` | 合并结构化结果 |
+| Call 6 | 程序 | `07_validation_report.json` | 校验必要结构和 Markdown 到 JSON 的 ID 提取完整性 |
+
+自动校验只负责故事事实连续性、必要结构和提取是否有效。策略张力、教学反馈、人物行为合理性和叙事质量由人工评审，不作为自动阻断条件。
 
 ## 环境准备
 
-需要 Python 3.10+，安装依赖：
+需要 Python 3.10+：
 
 ```bash
 pip install -r requirements.txt
-```
-
-复制并编辑配置文件：
-
-```bash
 cp .env.example .env
 ```
 
-### .env 配置说明
+章节式主流程同时需要两组配置：
 
 ```env
-# ---- LLM 后端（二选一）----
-SCRIPT_GENERATION_BACKEND=pa_backend    # qwen 或 pa_backend
+# Call 4、Call 5 和 AI 修订
+DASHSCOPE_API_KEY=your_dashscope_api_key
 
-# Qwen 模式（DashScope API）
-DASHSCOPE_API_KEY=your_key_here
-QWEN_MODEL=qwen-plus
-
-# PA Backend 模式
+# Call 1、Call 2、Call 3
 PA_BACKEND_BASE_URL=https://apitest.know-pa.cn
 PA_BACKEND_ACCOUNT=your_account
 PA_BACKEND_PASSWORD=your_password
 PA_BACKEND_SUPABASE_URL=https://your-project.supabase.co
 PA_BACKEND_SUPABASE_KEY=your_key
-
-# 检索（Qwen 模式使用）
-OPENSEARCH_HOST=your_host
-OPENSEARCH_PORT=9200
-OPENSEARCH_USERNAME=admin
-OPENSEARCH_PASSWORD=your_password
-OPENSEARCH_INDEX=serious_game_sources
 ```
 
-> PA Backend 模式下检索由 agent 端处理，无需配置 OpenSearch。
+`SCRIPT_GENERATION_BACKEND` 仍用于旧的非章节式 CLI 流程，不改变上述章节式 Call 分工。
 
-## 使用方式
-
-### 方式一：Web 界面（推荐）
+## Web 使用
 
 ```bash
 python run_server.py --reload
 ```
 
-浏览器打开 `http://localhost:8000`，填写：
+打开 `http://localhost:8000`。Web 的生成按钮直接运行章节式主流程，结果页可查看概览、剧情分叉树、NPC、结局和 Markdown。
 
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| 政策场景 | 游戏主题 | 生态搬迁、征地拆迁 |
-| 玩家角色 | 玩家扮演的身份 | 乡镇党委副书记 |
-| 教育目标 | 游戏的学习目的 | 体验基层政策执行中多重压力的权衡 |
-| 时长 | 目标游戏时长 | 45 分钟 |
-| 复杂度 | 简单/中等/复杂 | 中等 |
-| 额外要求 | 自由文本补充 | 需要涉及宗族矛盾 |
+人工修订有两种方式：
 
-生成完成后可在结果面板查看三幕结构、NPC 关系网、决策点和结局，也可在底部反馈框输入意见进行定向修订。
+- **直接编辑**：在元素旁点击“编辑”，浮层只编辑该 ID 对应的 Markdown 内容块。
+- **AI 修订**：在元素旁点击“AI 修订”，先生成候选和 diff，确认后再应用。
+
+应用修订不会覆盖原版，而是在 `vNN/revisions/rNN/` 创建完整修订版本，并重新执行受影响的抽取和校验步骤。
 
 API 文档：`http://localhost:8000/docs`
 
-### 方式二：命令行
+## CLI 使用
+
+全新生成：
 
 ```bash
-# 结构化输入（推荐）
 python run_script_generation.py \
+  --chapter \
   --scenario "生态搬迁" \
   --player-role "乡镇党委副书记" \
   --learning-goal "体验基层政策执行中的多重压力" \
-  --duration 45
-
-# 紧凑模式（单次生成，适合快速迭代）
-python run_script_generation.py --compact "生成一个生态搬迁剧本"
-
-# 修订已有剧本
-python run_script_generation.py --revise outputs/script_drafts/上一次.json \
-  --feedback "NPC 关系网太简单，增加更多矛盾冲突"
+  --duration 45 \
+  --chapter-count 4 \
+  --ending-count 3
 ```
 
-生成结果保存在 `outputs/script_drafts/`。
+直接用完整 Markdown 文件替换一个修订目标：
 
-## API 端点
+```bash
+python run_script_generation.py \
+  --chapter-revise v01 \
+  --revision-target ch02 \
+  --revision-file /path/to/ch02.md
+```
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `GET` | `/` | Web 前端页面 |
-| `POST` | `/api/generate` | SSE 流式生成，7 阶段进度推送 |
-| `POST` | `/api/revise` | SSE 流式修订，基于反馈定向修改 |
-| `POST` | `/api/cancel/{task_id}` | 取消进行中的生成（中断 HTTP 连接） |
-| `GET` | `/docs` | Swagger API 文档 |
+生成 AI 修订候选并应用；增加 `--revision-preview-only` 可只看 diff：
 
-## 输出结构
+```bash
+python run_script_generation.py \
+  --chapter-revise v01 \
+  --revision-target ch02 \
+  --feedback "只调整 ch02_choice_01，补强上一章选择后果的承接"
+```
+
+修订目标只接受 `game_settings`、`chapter_outline` 或 `chNN`。
+
+## 输出与续跑
+
+输出位于 `outputs/script_drafts/vNN/`。生成器按文件是否存在决定复用：已有文件跳过，缺失文件重跑。它不会计算内容 hash，也不会因上游文件被手动修改而自动删除下游缓存。
+
+需要重跑抽取时，至少删除 `06_script_structure.json` 和目标 `06a_global.json` 或 `06b_chNN.json`；需要重跑校验时删除 `07_validation_report.json`。更完整的文件关系和修订目录说明见 [剧本草稿存储说明](outputs/script_drafts/剧本草稿存储说明.md)。
+
+新版本号按 `.version_counter` 和已有 `vNN` 目录中的较大值递增，计数器过期不会覆盖现有版本目录。
+
+## 结果结构
+
+最终 JSON 顶层包含 `script`、`full_md`、`generation_mode`、`generation_notes` 和版本元信息。章节式核心结构如下：
 
 ```json
 {
   "script": {
-    "title": "父母官：生态搬迁中的权衡与抉择",
-    "premise": "故事设定",
-    "player_role": "玩家角色",
-    "core_conflict": "核心冲突",
-    "initial_game_state": {
-      "day": 1, "action_points": 3,
-      "budget_remaining": 8000, "budget_unit": "万元",
-      "signed_households": 0, "total_households": 36,
-      "social_stability_index": 70,
-      "political_credit": 70,
-      "cadre_execution_index": 60
-    },
-    "acts": [
+    "title": "剧本标题",
+    "chapter_npcs": [],
+    "chapters": [
       {
-        "act_number": 1, "title": "开局破冰",
-        "day_range": "第1-15天", "goal": "目标",
-        "description": "阶段概述",
-        "decision_point_ids": ["DP01", "DP02", "..."]
-      }
-    ],
-    "npc_seed": [
-      {
-        "npc_id": "cadre_01", "name": "张书记",
-        "npc_type": "cadre", "group": "乡镇党委",
-        "trust_to_player": 60, "attitude_score": 50,
-        "anxiety_level": 50, "granovetter_threshold": 50
-      }
-    ],
-    "npc_relationships": [
-      {
-        "from_npc_id": "cadre_01", "to_npc_id": "cadre_02",
-        "relation_type": "上下级", "strength": 70,
-        "description": "直接汇报关系"
-      }
-    ],
-    "decision_points": [
-      {
-        "decision_id": "DP01", "title": "名单疑云",
-        "day_window": "第2-3天",
-        "situation": "当前困境描述",
-        "is_critical": false,
-        "options": [
+        "chapter_id": "ch01",
+        "info_nodes": [],
+        "decision_points": [
           {
-            "option_id": "DP01_O1", "label": "默认通过",
-            "description": "具体做法",
-            "cost_action_points": 1, "budget_cost": 0,
-            "payoffs": {"global": {"political_credit": -5}},
-            "risks": ["可能引发上访"]
+            "node_id": "ch01_choice_01",
+            "options": [
+              {
+                "choice_id": "ch01_choice_01_A",
+                "effects": {"signed": 3, "public_trust": -5},
+                "flags_added": []
+              }
+            ]
           }
         ],
-        "affected_npc_ids": ["cadre_02", "villager_05"]
+        "results": [],
+        "checkpoint": {},
+        "state_snapshot": {}
       }
     ],
-    "endings": [
-      {
-        "ending_id": "END_GOOD", "title": "安居乐业",
-        "description": "结局叙述",
-        "conditions": ["signed_households >= 34", "social_stability_index >= 60"],
-        "ending_type": "good"
-      }
-    ]
+    "chapter_endings": [],
+    "validation_report": {
+      "valid": true,
+      "structure_validation": {},
+      "extraction_validation": {},
+      "continuity_review": {}
+    }
   },
-  "contexts_used": [],
-  "rewritten_queries": ["生态搬迁 政策执行"],
-  "generation_notes": ["通过分阶段流水线生成完整结构化初稿。"],
-  "generation_mode": "full"
+  "full_md": "# 完整剧本...",
+  "generation_mode": "chapter"
 }
 ```
 
-### 关系类型说明
+系统变量固定为 `signed`、`social_stability`、`political_credit`、`public_trust`、`env_clue`、`media_pressure`、`budget` 和 `days_left`。Flag 用于记录离散选择后果、控制后续内容解锁和结局条件。
 
-| 类型 | 含义 | 示例 |
-|------|------|------|
-| 亲属 | 血缘或姻亲 | 父子、夫妻、兄弟 |
-| 上下级 | 组织内的汇报/指令 | 书记→村主任、局长→科长 |
-| 利益同盟 | 共同利益驱动 | 承包商与村干部的利益交换 |
-| 矛盾对立 | 利益冲突或历史恩怨 | 钉子户与拆迁队、上访户与信访办 |
-| 信息渠道 | 消息传递依赖 | 村民中的"消息灵通者" |
-| 情感纽带 | 非利益情感关系 | 恩情、友情、同学 |
+## 主要接口
 
-### 结局类型
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/api/generate` | SSE 运行章节式生成 |
+| `POST` | `/api/cancel/{task_id}` | 取消生成 |
+| `GET` | `/api/revisions/source` | 读取修订目标 Markdown |
+| `POST` | `/api/revisions/preview` | 生成手工 diff 或 AI 候选 |
+| `POST` | `/api/revisions/apply` | 创建修订版本并重建产物 |
+| `GET` | `/api/versions` | 列出生成版和修订版 |
+| `GET` | `/api/version/{filename}` | 读取指定结果 |
+| `GET` | `/api/latest-result` | 读取最近结果 |
 
-| 类型 | 含义 |
-|------|------|
-| `good` | 好结局：达成核心目标且保持社会稳定 |
-| `neutral` | 中性结局：完成任务但留下隐患 |
-| `bad` | 坏结局：不同失败路径（资金断裂、民怨爆发、问责等） |
+## 测试
 
-## 目录结构
-
-```text
-serious_game/
-├── frontend/
-│   └── index.html              # 单文件 Web 前端（零构建）
-├── src/
-│   ├── api/
-│   │   └── server.py           # FastAPI 服务端 + SSE
-│   ├── config.py               # 配置加载（从 .env）
-│   ├── domain/
-│   │   ├── act_structure.py    # ActStructure（三幕）
-│   │   ├── decision_point.py   # DecisionPoint + DecisionOption
-│   │   ├── ending_condition.py # EndingCondition（多结局）
-│   │   ├── game_action.py      # GameActionRule + ActionResult
-│   │   ├── game_state.py       # GameState（含 budget_unit）
-│   │   ├── npc_relationship.py # NPCRelationship（关系网）
-│   │   ├── npc_state.py        # NPCState
-│   │   └── script_design.py    # ScriptDesign + ScriptGenerationRequest
-│   ├── generation/
-│   │   ├── script_generator.py          # QwenScriptGenerator（7 阶段生成）
-│   │   ├── pa_backend_script_client.py  # PA Backend Agent 适配器
-│   │   ├── qwen_client.py               # Qwen OpenAI SDK 客户端
-│   │   └── ...                          # 检索、NPC Agent 等
-│   └── services/
-│       ├── script_gen_service.py # 生成编排
-│       └── script_validator.py   # 结构校验
-├── run_server.py               # Web 服务入口
-├── run_script_generation.py    # CLI 入口
-├── requirements.txt
-└── .env.example
+```bash
+python -m unittest discover -s tests
 ```
 
-## 常见问题
+## 代码位置
 
-| 问题 | 排查方向 |
-|------|----------|
-| Qwen API 401 | 检查 `.env` 中 `DASHSCOPE_API_KEY` |
-| PA Backend 登录失败 | 检查 `PA_BACKEND_ACCOUNT` / `PA_BACKEND_PASSWORD` |
-| 生成被取消 | 正常行为：点了取消按钮或关闭了页面 |
-| 剧本校验失败 | 模型返回了不完整或重复的结构，重新生成或使用修订 |
-| 404 Not Found (favicon) | 正常：浏览器尝试获取图标，不影响功能 |
+- `src/generation/chapter_script_generator.py`：章节式生成、抽取、续跑和校验编排
+- `src/generation/chapter_validator.py`：确定性结构与提取校验
+- `src/services/chapter_revision_service.py`：人工及 AI 修订版本管线
+- `src/api/server.py`：Web API 和版本持久化
+- `frontend/index.html`：Web 操作界面
+- `run_script_generation.py`：CLI 入口

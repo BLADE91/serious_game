@@ -120,14 +120,20 @@ class SaveManualRequest(BaseModel):
     source: str = Field(default="manual", description="manual | ai_element | ai_full")
 
 
-class ExtractFromMDRequest(BaseModel):
-    full_md: str = Field(..., min_length=1, description="完整 MD 剧本原文")
-    npc_count: int = Field(default=12, ge=8, le=20)
-    query: str = Field(default="", description="原始查询/需求描述")
-    scenario: str = Field(default="")
-    player_role: str = Field(default="")
-    learning_goal: str = Field(default="")
-    duration_minutes: int = Field(default=45)
+class ChapterRevisionPreviewRequest(BaseModel):
+    base_version: str = Field(..., min_length=1)
+    target: str = Field(..., description="game_settings | chapter_outline | chNN")
+    mode: str = Field(..., description="manual | ai")
+    content: str = Field(default="", description="manual 模式的完整 Markdown")
+    feedback: str = Field(default="", description="ai 模式的修订反馈")
+
+
+class ChapterRevisionApplyRequest(BaseModel):
+    base_version: str = Field(..., min_length=1)
+    target: str = Field(..., description="game_settings | chapter_outline | chNN")
+    mode: str = Field(..., description="manual | ai")
+    content: str = Field(..., min_length=1, description="确认后的完整 Markdown")
+    feedback: str = Field(default="")
 
 
 # ---- SSE 工具 ----
@@ -158,6 +164,7 @@ def serialize_script(script: Any) -> dict[str, Any]:
 
 OUTPUTS_DIR = Path(__file__).resolve().parent.parent.parent / "outputs" / "script_drafts"
 COUNTER_FILE = OUTPUTS_DIR / ".version_counter"
+_VERSION_LOCK = threading.RLock()
 
 
 def _load_counter() -> dict:
@@ -176,20 +183,51 @@ def _save_counter(counter: dict) -> None:
     COUNTER_FILE.write_text(json.dumps(counter), encoding="utf-8")
 
 
+def _max_existing_generation(outputs_dir: Path | None = None) -> int:
+    """Return the largest generation number already present on disk."""
+    root = outputs_dir if outputs_dir is not None else OUTPUTS_DIR
+    if not root.exists():
+        return 0
+    generations = [
+        int(path.name[1:])
+        for path in root.iterdir()
+        if path.is_dir() and re.fullmatch(r"v\d+", path.name)
+    ]
+    return max(generations, default=0)
+
+
+def _reserve_generation_number(outputs_dir: Path | None = None) -> int:
+    """Reserve a generation number without trusting a potentially stale counter."""
+    root = outputs_dir if outputs_dir is not None else OUTPUTS_DIR
+    with _VERSION_LOCK:
+        counter = _load_counter()
+        gen = max(int(counter.get("gen", 0)), _max_existing_generation(root)) + 1
+        counter["gen"] = gen
+        counter["rev"] = 0
+        _save_counter(counter)
+    return gen
+
+
 def _next_version(prefix: str) -> tuple[str, int, int]:
     """获取下一个版本号，返回 (文件名, gen, rev)。"""
-    counter = _load_counter()
-    if prefix == "script_generate":
-        # 新的一代：gen+1, rev 归零
-        gen = counter["gen"] + 1
-        rev = 0
-    else:
-        # 同一代内的修订：gen 不变，rev+1
-        gen = counter["gen"] if counter["gen"] > 0 else 1
-        rev = counter["rev"] + 1
-    counter["gen"] = gen
-    counter["rev"] = rev
-    _save_counter(counter)
+    with _VERSION_LOCK:
+        counter = _load_counter()
+        if prefix == "script_generate":
+            gen = max(
+                int(counter.get("gen", 0)),
+                _max_existing_generation(),
+            ) + 1
+            rev = 0
+        else:
+            gen = max(
+                int(counter.get("gen", 0)),
+                _max_existing_generation(),
+                1,
+            )
+            rev = int(counter.get("rev", 0)) + 1
+        counter["gen"] = gen
+        counter["rev"] = rev
+        _save_counter(counter)
     return f"v{gen:02d}-{rev:02d}_{prefix}", gen, rev
 
 
@@ -216,6 +254,31 @@ def _save_script_draft(script_dict: dict, prefix: str = "script_revision", full_
     return f"v{gen:02d}/{filename}"
 
 
+def _reserve_generation_version_dir() -> tuple[Path, int, int]:
+    """Reserve a new generation version directory, matching CLI --chapter behavior."""
+    gen = _reserve_generation_number()
+    rev = 0
+    version_dir = OUTPUTS_DIR / f"v{gen:02d}"
+    version_dir.mkdir(parents=True, exist_ok=True)
+    return version_dir, gen, rev
+
+
+def _save_chapter_result(script_dict: dict, version_dir: Path, full_md: str = "") -> str:
+    """Save chapter-pipeline final artifacts into an existing version directory."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if full_md:
+        (version_dir / f"final_{ts}.md").write_text(full_md, encoding="utf-8")
+    filename = f"script_generate_{ts}.json"
+    clean = {k: v for k, v in script_dict.items() if k != "filename"}
+    if full_md:
+        clean["full_md"] = full_md
+    (version_dir / filename).write_text(
+        json.dumps(clean, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return f"{version_dir.name}/{filename}"
+
+
 # ---- 应用工厂 ----
 
 def create_app() -> FastAPI:
@@ -237,7 +300,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/generate")
     async def generate(req: GenerateRequest):
-        """提交生成请求，返回 SSE 流：progress → result。"""
+        """使用 6-Call 章节式管线生成剧本，返回 SSE 流：progress → result。"""
         request = ScriptGenerationRequest(
             scenario=req.scenario,
             player_role=req.player_role,
@@ -249,7 +312,9 @@ def create_app() -> FastAPI:
             character_settings=req.character_settings,
             story_background=req.story_background,
             feedback=req.feedback,
-            full_draft=req.full_draft,
+            full_draft=True,
+            chapter_count=req.chapter_count,
+            ending_count=req.ending_count,
         )
 
         task_id = _create_task()
@@ -259,7 +324,6 @@ def create_app() -> FastAPI:
             queue: asyncio.Queue[dict] = asyncio.Queue()
 
             def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
-                """同步回调 → 异步队列，同时检测取消。"""
                 if _is_cancelled(task_id):
                     loop.call_soon_threadsafe(
                         queue.put_nowait,
@@ -273,16 +337,20 @@ def create_app() -> FastAPI:
                 )
 
             def run_generation() -> None:
-                """在线程中运行同步生成。"""
                 try:
                     if _is_cancelled(task_id):
                         return
+                    version_dir, _, _ = _reserve_generation_version_dir()
                     cancel_evt = _task_event(task_id)
                     service = ScriptGenService(cancel_event=cancel_evt)
                     entry = _active_tasks.get(task_id)
                     if entry is not None:
                         entry["service"] = service
-                    result = service.generate_script(request, progress_callback=progress_callback)
+                    result = service.generate_chapter_script(
+                        request,
+                        progress_callback=progress_callback,
+                        output_dir=str(version_dir),
+                    )
                     if _is_cancelled(task_id):
                         return
                     script_dict = serialize_script(result.script)
@@ -290,25 +358,17 @@ def create_app() -> FastAPI:
                     result_payload = {
                         "script": script_dict,
                         "full_md": full_md,
-                        "contexts_used": [
-                            {"id": c.id, "title": c.title, "content": c.content, "metadata": c.metadata}
-                            for c in result.contexts_used
-                        ],
-                        "rewritten_queries": result.rewritten_queries,
+                        "contexts_used": [],
+                        "rewritten_queries": [],
                         "generation_notes": result.generation_notes,
                         "original_query": result.original_query,
                         "generation_mode": result.generation_mode,
                     }
-                    # 自动保存到磁盘
-                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=full_md)
+                    saved_name = _save_chapter_result(result_payload, version_dir, full_md=full_md)
                     result_payload["saved_as"] = saved_name
                     loop.call_soon_threadsafe(queue.put_nowait, {
                         "type": "result",
                         **result_payload,
-                    })
-                except ScriptValidationError as exc:
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "error", "message": f"剧本校验失败：{exc.issues}", "issues": exc.issues,
                     })
                 except Exception as exc:
                     loop.call_soon_threadsafe(queue.put_nowait, {
@@ -352,7 +412,64 @@ def create_app() -> FastAPI:
         ok = _cancel_task(task_id)
         return {"cancelled": ok, "task_id": task_id}
 
-    # ---------- POST /api/revise ----------
+    # ---------- 章节式源文件修订 ----------
+
+    @app.get("/api/revisions/source")
+    async def get_revision_source(base_version: str, target: str):
+        """读取章节式版本的单个 Markdown 源文件。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        try:
+            service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+            return service.load_source(base_version, target)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/revisions/preview")
+    async def preview_chapter_revision(req: ChapterRevisionPreviewRequest):
+        """生成直接编辑或 AI 修订的差异预览，不写入版本文件。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+        try:
+            if req.mode == "manual":
+                return service.preview_manual(
+                    req.base_version, req.target, req.content,
+                )
+            if req.mode == "ai":
+                return await asyncio.to_thread(
+                    service.preview_ai,
+                    req.base_version,
+                    req.target,
+                    req.feedback,
+                )
+            raise ValueError("mode 必须是 manual 或 ai")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, f"生成修订预览失败：{exc}") from exc
+
+    @app.post("/api/revisions/apply")
+    async def apply_chapter_revision(req: ChapterRevisionApplyRequest):
+        """应用确认后的 Markdown，并重建受影响的章节式管线产物。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+        try:
+            return await asyncio.to_thread(
+                service.apply_revision,
+                req.base_version,
+                req.target,
+                req.content,
+                req.mode,
+                req.feedback,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, f"应用章节修订失败：{exc}") from exc
+
+    # ---------- 旧结构修订（兼容历史三幕式版本） ----------
 
     @app.post("/api/revise")
     async def revise(req: ReviseRequest):
@@ -456,316 +573,6 @@ def create_app() -> FastAPI:
             },
         )
 
-    # ---------- POST /api/generate-md ----------
-
-    @app.post("/api/generate-md")
-    async def generate_md(req: GenerateRequest):
-        """Phase 1 only：生成 MD 剧本，SSE 返回 3 阶段进度 + MD 文本。
-
-        生成后自动存盘（script 为 null，标记尚未提取结构化 JSON）。
-        """
-        request = ScriptGenerationRequest(
-            scenario=req.scenario,
-            player_role=req.player_role,
-            learning_goal=req.learning_goal,
-            query=req.query,
-            duration_minutes=req.duration_minutes,
-            extra_requirements=req.extra_requirements,
-            npc_count=req.npc_count,
-            character_settings=req.character_settings,
-            story_background=req.story_background,
-            feedback=req.feedback,
-            full_draft=True,
-        )
-
-        task_id = _create_task()
-
-        async def event_stream() -> AsyncGenerator[str, None]:
-            loop = asyncio.get_running_loop()
-            queue: asyncio.Queue[dict] = asyncio.Queue()
-
-            def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
-                if _is_cancelled(task_id):
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "cancelled", "message": "生成已被用户取消"},
-                    )
-                    return
-                loop.call_soon_threadsafe(
-                    queue.put_nowait,
-                    {"type": "progress", "stage": stage, "total": total,
-                     "name": name, "request_bytes": request_bytes},
-                )
-
-            def run_generation() -> None:
-                try:
-                    if _is_cancelled(task_id):
-                        return
-                    cancel_evt = _task_event(task_id)
-                    service = ScriptGenService(cancel_event=cancel_evt)
-                    entry = _active_tasks.get(task_id)
-                    if entry is not None:
-                        entry["service"] = service
-                    full_md, query = service.generate_md_only(request, progress_callback=progress_callback)
-                    if _is_cancelled(task_id):
-                        return
-                    # 存盘（script 为 null，标记尚未提取）
-                    result_payload = {
-                        "script": None,
-                        "full_md": full_md,
-                        "contexts_used": [],
-                        "rewritten_queries": [],
-                        "generation_notes": ["MD 剧本原文（尚未提取结构化 JSON）"],
-                        "original_query": query,
-                        "generation_mode": "md_only",
-                    }
-                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=full_md)
-                    result_payload["saved_as"] = saved_name
-                    result_payload["script"] = None  # 确保序列化后为 null
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "result",
-                        **result_payload,
-                    })
-                except Exception as exc:
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "error", "message": f"生成失败：{exc}", "detail": traceback.format_exc(),
-                    })
-
-            import threading
-            thread = threading.Thread(target=run_generation, daemon=True)
-            thread.start()
-
-            try:
-                while True:
-                    event_data = await queue.get()
-                    event_type = event_data.pop("type")
-                    yield await sse_event(event_type, event_data)
-                    if event_type in ("result", "error", "cancelled"):
-                        break
-            except asyncio.CancelledError:
-                _cancel_task(task_id)
-                yield await sse_event("cancelled", {"message": "客户端断开连接"})
-            finally:
-                _cleanup_task(task_id)
-                thread.join(timeout=5)
-
-        return StreamingResponse(
-            event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-                "X-Task-Id": task_id,
-            },
-        )
-
-    # ---------- POST /api/generate-chapter ----------
-
-    @app.post("/api/generate-chapter")
-    async def generate_chapter(req: GenerateRequest):
-        """使用 6-Call 章节式管线生成剧本，SSE 流式返回 8 阶段进度。
-
-        Call 1-3: PA Backend 创作（全局设定 → 章节大纲 → 逐章生成）
-        Call 4-6: Qwen Flash 审校与抽取（一致性修订 → JSON 抽取 → 校验）
-        """
-        request = ScriptGenerationRequest(
-            scenario=req.scenario,
-            player_role=req.player_role,
-            learning_goal=req.learning_goal,
-            query=req.query,
-            duration_minutes=req.duration_minutes,
-            extra_requirements=req.extra_requirements,
-            npc_count=req.npc_count,
-            character_settings=req.character_settings,
-            story_background=req.story_background,
-            feedback=req.feedback,
-            full_draft=True,
-            chapter_count=req.chapter_count,
-            ending_count=req.ending_count,
-        )
-
-        task_id = _create_task()
-
-        async def event_stream() -> AsyncGenerator[str, None]:
-            loop = asyncio.get_running_loop()
-            queue: asyncio.Queue[dict] = asyncio.Queue()
-
-            def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
-                if _is_cancelled(task_id):
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "cancelled", "message": "生成已被用户取消"},
-                    )
-                    return
-                loop.call_soon_threadsafe(
-                    queue.put_nowait,
-                    {"type": "progress", "stage": stage, "total": total,
-                     "name": name, "request_bytes": request_bytes},
-                )
-
-            def run_generation() -> None:
-                try:
-                    if _is_cancelled(task_id):
-                        return
-                    cancel_evt = _task_event(task_id)
-                    service = ScriptGenService(cancel_event=cancel_evt)
-                    entry = _active_tasks.get(task_id)
-                    if entry is not None:
-                        entry["service"] = service
-                    result = service.generate_chapter_script(request, progress_callback=progress_callback)
-                    if _is_cancelled(task_id):
-                        return
-                    script_dict = serialize_script(result.script)
-                    full_md = result.full_md
-                    result_payload = {
-                        "script": script_dict,
-                        "full_md": full_md,
-                        "contexts_used": [],
-                        "rewritten_queries": [],
-                        "generation_notes": result.generation_notes,
-                        "original_query": result.original_query,
-                        "generation_mode": result.generation_mode,
-                    }
-                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=full_md)
-                    result_payload["saved_as"] = saved_name
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "result",
-                        **result_payload,
-                    })
-                except Exception as exc:
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "error", "message": f"生成失败：{exc}", "detail": traceback.format_exc(),
-                    })
-
-            import threading
-            thread = threading.Thread(target=run_generation, daemon=True)
-            thread.start()
-
-            try:
-                while True:
-                    event_data = await queue.get()
-                    event_type = event_data.pop("type")
-                    yield await sse_event(event_type, event_data)
-                    if event_type in ("result", "error", "cancelled"):
-                        break
-            except asyncio.CancelledError:
-                _cancel_task(task_id)
-                yield await sse_event("cancelled", {"message": "客户端断开连接"})
-            finally:
-                _cleanup_task(task_id)
-                thread.join(timeout=5)
-
-        return StreamingResponse(
-            event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-                "X-Task-Id": task_id,
-            },
-        )
-
-    # ---------- POST /api/extract-from-md ----------
-
-    @app.post("/api/extract-from-md")
-    async def extract_from_md(req: ExtractFromMDRequest):
-        """Phase 2 only：从 MD 提取结构化 JSON，SSE 返回 5 阶段进度 + 完整结果。
-
-        提取后存盘为新版本（同 gen，rev+1）。
-        """
-        task_id = _create_task()
-
-        async def event_stream() -> AsyncGenerator[str, None]:
-            loop = asyncio.get_running_loop()
-            queue: asyncio.Queue[dict] = asyncio.Queue()
-
-            def progress_callback(stage: int, total: int, name: str, request_bytes: int) -> None:
-                if _is_cancelled(task_id):
-                    loop.call_soon_threadsafe(
-                        queue.put_nowait,
-                        {"type": "cancelled", "message": "提取已被用户取消"},
-                    )
-                    return
-                loop.call_soon_threadsafe(
-                    queue.put_nowait,
-                    {"type": "progress", "stage": stage, "total": total,
-                     "name": name, "request_bytes": request_bytes},
-                )
-
-            def run_extraction() -> None:
-                try:
-                    if _is_cancelled(task_id):
-                        return
-                    cancel_evt = _task_event(task_id)
-                    service = ScriptGenService(cancel_event=cancel_evt)
-                    entry = _active_tasks.get(task_id)
-                    if entry is not None:
-                        entry["service"] = service
-                    # 构建 query
-                    query = req.query.strip()
-                    if not query:
-                        parts = [req.scenario, req.player_role, req.learning_goal]
-                        query = " ".join(p for p in parts if p)
-                    script = service.extract_from_md(
-                        full_md=req.full_md,
-                        query=query,
-                        npc_count=req.npc_count,
-                        progress_callback=progress_callback,
-                    )
-                    if _is_cancelled(task_id):
-                        return
-                    script_dict = serialize_script(script)
-                    result_payload = {
-                        "script": script_dict,
-                        "full_md": req.full_md,
-                        "contexts_used": [],
-                        "rewritten_queries": [],
-                        "generation_notes": ["从 MD 剧本提取结构化 JSON。", "包含三幕结构、NPC 关系网、决策点序列和多结局条件。"],
-                        "original_query": query,
-                        "generation_mode": "full",
-                    }
-                    saved_name = _save_script_draft(result_payload, prefix="script_generate", full_md=req.full_md)
-                    result_payload["saved_as"] = saved_name
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "result",
-                        **result_payload,
-                    })
-                except Exception as exc:
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "error", "message": f"提取失败：{exc}", "detail": traceback.format_exc(),
-                    })
-
-            import threading
-            thread = threading.Thread(target=run_extraction, daemon=True)
-            thread.start()
-
-            try:
-                while True:
-                    event_data = await queue.get()
-                    event_type = event_data.pop("type")
-                    yield await sse_event(event_type, event_data)
-                    if event_type in ("result", "error", "cancelled"):
-                        break
-            except asyncio.CancelledError:
-                _cancel_task(task_id)
-                yield await sse_event("cancelled", {"message": "客户端断开连接"})
-            finally:
-                _cleanup_task(task_id)
-                thread.join(timeout=5)
-
-        return StreamingResponse(
-            event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-                "X-Task-Id": task_id,
-            },
-        )
-
     # ---------- 版本管理 ----------
 
     @app.get("/api/versions")
@@ -779,8 +586,14 @@ def create_app() -> FastAPI:
             if not subdir.is_dir():
                 continue
             # 排除中间产物 JSON（0X_*.json），只列出最终结果
-            json_candidates = [p for p in subdir.glob("*.json")
-                               if not p.name.startswith("0")]
+            json_candidates = [
+                p for p in (
+                    list(subdir.glob("*.json"))
+                    + list(subdir.glob("revisions/r[0-9][0-9]/*.json"))
+                )
+                if not p.name.startswith("0")
+                and p.name != "revision_manifest.json"
+            ]
             for f in sorted(json_candidates, key=lambda p: p.stat().st_mtime, reverse=True):
                 try:
                     with open(f, "r", encoding="utf-8") as fh:
@@ -805,7 +618,7 @@ def create_app() -> FastAPI:
                     "label": label,
                     "gen": gen_num,
                     "rev": rev_num,
-                    "prefix": "script_generate",
+                    "prefix": "script_revise" if f.name.startswith("script_revise_") else "script_generate",
                     "timestamp": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
                     "title": s.get("title", "（剧本原文，尚未提取）") if s else "（剧本原文，尚未提取）",
                     "npc_count": len(s.get("npc_seed", [])),
@@ -886,8 +699,14 @@ def create_app() -> FastAPI:
         if not outputs_dir.exists():
             raise HTTPException(404, "outputs/script_drafts 目录不存在")
         # 排除中间产物 JSON（0X_*.json），只找最终结果
-        json_candidates = [p for p in outputs_dir.glob("v[0-9][0-9]/*.json")
-                           if not p.name.startswith("0")]
+        json_candidates = [
+            p for p in (
+                list(outputs_dir.glob("v[0-9][0-9]/*.json"))
+                + list(outputs_dir.glob("v[0-9][0-9]/revisions/r[0-9][0-9]/*.json"))
+            )
+            if not p.name.startswith("0")
+            and p.name != "revision_manifest.json"
+        ]
         json_files = sorted(json_candidates, key=lambda p: p.stat().st_mtime, reverse=True)
         if not json_files:
             raise HTTPException(404, "没有找到已生成的剧本")

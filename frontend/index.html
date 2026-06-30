@@ -93,6 +93,27 @@ textarea { resize: vertical; min-height: 60px; }
 
 .feedback-area { display: flex; gap: 8px; margin-top: 12px; }
 .feedback-area input { flex: 1; }
+.revision-toolbar { display: grid; grid-template-columns: minmax(180px, 240px) 1fr; gap: 10px; align-items: end; }
+.revision-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.revision-actions .btn-primary { width: auto; }
+.element-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.element-actions { display: inline-flex; flex: 0 0 auto; gap: 4px; }
+.element-action { padding: 2px 7px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--text-muted); font-size: 11px; line-height: 1.5; cursor: pointer; white-space: nowrap; }
+.element-action:hover { border-color: var(--accent-light); color: var(--accent); }
+.source-revision-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(30, 25, 20, .56); }
+.source-inline-editor { width: min(920px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 18px; border: 1px solid var(--accent-light); border-radius: var(--radius); background: var(--card); box-shadow: 0 18px 60px rgba(30, 25, 20, .28); }
+.source-inline-editor textarea { width: 100%; min-height: min(52vh, 520px); max-height: 62vh; overflow: auto; margin-top: 10px; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 13px; line-height: 1.65; }
+.source-inline-header, .source-inline-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.source-inline-header strong { color: var(--accent); font-size: 15px; }
+.source-inline-ai { display: flex; gap: 8px; margin-top: 8px; }
+.source-inline-ai input { flex: 1; }
+.source-inline-actions { justify-content: flex-end; margin-top: 8px; }
+.source-inline-actions .btn-primary { width: auto; }
+.source-inline-status { min-height: 18px; margin-top: 6px; color: var(--text-muted); font-size: 11px; }
+body.modal-open { overflow: hidden; }
+.collapsible-text { max-height: 4.8em; overflow: hidden; white-space: pre-wrap; }
+.collapsible-text.expanded { max-height: none; }
+.text-toggle { margin-top: 4px; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 11px; cursor: pointer; }
 
 .hidden { display: none; }
 .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff6; border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
@@ -140,6 +161,20 @@ textarea { resize: vertical; min-height: 60px; }
 .tree-legend { display: flex; gap: 16px; padding: 8px 0; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 .tree-legend span { display: flex; align-items: center; gap: 4px; }
 .tree-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+
+@media (max-width: 640px) {
+  .container { padding: 12px 8px; }
+  .card { padding: 16px 12px; }
+  .form-grid, .revision-toolbar { grid-template-columns: 1fr; }
+  .form-grid .full { grid-column: auto; }
+  .feedback-area { flex-direction: column; }
+  .revision-actions .btn, .feedback-area .btn { width: 100%; justify-content: center; }
+  .source-inline-ai { flex-direction: column; }
+  .source-inline-ai .btn { width: 100%; justify-content: center; }
+  .tabs { overflow-x: auto; }
+  .tab { flex: 0 0 auto; padding: 8px 12px; }
+  .act-card { overflow-x: auto; }
+}
 
 </style>
 </head>
@@ -226,10 +261,7 @@ textarea { resize: vertical; min-height: 60px; }
     </div>
   </div>
   <div style="display:flex; gap:12px;">
-    <button class="btn btn-primary" id="generateMdBtn" onclick="startMdGeneration()" style="flex:1;">
-      📝 生成剧本 MD
-    </button>
-    <button class="btn btn-secondary" id="oneClickBtn" onclick="startOneClickGeneration()">
+    <button class="btn btn-primary" id="oneClickBtn" onclick="startOneClickGeneration()" style="flex:1;">
       ⚡ 一键生成
     </button>
     <button class="btn btn-secondary" id="loadBtn" onclick="loadLatestResult()">
@@ -265,7 +297,7 @@ textarea { resize: vertical; min-height: 60px; }
   <div class="tabs" id="tabs">
     <div class="tab active" data-panel="overview">📊 概览</div>
     <div class="tab" data-panel="npcs">👥 NPC 网络</div>
-    <div class="tab" data-panel="tree">🌳 剧情分叉树</div>
+    <div class="tab" data-panel="tree">🌳 剧情结构</div>
     <div class="tab" data-panel="mdtext">📝 剧本原文</div>
   </div>
   <div id="panel-overview" class="panel active"></div>
@@ -273,8 +305,36 @@ textarea { resize: vertical; min-height: 60px; }
   <div id="panel-tree" class="panel"></div>
   <div id="panel-mdtext" class="panel"></div>
 
-  <!-- 反馈修订 -->
-  <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+  <!-- 章节式源文件修订 -->
+  <div id="chapterRevisionControls" class="hidden" style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+    <h3 style="font-size:15px; margin-bottom:12px;">章节源文件修订</h3>
+    <div class="revision-toolbar">
+      <div>
+        <label for="revisionTarget">修订目标</label>
+        <select id="revisionTarget" onchange="loadRevisionSource()"></select>
+      </div>
+      <div class="revision-actions">
+        <button class="btn btn-secondary btn-sm" onclick="loadRevisionSource()">重新加载</button>
+        <button class="btn btn-primary btn-sm" id="applyManualRevisionBtn" onclick="applyManualRevision()" disabled>保存并重建</button>
+      </div>
+    </div>
+    <textarea id="revisionSourceEditor" oninput="syncManualRevisionState()" style="width:100%; min-height:360px; margin-top:10px; font-family:monospace; font-size:13px; line-height:1.7; padding:14px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); resize:vertical;"></textarea>
+    <div class="feedback-area" style="margin-top:10px;">
+      <input id="chapterAiFeedback" placeholder="输入针对当前源文件的 AI 修订意见">
+      <button class="btn btn-secondary btn-sm" onclick="previewAiRevision()">AI 生成候选</button>
+    </div>
+    <div id="revisionPreview" class="hidden" style="margin-top:12px;">
+      <h4 style="font-size:13px; margin-bottom:6px;">修改差异</h4>
+      <pre id="revisionDiff" style="max-height:320px; overflow:auto; white-space:pre-wrap; padding:12px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); font-size:12px;"></pre>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="clearRevisionPreview()">取消预览</button>
+        <button class="btn btn-primary btn-sm" id="applyRevisionBtn" onclick="applyChapterRevision()">应用并重建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史三幕式反馈修订 -->
+  <div id="legacyRevisionControls" style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
     <label for="feedback">💬 反馈修订</label>
     <div class="feedback-area">
       <input id="feedback" placeholder="如：NPC关系网太简单，希望增加更多矛盾冲突">
@@ -296,6 +356,10 @@ textarea { resize: vertical; min-height: 60px; }
 let lastResult = null;
 let activeAbortController = null;
 let activeTaskId = null;
+let revisionPreviewData = null;
+let revisionSourceContent = '';
+let inlineRevisionContext = null;
+let inlineRevisionRequestId = 0;
 
 // ===== Tab 切换 =====
 document.getElementById('tabs')?.addEventListener('click', e => {
@@ -379,8 +443,6 @@ async function cancelGeneration() {
     activeTaskId = null;
   }
   hide('progress-card');
-  document.getElementById('generateMdBtn').disabled = false;
-  document.getElementById('generateMdBtn').textContent = '📝 生成剧本 MD';
 }
 
 // ===== 加载已有结果 =====
@@ -414,6 +476,369 @@ async function loadLatestResult() {
     btn.disabled = false;
     btn.textContent = '📂 加载最近结果';
   }
+}
+
+// ===== 章节式 Markdown 源文件修订 =====
+function getRevisionBaseVersion() {
+  return lastResult?.revision_dir || lastResult?.filename || lastResult?.saved_as || '';
+}
+
+function configureChapterRevision(chapters) {
+  show('chapterRevisionControls');
+  hide('legacyRevisionControls');
+  const select = document.getElementById('revisionTarget');
+  const current = select.value;
+  const options = [
+    ['game_settings', '全局设定'],
+    ['chapter_outline', '章节大纲'],
+    ...(chapters || []).map((chapter, index) => [
+      chapter.chapter_id || `ch${String(index + 1).padStart(2, '0')}`,
+      `${chapter.chapter_id || `ch${String(index + 1).padStart(2, '0')}`} ${chapter.title || ''}`.trim(),
+    ]),
+  ];
+  select.innerHTML = options.map(([value, label]) =>
+    `<option value="${esc(value)}">${esc(label)}</option>`
+  ).join('');
+  if (options.some(([value]) => value === current)) select.value = current;
+  clearRevisionPreview();
+  loadRevisionSource();
+}
+
+async function loadRevisionSource() {
+  const baseVersion = getRevisionBaseVersion();
+  const target = document.getElementById('revisionTarget').value;
+  if (!baseVersion || !target) return;
+  clearRevisionPreview();
+  revisionSourceContent = '';
+  document.getElementById('revisionSourceEditor').value = '';
+  syncManualRevisionState();
+  try {
+    const content = await fetchRevisionSource(target);
+    if (document.getElementById('revisionTarget').value !== target) return;
+    revisionSourceContent = content;
+    document.getElementById('revisionSourceEditor').value = revisionSourceContent;
+    syncManualRevisionState();
+    return revisionSourceContent;
+  } catch (err) {
+    showError(err.message);
+    return '';
+  }
+}
+
+async function fetchRevisionSource(target) {
+  const params = new URLSearchParams({
+    base_version: getRevisionBaseVersion(),
+    target,
+  });
+  const resp = await fetch(`/api/revisions/source?${params}`);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || `读取源文件失败 ${resp.status}`);
+  return data.content || '';
+}
+
+function revisionActionButtons(target, marker, field) {
+  if (!target || !marker) return '';
+  return `
+    <span class="element-actions">
+      <button type="button" class="element-action" data-revision-target="${esc(target)}" data-revision-marker="${esc(marker)}" data-revision-field="${esc(field || '')}" data-revision-mode="edit" onclick="openInlineRevision(this)" title="在当前位置编辑对应 Markdown 内容块">编辑</button>
+      <button type="button" class="element-action" data-revision-target="${esc(target)}" data-revision-marker="${esc(marker)}" data-revision-field="${esc(field || '')}" data-revision-mode="ai" onclick="openInlineRevision(this)" title="在当前位置生成该元素的 AI 修订候选">AI 修订</button>
+    </span>
+  `;
+}
+
+function collapsibleText(value, limit = 120) {
+  const text = String(value || '');
+  if (!text) return '';
+  if (text.length <= limit) return `<div>${esc(text)}</div>`;
+  return `
+    <div class="collapsible-text">${esc(text)}</div>
+    <button type="button" class="text-toggle" onclick="toggleLongText(this)">展开</button>
+  `;
+}
+
+function toggleLongText(button) {
+  const content = button.previousElementSibling;
+  const expanded = content.classList.toggle('expanded');
+  button.textContent = expanded ? '收起' : '展开';
+}
+
+function findMarkdownBlock(content, marker, field = '') {
+  const escapePattern = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let markerIndex = -1;
+  if (field) {
+    const declarationPattern = new RegExp(
+      `^\\s*-\\s*(?:\\*\\*)?${escapePattern(field)}\\s*:\\s*(?:\\*\\*)?\\s*\`?${escapePattern(marker)}\`?\\s*$`,
+      'm',
+    );
+    const declaration = declarationPattern.exec(content);
+    markerIndex = declaration ? declaration.index : -1;
+  }
+  if (markerIndex < 0) markerIndex = content.indexOf(marker);
+  if (markerIndex < 0) return null;
+
+  const headings = [];
+  const pattern = /^(#{1,6})\s+.+$/gm;
+  let match;
+  while ((match = pattern.exec(content)) !== null) {
+    headings.push({index: match.index, level: match[1].length});
+  }
+  const startHeading = headings.filter(heading => heading.index <= markerIndex).pop();
+  if (!startHeading) {
+    const lineStart = content.lastIndexOf('\n', markerIndex) + 1;
+    const lineEnd = content.indexOf('\n', markerIndex);
+    const end = lineEnd >= 0 ? lineEnd + 1 : content.length;
+    return {start: lineStart, end, text: content.slice(lineStart, end)};
+  }
+  const nextHeading = headings.find(heading =>
+    heading.index > startHeading.index && heading.level <= startHeading.level);
+  const end = nextHeading ? nextHeading.index : content.length;
+  return {
+    start: startHeading.index,
+    end,
+    text: content.slice(startHeading.index, end).trimEnd(),
+  };
+}
+
+function closeInlineRevision() {
+  inlineRevisionRequestId += 1;
+  document.querySelector('.source-revision-overlay')?.remove();
+  document.body.classList.remove('modal-open');
+  inlineRevisionContext = null;
+}
+
+async function openInlineRevision(button) {
+  const target = button.dataset.revisionTarget;
+  const marker = button.dataset.revisionMarker;
+  const field = button.dataset.revisionField;
+  const mode = button.dataset.revisionMode;
+  closeInlineRevision();
+  const requestId = ++inlineRevisionRequestId;
+  hide('error-card');
+
+  try {
+    const source = await fetchRevisionSource(target);
+    if (requestId !== inlineRevisionRequestId) return;
+    const block = findMarkdownBlock(source, marker, field);
+    if (!block) throw new Error(`源文件中找不到元素 ${marker}`);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'source-revision-overlay';
+    const panel = document.createElement('div');
+    panel.className = 'source-inline-editor';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', `修订 ${marker}`);
+    panel.innerHTML = `
+      <div class="source-inline-header">
+        <strong>${esc(marker)}</strong>
+        <button type="button" class="element-action" onclick="closeInlineRevision()">关闭</button>
+      </div>
+      <textarea class="source-inline-text">${esc(block.text)}</textarea>
+      <div class="source-inline-ai">
+        <input class="source-inline-feedback" placeholder="输入仅针对 ${esc(marker)} 的修订意见">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="generateInlineAiRevision(this)">生成候选</button>
+      </div>
+      <div class="source-inline-status"></div>
+      <div class="source-inline-actions">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeInlineRevision()">取消</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveInlineRevision(this)">保存并重建</button>
+      </div>
+    `;
+    overlay.appendChild(panel);
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) closeInlineRevision();
+    });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeInlineRevision();
+    });
+    document.body.appendChild(overlay);
+    document.body.classList.add('modal-open');
+
+    inlineRevisionContext = {
+      target,
+      marker,
+      field,
+      source,
+      start: block.start,
+      end: block.end,
+      mode: 'manual',
+      feedback: '',
+      panel,
+    };
+    if (mode === 'ai') {
+      panel.querySelector('.source-inline-feedback').focus();
+    } else {
+      panel.querySelector('.source-inline-text').focus();
+    }
+  } catch (err) {
+    if (requestId === inlineRevisionRequestId) showError(err.message);
+  }
+}
+
+async function generateInlineAiRevision(button) {
+  const context = inlineRevisionContext;
+  if (!context) return;
+  const panel = context.panel;
+  const feedbackInput = panel.querySelector('.source-inline-feedback');
+  const status = panel.querySelector('.source-inline-status');
+  const feedback = feedbackInput.value.trim();
+  if (!feedback) {
+    status.textContent = '请先输入修订意见';
+    feedbackInput.focus();
+    return;
+  }
+
+  button.disabled = true;
+  status.textContent = '正在生成局部候选...';
+  try {
+    const scopedFeedback = `仅修订元素 ${context.marker} 所属内容块：${feedback}`;
+    const resp = await fetch('/api/revisions/preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        base_version: getRevisionBaseVersion(),
+        target: context.target,
+        mode: 'ai',
+        feedback: scopedFeedback,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || `生成局部候选失败 ${resp.status}`);
+    const revisedBlock = findMarkdownBlock(
+      data.revised_content || '',
+      context.marker,
+      context.field,
+    );
+    if (!revisedBlock) throw new Error(`AI 候选丢失了元素 ID ${context.marker}`);
+    panel.querySelector('.source-inline-text').value = revisedBlock.text;
+    context.mode = 'ai';
+    context.feedback = scopedFeedback;
+    status.textContent = data.changed ? 'AI 候选已填入，请确认后保存' : 'AI 未产生修改';
+  } catch (err) {
+    status.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function saveInlineRevision(button) {
+  const context = inlineRevisionContext;
+  if (!context) return;
+  const panel = context.panel;
+  const status = panel.querySelector('.source-inline-status');
+  const blockText = panel.querySelector('.source-inline-text').value.trim();
+  if (!blockText) {
+    status.textContent = '局部内容不能为空';
+    return;
+  }
+  const originalBlock = context.source.slice(context.start, context.end).trim();
+  if (blockText === originalBlock) {
+    status.textContent = '内容没有变化';
+    return;
+  }
+
+  const separator = context.end < context.source.length ? '\n\n' : '\n';
+  const content = context.source.slice(0, context.start)
+    + blockText.replace(/\s+$/, '') + separator
+    + context.source.slice(context.end);
+  return submitChapterRevision({
+    target: context.target,
+    mode: context.mode,
+    content,
+    feedback: context.feedback,
+  }, button);
+}
+
+async function requestAiRevisionPreview() {
+  const baseVersion = getRevisionBaseVersion();
+  const target = document.getElementById('revisionTarget').value;
+  const feedback = document.getElementById('chapterAiFeedback').value.trim();
+  if (!feedback) {
+    showError('请先输入 AI 修订意见');
+    return;
+  }
+  hide('error-card');
+  setProgress(1, 1, '正在生成 AI 修订候选');
+  try {
+    const resp = await fetch('/api/revisions/preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({base_version: baseVersion, target, mode: 'ai', feedback}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || `生成修订预览失败 ${resp.status}`);
+    revisionPreviewData = data;
+    document.getElementById('revisionDiff').textContent = data.diff || '内容没有变化';
+    document.getElementById('applyRevisionBtn').disabled = !data.changed;
+    show('revisionPreview');
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    hide('progress-card');
+  }
+}
+
+function previewAiRevision() { return requestAiRevisionPreview(); }
+
+function syncManualRevisionState() {
+  const button = document.getElementById('applyManualRevisionBtn');
+  const editor = document.getElementById('revisionSourceEditor');
+  if (!button || !editor) return;
+  button.disabled = !editor.value.trim() || editor.value === revisionSourceContent;
+}
+
+function clearRevisionPreview() {
+  revisionPreviewData = null;
+  hide('revisionPreview');
+  const diff = document.getElementById('revisionDiff');
+  if (diff) diff.textContent = '';
+}
+
+async function submitChapterRevision(payload, btn) {
+  btn.disabled = true;
+  hide('error-card');
+  setProgress(1, 1, '正在重建抽取结果并校验');
+  try {
+    const resp = await fetch('/api/revisions/apply', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({base_version: getRevisionBaseVersion(), ...payload}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || `应用章节修订失败 ${resp.status}`);
+    closeInlineRevision();
+    lastResult = data;
+    lastFullMD = normalizeFullMD(data.full_md || '');
+    renderResult(data);
+    updateVersionLabel(data.saved_as || data.revision_dir || '');
+    show('result-card');
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false;
+    hide('progress-card');
+  }
+}
+
+function applyManualRevision() {
+  const content = document.getElementById('revisionSourceEditor').value;
+  if (!content.trim() || content === revisionSourceContent) return;
+  return submitChapterRevision({
+    target: document.getElementById('revisionTarget').value,
+    mode: 'manual',
+    content,
+    feedback: '',
+  }, document.getElementById('applyManualRevisionBtn'));
+}
+
+function applyChapterRevision() {
+  if (!revisionPreviewData?.changed) return;
+  return submitChapterRevision({
+    target: revisionPreviewData.target,
+    mode: revisionPreviewData.mode,
+    content: revisionPreviewData.revised_content,
+    feedback: revisionPreviewData.feedback || '',
+  }, document.getElementById('applyRevisionBtn'));
 }
 
 // ===== 行内手动编辑 =====
@@ -663,11 +1088,12 @@ function updateVersionLabel(filename) {
   if (!el) return;
   if (!filename) { el.style.display = 'none'; return; }
   const sourceLabel = { script_generate:'初始生成', script_revise:'全局修订', script_ai_element:'局部AI', script_manual:'手动修改' };
-  // 格式: v06/script_generate_20260619_151126.json
-  const match = filename.match(/^(v\d{2})\/(script_[a-z_]+?)_\d/);
+  // 格式: v06/script_generate_*.json 或 v06/revisions/r01/script_revise_*.json
+  const match = filename.match(/^(v\d{2})(?:\/revisions\/(r\d{2}))?\/(script_[a-z_]+?)_\d/);
   if (match) {
     el.style.display = 'inline';
-    el.innerHTML = `<span style="font-weight:700;">${esc(match[1].toUpperCase())}</span> <span style="color:var(--text-muted);">${esc(sourceLabel[match[2]] || match[2])}</span>`;
+    const version = match[2] ? `${match[1]}-${match[2]}` : match[1];
+    el.innerHTML = `<span style="font-weight:700;">${esc(version.toUpperCase())}</span> <span style="color:var(--text-muted);">${esc(sourceLabel[match[3]] || match[3])}</span>`;
     return;
   }
   el.style.display = 'none';
@@ -1030,75 +1456,152 @@ function renderChapterResult(data) {
   const state = s.initial_game_state || {};
   const varnames = ['signed','social_stability','political_credit','public_trust','env_clue','media_pressure','budget','days_left'];
   const varChinese = { signed:'签约户数', social_stability:'社会稳定', political_credit:'政治信用', public_trust:'群众信任', env_clue:'环评线索', media_pressure:'舆情压力', budget:'财政预算', days_left:'剩余天数' };
+  const endings = s.chapter_endings || s.endings || [];
+  const endingTypeLabels = {good:'好结局', neutral:'中性结局', bad:'坏结局'};
+  const decisionCount = chapters.reduce((total, chapter) =>
+    total + (chapter.decision_points || (chapter.decision_point ? [chapter.decision_point] : [])).length, 0);
+  const choiceCount = chapters.reduce((total, chapter) =>
+    total + (chapter.decision_points || (chapter.decision_point ? [chapter.decision_point] : []))
+      .reduce((subtotal, decision) => subtotal + (decision.options || []).length, 0), 0);
+
+  const chapterStructureHtml = chapters.map(ch => {
+    const cp = ch.checkpoint || {};
+    const dps = ch.decision_points || (ch.decision_point ? [ch.decision_point] : []);
+    return `
+    <div class="act-card revision-item" style="border-left:3px solid var(--accent); margin-bottom:16px;">
+      <div class="element-heading">
+        <h3>${esc(ch.chapter_id || '')}：${esc(ch.title)} <small style="color:var(--text-muted);">${esc(ch.day_range || '')}</small></h3>
+        ${revisionActionButtons(ch.chapter_id, ch.chapter_id, 'chapter_id')}
+      </div>
+      <p class="act-meta">核心任务：${esc(ch.core_task || '')}</p>
+      <p style="font-size:13px;"><strong>核心问题：</strong>${esc(ch.main_question || '')}</p>
+      ${dps.map(dp => {
+        const options = dp.options || [];
+        return `
+        <div class="revision-item" style="margin-top:12px; padding:10px; background:var(--bg); border-radius:var(--radius);">
+          <div class="element-heading">
+            <p style="font-size:13px; font-weight:600;">🔀 ${esc(dp.question)}</p>
+            ${revisionActionButtons(ch.chapter_id, dp.node_id, 'node_id')}
+          </div>
+          ${options.length ? `
+          <p class="act-meta">选项（${options.length} 个）：</p>
+          <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:4px;">
+            <tr style="background:var(--bg);">
+              <th style="padding:4px 8px; text-align:left;">选项</th>
+              <th style="padding:4px 8px; text-align:left;">${varnames.map(v => varChinese[v]).join('</th><th style="padding:4px 8px; text-align:left;">')}</th>
+              <th style="padding:4px 8px; text-align:left;">flag</th>
+              <th style="padding:4px 8px; text-align:right;">操作</th>
+            </tr>
+            ${options.map(opt => `
+            <tr class="revision-item" style="border-top:1px solid var(--border);">
+              <td style="padding:4px 8px; min-width:180px;">
+                <strong>${esc(opt.option_label || opt.choice_id)}</strong>
+                ${opt.text ? `<div style="margin-top:2px; font-weight:400;">${collapsibleText(opt.text, 80)}</div>` : ''}
+              </td>
+              ${varnames.map(v => {
+                const eff = opt.effects || {};
+                const val = eff[v] || 0;
+                const color = val > 0 ? 'var(--success)' : val < 0 ? 'var(--danger)' : 'var(--text-muted)';
+                return `<td style="padding:4px 8px; color:${color};">${val > 0 ? '+' : ''}${val}</td>`;
+              }).join('')}
+              <td style="padding:4px 8px; font-size:11px;">${esc((opt.flags_added || []).join(', ') || '-')}</td>
+              <td style="padding:4px 8px; text-align:right;">${revisionActionButtons(ch.chapter_id, opt.choice_id, 'choice_id')}</td>
+            </tr>
+            `).join('')}
+          </table>
+          ` : ''}
+        </div>
+      `}).join('')}
+      ${cp.summary ? `
+        <div class="element-heading revision-item" style="margin-top:8px;">
+          <div style="min-width:0; flex:1; font-size:12px;"><strong>章节结算：</strong>${collapsibleText(cp.summary, 180)}</div>
+          ${revisionActionButtons(ch.chapter_id, cp.checkpoint_id, 'checkpoint_id')}
+        </div>
+      ` : ''}
+      ${cp.next_chapter ? `<p class="act-meta">→ ${esc(cp.next_chapter)}</p>` : ''}
+    </div>
+  `}).join('');
 
   // 概览面板
   document.getElementById('panel-overview').innerHTML = `
     <p><strong>标题：</strong>${esc(s.title)}</p>
     <p><strong>玩家角色：</strong>${esc(s.player_role)}</p>
-    <p><strong>核心冲突：</strong>${esc(s.core_conflict)}</p>
-    <p><strong>初始状态：</strong>第${state.day || 1}天 | 预算=${state.budget_remaining || 8000}${state.budget_unit || '万元'} | 签约=${state.signed_households || 0}/${state.total_households || 36} | 稳定=${state.social_stability_index || 70} | 信用=${state.political_credit || 70}</p>
-    <h3 style="margin-top:16px;">📖 章节结构（${chapters.length} 章）</h3>
-    ${chapters.map((ch, i) => {
-      const dp = ch.decision_point || {};
-      const cp = ch.checkpoint || {};
-      const snap = cp.variable_snapshot || ch.state_snapshot || {};
-      const options = dp.options || [];
-      return `
-      <div class="act-card" style="border-left:3px solid var(--accent);">
-        <h3>第${i+1}章：${esc(ch.title)} <small style="color:var(--text-muted);">${esc(ch.day_range || '')}</small></h3>
-        <p class="act-meta">核心任务：${esc(ch.core_task || '')}</p>
-        <p style="font-size:13px;"><strong>决策问题：</strong>${esc(dp.question || ch.main_question || '')}</p>
-        ${options.length ? `
-        <p class="act-meta">选项（${options.length} 个）：</p>
-        <table style="width:100%; font-size:12px; border-collapse:collapse; margin-top:4px;">
-          <tr style="background:var(--bg);">
-            <th style="padding:4px 8px; text-align:left;">选项</th>
-            <th style="padding:4px 8px; text-align:left;">${varnames.map(v => varChinese[v]).join('</th><th style="padding:4px 8px; text-align:left;">')}</th>
-            <th style="padding:4px 8px; text-align:left;">flag</th>
-          </tr>
-          ${options.map(opt => `
-          <tr style="border-top:1px solid var(--border);">
-            <td style="padding:4px 8px; font-weight:600;">${esc(opt.option_label || opt.choice_id)}</td>
-            ${varnames.map(v => {
-              const eff = opt.effects || {};
-              const val = eff[v] || 0;
-              const color = val > 0 ? 'var(--success)' : val < 0 ? 'var(--danger)' : 'var(--text-muted)';
-              return `<td style="padding:4px 8px; color:${color};">${val > 0 ? '+' : ''}${val}</td>`;
-            }).join('')}
-            <td style="padding:4px 8px; font-size:11px;">${esc((opt.flags_added || []).join(', ') || '-')}</td>
-          </tr>
-          `).join('')}
-        </table>
-        ` : ''}
-        ${cp.summary ? `<p style="font-size:12px; margin-top:8px;"><strong>章节结算：</strong>${esc(cp.summary)}</p>` : ''}
-        ${cp.next_chapter ? `<p class="act-meta">→ ${esc(cp.next_chapter)}</p>` : ''}
-      </div>
-    `}).join('')}
+    <div><strong>核心冲突：</strong>${collapsibleText(s.core_conflict, 180)}</div>
+    <p><strong>初始状态：</strong>第${state.day ?? 1}天 | 预算=${state.budget_remaining ?? state.budget ?? 8000}${state.budget_unit || '万元'} | 签约=${state.signed_households ?? state.signed ?? 0}/${state.total_households ?? 36} | 稳定=${state.social_stability_index ?? state.social_stability ?? 70} | 信用=${state.political_credit ?? 70}</p>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin-top:18px; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+      <div><strong style="font-size:20px; color:var(--accent);">${chapters.length}</strong><small style="display:block; color:var(--text-muted);">章节</small></div>
+      <div><strong style="font-size:20px; color:var(--accent);">${decisionCount}</strong><small style="display:block; color:var(--text-muted);">决策点</small></div>
+      <div><strong style="font-size:20px; color:var(--accent);">${choiceCount}</strong><small style="display:block; color:var(--text-muted);">玩家选项</small></div>
+      <div><strong style="font-size:20px; color:var(--accent);">${endings.length}</strong><small style="display:block; color:var(--text-muted);">结局</small></div>
+    </div>
+    ${endings.length ? `
+      <h3 style="margin:18px 0 10px;">结局设计</h3>
+      ${endings.map(ending => {
+        const conditions = ending.conditions || {};
+        const conditionText = conditions.variable_expression
+          || Object.entries(conditions.variables || {}).map(([key, value]) => `${key} ${value}`).join(' AND ');
+        return `
+          <div class="ending-card revision-item ${esc(ending.ending_type || 'neutral')}">
+            <div class="element-heading">
+              <h3>${esc(ending.title || ending.ending_id)}</h3>
+              ${revisionActionButtons('game_settings', ending.ending_id, 'ending_id')}
+            </div>
+            <div style="font-size:13px;">${collapsibleText(ending.description || ending.ending_text || '', 160)}</div>
+            <div class="conditions">${collapsibleText(`${endingTypeLabels[ending.ending_type] || ending.ending_type || '结局'}${conditionText ? ` · ${conditionText}` : ''}`, 180)}</div>
+            ${ending.strategy_profile ? `<div class="conditions">${collapsibleText(`策略画像：${ending.strategy_profile}`, 160)}</div>` : ''}
+          </div>
+        `;
+      }).join('')}
+    ` : ''}
     ${data.generation_notes ? `<p style="margin-top:8px;font-size:12px;color:var(--text-muted);">📝 ${data.generation_notes.join('；')}</p>` : ''}
   `;
 
-  // NPC 面板 — 章节式剧本从各章 info_nodes 提取 NPC
-  const npcNodes = [];
+  // NPC 面板 — 章节式剧本同时展示 NPC 角色表和情报节点
+  const npcs = s.npc_seed || [];
+  const typeLabels = { cadre: '干部', external: '外部', villager: '村民' };
+  const infoNodes = [];
   chapters.forEach(ch => {
     (ch.info_nodes || []).forEach(n => {
-      if (n.title && n.text) npcNodes.push(n);
+      if (n.title && n.text) infoNodes.push({
+        ...n,
+        _chapter: ch.title || ch.chapter_id,
+        _chapterId: ch.chapter_id,
+      });
     });
   });
-  document.getElementById('panel-npcs').innerHTML = npcNodes.length
-    ? `<h3>情报节点（${npcNodes.length} 个）</h3>
-       <div class="npc-list">${npcNodes.map(n => `
-         <div class="npc-chip">
-           <span class="name">${esc(n.title)}</span>
-           <br><small>${esc((n.text || '').slice(0, 80))}${(n.text||'').length > 80 ? '...' : ''}</small>
-           ${n.unlock_condition ? `<br><small style="color:var(--accent);">🔓 ${esc(n.unlock_condition)}</small>` : ''}
-         </div>
-       `).join('')}</div>`
-    : '<p style="color:var(--text-muted); padding:20px; text-align:center;">章节式剧本的 NPC 信息嵌入在各章正文中<br><small>请查看「📄 剧本原文」面板</small></p>';
+  document.getElementById('panel-npcs').innerHTML = `
+    ${npcs.length ? `
+    <h3>👥 NPC 角色表（${npcs.length} 人）</h3>
+    <div class="npc-list">${npcs.map(n => `
+      <div class="npc-chip revision-item" id="npc-${esc(n.npc_id)}">
+        <div class="element-heading">
+          <span><span class="name">${esc(n.name)}</span><span class="type type-${n.npc_type}">${typeLabels[n.npc_type]||n.npc_type}</span></span>
+          ${revisionActionButtons('game_settings', n.npc_id, 'npc_id')}
+        </div>
+        <br><small>${esc(n.group)} | 信任=${n.trust_to_player} | 态度=${n.attitude_score}</small>
+      </div>
+    `).join('')}</div>
+    ` : ''}
+    ${infoNodes.length ? `
+    <h3 style="margin-top:16px;">📋 情报节点（${infoNodes.length} 个）</h3>
+    <div class="npc-list">${infoNodes.map(n => `
+      <div class="npc-chip revision-item">
+        <div class="element-heading">
+          <span><span class="name">${esc(n.title)}</span> <small style="color:var(--text-muted);">${esc(n._chapter)}</small></span>
+          ${revisionActionButtons(n._chapterId, n.node_id, 'node_id')}
+        </div>
+        <div style="margin-top:6px; font-size:12px;">${collapsibleText(n.text || '', 100)}</div>
+        ${n.unlock_condition ? `<br><small style="color:var(--accent);">🔓 ${esc(n.unlock_condition)}</small>` : ''}
+      </div>
+    `).join('')}</div>
+    ` : ''}
+    ${!npcs.length && !infoNodes.length ? '<p style="color:var(--text-muted); padding:20px; text-align:center;">暂无 NPC 或情报节点数据</p>' : ''}
+  `;
 
-  // 分叉树 — 章节式用简化流程
+  // 剧情结构：章节流程 + 详细决策和选项。
   document.getElementById('panel-tree').innerHTML = `
     <h3>📊 章节流程</h3>
-    <div style="padding:16px;">
+    <div style="padding:12px 0 18px;">
       ${chapters.map((ch, i) => {
         const cp = ch.checkpoint || {};
         return `
@@ -1113,29 +1616,32 @@ function renderChapterResult(data) {
         ${i < chapters.length - 1 ? '<div style="text-align:center; color:var(--text-muted); margin:4px 0 12px 24px;">↓</div>' : ''}
       `}).join('')}
     </div>
+    <h3 style="margin-bottom:12px;">章节决策与分支</h3>
+    ${chapterStructureHtml}
   `;
 
-  // 剧本原文面板（保持原有逻辑）
+  // 合并后的剧本只读预览；实际修改通过下方章节源文件编辑器完成。
   const md = normalizeFullMD(data.full_md) || lastFullMD || '';
   if (md) {
     document.getElementById('panel-mdtext').innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <span style="font-size:12px; color:var(--text-muted);">${md.length} 字符</span>
-        <button class="btn btn-secondary btn-sm" id="mdEditToggle" onclick="toggleMdEdit()">✏️ 编辑</button>
+        <span style="font-size:12px; color:var(--text-muted);">合并预览</span>
       </div>
       <div id="mdRendered" style="font-size:14px; line-height:1.9; padding:16px; background:var(--bg); border-radius:var(--radius); max-height:600px; overflow-y:auto;">${renderMarkdown(md)}</div>
-      <textarea id="mdEditor" style="display:none; width:100%; min-height:400px; font-size:13px; line-height:1.8; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); resize:vertical;">${esc(md)}</textarea>
     `;
     lastFullMD = md;
   }
+  configureChapterRevision(chapters);
 }
-
 function renderResult(data) {
   const s = data.script;
 
   // Handle null script (MD-only result)
   if (!s) {
-    document.getElementById('panel-overview').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">📝 剧本原文已生成<br><small>请审核后点击「📦 提取结构化 JSON」完成结构化提取</small></p>';
+    hide('chapterRevisionControls');
+    show('legacyRevisionControls');
+    document.getElementById('panel-overview').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">该历史文件只有剧本原文，没有结构化章节数据。</p>';
     document.getElementById('panel-npcs').innerHTML = '';
     document.getElementById('panel-tree').innerHTML = '';
     // Show MD in mdtext panel with markdown
@@ -1144,7 +1650,7 @@ function renderResult(data) {
       document.getElementById('panel-mdtext').innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span style="font-size:12px; color:var(--text-muted);">${md.length} 字符</span>
-          <button class="btn btn-primary btn-sm" onclick="extractFromMD()">📦 提取结构化 JSON</button>
+          <span style="font-size:12px; color:var(--text-muted);">历史原文预览</span>
         </div>
         <div id="mdRendered" style="font-size:14px; line-height:1.9; padding:16px; background:var(--bg); border-radius:var(--radius); max-height:600px; overflow-y:auto;">${renderMarkdown(md)}</div>
         <textarea id="mdEditor" style="display:none; width:100%; min-height:400px; font-size:13px; line-height:1.8; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); resize:vertical;">${esc(md)}</textarea>
@@ -1161,6 +1667,9 @@ function renderResult(data) {
     renderChapterResult(data);
     return;
   }
+
+  hide('chapterRevisionControls');
+  show('legacyRevisionControls');
 
   const state = s.initial_game_state;
   const typeLabels = { cadre: '干部', external: '外部', villager: '村民' };
@@ -1232,7 +1741,6 @@ function renderResult(data) {
         <span style="font-size:12px; color:var(--text-muted);">${md.length} 字符</span>
         <div style="display:flex; gap:8px;">
           <button class="btn btn-secondary btn-sm" id="mdEditToggle" onclick="toggleMdEdit()">✏️ 编辑</button>
-          ${!data.script ? '<button class="btn btn-primary btn-sm" onclick="extractFromMD()">📦 提取结构化 JSON</button>' : ''}
         </div>
       </div>
       <div id="mdRendered" style="font-size:14px; line-height:1.9; padding:16px; background:var(--bg); border-radius:var(--radius); max-height:600px; overflow-y:auto;">${renderMarkdown(md)}</div>
@@ -1240,7 +1748,7 @@ function renderResult(data) {
     `;
     lastFullMD = md;
   } else {
-    document.getElementById('panel-mdtext').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">暂无剧本原文<br><small>可通过「📝 生成剧本 MD」先行生成</small></p>';
+    document.getElementById('panel-mdtext').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">暂无剧本原文</p>';
   }
 
   // Show MD area with content
@@ -1513,140 +2021,8 @@ function treeToggleCollapse(decisionId) {
   if (lastResult && lastResult.script) renderTree(lastResult.script);
 }
 
-// ===== 分步生成 API =====
-
-async function startMdGeneration() {
-  const scenario = document.getElementById('scenario').value.trim();
-  const playerRole = document.getElementById('playerRole').value.trim();
-  const learningGoal = document.getElementById('learningGoal').value.trim();
-  if (!scenario || !playerRole || !learningGoal) {
-    showError('请填写政策场景、玩家角色和教育目标');
-    return;
-  }
-
-  hide('error-card'); hide('result-card');
-  const btn = document.getElementById('generateMdBtn');
-  setButtonLoading(btn, true);
-  btn.dataset.origText = '📝 生成剧本 MD';
-  activeAbortController = new AbortController();
-
-  try {
-    const resp = await fetch('/api/generate-md', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scenario, player_role: playerRole, learning_goal: learningGoal,
-        duration_minutes: parseInt(document.getElementById('duration').value),
-        complexity: document.getElementById('complexity').value,
-        npc_count: parseInt(document.getElementById('npcCount').value),
-        chapter_count: parseInt(document.getElementById('chapterCount').value),
-        ending_count: parseInt(document.getElementById('endingCount').value),
-        character_settings: document.getElementById('characterSettings').value.trim(),
-        story_background: document.getElementById('storyBackground').value.trim(),
-        extra_requirements: document.getElementById('extra').value.trim(),
-      }),
-      signal: activeAbortController.signal,
-    });
-    activeTaskId = resp.headers.get('X-Task-Id');
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || '请求失败 ' + resp.status);
-    }
-
-    for await (const { event, data } of readSSE(resp)) {
-      if (event === 'progress') {
-        setProgress(data.stage, data.total, data.name);
-      } else if (event === 'result') {
-        lastFullMD = normalizeFullMD(data.full_md) || '';
-        lastResult = data;
-                if (data.script) {
-          renderResult(data);
-        } else {
-          show('result-card');
-          document.getElementById('panel-overview').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">📝 剧本原文已生成<br><small>请审核后点击「📦 提取结构化 JSON」完成结构化提取</small></p>';
-          document.getElementById('panel-npcs').innerHTML = '';
-          document.getElementById('panel-tree').innerHTML = '';
-          document.getElementById('panel-mdtext').innerHTML = '';
-          updateVersionLabel(data.saved_as || '');
-        }
-        hide('progress-card');
-      } else if (event === 'error') {
-        showError(data.message);
-      } else if (event === 'cancelled') {
-        hide('progress-card');
-      }
-    }
-  } catch (err) {
-    if (err.name !== 'AbortError') showError(err.message);
-  } finally {
-    setButtonLoading(btn, false);
-    btn.textContent = '📝 生成剧本 MD';
-    btn.disabled = false;
-    activeAbortController = null;
-    activeTaskId = null;
-  }
-}
-
 async function startOneClickGeneration() {
   return startGeneration();
-}
-
-async function extractFromMD() {
-  const fullMd = document.getElementById('mdEditor').value.trim();
-  if (!fullMd) { showError('没有可提取的剧本原文'); return; }
-
-  hide('error-card');
-  const btn = document.getElementById('extractBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 提取中...';
-
-  activeAbortController = new AbortController();
-
-  try {
-    const resp = await fetch('/api/extract-from-md', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        full_md: fullMd,
-        npc_count: parseInt(document.getElementById('npcCount').value),
-        query: lastResult ? (lastResult.original_query || '') : '',
-        scenario: document.getElementById('scenario').value.trim(),
-        player_role: document.getElementById('playerRole').value.trim(),
-        learning_goal: document.getElementById('learningGoal').value.trim(),
-      }),
-      signal: activeAbortController.signal,
-    });
-    activeTaskId = resp.headers.get('X-Task-Id');
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || '提取失败 ' + resp.status);
-    }
-
-    show('progress-card');
-    for await (const { event, data } of readSSE(resp)) {
-      if (event === 'progress') {
-        setProgress(data.stage, data.total, data.name);
-      } else if (event === 'result') {
-        lastResult = data;
-        lastFullMD = normalizeFullMD(data.full_md) || fullMd;
-        renderResult(data);
-        hide('progress-card');
-        show('result-card');
-        updateVersionLabel(data.saved_as || '');
-              } else if (event === 'error') {
-        showError(data.message);
-      } else if (event === 'cancelled') {
-        hide('progress-card');
-      }
-    }
-  } catch (err) {
-    if (err.name !== 'AbortError') showError(err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '📦 提取结构化 JSON';
-    activeAbortController = null;
-    activeTaskId = null;
-  }
 }
 
 

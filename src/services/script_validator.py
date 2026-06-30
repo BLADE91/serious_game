@@ -79,9 +79,14 @@ class ScriptValidator:
             ("社会稳定指数", state.social_stability_index),
             ("政治信用", state.political_credit),
             ("干部执行指数", state.cadre_execution_index),
+            ("群众信任", state.public_trust),
+            ("环评线索", state.env_clue),
+            ("舆情压力", state.media_pressure),
         ):
             if value < 0 or value > 100:
                 issues.append(f"{name}必须在 0 到 100 之间")
+        if state.days_left < 0:
+            issues.append("剩余天数不能为负数")
 
     def _check_citations(
         self,

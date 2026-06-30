@@ -4,9 +4,9 @@
   Call 1: PA Backend → game_settings.md（全局设定）
   Call 2: PA Backend → chapter_outline.md（章节大纲）
   Call 3: PA Backend ×N → ch01.md ~ ch0N.md（逐章生成）
-  Call 4: Qwen Flash → complete_script.md（一致性修订）
+  Call 4: Qwen Flash → continuity_review.json（事实连续性审查）
   Call 5: Qwen Flash → script_structure.json（JSON 抽取）
-  Call 6: 程序规则 + Qwen Flash → validation_report.json（校验）
+  Call 6: 程序规则 → validation_report.json（结构与提取校验）
 """
 
 from __future__ import annotations
@@ -25,10 +25,13 @@ from src.domain.chapter_structure import (
     ChapterDecisionPoint,
     ChapterEnding,
     ChapterNode,
+    ChapterNPCProfile,
     ChapterOption,
     ChapterResult,
     ChapterStateSnapshot,
 )
+from src.domain.ending_condition import EndingCondition
+from src.domain.npc_state import NPCState
 from src.domain.script_design import ScriptDesign
 from src.generation.chapter_prompts import (
     CHAPTER_TEMPLATE_MD,
@@ -37,13 +40,13 @@ from src.generation.chapter_prompts import (
     build_call3_prompt,
     build_call4_prompt,
     build_call5_prompt,
-    build_call6b_prompt,
     build_initial_state_snapshot_text,
     build_locked_nodes_text,
     build_state_snapshot_text,
     build_unlocked_nodes_text,
 )
 from src.generation.pa_backend_script_client import PABackendScriptClient
+from src.generation.chapter_validator import ChapterValidator
 from src.generation.qwen_client import ChatMessage, QwenChatClient
 
 GenerationProgressCallback = Callable[[int, int, str, int], None]
@@ -161,39 +164,44 @@ class ChapterScriptGenerator:
         )
 
         # ---- 合并（始终重做，无 API 调用） ----
-        complete_script_md = self._merge_chapters(game_settings_md, chapter_outline_md, chapters_md)
-        self._save_intermediate("04_merged_before_review.md", complete_script_md)
+        merged_script_md = self._merge_chapters(game_settings_md, chapter_outline_md, chapters_md)
+        self._save_intermediate("04_merged_before_review.md", merged_script_md)
 
-        # ---- Call 4: 一致性修订（可选） ----
-        # Call 4 只输出修订笔记，不改写原文。修订笔记供人工参考。
-        # 如需启用全文修订版，删除 05_revision_notes.md 后重跑。
-        revision_notes = self._load_or_call(
-            "05_revision_notes.md",
-            call_fn=lambda: self._call4_consistency_review(complete_script_md),
-            label="Call 4/6: 全局一致性修订", stage=6,
+        # ---- Call 4: 事实连续性审查 ----
+        # 只报告有两处原文证据的事实矛盾，不做质量评分，也不改写原文。
+        continuity_review = self._load_or_call_json(
+            "05_continuity_review.json",
+            call_fn=lambda: self._call4_consistency_review(merged_script_md),
+            label="Call 4/6: 事实连续性审查", stage=6,
             progress_callback=progress_callback,
-            depends_on_content=complete_script_md,
+            depends_on_content=merged_script_md,
         )
-        # 修订笔记附在剧本末尾，但不替换原文
-        if revision_notes:
-            complete_script_md = complete_script_md + "\n\n---\n\n# 一致性修订笔记\n\n" + revision_notes
+        complete_script_md = merged_script_md
 
-        # ---- Call 5: JSON 抽取（基于合并原文，不是修订版） ----
+        # ---- Call 5: JSON 抽取（分段：5a 全局 + 5b 逐章） ----
         script_json = self._load_or_call_json(
             "06_script_structure.json",
-            call_fn=lambda: self._call5_extract_json(complete_script_md),
+            call_fn=lambda: self._call5_extract_json(
+                merged_script_md, chapters_md, progress_callback,
+            ),
             label="Call 5/6: JSON 抽取", stage=7,
             progress_callback=progress_callback,
-            depends_on_content=complete_script_md,
+            depends_on_content=merged_script_md,
         )
 
         # ---- Call 6: 校验 ----
         validation_report = self._load_or_call_json(
             "07_validation_report.json",
-            call_fn=lambda: self._call6_validate(script_json),
+            call_fn=lambda: self._call6_validate(
+                script_json,
+                expected_npc_count=npc_count,
+                complete_script_md=merged_script_md,
+                continuity_review=continuity_review,
+            ),
             label="Call 6/6: 校验", stage=8,
             progress_callback=progress_callback,
             depends_on_content=json.dumps(script_json, ensure_ascii=False, sort_keys=True),
+            reuse_if=lambda report: report.get("validation_version") == 2,
         )
         script_json["_validation"] = validation_report
 
@@ -389,51 +397,135 @@ class ChapterScriptGenerator:
         return filepath.read_text(encoding="utf-8")
 
     # ============================================================
-    # Call 4: 一致性修订
+    # Call 4: 事实连续性审查
     # ============================================================
 
-    def _call4_consistency_review(self, complete_script_md: str) -> str:
+    def _call4_consistency_review(self, complete_script_md: str) -> dict:
         messages = build_call4_prompt(complete_script_md)
-        result = self._flash_complete(messages, temperature=0.2, response_format="text")
-        return self._clean_md_output(result)
+        result = self._flash_complete(
+            messages,
+            temperature=0.1,
+            response_format="json_object",
+            max_tokens=2048,
+        )
+        review = self._parse_json(result)
+        issues = review.get("continuity_issues")
+        if not isinstance(issues, list):
+            review["continuity_issues"] = []
+        if review.get("status") not in {"pass", "review_recommended"}:
+            review["status"] = "review_recommended" if review["continuity_issues"] else "pass"
+        return review
 
     # ============================================================
     # Call 5: JSON 抽取
     # ============================================================
 
-    def _call5_extract_json(self, complete_script_md: str) -> dict:
-        messages = build_call5_prompt(complete_script_md)
-        result = self._flash_complete(messages, temperature=0.1, response_format="json_object")
+    def _call5_extract_json(
+        self,
+        complete_script_md: str,
+        chapters_md: list[str] | None = None,
+        progress_callback: GenerationProgressCallback | None = None,
+    ) -> dict:
+        """分段 JSON 抽取：5a 抽全局+NPC+结局，5b 逐章抽剧情树，最后合并。
+
+        子调用各自有中间文件（06a / 06b_chNN），删除对应文件即可重跑该步。
+        """
+        # -- 5a: 全局结构 + NPC + 结局 --
+        chapter_ids = [f"ch{i+1:02d}" for i in range(len(chapters_md) if chapters_md else 4)]
+        global_json = self._load_or_call_json(
+            "06a_global.json",
+            call_fn=lambda: self._call5a_extract_global(complete_script_md, chapter_ids),
+            label="Call 5a/6: 抽取全局结构 + NPC + 结局", stage=7,
+            progress_callback=progress_callback,
+        )
+
+        # -- 5b: 逐章抽取 --
+        chapters_json: list[dict] = []
+        if chapters_md:
+            for i, ch_md in enumerate(chapters_md):
+                chapter_num = i + 1
+                chapter_id = f"ch{chapter_num:02d}"
+                ch_json = self._load_or_call_json(
+                    f"06b_{chapter_id}.json",
+                    call_fn=lambda md=ch_md, cid=chapter_id, cn=chapter_num:
+                        self._call5b_extract_chapter(md, cid, cn),
+                    label=f"Call 5b/6: 抽取第 {chapter_num} 章剧情树", stage=7,
+                    progress_callback=progress_callback,
+                )
+                chapters_json.append(ch_json)
+        else:
+            # 回退：无分章 MD 时跳过
+            chapters_json = []
+
+        # -- 合并 --
+        merged = dict(global_json)
+        merged.pop("_chapter_ids", None)
+        merged["chapters"] = chapters_json
+        self._save_intermediate("06_script_structure.json",
+                                json.dumps(merged, ensure_ascii=False, indent=2))
+        return merged
+
+    def _call5a_extract_global(
+        self,
+        complete_script_md: str,
+        chapter_ids: list[str],
+    ) -> dict:
+        """Call 5a: 从完整剧本中抽取全局结构、NPC 表、结局。"""
+        from src.generation.chapter_prompts import build_call5a_prompt
+        messages = build_call5a_prompt(complete_script_md, chapter_ids)
+        result = self._flash_complete(
+            messages, temperature=0.1, response_format="json_object",
+            max_tokens=8192,
+        )
+        return self._parse_json(result)
+
+    def _call5b_extract_chapter(
+        self,
+        chapter_md: str,
+        chapter_id: str,
+        chapter_num: int,
+    ) -> dict:
+        """Call 5b: 从单章 Markdown 中抽取剧情树 JSON。"""
+        from src.generation.chapter_prompts import build_call5b_prompt
+        messages = build_call5b_prompt(chapter_md, chapter_id, chapter_num)
+        result = self._flash_complete(
+            messages, temperature=0.1, response_format="json_object",
+            max_tokens=8192,
+        )
         return self._parse_json(result)
 
     # ============================================================
     # Call 6: 校验
     # ============================================================
 
-    def _call6_validate(self, script_json: dict) -> dict:
-        # Step 6a: 程序化校验
-        programmatic_issues = self._validate_programmatic(script_json)
-
-        # Step 6b: Qwen Flash 语义校验（仅对 warning 及以上级别进行）
-        semantic_issues = []
-        warnings_or_worse = [i for i in programmatic_issues if i.get("severity") in ("error", "warning")]
-        if warnings_or_worse:
-            try:
-                messages = build_call6b_prompt(script_json, warnings_or_worse)
-                result = self._flash_complete(messages, temperature=0.1, response_format="json_object")
-                semantic = self._parse_json(result)
-                semantic_issues = semantic.get("semantic_issues", [])
-            except Exception:
-                # 语义校验失败不阻塞流程
-                semantic_issues = [{"code": "SEMANTIC_FAIL", "message": "语义校验执行失败", "severity": "warning"}]
-
-        all_issues = programmatic_issues + semantic_issues
+    def _call6_validate(
+        self,
+        script_json: dict,
+        expected_npc_count: int,
+        complete_script_md: str = "",
+        continuity_review: dict[str, Any] | None = None,
+    ) -> dict:
+        """只执行确定性的结构校验和 Markdown→JSON 提取一致性校验。"""
+        programmatic = ChapterValidator.validate_programmatic(
+            script_json, expected_npc_count=expected_npc_count,
+        )
+        extraction = ChapterValidator.validate_extraction_fidelity(
+            script_json, complete_script_md,
+        )
+        all_issues = programmatic["issues"] + extraction["issues"]
         errors = [i for i in all_issues if i.get("severity") == "error"]
         return {
+            "validation_version": 2,
             "valid": len(errors) == 0,
             "issues": all_issues,
             "error_count": len(errors),
             "warning_count": len([i for i in all_issues if i.get("severity") == "warning"]),
+            "structure_validation": programmatic,
+            "extraction_validation": extraction,
+            "continuity_review": continuity_review or {
+                "status": "not_run",
+                "continuity_issues": [],
+            },
         }
 
     # ============================================================
@@ -544,102 +636,8 @@ class ChapterScriptGenerator:
     # ============================================================
 
     def _validate_programmatic(self, script_json: dict) -> list[dict]:
-        """执行确定性规则校验。"""
-        issues: list[dict] = []
-        chapters = script_json.get("chapters", [])
-
-        if not chapters:
-            issues.append({"code": "NO_CHAPTERS", "message": "剧本不包含任何章节", "severity": "error"})
-            return issues
-
-        # 结构完整性
-        for i, ch in enumerate(chapters):
-            ch_id = ch.get("chapter_id", f"ch{i+1:02d}")
-
-            # 支持新格式 decision_points 数组和旧格式 decision_point 单对象
-            dps = ch.get("decision_points", [])
-            if not dps and ch.get("decision_point"):
-                dps = [ch["decision_point"]]
-
-            if not dps:
-                issues.append({"code": "MISSING_DECISION", "message": f"{ch_id} 缺失决策点", "severity": "error"})
-            else:
-                if len(dps) < 2:
-                    issues.append({"code": "TOO_FEW_DECISION_POINTS", "message": f"{ch_id} 仅有 {len(dps)} 个决策点（建议 2-4 个）", "severity": "warning"})
-                if len(dps) > 4:
-                    issues.append({"code": "TOO_MANY_DECISION_POINTS", "message": f"{ch_id} 有 {len(dps)} 个决策点（建议最多 4 个）", "severity": "warning"})
-
-                for dp_idx, dp in enumerate(dps):
-                    opts = dp.get("options", [])
-                    dp_id = dp.get("node_id", f"DP{dp_idx+1}")
-                    if len(opts) < 3:
-                        issues.append({"code": "TOO_FEW_OPTIONS", "message": f"{dp_id} 选项少于 3 个（当前 {len(opts)} 个）", "severity": "error"})
-
-                    for opt in opts:
-                        effects = opt.get("effects", {})
-                        if len(effects) != 8:
-                            issues.append({"code": "INCOMPLETE_EFFECTS", "message": f"{opt.get('choice_id', '?')} 变量影响不足 8 个（当前 {len(effects)} 个）", "severity": "warning"})
-
-            # 检查章节结算
-            cp = ch.get("checkpoint", {})
-            if not cp:
-                issues.append({"code": "MISSING_CHECKPOINT", "message": f"{ch_id} 缺失章节结算", "severity": "warning"})
-
-        # 衔接性检查
-        for i in range(len(chapters) - 1):
-            cp = chapters[i].get("checkpoint", {})
-            next_ch = cp.get("next_chapter", "")
-            expected_next = chapters[i + 1].get("chapter_id", "")
-            if next_ch and next_ch != expected_next and next_ch != "ending_evaluation":
-                issues.append({"code": "CHAIN_BROKEN", "message": f"第 {i+1} 章 next_chapter='{next_ch}' 不指向第 {i+2} 章 ('{expected_next}')", "severity": "error"})
-
-        # Flag 一致性
-        all_created: set[str] = set()
-        all_referenced: set[str] = set()
-
-        for ch in chapters:
-            # 支持新格式 decision_points 数组和旧格式 decision_point 单对象
-            dps = ch.get("decision_points", [])
-            if not dps and ch.get("decision_point"):
-                dps = [ch["decision_point"]]
-
-            for dp in dps:
-                for opt in dp.get("options", []):
-                    for flag in opt.get("flags_added", []):
-                        all_created.add(flag)
-
-            for node in ch.get("info_nodes", []):
-                cond = node.get("unlock_condition") or {}
-                for flag in cond.get("flags_required", []):
-                    all_referenced.add(flag)
-                for flag in cond.get("flags_forbidden", []):
-                    all_referenced.add(flag)
-
-            for dp in dps:
-                for opt in dp.get("options", []):
-                    avail = opt.get("availability") or {}
-                    for flag in avail.get("flags_required", []):
-                        all_referenced.add(flag)
-                    for flag in avail.get("flags_forbidden", []):
-                        all_referenced.add(flag)
-
-        orphan_flags = all_referenced - all_created
-        if orphan_flags:
-            issues.append({"code": "ORPHAN_FLAGS", "message": f"引用了未创建的 flag: {sorted(orphan_flags)}", "severity": "warning"})
-
-        # 结局检查
-        endings = script_json.get("endings", [])
-        if len(endings) < 3:
-            issues.append({"code": "TOO_FEW_ENDINGS", "message": f"结局少于 3 个（当前 {len(endings)} 个）", "severity": "warning"})
-
-        has_good = any(e.get("type") == "good" for e in endings)
-        has_bad = any(e.get("type") == "bad" for e in endings)
-        if not has_good:
-            issues.append({"code": "NO_GOOD_ENDING", "message": "缺少 good 类型结局", "severity": "warning"})
-        if not has_bad:
-            issues.append({"code": "NO_BAD_ENDING", "message": "缺少 bad 类型结局", "severity": "warning"})
-
-        return issues
+        """兼容旧调用；生产路径统一委托 ChapterValidator。"""
+        return ChapterValidator.validate_programmatic(script_json).get("issues", [])
 
     # ============================================================
     # ScriptDesign 组装
@@ -648,6 +646,8 @@ class ChapterScriptGenerator:
     def _build_script_design(self, script_json: dict) -> ScriptDesign:
         """从 Call 5 的 JSON 构建 ScriptDesign。"""
         chapters_data = script_json.get("chapters", [])
+        chapter_npcs = self._build_chapter_npcs(script_json.get("npcs", []))
+        chapter_endings = self._build_chapter_endings(script_json.get("endings", []))
 
         chapters = []
         for i, ch_data in enumerate(chapters_data):
@@ -753,25 +753,149 @@ class ChapterScriptGenerator:
             player_role=script_json.get("player_role", ""),
             core_conflict=script_json.get("core_conflict", ""),
             initial_game_state=self._build_initial_game_state(script_json),
+            npc_seed=self._build_npc_states(chapter_npcs),
             chapters=chapters,
-            endings=[],  # Chapter-based endings are stored in chapters
+            endings=[self._to_ending_condition(ending) for ending in chapter_endings],
+            chapter_endings=chapter_endings,
+            chapter_npcs=chapter_npcs,
+            quality_review={},
+            validation_report=script_json.get("_validation", {}),
         )
+
+    @staticmethod
+    def _build_chapter_npcs(value: Any) -> list[ChapterNPCProfile]:
+        if not isinstance(value, list):
+            return []
+        profiles: list[ChapterNPCProfile] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            profiles.append(ChapterNPCProfile(
+                npc_id=str(item.get("npc_id") or "").strip(),
+                name=str(item.get("name") or "").strip(),
+                npc_type=str(item.get("npc_type") or "").strip(),
+                group=str(item.get("group") or "").strip(),
+                core_demand=str(item.get("core_demand") or "").strip(),
+                bottom_line=str(item.get("bottom_line") or "").strip(),
+                persuasion_conditions=ChapterScriptGenerator._string_list(item.get("persuasion_conditions")),
+                known_info=ChapterScriptGenerator._string_list(item.get("known_info")),
+                relationships=ChapterScriptGenerator._string_list(item.get("relationships")),
+                initial_stance=str(item.get("initial_stance") or "").strip(),
+                attitude_path=str(item.get("attitude_path") or "").strip(),
+                trust_to_player=ChapterScriptGenerator._int_value(item.get("trust_to_player"), 50),
+                attitude_score=ChapterScriptGenerator._int_value(item.get("attitude_score"), 50),
+                anxiety_level=ChapterScriptGenerator._int_value(item.get("anxiety_level"), 50),
+                reference_point=ChapterScriptGenerator._int_value(item.get("reference_point"), 0),
+                granovetter_threshold=ChapterScriptGenerator._int_value(item.get("granovetter_threshold"), 50),
+                core_demand_satisfied=bool(item.get("core_demand_satisfied", False)),
+                signed=bool(item.get("signed", False)),
+            ))
+        return profiles
+
+    @staticmethod
+    def _build_npc_states(profiles: list[ChapterNPCProfile]) -> list[NPCState]:
+        states: list[NPCState] = []
+        for npc in profiles:
+            try:
+                states.append(NPCState(
+                    npc_id=npc.npc_id,
+                    name=npc.name,
+                    npc_type=npc.npc_type,
+                    group=npc.group,
+                    trust_to_player=npc.trust_to_player,
+                    attitude_score=npc.attitude_score,
+                    anxiety_level=npc.anxiety_level,
+                    reference_point=npc.reference_point,
+                    granovetter_threshold=npc.granovetter_threshold,
+                    core_demand_satisfied=npc.core_demand_satisfied,
+                    signed=npc.signed,
+                    known_info=npc.known_info,
+                ))
+            except ValueError:
+                # Call 6 已报告不合法 NPC；保留主表原文，避免构建过程静默中断。
+                continue
+        return states
+
+    @staticmethod
+    def _build_chapter_endings(value: Any) -> list[ChapterEnding]:
+        if not isinstance(value, list):
+            return []
+        endings: list[ChapterEnding] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            ending_type = str(item.get("type") or item.get("ending_type") or "neutral").strip()
+            if ending_type not in {"good", "neutral", "bad"}:
+                ending_type = "neutral"
+            conditions = item.get("conditions")
+            endings.append(ChapterEnding(
+                ending_id=str(item.get("ending_id") or "").strip(),
+                title=str(item.get("title") or "").strip(),
+                ending_type=ending_type,
+                priority=ChapterScriptGenerator._int_value(item.get("priority"), 0),
+                description=str(item.get("description") or "").strip(),
+                conditions=conditions if isinstance(conditions, dict) else {},
+                ending_text=str(item.get("ending_text") or "").strip(),
+                teaching_summary=str(item.get("teaching_summary") or "").strip(),
+                strategy_profile=str(item.get("strategy_profile") or "").strip(),
+            ))
+        return endings
+
+    @staticmethod
+    def _to_ending_condition(ending: ChapterEnding) -> EndingCondition:
+        return EndingCondition(
+            ending_id=ending.ending_id,
+            title=ending.title,
+            description=ending.description or ending.ending_text,
+            conditions=ChapterScriptGenerator._flatten_ending_conditions(ending.conditions),
+            ending_type=ending.ending_type,
+        )
+
+    @staticmethod
+    def _flatten_ending_conditions(conditions: dict) -> list[str]:
+        lines: list[str] = []
+        variable_expression = str(conditions.get("variable_expression") or "").strip()
+        if variable_expression:
+            lines.append(f"变量条件: {variable_expression}")
+        else:
+            variables = conditions.get("variables", {})
+            if isinstance(variables, dict):
+                lines.extend(f"{name}: {value}" for name, value in variables.items())
+        for flag in ChapterScriptGenerator._string_list(conditions.get("flags_required")):
+            lines.append(f"需要 flag: {flag}")
+        for flag in ChapterScriptGenerator._string_list(conditions.get("flags_required_all")):
+            lines.append(f"必须全部具备 flag: {flag}")
+        required_any = ChapterScriptGenerator._string_list(conditions.get("flags_required_any"))
+        if required_any:
+            lines.append(f"至少具备一个 flag: {', '.join(required_any)}")
+        for flag in ChapterScriptGenerator._string_list(conditions.get("flags_forbidden")):
+            lines.append(f"不得有 flag: {flag}")
+        npc_states = conditions.get("npc_states", {})
+        if isinstance(npc_states, dict):
+            lines.extend(f"NPC {npc_id}: {state}" for npc_id, state in npc_states.items())
+        return lines
 
     def _build_initial_game_state(self, script_json: dict) -> Any:
         """从 JSON 构建初始 GameState。"""
         from src.domain.game_state import GameState
 
         init = script_json.get("initial_state", {})
+        if not isinstance(init, dict):
+            init = {}
         return GameState(
             day=1,
             action_points=3,
-            budget_remaining=init.get("budget", 8000),
+            budget_remaining=self._int_value(init.get("budget"), 8000),
             budget_unit="万元",
-            signed_households=init.get("signed", 0),
+            signed_households=self._int_value(init.get("signed"), 0),
             total_households=36,
-            social_stability_index=init.get("social_stability", 70),
-            political_credit=init.get("political_credit", 70),
+            social_stability_index=self._int_value(init.get("social_stability"), 70),
+            political_credit=self._int_value(init.get("political_credit"), 70),
             cadre_execution_index=60,
+            public_trust=self._int_value(init.get("public_trust"), 50),
+            env_clue=self._int_value(init.get("env_clue"), 0),
+            media_pressure=self._int_value(init.get("media_pressure"), 30),
+            days_left=self._int_value(init.get("days_left"), 90),
         )
 
     # ============================================================
@@ -851,12 +975,14 @@ class ChapterScriptGenerator:
         messages: list[ChatMessage],
         temperature: float = 0.1,
         response_format: str = "json_object",
+        max_tokens: int | None = None,
     ) -> str:
         """调用 Qwen Flash 并处理取消。"""
         if self._cancel_event and self._cancel_event.is_set():
             raise ChapterGenerationError("生成已被用户取消")
         return self._flash_client.complete(
             messages, temperature=temperature, response_format=response_format,
+            max_tokens=max_tokens,
         )
 
     def _merge_chapters(
@@ -865,13 +991,23 @@ class ChapterScriptGenerator:
         chapter_outline_md: str,
         chapters_md: list[str],
     ) -> str:
-        """合并全局设定、大纲和所有章节为完整剧本 Markdown。"""
+        """合并全局设定、大纲和所有章节为完整剧本 Markdown。
+
+        大纲中的「## 第 N 章」降级为「### 大纲：第 N 章」，
+        避免与正式章节的标题重复。
+        """
+        import re
+        deduped_outline = re.sub(
+            r'^## (第 \d+ 章)', r'### 大纲：\1',
+            chapter_outline_md, flags=re.MULTILINE,
+        )
+
         parts = [
             "# 完整剧本",
             "",
             game_settings_md,
             "",
-            chapter_outline_md,
+            deduped_outline,
             "",
         ]
         for i, ch_md in enumerate(chapters_md):
@@ -984,6 +1120,21 @@ class ChapterScriptGenerator:
             raise ChapterGenerationError("JSON 必须是对象")
         return parsed
 
+    @staticmethod
+    def _string_list(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    @staticmethod
+    def _int_value(value: Any, default: int) -> int:
+        if isinstance(value, bool):
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
     def _save_intermediate(self, filename: str, content: str) -> None:
         """如果指定了 output_dir，将中间产物写入磁盘。"""
         if self._output_dir is None:
@@ -1025,13 +1176,17 @@ class ChapterScriptGenerator:
         stage: int,
         progress_callback: GenerationProgressCallback | None = None,
         depends_on_content: str | None = None,
+        reuse_if: Callable[[dict], bool] | None = None,
     ) -> dict:
         """JSON 版本的 _load_or_call。"""
         if self._output_dir is not None:
             filepath = self._output_dir / filename
             if filepath.exists():
-                print(f"  ⏭  跳过 {label}（{filename} 已存在）")
-                return json.loads(filepath.read_text(encoding="utf-8"))
+                cached = json.loads(filepath.read_text(encoding="utf-8"))
+                if reuse_if is None or reuse_if(cached):
+                    print(f"  ⏭  跳过 {label}（{filename} 已存在）")
+                    return cached
+                print(f"  ↻  重试 {label}（{filename} 未完成）")
 
         self._report(progress_callback, stage, 8, label)
         result = call_fn()

@@ -58,8 +58,9 @@ class QwenChatClient:
         messages: list[ChatMessage],
         temperature: float = 0.2,
         response_format: str = "json_object",
+        max_tokens: int | None = None,
     ) -> str:
-        payload = self._build_payload(messages, temperature, response_format)
+        payload = self._build_payload(messages, temperature, response_format, max_tokens=max_tokens)
 
         try:
             completion = self._client.chat.completions.create(**payload)
@@ -105,6 +106,7 @@ class QwenChatClient:
         messages: list[ChatMessage],
         temperature: float,
         response_format: str = "json_object",
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self._config.model,
@@ -114,6 +116,8 @@ class QwenChatClient:
             ],
             "temperature": temperature,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         if response_format == "json_object":
             payload["response_format"] = {"type": "json_object"}
         elif response_format == "text":

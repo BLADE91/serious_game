@@ -14,6 +14,7 @@ from src.generation.pa_backend_script_client import PABackendClientError
 from src.generation.qwen_client import QwenClientError
 from src.generation.script_generator import ScriptGenerationError
 from src.services import ScriptGenService
+from src.services.chapter_revision_service import ChapterRevisionService
 from src.services.script_validator import ScriptValidationError
 
 
@@ -111,6 +112,29 @@ def main() -> None:
         help="读取已有剧本 JSON，根据 --feedback 生成修订稿",
     )
     parser.add_argument(
+        "--chapter-revise",
+        default="",
+        metavar="VERSION",
+        help="修订章节式版本，如 v01 或 v01/revisions/r01",
+    )
+    parser.add_argument(
+        "--revision-target",
+        default="",
+        metavar="TARGET",
+        help="章节修订目标：game_settings、chapter_outline 或 chNN",
+    )
+    parser.add_argument(
+        "--revision-file",
+        default="",
+        metavar="MD_PATH",
+        help="直接应用该 Markdown 文件；不提供时根据 --feedback 生成 AI 修订候选",
+    )
+    parser.add_argument(
+        "--revision-preview-only",
+        action="store_true",
+        help="仅输出章节修订 diff，不创建修订版本",
+    )
+    parser.add_argument(
         "--full-draft",
         action="store_true",
         default=True,
@@ -130,7 +154,7 @@ def main() -> None:
     parser.add_argument(
         "--chapter",
         action="store_true",
-        help="使用新的 6-Call 章节式管线生成（PA Backend ×3 + Qwen Flash ×3）",
+        help="使用 6-Call 章节式管线（创作 → 连贯性审查 → 抽取 → 程序校验）",
     )
     parser.add_argument(
         "--chapter-count",
@@ -152,6 +176,51 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
+        if args.chapter_revise:
+            if not args.revision_target:
+                raise ValueError("--chapter-revise 必须同时提供 --revision-target")
+            revision_service = ChapterRevisionService(outputs_dir=args.out_dir)
+            if args.revision_file:
+                revision_path = Path(args.revision_file)
+                revised_content = revision_path.read_text(encoding="utf-8")
+                preview = revision_service.preview_manual(
+                    args.chapter_revise,
+                    args.revision_target,
+                    revised_content,
+                )
+                mode = "manual"
+            else:
+                if not args.feedback.strip():
+                    raise ValueError(
+                        "章节 AI 修订必须提供 --feedback；直接修改请提供 --revision-file"
+                    )
+                preview = revision_service.preview_ai(
+                    args.chapter_revise,
+                    args.revision_target,
+                    args.feedback,
+                )
+                revised_content = preview["revised_content"]
+                mode = "ai"
+
+            print("\n=== 修订差异 ===")
+            print(preview["diff"] or "内容没有变化")
+            if args.revision_preview_only or not preview["changed"]:
+                return
+
+            revised = revision_service.apply_revision(
+                base_version=args.chapter_revise,
+                target=args.revision_target,
+                content=revised_content,
+                mode=mode,
+                feedback=args.feedback,
+            )
+            print("\n=== 章节修订完成 ===")
+            print(f"修订版本: {revised['revision_dir']}")
+            print(f"结果文件: {revised['saved_as']}")
+            validation = revised["script"].get("validation_report", {})
+            print(f"程序校验: {'通过' if validation.get('valid') else '未通过'}")
+            return
+
         service = ScriptGenService.from_env()
         if args.revise:
             if not args.feedback.strip():
@@ -276,14 +345,10 @@ def main() -> None:
                 # 保存为纯 .md 文件
                 out_dir = Path(args.out_dir)
                 out_dir.mkdir(parents=True, exist_ok=True)
-                from src.api.server import _load_counter, _save_counter
+                from src.api.server import _reserve_generation_number
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                counter = _load_counter()
-                gen = counter["gen"] + 1
+                gen = _reserve_generation_number(out_dir)
                 rev = 0
-                counter["gen"] = gen
-                counter["rev"] = rev
-                _save_counter(counter)
                 filename = f"v{gen:02d}-{rev:02d}_script_generate_{timestamp}.md"
                 output_path = out_dir / filename
                 output_path.write_text(full_md, encoding="utf-8")
@@ -392,7 +457,7 @@ def _resolve_version_dir(out_dir: Path) -> Path:
     否则在 out_dir 下新建 v{gen+1:02d}。
     """
     import re
-    from src.api.server import _load_counter, _save_counter
+    from src.api.server import _reserve_generation_number
 
     # 如果传入的就是版本目录（如 outputs/.../v06），直接用它
     if re.match(r"^v\d{2}$", out_dir.name) and out_dir.is_dir():
@@ -400,11 +465,7 @@ def _resolve_version_dir(out_dir: Path) -> Path:
         return out_dir
 
     # 否则新建
-    counter = _load_counter()
-    gen = counter["gen"] + 1
-    counter["gen"] = gen
-    counter["rev"] = 0
-    _save_counter(counter)
+    gen = _reserve_generation_number(out_dir)
     version_dir = out_dir / f"v{gen:02d}"
     version_dir.mkdir(parents=True, exist_ok=True)
     print(f"\n📁 新建版本目录: {version_dir}")
@@ -537,20 +598,11 @@ def save_result(result, out_dir: Path, prefix: str = "script_generate", new_vers
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if new_version:
-        from src.api.server import _load_counter, _save_counter
-        counter = _load_counter()
-        if prefix == "script_generate":
-            gen = counter["gen"] + 1
-            rev = 0
-        else:
-            gen = counter["gen"] if counter["gen"] > 0 else 1
-            rev = counter["rev"] + 1
-        counter["gen"] = gen
-        counter["rev"] = rev
-        _save_counter(counter)
+        from src.api.server import _next_version
+        base, gen, rev = _next_version(prefix)
         save_dir = out_dir / f"v{gen:02d}"
         save_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"v{gen:02d}-{rev:02d}_{prefix}_{timestamp}.json"
+        filename = f"{base}_{timestamp}.json"
     else:
         # 直接存入已有目录，不创建版本子目录
         save_dir = out_dir

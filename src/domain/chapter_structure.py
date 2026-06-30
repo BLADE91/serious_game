@@ -152,11 +152,38 @@ class ChapterEnding:
     description: str = ""
     conditions: dict = field(default_factory=lambda: {
         "variables": {},
-        "flags_required": [],
+        "variable_expression": "",
+        "flags_required_all": [],
+        "flags_required_any": [],
         "flags_forbidden": [],
     })
     ending_text: str = ""
     teaching_summary: str = ""
+    strategy_profile: str = ""
+
+
+@dataclass(frozen=True)
+class ChapterNPCProfile:
+    """章节式剧本使用的 NPC 主表条目。"""
+
+    npc_id: str
+    name: str
+    npc_type: str
+    group: str
+    core_demand: str = ""
+    bottom_line: str = ""
+    persuasion_conditions: list[str] = field(default_factory=list)
+    known_info: list[str] = field(default_factory=list)
+    relationships: list[str] = field(default_factory=list)
+    initial_stance: str = ""
+    attitude_path: str = ""
+    trust_to_player: int = 50
+    attitude_score: int = 50
+    anxiety_level: int = 50
+    reference_point: int = 0
+    granovetter_threshold: int = 50
+    core_demand_satisfied: bool = False
+    signed: bool = False
 
 
 # ---- 全局设定 ----

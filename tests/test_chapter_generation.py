@@ -23,6 +23,7 @@ from src.generation.chapter_prompts import (
     build_call2_prompt,
     build_call3_prompt,
     build_call4_prompt,
+    build_call5a_prompt,
     build_call5_prompt,
     build_initial_state_snapshot_text,
     build_state_snapshot_text,
@@ -268,6 +269,21 @@ class TestDomainModels(unittest.TestCase):
         assert opt.effects["signed"] == 0
         assert opt.npc_state_changes == {}
 
+    def test_game_state_keeps_all_chapter_variables(self):
+        from src.domain.game_state import GameState
+
+        state = GameState(
+            public_trust=41,
+            env_clue=17,
+            media_pressure=63,
+            days_left=24,
+        )
+
+        assert state.public_trust == 41
+        assert state.env_clue == 17
+        assert state.media_pressure == 63
+        assert state.days_left == 24
+
 
 # ============================================================
 # Tests: Prompt Builders
@@ -327,16 +343,18 @@ class TestPromptBuilders(unittest.TestCase):
         assert len(msgs) == 2
         assert msgs[0].role == "system"
         assert msgs[1].role == "user"
-        assert "质量评分表" in msgs[1].content
-        assert "8 项质量评分标准" in msgs[1].content
-        assert "必改项" in msgs[1].content
+        assert "事实连续性" in msgs[1].content
+        assert "continuity_issues" in msgs[1].content
+        assert "策略张力" in msgs[1].content
+        assert "不要检查" in msgs[1].content
 
     def test_call5_prompt_uses_flash_format(self):
         msgs = build_call5_prompt(SAMPLE_CHAPTER_MD)
         assert len(msgs) == 2
         assert msgs[0].role == "system"
         assert "提取" in msgs[0].content
-        assert "npc_state_changes" in msgs[1].content
+        assert "conditions" in msgs[1].content
+        assert '"budget": ">= 1000"' in msgs[1].content
 
     def test_initial_state_snapshot_text(self):
         text = build_initial_state_snapshot_text()
@@ -523,9 +541,9 @@ class TestChapterValidator(unittest.TestCase):
                 },
             ],
             "endings": [
-                {"ending_id": "end_01", "type": "good"},
-                {"ending_id": "end_02", "type": "neutral"},
-                {"ending_id": "end_03", "type": "bad"},
+                {"ending_id": "end_01", "type": "good", "conditions": {"variables": {"signed": ">= 30"}}},
+                {"ending_id": "end_02", "type": "neutral", "conditions": {"flags_required": ["flag_x"]}},
+                {"ending_id": "end_03", "type": "bad", "conditions": {"variables": {"social_stability": "< 30"}}},
             ],
         }
         result = ChapterValidator.validate_programmatic(script)
@@ -578,6 +596,64 @@ class TestChapterValidator(unittest.TestCase):
         result = ChapterValidator.validate_programmatic(script)
         assert any(i["code"] == "ORPHAN_FLAGS" for i in result["issues"])
 
+    def test_flag_lifecycle_includes_chapter_text_nodes_and_endings(self):
+        script = {
+            "chapters": [
+                {
+                    "chapter_id": "ch01",
+                    "decision_point": {"node_id": "ch01_dp", "options": [{
+                        "choice_id": "ch01_A",
+                        "flags_added": ["flag_style_consultation"],
+                    }]},
+                },
+                {
+                    "chapter_id": "ch02",
+                    "background": "[若 flag_style_consultation]信任生效[/若]",
+                    "info_nodes": [{
+                        "node_id": "ch02_info",
+                        "unlock_condition": {"flags_required": ["flag_style_consultation"]},
+                    }],
+                },
+            ],
+            "endings": [{
+                "ending_id": "ending_01",
+                "conditions": {"flags_required": ["flag_style_consultation"]},
+            }],
+        }
+
+        lifecycle = ChapterValidator.build_flag_lifecycle(script)["flag_style_consultation"]
+
+        assert lifecycle["created_at"] == [
+            "chapters/ch01/decision_points/ch01_dp/options/ch01_A/flags_added"
+        ]
+        assert "chapters/ch02/background" in lifecycle["referenced_at"]
+        assert any("ch02_info" in path for path in lifecycle["referenced_at"])
+        assert lifecycle["used_by_endings"] == [
+            "endings/ending_01/conditions/flags_required"
+        ]
+
+    def test_numeric_ending_condition_is_rejected(self):
+        script = {
+            "chapters": [{
+                "chapter_id": "ch01",
+                "decision_point": {"options": [
+                    {"choice_id": "A", "effects": {name: 0 for name in ChapterValidator.EXPECTED_VARIABLES}},
+                    {"choice_id": "B", "effects": {name: 0 for name in ChapterValidator.EXPECTED_VARIABLES}},
+                    {"choice_id": "C", "effects": {name: 0 for name in ChapterValidator.EXPECTED_VARIABLES}},
+                ]},
+            }],
+            "endings": [
+                {"ending_id": "end_01", "type": "good", "conditions": {"variables": {"budget": 1000}}},
+                {"ending_id": "end_02", "type": "neutral", "conditions": {"variables": {"signed": ">= 10"}}},
+                {"ending_id": "end_03", "type": "bad", "conditions": {"variables": {"signed": "< 10"}}},
+            ],
+        }
+
+        result = ChapterValidator.validate_programmatic(script)
+
+        assert any(i["code"] == "INVALID_ENDING_VARIABLE_CONDITION" for i in result["issues"])
+
+
     def test_too_few_options(self):
         script = {
             "chapters": [{
@@ -606,6 +682,159 @@ class TestChapterValidator(unittest.TestCase):
         result = ChapterValidator.validate_programmatic(script)
         codes = {i["code"] for i in result["issues"]}
         assert "TOO_FEW_ENDINGS" in codes
+
+    def test_programmatic_validation_does_not_limit_variable_delta_size(self):
+        script = {
+            "chapters": [{
+                "chapter_id": "ch01",
+                "decision_point": {"options": [
+                    {"choice_id": "budget_normal", "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": -800, "days_left": 0}, "flags_added": []},
+                    {"choice_id": "score_large", "effects": {"signed": 0, "social_stability": 30, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0}, "flags_added": []},
+                    {"choice_id": "neutral", "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0}, "flags_added": []},
+                ]},
+                "checkpoint": {"checkpoint_id": "ch01_cp", "merge_from": ["neutral"], "next_chapter": "ending_evaluation"},
+            }],
+            "endings": [
+                {"ending_id": "end_01", "type": "good", "conditions": {"variables": {"signed": ">= 30"}}},
+                {"ending_id": "end_02", "type": "neutral", "conditions": {"flags_required": ["flag_x"]}},
+                {"ending_id": "end_03", "type": "bad", "conditions": {"variables": {"social_stability": "< 30"}}},
+            ],
+        }
+
+        result = ChapterValidator.validate_programmatic(script)
+        codes = {issue["code"] for issue in result["issues"]}
+
+        assert "LARGE_VARIABLE_CHANGE" not in codes
+
+    def test_production_validation_rejects_unknown_npc_state_change(self):
+        script = {
+            "npcs": [{
+                "npc_id": "npc_01", "name": "测试 NPC", "npc_type": "villager",
+            }],
+            "chapters": [{
+                "chapter_id": "ch01",
+                "decision_points": [{
+                    "node_id": "ch01_dp01",
+                    "options": [
+                        {"choice_id": "ch01_A", "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0}, "npc_state_changes": {"npc_missing": {}}},
+                        {"choice_id": "ch01_B", "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0}, "npc_state_changes": {}},
+                        {"choice_id": "ch01_C", "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0}, "npc_state_changes": {}},
+                    ],
+                }],
+                "checkpoint": {"checkpoint_id": "ch01_cp", "merge_from": ["ch01_A"], "next_chapter": "ending_evaluation"},
+            }],
+            "endings": [
+                {"ending_id": "end_01", "type": "good"},
+                {"ending_id": "end_02", "type": "neutral"},
+                {"ending_id": "end_03", "type": "bad"},
+            ],
+        }
+
+        result = ChapterValidator.validate_programmatic(script, expected_npc_count=1)
+
+        assert any(i["code"] == "UNKNOWN_NPC_STATE_CHANGE" for i in result["issues"])
+
+
+class TestValidationPrompts(unittest.TestCase):
+    def test_call5a_requires_ending_comparison_operators(self):
+        prompt = build_call5a_prompt("budget >= 1000", ["ch01"])[1].content
+
+        assert '"budget": ">= 1000"' in prompt
+        assert "禁止把 \"budget >= 1000\" 抽取成裸数字 1000" in prompt
+        assert "flags_required_any" in prompt
+        assert "禁止把“或”抽成“且”" in prompt
+
+    def test_ending_condition_flattening_preserves_boolean_logic(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        lines = ChapterScriptGenerator._flatten_ending_conditions({
+            "variable_expression": "stability < 30 OR pressure > 90",
+            "flags_required_any": ["flag_a", "flag_b"],
+            "flags_forbidden": ["flag_c"],
+        })
+
+        assert "变量条件: stability < 30 OR pressure > 90" in lines
+        assert "至少具备一个 flag: flag_a, flag_b" in lines
+        assert "不得有 flag: flag_c" in lines
+
+    def test_outdated_validation_report_is_not_reused(self):
+        from pathlib import Path
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "07_validation_report.json"
+            path.write_text(json.dumps({"validation_version": 1}), encoding="utf-8")
+            gen = ChapterScriptGenerator.__new__(ChapterScriptGenerator)
+            gen._output_dir = Path(tmp)
+            call_fn = MagicMock(return_value={"validation_version": 2})
+
+            result = gen._load_or_call_json(
+                "07_validation_report.json",
+                call_fn=call_fn,
+                label="Call 6/6: 校验",
+                stage=8,
+                reuse_if=lambda report: report.get("validation_version") == 2,
+            )
+
+            call_fn.assert_called_once_with()
+            assert result["validation_version"] == 2
+
+
+class TestValidationPolicy(unittest.TestCase):
+    def test_continuity_review_does_not_control_valid(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        effects = {name: 0 for name in ChapterValidator.EXPECTED_VARIABLES}
+        script = {
+            "npcs": [],
+            "chapters": [{
+                "chapter_id": "ch01",
+                "decision_point": {"node_id": "ch01_dp", "options": [
+                    {"choice_id": "A", "effects": effects},
+                    {"choice_id": "B", "effects": effects},
+                    {"choice_id": "C", "effects": effects},
+                ]},
+            }],
+            "endings": [
+                {"ending_id": "end_01", "type": "good", "conditions": {"variables": {"signed": ">= 10"}}},
+                {"ending_id": "end_02", "type": "neutral", "conditions": {"variables": {"signed": ">= 5"}}},
+                {"ending_id": "end_03", "type": "bad", "conditions": {"variables": {"signed": "< 5"}}},
+            ],
+        }
+        gen = ChapterScriptGenerator.__new__(ChapterScriptGenerator)
+        report = gen._call6_validate(
+            script,
+            expected_npc_count=0,
+            continuity_review={
+                "status": "review_recommended",
+                "continuity_issues": [{"code": "CONTINUITY_001"}],
+            },
+        )
+
+        assert report["valid"] is True
+        assert report["error_count"] == 0
+        assert report["continuity_review"]["status"] == "review_recommended"
+
+    def test_extraction_fidelity_detects_missing_choice(self):
+        source = """- chapter_id: ch01
+- choice_id: ch01_A
+- choice_id: ch01_B
+- **npc_id:** npc_01
+- **ending_id:** ending_01
+"""
+        script = {
+            "chapters": [{
+                "chapter_id": "ch01",
+                "decision_point": {"options": [{"choice_id": "ch01_A"}]},
+            }],
+            "npcs": [{"npc_id": "npc_01"}],
+            "endings": [{"ending_id": "ending_01"}],
+        }
+
+        report = ChapterValidator.validate_extraction_fidelity(script, source)
+
+        assert report["valid"] is False
+        assert any(issue["code"] == "EXTRACTION_MISSING_CHOICE_IDS" for issue in report["issues"])
 
 
 # ============================================================
@@ -696,6 +925,85 @@ class TestFullPipeline(unittest.TestCase):
         assert 1 in stages  # Call 1
         assert 2 in stages  # Call 2
         assert 8 in stages  # 完成
+
+    def test_call5_excludes_continuity_review(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+        from src.domain.script_design import ScriptGenerationRequest
+
+        fake_pa = self._make_fake_pa_client()
+        review = {
+            "status": "review_recommended",
+            "continuity_issues": [{
+                "code": "CONTINUITY_001",
+                "message": "测试矛盾",
+                "source_a": {"location": "ch01", "quote": "证据 A"},
+                "source_b": {"location": "ch02", "quote": "证据 B"},
+            }],
+        }
+        extracted = {"title": "测试剧本", "chapters": [], "endings": [], "npcs": []}
+        extracted_chapter = {
+            "chapter_id": "ch01",
+            "decision_points": [],
+            "info_nodes": [],
+            "results": [],
+            "checkpoint": {},
+        }
+        fake_flash = MagicMock()
+        fake_flash.complete.side_effect = [
+            json.dumps(review, ensure_ascii=False),
+            json.dumps(extracted, ensure_ascii=False),
+            json.dumps(extracted_chapter, ensure_ascii=False),
+            json.dumps(extracted_chapter, ensure_ascii=False),
+            json.dumps(extracted_chapter, ensure_ascii=False),
+        ]
+        gen = ChapterScriptGenerator(pa_client=fake_pa, flash_client=fake_flash)
+        request = ScriptGenerationRequest(
+            scenario="测试", player_role="测试", learning_goal="测试",
+            chapter_count=3, ending_count=3,
+        )
+
+        _, full_md = gen.generate_full(request)
+
+        call5_messages = fake_flash.complete.call_args_list[1].args[0]
+        assert "测试矛盾" not in call5_messages[1].content
+        assert "测试矛盾" not in full_md
+
+    def test_build_script_design_keeps_npcs_endings_and_initial_state(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        gen = ChapterScriptGenerator.__new__(ChapterScriptGenerator)
+        script = gen._build_script_design({
+            "title": "测试剧本",
+            "player_role": "测试角色",
+            "core_conflict": "测试冲突",
+            "initial_state": {
+                "signed": 2, "social_stability": 61, "political_credit": 55,
+                "public_trust": 44, "env_clue": 12, "media_pressure": 38,
+                "budget": 7000, "days_left": 45,
+            },
+            "npcs": [{
+                "npc_id": "npc_01", "name": "张三", "npc_type": "villager", "group": "村民",
+                "trust_to_player": 40, "attitude_score": 35, "anxiety_level": 60,
+                "reference_point": 0, "granovetter_threshold": 50,
+            }],
+            "chapters": [],
+            "endings": [{
+                "ending_id": "ending_01", "title": "稳步推进", "type": "good",
+                "description": "测试描述",
+                "conditions": {"variables": {"signed": ">= 30"}, "flags_required": ["flag_open"]},
+                "ending_text": "结局正文", "teaching_summary": "教学复盘",
+            }],
+        })
+
+        assert len(script.chapter_npcs) == 1
+        assert len(script.npc_seed) == 1
+        assert len(script.endings) == 1
+        assert len(script.chapter_endings) == 1
+        assert script.endings[0].ending_type == "good"
+        assert script.initial_game_state.public_trust == 44
+        assert script.initial_game_state.env_clue == 12
+        assert script.initial_game_state.media_pressure == 38
+        assert script.initial_game_state.days_left == 45
 
 
 # ============================================================

@@ -1,6 +1,6 @@
 """6-Call 章节式剧本生成的 Prompt 构建函数。
 
-Call 1-3 使用 PA Backend（创作），Call 4-6 使用 Qwen Flash（审校与抽取）。
+Call 1-3 使用 PA Backend 创作，Call 4 检查事实连续性，Call 5 使用 Qwen Flash 抽取，Call 6 使用程序规则校验。
 只有 Call 1-3 的 Prompt 末尾需要「注意：不要给建议」指令，
 因为 PA Backend 的 LLM 倾向于在输出末尾给出下一步建议或向用户提问。
 """
@@ -128,7 +128,9 @@ def build_call1_prompt(
 ### NPC [npc_id]：[姓名]
 - npc_id:
 - 姓名:
+- npc_type: cadre / external / villager（三选一）
 - 身份与所属群体:
+- group:
 - 核心诉求:
 - 底线:
 - 可被说服或激化的条件:
@@ -136,6 +138,13 @@ def build_call1_prompt(
 - 与其他 NPC 的关系:
 - 初始态度:
 - 可能的态度变化路径:
+- 初始信任值（0-100）:
+- 初始态度值（0-100）:
+- 初始焦虑值（0-100）:
+- 参照点:
+- 从众阈值（0-100）:
+- 初始核心诉求是否满足: 是/否
+- 初始是否已签约: 是/否
 
 ## 变量与机制表
 只能使用以下 8 个变量，不得新增或删除。每个变量必须给出变化尺度和触发阈值。
@@ -388,11 +397,11 @@ def build_call3_prompt(
 
 
 # ============================================================
-# Call 4: 全局一致性修订
+# Call 4: 事实连续性审查
 # ============================================================
 
 def build_call4_prompt(complete_script_md: str, user_feedback: str = "") -> list[ChatMessage]:
-    """构建 Call 4（一致性修订）的 Prompt。
+    """构建 Call 4（事实连续性审查）的 Prompt。
 
     Args:
         complete_script_md: 完整的剧本 Markdown（所有章节合并）
@@ -405,100 +414,102 @@ def build_call4_prompt(complete_script_md: str, user_feedback: str = "") -> list
 ## 用户修订反馈
 {user_feedback.strip()}
 
-请在进行一致性检查的同时，根据以上反馈调整叙事细节。
+将反馈中涉及的明确事实作为额外核对项，但不要据此评价叙事质量。
 """
 
-    system = "你是一位严肃游戏剧本审校编辑。你的任务是按剧本质量标准评分、识别必改问题，并判断该剧本是否可进入后续游戏制作。你只输出审校报告，不输出完整剧本。"
+    system = "你是剧本事实连续性检查器。只查找有两处原文证据直接冲突的问题，不评价策略、教学、人物塑造或叙事质量。只输出 JSON。"
 
-    user = f"""请对以下完整剧本进行质量审校。审校目标不是润色文字，而是判断它是否是一份可进入后续游戏制作的剧本制作包。
+    user = f"""请检查以下完整剧本的事实连续性。
 
-注意：不要输出完整剧本！只输出审校报告。引用原文时只引用关键片段，单处不超过 100 字。
+只检查：
+1. 同一 NPC 的身份、所属群体或既定事实前后直接矛盾
+2. 章节时间顺序、事件发生顺序前后直接矛盾
+3. 前章明确发生的结果与后章明确描述的状态直接矛盾
+4. 同一客观数值被文本声明为两个不能同时成立的最终值
+
+不要检查：
+- 策略张力、教学反馈、行为是否合理、人物塑造、文学表现、叙事质量
+- JSON 结构、节点、flag、变量字段、结局可达性；这些由程序校验
+- 只有推测、偏好或解释空间的问题
+
+每个问题必须提供两处互相矛盾的原文证据。缺少两处证据就不要报告。
+引用原文时单处不超过 100 字，不要输出完整剧本。
 
 {feedback_section}
 ## 完整剧本
 {complete_script_md}
 
-## 8 项质量评分标准
-
-每项 1-5 分，总分 40 分。低于 3 分的单项必须标记为「必改」。总分低于 32 分，不建议进入后续制作。
-
-1. 教学目标明确性：玩家完成游戏后应理解什么？每章和关键决策是否对应具体学习点？
-2. 治理困境真实性：冲突是否来自制度、资源、利益、人情和时间约束，而不是强行戏剧化？
-3. 角色驱动力：NPC 的行为是否由诉求、处境、关系和底线推动？
-4. 选择张力：每个关键决策是否都有合理收益、真实代价和延迟后果？
-5. 后果连续性：玩家选择是否影响后续章节、信息、NPC 态度、变量或结局？
-6. 数值合理性：变量定义是否清晰，变化尺度是否稳定，阈值是否能触发具体事件？
-7. 结局可解释性：每个结局是否能回溯到玩家路径和治理风格？
-8. 制作可用性：文本、节点、选项、场景、变量和反馈是否能被前端与规则模块直接消费？
-
-## 结构与机制硬检查
-
-- 每章是否有 2-4 个核心决策点？如果只有 1 个，是否有充分制作理由？
-- 每个决策点是否至少 3 个选项？如果有任何决策点只有 2 个选项，必须判为「必改」，且制作可用性不得高于 3 分。
-- 每个选项是否列出 8 个变量影响、NPC 状态变化、flag 变化、解锁/关闭内容？
-- 每章所有分支是否汇流到章节结算？
-- 第 N 章的 next_chapter 是否指向第 N+1 章，最后一章是否进入 ending_evaluation？
-- flag 是否先创建后引用？被关闭/解锁的节点是否真的在后文出现？
-- 每个结局是否至少有一条可解释路径？
-- 是否存在明显正确答案、纯惩罚选项或所有变量同时上升的神选项？
-
 ## 输出格式
 
-输出 Markdown 格式的审校报告：
+输出合法 JSON：
+{{
+  "status": "pass | review_recommended",
+  "continuity_issues": [
+    {{
+      "code": "CONTINUITY_001",
+      "message": "明确的事实矛盾",
+      "source_a": {{"location": "章节/节点", "quote": "原文证据"}},
+      "source_b": {{"location": "章节/节点", "quote": "冲突原文证据"}}
+    }}
+  ]
+}}
 
-## 质量评分表
-| 维度 | 分数（1-5） | 依据 | 是否必改 |
-|---|---:|---|---|
-| 教学目标明确性 |  |  | 是/否 |
-| 治理困境真实性 |  |  | 是/否 |
-| 角色驱动力 |  |  | 是/否 |
-| 选择张力 |  |  | 是/否 |
-| 后果连续性 |  |  | 是/否 |
-| 数值合理性 |  |  | 是/否 |
-| 结局可解释性 |  |  | 是/否 |
-| 制作可用性 |  |  | 是/否 |
-
-## 总分与制作判断
-- 总分: X/40
-- 是否建议进入后续制作: 是/否
-- 判断理由: （2-3 句话）
-
-## 必改项
-对每个必改问题填写：
-- **[必改] 问题标题**
-  - 位置: 第X章 / 某节
-  - 原文: （引用关键片段，不超过 100 字）
-  - 影响: 说明它为什么会影响游戏制作或教学目标
-  - 修改建议: 具体修改建议
-
-## 建议优化项
-列出非阻塞但会提升剧本质量的问题，每项包含位置和修改建议。
-
-## 可进入人工编辑闭环的拆分建议
-- 优先编辑的章节:
-- 优先编辑的角色:
-- 优先编辑的决策点:
-- 优先编辑的结局:
-- 需要补充的制作信息:"""
+没有明确矛盾时输出 status=pass 和空数组。只输出 JSON。"""
 
     return _flash_messages(system, user)
 
 
 # ============================================================
-# Call 5: JSON 抽取
+# Call 5: JSON 抽取（分段：5a 全局 + 5b 逐章）
 # ============================================================
 
-def build_call5_prompt(complete_script_md: str) -> list[ChatMessage]:
-    """构建 Call 5（JSON 抽取）的 Prompt。"""
+_CALL5_SYSTEM = "你是一个结构化数据提取器。你只负责从 Markdown 中提取已存在的信息，不创作、不新增、不修改任何内容。缺失字段填 null 或空数组。输出纯 JSON。"
 
-    system = "你是一个结构化数据提取器。你只负责从 Markdown 中提取已存在的信息，不创作、不新增、不修改任何内容。缺失字段填 null 或空数组。输出纯 JSON。"
+_VARIABLE_SCHEMA = '''{
+    "signed": {"chinese_name": "签约户数", "range": "0-36"},
+    "social_stability": {"chinese_name": "社会稳定指数", "range": "0-100"},
+    "political_credit": {"chinese_name": "政治信用", "range": "0-100"},
+    "public_trust": {"chinese_name": "群众信任", "range": "0-100"},
+    "env_clue": {"chinese_name": "环境线索", "range": "0-100"},
+    "media_pressure": {"chinese_name": "舆论压力", "range": "0-100"},
+    "budget": {"chinese_name": "剩余预算（万元）", "range": "0-20000"},
+    "days_left": {"chinese_name": "剩余天数", "range": "0-90"}
+  }'''
 
-    user = f"""请从以下 Markdown 剧本中提取章节剧情树 JSON。
+_NPC_SCHEMA = '''"npc_id": "string",
+      "name": "string",
+      "npc_type": "cadre | external | villager",
+      "group": "string",
+      "core_demand": "string",
+      "bottom_line": "string",
+      "persuasion_conditions": ["string"],
+      "known_info": ["string"],
+      "relationships": ["string"],
+      "initial_stance": "string",
+      "attitude_path": "string",
+      "trust_to_player": "number",
+      "attitude_score": "number",
+      "anxiety_level": "number",
+      "reference_point": "number",
+      "granovetter_threshold": "number",
+      "core_demand_satisfied": "boolean",
+      "signed": "boolean"'''
+
+
+def build_call5a_prompt(complete_script_md: str, chapter_ids: list[str]) -> list[ChatMessage]:
+    """构建 Call 5a（全局结构 + NPC + 结局 抽取）的 Prompt。
+
+    只抽全局结构、变量、初始状态、NPC 表和结局，不抽各章剧情树。
+    """
+
+    chapters_list = "\n".join(f"  - {cid}" for cid in chapter_ids)
+
+    user = f"""请从以下 Markdown 剧本中提取**全局结构**、**NPC 角色表** 和 **多结局**。
 
 ## 完整剧本
 {complete_script_md}
 
-## 输出 JSON Schema
+## 输出 JSON Schema（只输出以下字段，不包含 chapters）
 
 {{
   "title": "string",
@@ -517,165 +528,154 @@ def build_call5_prompt(complete_script_md: str) -> list[ChatMessage]:
     "budget": 8000,
     "days_left": 90
   }},
-  "chapters": [
+  "npcs": [
     {{
-      "chapter_id": "string",
-      "title": "string",
-      "day_range": "string",
-      "core_task": "string",
-      "main_question": "string",
-      "unlock_condition": null,
-      "learning_goals": ["string"],
-      "background": "string",
-      "info_nodes": [
-        {{
-          "node_id": "string",
-          "title": "string",
-          "content": "string",
-          "unlock_condition": null,
-          "next": "string"
-        }}
-      ],
-      "decision_points": [
-        {{
-          "node_id": "string",
-          "question": "string",
-          "order": "number",
-          "options": [
-            {{
-              "choice_id": "string",
-              "option_label": "string",
-              "text": "string",
-              "availability": null,
-              "effects": {{
-                "signed": "number",
-                "social_stability": "number",
-                "political_credit": "number",
-                "public_trust": "number",
-                "env_clue": "number",
-                "media_pressure": "number",
-                "budget": "number",
-                "days_left": "number"
-              }},
-              "npc_state_changes": {{
-                "npc_id": {{
-                  "trust": "number",
-                  "attitude": "number",
-                  "anxiety": "number",
-                  "known_info": ["string"],
-                  "stance": "string"
-                }}
-              }},
-              "unlock_nodes": ["string"],
-              "lock_nodes": ["string"],
-              "flags_added": ["string"],
-              "flags_removed": ["string"],
-              "immediate_result_text": "string",
-              "long_term_effect": "string",
-              "teaching_feedback": "string"
-            }}
-          ]
-        }}
-      ],
-      "results": [
-        {{
-          "node_id": "string",
-          "from_choice": "string",
-          "text": "string",
-          "next": "string"
-        }}
-      ],
-      "checkpoint": {{
-        "checkpoint_id": "string",
-        "merge_from": ["string"],
-        "next_chapter": "string",
-        "variable_snapshot": {{}},
-        "active_flags": ["string"],
-        "unlocked_nodes": ["string"],
-        "locked_nodes": ["string"],
-        "summary": "string"
-      }}
+      {_NPC_SCHEMA}
     }}
   ],
   "endings": [
     {{
       "ending_id": "string",
       "title": "string",
-      "type": "string",
+      "type": "good | neutral | bad",
       "description": "string",
       "conditions": {{
-        "variables": {{}},
-        "flags_required": ["string"],
-        "flags_forbidden": ["string"]
+        "variables": {{"budget": ">= 1000"}},
+        "variable_expression": "budget >= 1000 AND signed >= 30",
+        "flags_required_all": ["string"],
+        "flags_required_any": ["string"],
+        "flags_forbidden": ["string"],
+        "npc_states": {{}}
       }},
       "ending_text": "string",
-      "teaching_summary": "string"
+      "teaching_summary": "string",
+      "strategy_profile": "string"
     }}
-  ]
+  ],
+  "_chapter_ids": [{", ".join(f'"{cid}"' for cid in chapter_ids)}]
 }}
 
 ## 抽取规则
-1. 只抽取 Markdown 中明确存在的内容
-2. 缺失字段填 null（对象）或 []（数组）或 0（数字）
-3. 保留 chapter、info_node、choice、result、checkpoint、ending 的层级关系
-4. 变量影响列表中的 8 个变量必须全部提取，即使某个值为 0
-5. 每个选项的 NPC 状态变化必须提取到 npc_state_changes；没有明确变化时填 {{}}
-6. 条件文本段（[若...]...[/若]）在 background 字段中保留原样
-7. 输出合法 JSON，不要包含 markdown 代码块标记
+1. 只抽取 Markdown 中明确存在的内容；缺失字段填 null（对象）或 []（数组）或 0（数字）
+2. 8 个变量必须全部提取：signed, social_stability, political_credit, public_trust, env_clue, media_pressure, budget, days_left
+3. 必须从「角色表」提取全部 NPC 到 npcs，每个字段都不能遗漏
+4. 必须从大纲和全文提取全部结局到 endings（通常 {len(chapter_ids)*2} 个左右）
+5. 结局 conditions.variables 的每个值必须是保留比较符的字符串，例如 ">= 1000"、"< 30"；禁止把 "budget >= 1000" 抽取成裸数字 1000
+6. variable_expression 必须保留变量条件之间原始的 AND、OR 和括号；flags_required_all 表示全部必须具备，flags_required_any 表示任意具备一个即可，禁止把“或”抽成“且”
+7. 输出合法 JSON，不包含 markdown 代码块标记
 8. 直接输出纯 JSON，不要在 JSON 前后添加任何说明文字"""
 
-    return _flash_messages(system, user)
+    return _flash_messages(_CALL5_SYSTEM, user)
 
 
-# ============================================================
-# Call 6b: Qwen Flash 语义校验
-# ============================================================
+def build_call5b_prompt(chapter_md: str, chapter_id: str, chapter_num: int) -> list[ChatMessage]:
+    """构建 Call 5b（单章剧情树 抽取）的 Prompt。
 
-def build_call6b_prompt(script_json: dict, programmatic_issues: list[dict]) -> list[ChatMessage]:
-    """构建 Call 6b（语义校验）的 Prompt。
-
-    Args:
-        script_json: Call 5 输出的完整 JSON
-        programmatic_issues: Call 6a 程序化校验发现的问题列表
+    只抽指定章节的 info_nodes、decision_points、results、checkpoint。
     """
 
-    import json as _json
+    user = f"""请从以下单章 Markdown 中提取该章的剧情树 JSON。
 
-    issues_text = _json.dumps(programmatic_issues, ensure_ascii=False, indent=2)
+## 第 {chapter_num} 章 Markdown
+{chapter_md}
 
-    system = "你是一个剧本校验器。请对以下 JSON 剧本进行语义层面的深度检查。"
+## 输出 JSON Schema（只输出单章字段）
 
-    user = f"""请检查以下问题：
-
-1. 每个决策点的选项之间是否存在真实的策略张力？（不是简单地一个好一个坏）
-2. Flag 的使用逻辑是否自洽？（flag 在被创建后才会被引用）
-3. 结局条件是否合理？（不要求过严或过松）
-4. 教学反馈是否与选项的实际影响一致？
-
-## 程序校验已发现的问题
-{issues_text}
-
-## 完整剧本 JSON
-{_json.dumps(script_json, ensure_ascii=False, indent=2)[:30000]}
-
-## 输出格式
-请输出一个 JSON 对象：
 {{
-  "valid": true/false,
-  "semantic_issues": [
+  "chapter_id": "{chapter_id}",
+  "title": "string",
+  "day_range": "string",
+  "core_task": "string",
+  "main_question": "string",
+  "learning_goals": ["string"],
+  "background": "string",
+  "info_nodes": [
     {{
-      "code": "SEMANTIC_001",
-      "message": "问题描述",
-      "severity": "error | warning",
-      "location": "ch0X / option_X",
-      "suggestion": "修复建议"
+      "node_id": "string",
+      "title": "string",
+      "content": "string",
+      "unlock_condition": null,
+      "next": "string"
     }}
-  ]
+  ],
+  "decision_points": [
+    {{
+      "node_id": "string",
+      "question": "string",
+      "order": "number",
+      "options": [
+        {{
+          "choice_id": "string",
+          "option_label": "string",
+          "text": "string",
+          "availability": null,
+          "effects": {{
+            "signed": "number",
+            "social_stability": "number",
+            "political_credit": "number",
+            "public_trust": "number",
+            "env_clue": "number",
+            "media_pressure": "number",
+            "budget": "number",
+            "days_left": "number"
+          }},
+          "npc_state_changes": {{}},
+          "unlock_nodes": ["string"],
+          "lock_nodes": ["string"],
+          "flags_added": ["string"],
+          "flags_removed": ["string"],
+          "immediate_result_text": "string",
+          "long_term_effect": "string",
+          "teaching_feedback": "string"
+        }}
+      ]
+    }}
+  ],
+  "results": [
+    {{
+      "node_id": "string",
+      "from_choice": "string",
+      "text": "string",
+      "next": "string"
+    }}
+  ],
+  "checkpoint": {{
+    "checkpoint_id": "string",
+    "merge_from": ["string"],
+    "next_chapter": "string",
+    "variable_snapshot": {{
+      "signed": "number",
+      "social_stability": "number",
+      "political_credit": "number",
+      "public_trust": "number",
+      "env_clue": "number",
+      "media_pressure": "number",
+      "budget": "number",
+      "days_left": "number"
+    }},
+    "active_flags": ["string"],
+    "unlocked_nodes": ["string"],
+    "locked_nodes": ["string"],
+    "summary": "string"
+  }}
 }}
 
-只输出 JSON，不要任何说明文字。"""
+## 抽取规则
+1. 只抽取该章 Markdown 中明确存在的内容；缺失字段填 null 或 [] 或 0
+2. 8 个变量的 effects 必须全部列出，即使值为 0
+3. 条件文本段（[若...]...[/若]）在 background 和 text 中保留原样
+4. checkpoint 的 variable_snapshot 从「状态快照」节提取最可能值（第3列）
+5. 输出合法 JSON，不包含 markdown 代码块标记
+6. 直接输出纯 JSON，不要在 JSON 前后添加任何说明文字"""
 
-    return _flash_messages(system, user)
+    return _flash_messages(_CALL5_SYSTEM, user)
+
+
+def build_call5_prompt(complete_script_md: str) -> list[ChatMessage]:
+    """兼容旧接口：构建 Call 5（JSON 抽取）的 Prompt（单调用版，大剧本可能截断）。"""
+    from src.generation.chapter_prompts import build_call5a_prompt, build_call5b_prompt
+    # 简单回退：用 Call 5a 作为默认
+    return build_call5a_prompt(complete_script_md, ["ch01", "ch02", "ch03", "ch04"])
 
 
 # ============================================================

@@ -13,7 +13,7 @@ from src.domain.npc_state import NPCState
 from src.domain.source_context import SourceContext
 
 if TYPE_CHECKING:
-    from src.domain.chapter_structure import Chapter
+    from src.domain.chapter_structure import Chapter, ChapterEnding, ChapterNPCProfile
 
 
 @dataclass(frozen=True)
@@ -62,6 +62,10 @@ class ScriptDesign:
     endings: list[EndingCondition] = field(default_factory=list)
     # --- 章节式生成字段（6-Call 管线填充）---
     chapters: list[Any] = field(default_factory=list)  # list[Chapter]
+    chapter_endings: list[Any] = field(default_factory=list)  # list[ChapterEnding]
+    chapter_npcs: list[Any] = field(default_factory=list)  # list[ChapterNPCProfile]
+    quality_review: dict[str, Any] = field(default_factory=dict)
+    validation_report: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
