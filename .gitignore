@@ -11,6 +11,6 @@ frontend/tsconfig.tsbuildinfo
 # Local dev data
 data/
 
-# Runtime state
-outputs/
+# Generated draft history and local counters
 outputs/history/
+outputs/script_drafts/.version_counter

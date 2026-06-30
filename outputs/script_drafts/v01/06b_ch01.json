@@ -1,0 +1,425 @@
+{
+  "chapter_id": "ch01",
+  "title": "压力传导与破局初探",
+  "day_range": "第1-20天（消耗 5-10 天）",
+  "core_task": "确立治理风格，打破村民观望僵局，完成首批关键户签约。",
+  "main_question": "在上级高压指标与村民普遍抵触之间，玩家选择何种策略启动搬迁工作？",
+  "learning_goals": [
+    "理解“压力型体制”下的初始决策困境，识别指标层层加码与依法行政之间的张力 {bai#24}{bai#25}。",
+    "识别熟人社会中的关键意见领袖（KOL）作用，掌握群众工作中的沟通策略与底线思维 {doc#33}{bai#27}。"
+  ],
+  "background": "2026年春，青石镇的空气里还带着黄土高原特有的干燥与寒意。镇党委副书记李建国的办公桌上，堆着三份刚下发的红头文件：《全县生态及地质灾害避险搬迁攻坚行动方案》、《关于实行搬迁工作“一票否决”制的通知》，以及一张印着“90天倒计时”的进度表。县委赵书记的电话每隔两小时就会响一次，语气一次比一次重：“建国，全县排名我们垫底，青石村一户还没动，你看着办。\n\n青石村村委会大院里，气氛同样凝重。大喇叭循环播放着“10+5+N”政策包的红利——每户10万元财政补助、5万元贴息贷款，以及县里配套的产业扶持 {bai#4}{bai#7}。但村民们聚在墙角，眼神里更多的是怀疑与算计。种植大户张德贵蹲在石磨旁，吧嗒吧嗒抽着旱烟，他是村里的“能人”，也是观望者的风向标；留守老人李桂兰坐在门槛上抹眼泪，担心搬进楼房后连个种菜的地方都没有；而返乡青年赵小虎举着手机，镜头对准了每一个干部的脸，随时准备将任何“不当言行”传上网 {bai#23}。\n\n镇党委书记赵国强在党委会上拍了桌子：“要么想办法让人签字，要么你自己卷铺盖走人。”面对这种“上面千条线，下面一根针”的极致压力，李建国知道，第一脚迈出去的方向，将决定整个搬迁工作的基调 {bai#26}{bai#33}。是公开透明地协商，还是私下交易换效率，亦或是依靠行政权威强推？",
+  "info_nodes": [
+    {
+      "node_id": "ch01_info_01",
+      "title": "政策底牌与考核红线",
+      "content": "你仔细研读了县里下发的《生态搬迁补偿方案细则》。核心政策“10+5+N”明确：每户直接补助10万元，提供5年期不超过5万元的贴息贷款（省市县按8:1:1分担利息） {bai#4}{bai#11}。此外，县里承诺对集中安置点配套基础设施，但资金需乡镇先行垫付或整合涉农资金 {bai#6}。\n考核方面，实行“周通报、月排名、季奖惩”，连续两次排名末位的乡镇主要领导将被约谈，年底未完成任务的实行“一票否决” {bai#18}{bai#25}。你手头可用的机动资金仅有8000万元，而全镇36户预计总补偿及配套支出约7200-9000万元，预算空间极其有限。",
+      "unlock_condition": null,
+      "next": "ch01_choice_1"
+    },
+    {
+      "node_id": "ch01_info_02",
+      "title": "青石村社会关系图谱",
+      "content": "通过与村支书刘大山的一番深谈，你摸清了青石村的社会脉络。\n1. **精英层**：张德贵（一组组长），家族势力大，说话管用，但极度看重面子和实际利益。若能搞定他，一组12户有望跟进 {doc#33}。\n2. **弱势层**：李桂兰（独居老人），无子女在身边，对搬迁后的生活充满恐惧，是村里的“苦情符号”，若处理不好易引发舆论同情 {bai#27}。\n3. **监督层**：赵小虎（网红青年），李桂兰的孙子，张德贵的侄子。他熟悉网络规则，对政府持天然不信任态度，正在寻找爆料素材 {bai#23}。\n4. **调停者**：马阿訇，村内宗教人士，德高望重，若能得到他的支持，能有效缓解村民的对立情绪 {doc#34}。",
+      "unlock_condition": null,
+      "next": "ch01_choice_1"
+    }
+  ],
+  "decision_points": [
+    {
+      "node_id": "ch01_choice_1",
+      "question": "面对僵持局面，你决定采取何种总体动员策略来打破沉默？",
+      "order": 1,
+      "options": [
+        {
+          "choice_id": "ch01_1A",
+          "option_label": "A",
+          "text": "邀请马阿訇、张德贵及村民代表开会，公开政策细节，现场答疑，建立信任。",
+          "availability": null,
+          "effects": {
+            "signed": 0,
+            "social_stability": 5,
+            "political_credit": 5,
+            "public_trust": 10,
+            "env_clue": 0,
+            "media_pressure": -5,
+            "budget": 0,
+            "days_left": -5
+          },
+          "npc_state_changes": {
+            "npc_12": {
+              "trust": 10,
+              "attitude": 10,
+              "anxiety": -5,
+              "known_info": [
+                "政府愿意听取意见"
+              ],
+              "stance": "倾向于协助调解"
+            },
+            "npc_05": {
+              "trust": 5,
+              "attitude": 5,
+              "anxiety": -5,
+              "known_info": [
+                "政策透明，无暗箱"
+              ],
+              "stance": "观望转为初步认可"
+            },
+            "npc_01": {
+              "trust": 0,
+              "attitude": 0,
+              "anxiety": 5,
+              "known_info": [
+                "进度较慢"
+              ],
+              "stance": "不满但默许"
+            }
+          },
+          "unlock_nodes": [
+            "ch02_choice_mediation_by_mahong"
+          ],
+          "lock_nodes": [
+            "ch01_choice_quick_signing"
+          ],
+          "flags_added": [
+            "flag_style_consultation",
+            "flag_respect_customs"
+          ],
+          "flags_removed": [],
+          "immediate_result_text": "会议在村委会大院举行。马阿訇的出席让场面庄重了许多。你逐一解答了关于房屋面积认定、附属物赔偿的疑问，并承诺所有数据上墙公示。赵小虎录下了全过程，发在网上配文“这次好像有点不一样”。虽然没人当场签字，但敌意明显消退。赵书记打电话抱怨：“太慢了！别的镇都签了一半了！”",
+          "long_term_effect": "奠定了“协商共治”的基调，群众信任度提升，后续签约阻力减小，但初期进度缓慢，面临上级时间压力。",
+          "teaching_feedback": "协商民主是基层治理合法性的重要来源。通过赋予村民知情权和参与权，虽牺牲了短期效率（days_left -5），但降低了交易成本和舆情风险（media_pressure -5），符合“共建共治共享”的治理理念 {doc#33}。"
+        },
+        {
+          "choice_id": "ch01_1B",
+          "option_label": "B",
+          "text": "单独约见张德贵，承诺额外产业扶持项目，要求其带头签约并动员族人。",
+          "availability": null,
+          "effects": {
+            "signed": 3,
+            "social_stability": 0,
+            "political_credit": 0,
+            "public_trust": -5,
+            "env_clue": 0,
+            "media_pressure": 5,
+            "budget": -200,
+            "days_left": -2
+          },
+          "npc_state_changes": {
+            "npc_05": {
+              "trust": 15,
+              "attitude": 15,
+              "anxiety": -10,
+              "known_info": [
+                "有额外好处"
+              ],
+              "stance": "坚定支持政府"
+            },
+            "npc_07": {
+              "trust": -10,
+              "attitude": -10,
+              "anxiety": 5,
+              "known_info": [
+                "怀疑有内幕"
+              ],
+              "stance": "警惕并准备监督"
+            },
+            "npc_03": {
+              "trust": 5,
+              "attitude": 5,
+              "anxiety": -5,
+              "known_info": [
+                "工作有了突破口"
+              ],
+              "stance": "积极配合"
+            }
+          },
+          "unlock_nodes": [
+            "ch02_choice_industry_deal"
+          ],
+          "lock_nodes": [],
+          "flags_added": [
+            "flag_style_transactional",
+            "flag_elite_focus"
+          ],
+          "flags_removed": [],
+          "immediate_result_text": "你在镇上的小饭馆请张德贵吃了顿羊肉泡馍，暗示若他带头，镇里将在安置区附近优先规划他的中药材加工厂用地。张德贵第二天就签了字，并劝动了两个亲戚。但赵小虎在直播间阴阳怪气：“有些人就是会哭的孩子有奶吃，咱们老实人只能喝西北风。”评论区开始出现质疑声。",
+          "long_term_effect": "快速打开了局面（signed +3），但埋下了公平性质疑的种子，增加了后续舆情风险（media_pressure +5），且消耗了宝贵的预算（budget -200）。",
+          "teaching_feedback": "这是典型的“精英俘获”策略。利用关键少数带动多数，在资源有限时效率极高，但容易损害程序正义，引发“相对剥夺感”，导致普通村民的不信任 {doc#33}{bai#27}。"
+        },
+        {
+          "choice_id": "ch01_1C",
+          "option_label": "C",
+          "text": "召开全村大会，宣读纪律，暗示对拒不签约者将采取断水断电、取消评优等措施。",
+          "availability": null,
+          "effects": {
+            "signed": 1,
+            "social_stability": -15,
+            "political_credit": -5,
+            "public_trust": -15,
+            "env_clue": 0,
+            "media_pressure": 10,
+            "budget": 0,
+            "days_left": -1
+          },
+          "npc_state_changes": {
+            "npc_01": {
+              "trust": 10,
+              "attitude": 10,
+              "anxiety": -10,
+              "known_info": [
+                "手段强硬，见效快"
+              ],
+              "stance": "满意"
+            },
+            "npc_03": {
+              "trust": -10,
+              "attitude": -10,
+              "anxiety": 20,
+              "known_info": [
+                "得罪人"
+              ],
+              "stance": "消极怠工"
+            },
+            "npc_06": {
+              "trust": -20,
+              "attitude": -20,
+              "anxiety": 30,
+              "known_info": [
+                "政府要赶人"
+              ],
+              "stance": "强烈抵触"
+            }
+          },
+          "unlock_nodes": [
+            "ch03_choice_force_suppression"
+          ],
+          "lock_nodes": [
+            "ch02_choice_mediation_by_mahong"
+          ],
+          "flags_added": [
+            "flag_style_authoritarian",
+            "flag_coercion_start"
+          ],
+          "flags_removed": [],
+          "immediate_result_text": "大会上气氛压抑，你强调了“政治任务”的严肃性。会后，只有两户五保户因害怕而签了字。张德贵当众把烟袋锅摔在地上：“这是逼命呢！”李桂兰哭着跑回家锁上了门。赵小虎的视频标题是：“青石镇干部放狠话，不搬就断水？”视频迅速传播。",
+          "long_term_effect": "短时期看似震慑了部分人，但严重破坏了干群关系（public_trust -15），激化了矛盾（social_stability -15），为后续的群体性事件和舆情危机埋下巨大隐患 {bai#35}。",
+          "teaching_feedback": "\"权力依赖症\"的典型表现。在压力型体制下，基层干部易陷入“刚性稳定”误区，试图用行政命令替代群众工作。这种做法虽能短暂迎合上级偏好，但极易引发“依法抗争”和舆情反噬，导致治理成本剧增 {bai#35}{doc#17}。"
+        }
+      ]
+    },
+    {
+      "node_id": "ch01_choice_2",
+      "question": "无论采取何种总体策略，你需要选择一个具体家庭作为首个签约突破口，以树立标杆。你选择谁？",
+      "order": 2,
+      "options": [
+        {
+          "choice_id": "ch01_2A",
+          "option_label": "A",
+          "text": "集中火力说服张德贵，利用其影响力带动一组村民。",
+          "availability": null,
+          "effects": {
+            "signed": 5,
+            "social_stability": 0,
+            "political_credit": 0,
+            "public_trust": 0,
+            "env_clue": 0,
+            "media_pressure": 0,
+            "budget": 0,
+            "days_left": -3
+          },
+          "npc_state_changes": {
+            "npc_05": {
+              "trust": 5,
+              "attitude": 5,
+              "anxiety": -5,
+              "known_info": [
+                "被重视"
+              ],
+              "stance": "配合"
+            },
+            "npc_03": {
+              "trust": 5,
+              "attitude": 5,
+              "anxiety": -5,
+              "known_info": [
+                "工作好开展了"
+              ],
+              "stance": "积极"
+            }
+          },
+          "unlock_nodes": [],
+          "lock_nodes": [],
+          "flags_added": [
+            "flag_first_blood_elite"
+          ],
+          "flags_removed": [],
+          "immediate_result_text": "你多次上门与张德贵长谈，帮他算清了搬迁后的经济账和产业前景。最终，张德贵在协议书上按下了手印。在他的带动下，一组的几户人家也开始动摇，纷纷来村委会咨询。刘大山松了口气：“这下好办了。”",
+          "long_term_effect": "确立了“精英带动”的路径，签约进度加快，但若前期未做好公平性铺垫，易引发其他村民的攀比心理。",
+          "teaching_feedback": "\"擒贼先擒王\"是熟人社会治理的有效策略。意见领袖的态度具有显著的外部性，搞定关键人能大幅降低后续动员的边际成本 {doc#33}。"
+        },
+        {
+          "choice_id": "ch01_2B",
+          "option_label": "B",
+          "text": "优先解决李桂兰的养老照料顾虑，帮助其签约，树立温情标杆。",
+          "availability": null,
+          "effects": {
+            "signed": 1,
+            "social_stability": 5,
+            "political_credit": 5,
+            "public_trust": 10,
+            "env_clue": 0,
+            "media_pressure": -5,
+            "budget": -50,
+            "days_left": -3
+          },
+          "npc_state_changes": {
+            "npc_06": {
+              "trust": 20,
+              "attitude": 20,
+              "anxiety": -20,
+              "known_info": [
+                "政府管养老"
+              ],
+              "stance": "安心签约"
+            },
+            "npc_12": {
+              "trust": 5,
+              "attitude": 5,
+              "anxiety": -5,
+              "known_info": [
+                "干部有爱心"
+              ],
+              "stance": "赞赏"
+            },
+            "npc_07": {
+              "trust": 5,
+              "attitude": 5,
+              "anxiety": -5,
+              "known_info": [
+                "奶奶被照顾"
+              ],
+              "stance": "减少敌意"
+            }
+          },
+          "unlock_nodes": [
+            "ch02_choice_publicity_case"
+          ],
+          "lock_nodes": [],
+          "flags_added": [
+            "flag_first_blood_vulnerable"
+          ],
+          "flags_removed": [],
+          "immediate_result_text": "你协调镇敬老院和志愿者，为李桂兰制定了详细的搬迁后照料计划，并预付了一部分养老服务费用。李桂兰颤巍巍地签了字，拉着你的手说：“娃啊，谢谢你没忘了我这老婆子。”这一幕被赵小虎拍下发到网上，点赞不少，评论区风向转暖。",
+          "long_term_effect": "虽然只签了一户，但极大地提升了政府的道德形象和群众信任（public_trust +10），为后续工作营造了良好的舆论氛围，但消耗了少量预算。",
+          "teaching_feedback": "关注弱势群体是政策执行中的“柔性治理”。通过解决最困难群体的后顾之忧，不仅能体现政策温度，还能有效化解潜在的舆情风险，构建情感认同 {bai#27}。"
+        },
+        {
+          "choice_id": "ch01_2C",
+          "option_label": "C",
+          "text": "没有特定目标，按名单顺序入户，碰到谁做谁工作。",
+          "availability": null,
+          "effects": {
+            "signed": 1,
+            "social_stability": 0,
+            "political_credit": 0,
+            "public_trust": 0,
+            "env_clue": 0,
+            "media_pressure": 0,
+            "budget": 0,
+            "days_left": -5
+          },
+          "npc_state_changes": {},
+          "unlock_nodes": [],
+          "lock_nodes": [],
+          "flags_added": [
+            "flag_no_strategy"
+          ],
+          "flags_removed": [],
+          "immediate_result_text": "你带着村干部挨家挨户敲门，大部分村民要么不在家，要么闭门羹。折腾了三天，只勉强说服了一户常年在外务工、对老家无所谓的人家签了字。效率极低，赵书记在电话里把你骂了一顿。",
+          "long_term_effect": "缺乏策略导致资源浪费和时间损耗，未能形成示范效应，后续工作依然艰难。",
+          "teaching_feedback": "缺乏目标导向的“撒胡椒面”式工作法，在资源约束和时间压力下是低效的。基层治理需要精准识别关键节点，否则容易陷入事务主义泥潭 {bai#26}。"
+        }
+      ]
+    }
+  ],
+  "results": [
+    {
+      "node_id": "ch01_result_1A",
+      "from_choice": "ch01_1A",
+      "text": "村民代表会后，虽然没有人立即签字，但村里的谣言少了。马阿訇在礼拜后特意留了你，说：“李书记，大家心里有底了，就好办。”赵小虎的视频下，有网友留言：“这干部看着还挺实在。”你感到一种久违的踏实，但看着倒计时的牌子，心里的石头并未完全落地。",
+      "next": "ch01_choice_2"
+    },
+    {
+      "node_id": "ch01_result_1B",
+      "from_choice": "ch01_1B",
+      "text": "张德贵签了字，村里炸开了锅。有人羡慕，有人嫉妒。赵小虎在直播间里冷笑：“我就知道，有钱能使鬼推磨。咱们这些没关系的，是不是得跪着求？”你感觉到一股无形的压力正在积聚，但看着签约表上增加的三个名字，你只能硬着头皮继续。",
+      "next": "ch01_choice_2"
+    },
+    {
+      "node_id": "ch01_result_1C",
+      "from_choice": "ch01_1C",
+      "text": "大会结束后，村里静得可怕。没人再来村委会咨询，见面也躲着你走。李桂兰家的灯彻夜亮着，据说她在收拾行李，准备去县城儿子家躲风头。赵书记对你的“铁腕”表示赞赏，但你看着村民冷漠的眼神，心里隐隐不安。你知道，这只是暴风雨前的宁静。",
+      "next": "ch01_choice_2"
+    },
+    {
+      "node_id": "ch01_result_2A",
+      "from_choice": "ch01_2A",
+      "text": "张德贵的签字像多米诺骨牌的第一张。第二天，他的两个堂弟也来签了字。刘大山脸上有了笑容，主动帮你去劝说其他犹豫的村民。虽然进度不算飞快，但方向是对的。",
+      "next": "ch01_checkpoint"
+    },
+    {
+      "node_id": "ch01_result_2B",
+      "from_choice": "ch01_2B",
+      "text": "李桂兰签约的消息在村里传开，尤其是她那句“政府管养老”的话，触动了很多留守老人的心。马阿訇在闲聊中也帮你说了好话：“李书记是个有心人。”虽然只签了一户，但村里的对立情绪明显缓和，赵小虎也没再发负面视频。",
+      "next": "ch01_checkpoint"
+    },
+    {
+      "node_id": "ch01_result_2C",
+      "from_choice": "ch01_2C",
+      "text": "三天下来，你跑得腿软，嘴皮子磨破，却收效甚微。村民们的态度依旧暧昧不明，有的说“再看看”，有的说“没钱搬”。你感到深深的疲惫和无助，仿佛一拳打在棉花上。赵书记的催促电话越来越频繁，你的焦虑值在飙升。",
+      "next": "ch01_checkpoint"
+    }
+  ],
+  "checkpoint": {
+    "checkpoint_id": "ch01_checkpoint",
+    "merge_from": [
+      "ch01_result_2A",
+      "ch01_result_2B",
+      "ch01_result_2C"
+    ],
+    "next_chapter": "ch02",
+    "variable_snapshot": {
+      "signed": 5,
+      "social_stability": 75,
+      "political_credit": 75,
+      "public_trust": 60,
+      "env_clue": 0,
+      "media_pressure": 25,
+      "budget": 7950,
+      "days_left": 82
+    },
+    "active_flags": [
+      "flag_style_consultation",
+      "flag_respect_customs",
+      "flag_style_transactional",
+      "flag_elite_focus",
+      "flag_style_authoritarian",
+      "flag_coercion_start",
+      "flag_first_blood_elite",
+      "flag_first_blood_vulnerable",
+      "flag_no_strategy"
+    ],
+    "unlocked_nodes": [
+      "ch02_choice_mediation_by_mahong",
+      "ch02_choice_industry_deal",
+      "ch03_choice_force_suppression",
+      "ch02_choice_publicity_case"
+    ],
+    "locked_nodes": [
+      "ch01_choice_quick_signing",
+      "ch02_choice_mediation_by_mahong"
+    ],
+    "summary": "第一章结束了，青石镇的搬迁工作正式起步。玩家的选择确立了初步的治理风格：是走向协商共治的信任之路，还是利益交换的效率之路，亦或是行政强推的风险之路。不同的选择导致了截然不同的初始状态：签约户数、群众信任、舆情压力和预算余额均出现了分化。这些变量和 Flag 将深刻影响第二章中面对质量危机和弱势群体诉求时的可选策略与结局走向。"
+  }
+}

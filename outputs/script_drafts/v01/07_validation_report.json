@@ -1,0 +1,35 @@
+{
+  "validation_version": 2,
+  "valid": true,
+  "issues": [],
+  "error_count": 0,
+  "warning_count": 0,
+  "structure_validation": {
+    "valid": true,
+    "issues": [],
+    "error_count": 0,
+    "warning_count": 0
+  },
+  "extraction_validation": {
+    "valid": true,
+    "issues": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "source_counts": {
+      "chapter": 4,
+      "choice": 24,
+      "npc": 12,
+      "ending": 3
+    },
+    "extracted_counts": {
+      "chapter": 4,
+      "choice": 24,
+      "npc": 12,
+      "ending": 3
+    }
+  },
+  "continuity_review": {
+    "status": "pass",
+    "continuity_issues": []
+  }
+}
