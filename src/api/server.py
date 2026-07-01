@@ -93,6 +93,7 @@ class GenerateRequest(BaseModel):
     full_draft: bool = Field(default=True)
     chapter_count: int = Field(default=6, ge=1, description="章节数量（章节式管线使用）")
     ending_count: int = Field(default=4, ge=1, description="结局数量（章节式管线使用）")
+    decision_point_count: int = Field(default=3, ge=1, description="每章决策点数量（章节式管线使用）")
     resume_version: str = Field(default="", description="要续跑的未完成版本，如 v02")
 
 
@@ -135,6 +136,17 @@ class ChapterRevisionApplyRequest(BaseModel):
     mode: str = Field(..., description="manual | ai")
     content: str = Field(..., min_length=1, description="确认后的完整 Markdown")
     feedback: str = Field(default="")
+    chapter_actions: dict[str, str] = Field(
+        default_factory=dict,
+        description="受影响章节处理方式：keep | ai_revise",
+    )
+    impact_acknowledged: bool = Field(default=False)
+
+
+class ChapterRevisionImpactRequest(BaseModel):
+    base_version: str = Field(..., min_length=1)
+    target: str = Field(..., description="game_settings | chapter_outline")
+    content: str = Field(..., min_length=1, description="确认后的完整 Markdown")
 
 
 # ---- SSE 工具 ----
@@ -184,6 +196,7 @@ GENERATION_REQUEST_FIELDS = (
     "feedback",
     "chapter_count",
     "ending_count",
+    "decision_point_count",
 )
 
 
@@ -429,6 +442,7 @@ def create_app() -> FastAPI:
             full_draft=True,
             chapter_count=request_values["chapter_count"],
             ending_count=request_values["ending_count"],
+            decision_point_count=request_values["decision_point_count"],
         )
 
         task_id = _create_task()
@@ -596,11 +610,28 @@ def create_app() -> FastAPI:
                 req.content,
                 req.mode,
                 req.feedback,
+                req.chapter_actions,
+                req.impact_acknowledged,
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:
             raise HTTPException(500, f"应用章节修订失败：{exc}") from exc
+
+    @app.post("/api/revisions/impact")
+    async def analyze_chapter_revision_impact(req: ChapterRevisionImpactRequest):
+        """确定性分析全局设定或大纲变化会影响哪些章节。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+        try:
+            return service.analyze_impact(
+                req.base_version,
+                req.target,
+                req.content,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     # ---------- 旧结构修订（兼容历史三幕式版本） ----------
 
@@ -758,6 +789,7 @@ def create_app() -> FastAPI:
                     "decision_count": len(s.get("decision_points", [])),
                     "chapters_count": len(s.get("chapters", [])),
                     "generation_mode": data.get("generation_mode", "") if isinstance(data, dict) else "",
+                    "revision_status": data.get("revision_status", "") if isinstance(data, dict) else "",
                 })
         return {"versions": versions}
 

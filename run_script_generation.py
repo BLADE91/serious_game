@@ -135,6 +135,11 @@ def main() -> None:
         help="仅输出章节修订 diff，不创建修订版本",
     )
     parser.add_argument(
+        "--revision-sync-affected",
+        action="store_true",
+        help="全局设定或大纲修订时，用 AI 同步修订所有受影响章节",
+    )
+    parser.add_argument(
         "--full-draft",
         action="store_true",
         default=True,
@@ -167,6 +172,12 @@ def main() -> None:
         type=int,
         default=4,
         help="结局数量（仅 --chapter 模式，默认 4）",
+    )
+    parser.add_argument(
+        "--decision-point-count",
+        type=int,
+        default=3,
+        help="每章决策点数量（仅 --chapter 模式，默认 3）",
     )
     parser.add_argument(
         "--out-dir",
@@ -207,18 +218,37 @@ def main() -> None:
             if args.revision_preview_only or not preview["changed"]:
                 return
 
+            impact = revision_service.analyze_impact(
+                args.chapter_revise,
+                args.revision_target,
+                revised_content,
+            )
+            affected = [
+                item["chapter_id"]
+                for item in impact.get("affected_chapters", [])
+            ]
+            if affected:
+                print("\n=== 修订影响 ===")
+                print(f"影响级别: {impact['impact_level']}")
+                print(f"受影响章节: {', '.join(affected)}")
+            action = "ai_revise" if args.revision_sync_affected else "keep"
+            chapter_actions = {chapter_id: action for chapter_id in affected}
+
             revised = revision_service.apply_revision(
                 base_version=args.chapter_revise,
                 target=args.revision_target,
                 content=revised_content,
                 mode=mode,
                 feedback=args.feedback,
+                chapter_actions=chapter_actions,
+                impact_acknowledged=True,
             )
             print("\n=== 章节修订完成 ===")
             print(f"修订版本: {revised['revision_dir']}")
             print(f"结果文件: {revised['saved_as']}")
             validation = revised["script"].get("validation_report", {})
             print(f"程序校验: {'通过' if validation.get('valid') else '未通过'}")
+            print(f"修订状态: {revised.get('revision_status', 'complete')}")
             return
 
         service = ScriptGenService.from_env()
@@ -273,7 +303,10 @@ def main() -> None:
                 )
             if args.chapter:
                 print("=== 6-Call 章节式管线生成 ===")
-                print(f"章节数: {args.chapter_count}，结局数: {args.ending_count}")
+                print(
+                    f"章节数: {args.chapter_count}，结局数: {args.ending_count}，"
+                    f"每章决策点: {args.decision_point_count}"
+                )
                 request = ScriptGenerationRequest(
                     scenario=args.scenario,
                     player_role=args.player_role,
@@ -290,6 +323,7 @@ def main() -> None:
                     full_draft=True,
                     chapter_count=args.chapter_count,
                     ending_count=args.ending_count,
+                    decision_point_count=args.decision_point_count,
                 )
                 # 如果 out_dir 已是版本目录（如 v06），直接复用；否则新建
                 version_dir = _resolve_version_dir(Path(args.out_dir))

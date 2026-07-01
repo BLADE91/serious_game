@@ -192,6 +192,7 @@ class ChapterValidator:
     def validate_programmatic(
         script_json: dict,
         expected_npc_count: int | None = None,
+        expected_decision_point_count: int | None = None,
     ) -> dict:
         """Step 6a: 程序自动校验。
 
@@ -220,7 +221,16 @@ class ChapterValidator:
             if not dps:
                 issues.append({"code": "MISSING_DECISION", "message": f"{ch_id} 缺失决策点", "severity": "error"})
             else:
-                if len(dps) < 2:
+                if expected_decision_point_count is not None and len(dps) != expected_decision_point_count:
+                    issues.append({
+                        "code": "DECISION_POINT_COUNT_MISMATCH",
+                        "message": (
+                            f"{ch_id} 决策点数量应为 {expected_decision_point_count} 个，"
+                            f"当前 {len(dps)} 个"
+                        ),
+                        "severity": "error",
+                    })
+                elif len(dps) < 2:
                     issues.append({"code": "TOO_FEW_DECISION_POINTS", "message": f"{ch_id} 仅有 {len(dps)} 个决策点（建议 2-4 个）", "severity": "warning"})
 
                 for dp in dps:

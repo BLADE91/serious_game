@@ -124,6 +124,7 @@ class TestVersionAllocation(unittest.TestCase):
             player_role="new role",
             learning_goal="new goal",
             chapter_count=6,
+            decision_point_count=5,
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             version_dir = Path(temp_dir) / "v02"
@@ -140,12 +141,14 @@ class TestVersionAllocation(unittest.TestCase):
                     "player_role": "saved role",
                     "learning_goal": "saved goal",
                     "chapter_count": 4,
+                    "decision_point_count": 2,
                 }),
                 encoding="utf-8",
             )
             saved = server._effective_generation_values(request, version_dir)
             self.assertEqual("saved scenario", saved["scenario"])
             self.assertEqual(4, saved["chapter_count"])
+            self.assertEqual(2, saved["decision_point_count"])
 
 
 if __name__ == "__main__":

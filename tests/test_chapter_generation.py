@@ -338,6 +338,60 @@ class TestPromptBuilders(unittest.TestCase):
         assert "NPC 状态变化" in content
         assert "制作备注" in content
 
+    def test_custom_decision_point_count_reaches_all_creation_prompts(self):
+        call1 = build_call1_prompt(
+            scenario="生态搬迁",
+            player_role="镇长",
+            learning_goals=[],
+            chapter_count=4,
+            ending_count=3,
+            decision_point_count=5,
+        )[0].content
+        call2 = build_call2_prompt(
+            SAMPLE_GAME_SETTINGS_MD,
+            decision_point_count=5,
+        )[0].content
+        call3 = build_call3_prompt(
+            game_settings_md=SAMPLE_GAME_SETTINGS_MD,
+            chapter_outline_md=SAMPLE_OUTLINE_MD,
+            current_chapter_num=1,
+            total_chapters=3,
+            current_chapter_outline_entry="## 第 1 章",
+            state_snapshot_text=build_initial_state_snapshot_text(),
+            unlocked_nodes_text="（无）",
+            locked_nodes_text="（无）",
+            chapter_template_md=CHAPTER_TEMPLATE_MD,
+            few_shot_example_md="示例章节",
+            decision_point_count=5,
+        )[0].content
+
+        assert "每章决策点数: 5" in call1
+        assert "恰好 5 个顺序执行" in call2
+        assert "恰好 5 个顺序决策点" in call3
+
+    def test_single_decision_point_removes_second_template_block(self):
+        call2 = build_call2_prompt(
+            SAMPLE_GAME_SETTINGS_MD,
+            decision_point_count=1,
+        )[0].content
+        call3 = build_call3_prompt(
+            game_settings_md=SAMPLE_GAME_SETTINGS_MD,
+            chapter_outline_md=SAMPLE_OUTLINE_MD,
+            current_chapter_num=1,
+            total_chapters=3,
+            current_chapter_outline_entry="## 第 1 章",
+            state_snapshot_text=build_initial_state_snapshot_text(),
+            unlocked_nodes_text="（无）",
+            locked_nodes_text="（无）",
+            chapter_template_md=CHAPTER_TEMPLATE_MD,
+            few_shot_example_md="示例章节",
+            decision_point_count=1,
+        )[0].content
+
+        assert "决策点 2：标题" not in call2
+        assert "### 决策点 2：决策标题" not in call3
+        assert "decision_point_count: 1" in call3
+
     def test_call4_prompt_uses_flash_format(self):
         msgs = build_call4_prompt(SAMPLE_CHAPTER_MD)
         assert len(msgs) == 2
@@ -781,6 +835,36 @@ class TestValidationPrompts(unittest.TestCase):
 
 
 class TestValidationPolicy(unittest.TestCase):
+    def test_expected_decision_point_count_is_enforced(self):
+        effects = {name: 0 for name in ChapterValidator.EXPECTED_VARIABLES}
+        script = {
+            "chapters": [{
+                "chapter_id": "ch01",
+                "decision_points": [{
+                    "node_id": "ch01_dp",
+                    "options": [
+                        {"choice_id": "A", "effects": effects},
+                        {"choice_id": "B", "effects": effects},
+                        {"choice_id": "C", "effects": effects},
+                    ],
+                }],
+            }],
+            "npcs": [],
+            "endings": [],
+        }
+
+        report = ChapterValidator.validate_programmatic(
+            script,
+            expected_npc_count=0,
+            expected_decision_point_count=3,
+        )
+
+        assert report["valid"] is False
+        assert any(
+            issue["code"] == "DECISION_POINT_COUNT_MISMATCH"
+            for issue in report["issues"]
+        )
+
     def test_continuity_review_does_not_control_valid(self):
         from src.generation.chapter_script_generator import ChapterScriptGenerator
 
@@ -1038,12 +1122,14 @@ class TestBackwardCompatibility(unittest.TestCase):
 
         req = ScriptGenerationRequest(
             scenario="测试", player_role="测试",
-            chapter_count=8, ending_count=5,
+            chapter_count=8, ending_count=5, decision_point_count=6,
         )
         assert req.chapter_count == 8
         assert req.ending_count == 5
+        assert req.decision_point_count == 6
 
         # 默认值
         req_default = ScriptGenerationRequest(scenario="测试", player_role="测试")
         assert req_default.chapter_count == 6
         assert req_default.ending_count == 4
+        assert req_default.decision_point_count == 3

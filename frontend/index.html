@@ -231,6 +231,10 @@ body.modal-open { overflow: hidden; }
       <label for="endingCount">结局数量</label>
       <input type="number" id="endingCount" value="4" min="1" placeholder="如 4">
     </div>
+    <div>
+      <label for="decisionPointCount">每章决策点数量</label>
+      <input type="number" id="decisionPointCount" value="3" min="1" placeholder="如 3">
+    </div>
     <div class="full">
       <label for="characterSettings">人物设定（可选）</label>
       <input id="characterSettings" placeholder="如：县委书记是改革派，村支书是保守派，两个家族有世仇…">
@@ -526,7 +530,7 @@ async function loadLatestResult() {
                 }
     renderResult(data);
     show('result-card');
-    updateVersionLabel(data.filename || data.saved_as || '');
+    updateVersionLabel(data.filename || data.saved_as || '', data.revision_status);
     document.getElementById('feedback').value = '';
     // 滚动到结果区
     document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
@@ -857,12 +861,38 @@ function clearRevisionPreview() {
 async function submitChapterRevision(payload, btn) {
   btn.disabled = true;
   hide('error-card');
-  setProgress(1, 1, '正在重建抽取结果并校验');
+  let requestPayload = {...payload};
   try {
+    if (['game_settings', 'chapter_outline'].includes(payload.target) && !payload.impact_acknowledged) {
+      setProgress(1, 1, '正在分析修订影响');
+      const impactResp = await fetch('/api/revisions/impact', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          base_version: getRevisionBaseVersion(),
+          target: payload.target,
+          content: payload.content,
+        }),
+      });
+      const impact = await impactResp.json().catch(() => ({}));
+      if (!impactResp.ok) throw new Error(impact.detail || `分析修订影响失败 ${impactResp.status}`);
+      hide('progress-card');
+      const actions = impact.requires_confirmation
+        ? await showRevisionImpactDialog(impact)
+        : {};
+      if (actions === null) return;
+      requestPayload = {
+        ...payload,
+        chapter_actions: actions,
+        impact_acknowledged: true,
+      };
+    }
+
+    setProgress(1, 1, '正在重建抽取结果并校验');
     const resp = await fetch('/api/revisions/apply', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({base_version: getRevisionBaseVersion(), ...payload}),
+      body: JSON.stringify({base_version: getRevisionBaseVersion(), ...requestPayload}),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(data.detail || `应用章节修订失败 ${resp.status}`);
@@ -870,7 +900,7 @@ async function submitChapterRevision(payload, btn) {
     lastResult = data;
     lastFullMD = normalizeFullMD(data.full_md || '');
     renderResult(data);
-    updateVersionLabel(data.saved_as || data.revision_dir || '');
+    updateVersionLabel(data.saved_as || data.revision_dir || '', data.revision_status);
     show('result-card');
   } catch (err) {
     showError(err.message);
@@ -878,6 +908,75 @@ async function submitChapterRevision(payload, btn) {
     btn.disabled = false;
     hide('progress-card');
   }
+}
+
+function showRevisionImpactDialog(impact) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'source-revision-overlay';
+    const panel = document.createElement('div');
+    panel.className = 'source-inline-editor';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', '确认修订影响');
+    const chapters = impact.affected_chapters || [];
+    const blocking = impact.blocking_changes || [];
+    panel.innerHTML = `
+      <div class="source-inline-header">
+        <strong>确认修订影响</strong>
+        <button type="button" class="element-action" data-impact-cancel>关闭</button>
+      </div>
+      <p style="margin:12px 0 4px; color:var(--text-muted);">
+        影响级别：<strong>${esc(String(impact.impact_level || 'low').toUpperCase())}</strong>。
+        勾选章节将由 AI 根据新设定同步修订；未勾选章节保留原文，并标记为待人工处理。
+      </p>
+      ${blocking.length ? `
+        <div style="margin-top:10px; padding:10px; border-left:3px solid var(--danger); background:var(--bg);">
+          ${blocking.map(item => `<div>${esc(item)}</div>`).join('')}
+        </div>` : ''}
+      <div style="max-height:52vh; overflow:auto; margin-top:10px; border-top:1px solid var(--border);">
+        ${chapters.map(item => `
+          <label style="display:flex; gap:10px; align-items:flex-start; padding:12px 4px; border-bottom:1px solid var(--border); cursor:pointer;">
+            <input type="checkbox" data-impact-chapter="${esc(item.chapter_id)}" style="margin-top:3px;">
+            <span style="min-width:0;">
+              <strong>${esc(item.chapter_id.toUpperCase())}</strong>
+              <small style="display:block; color:var(--text-muted); margin-top:3px;">
+                ${esc((item.reasons || []).join('；'))}
+              </small>
+            </span>
+          </label>`).join('')}
+      </div>
+      <div class="source-inline-actions" style="margin-top:14px;">
+        <button type="button" class="btn btn-secondary btn-sm" data-impact-cancel>取消</button>
+        <button type="button" class="btn btn-primary btn-sm" data-impact-apply>创建修订版</button>
+      </div>
+    `;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    document.body.classList.add('modal-open');
+
+    const finish = value => {
+      overlay.remove();
+      document.body.classList.remove('modal-open');
+      resolve(value);
+    };
+    overlay.addEventListener('click', event => {
+      if (event.target.closest('[data-impact-apply]')) {
+        const actions = {};
+        chapters.forEach(item => {
+          const checked = panel.querySelector(`[data-impact-chapter="${item.chapter_id}"]`)?.checked;
+          actions[item.chapter_id] = checked ? 'ai_revise' : 'keep';
+        });
+        finish(actions);
+      } else if (event.target.closest('[data-impact-cancel]') || event.target === overlay) {
+        finish(null);
+      }
+    });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') finish(null);
+    });
+    panel.querySelector('[data-impact-chapter]')?.focus();
+  });
 }
 
 function applyManualRevision() {
@@ -1143,7 +1242,7 @@ function downloadResult() {
   URL.revokeObjectURL(a.href);
 }
 
-function updateVersionLabel(filename) {
+function updateVersionLabel(filename, revisionStatus = '') {
   const el = document.getElementById('currentVersionLabel');
   if (!el) return;
   if (!filename) { el.style.display = 'none'; return; }
@@ -1153,7 +1252,13 @@ function updateVersionLabel(filename) {
   if (match) {
     el.style.display = 'inline';
     const version = match[2] ? `${match[1]}-${match[2]}` : match[1];
-    el.innerHTML = `<span style="font-weight:700;">${esc(version.toUpperCase())}</span> <span style="color:var(--text-muted);">${esc(sourceLabel[match[3]] || match[3])}</span>`;
+    const status = revisionStatus === 'review_required'
+      ? ' <span style="color:var(--danger);">· 待人工处理</span>'
+      : '';
+    el.innerHTML = `<span style="font-weight:700;">${esc(version.toUpperCase())}</span> <span style="color:var(--text-muted);">${esc(sourceLabel[match[3]] || match[3])}</span>${status}`;
+    el.title = revisionStatus === 'review_required'
+      ? '存在未同步章节、程序校验问题或连续性审查建议'
+      : '';
     return;
   }
   el.style.display = 'none';
@@ -1195,6 +1300,7 @@ async function toggleVersions() {
           <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
             ${versionBadge}
             <span style="font-size:12px;">${esc(label)}</span>
+            ${v.revision_status === 'review_required' ? '<span style="font-size:11px; color:var(--danger);">待人工处理</span>' : ''}
           </div>
           <strong style="font-size:14px;">${esc(v.title)}</strong>
           <br><small style="color:var(--text-muted);">${v.timestamp?.replace('T',' ').slice(0,19)||''}${v.chapters_count ? ` | 章节×${v.chapters_count}` : ''}${v.npc_count ? ` | NPC×${v.npc_count}` : ''}${v.decision_count ? ` | 决策×${v.decision_count}` : ''}</small>
@@ -1235,7 +1341,7 @@ async function loadVersion(filename) {
                 }
     renderResult(data);
     show('result-card');
-    updateVersionLabel(data.filename || data.saved_as || '');
+    updateVersionLabel(data.filename || data.saved_as || '', data.revision_status);
     document.getElementById('versions-card').classList.add('hidden');
     document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
@@ -1429,6 +1535,7 @@ async function startGeneration(resumeVersion = '') {
         npc_count: parseInt(document.getElementById('npcCount').value),
         chapter_count: parseInt(document.getElementById('chapterCount').value),
         ending_count: parseInt(document.getElementById('endingCount').value),
+        decision_point_count: parseInt(document.getElementById('decisionPointCount').value),
         character_settings: document.getElementById('characterSettings').value.trim(),
         story_background: document.getElementById('storyBackground').value.trim(),
         extra_requirements: document.getElementById('extra').value.trim(),

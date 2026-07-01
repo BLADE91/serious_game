@@ -118,6 +118,7 @@ class ChapterScriptGenerator:
         learning_goals_list = [g.strip() for g in learning_goals.split("\n") if g.strip()] if learning_goals else []
         chapter_count = getattr(request, "chapter_count", 6)
         ending_count = getattr(request, "ending_count", 4)
+        decision_point_count = getattr(request, "decision_point_count", 3)
         duration_minutes = getattr(request, "duration_minutes", 45)
         character_settings = getattr(request, "character_settings", "")
         story_background = getattr(request, "story_background", "")
@@ -133,7 +134,7 @@ class ChapterScriptGenerator:
                 ending_count=ending_count, duration_minutes=duration_minutes,
                 character_settings=character_settings,
                 story_background=story_background, extra_requirements=extra_requirements,
-                npc_count=npc_count,
+                npc_count=npc_count, decision_point_count=decision_point_count,
                 progress_callback=progress_callback,
             ),
             label="Call 1/6: 生成全局设定", stage=1,
@@ -144,7 +145,9 @@ class ChapterScriptGenerator:
         chapter_outline_md = self._load_or_call(
             "02_chapter_outline.md",
             call_fn=lambda: self._call2_generate_outline(
-                game_settings_md, progress_callback=progress_callback,
+                game_settings_md,
+                decision_point_count=decision_point_count,
+                progress_callback=progress_callback,
             ),
             label="Call 2/6: 生成章节大纲", stage=2,
             progress_callback=progress_callback,
@@ -157,6 +160,7 @@ class ChapterScriptGenerator:
                 game_settings_md=game_settings_md,
                 chapter_outline_md=chapter_outline_md,
                 chapter_count=chapter_count,
+                decision_point_count=decision_point_count,
                 progress_callback=progress_callback,
             ),
             label_prefix="Call 3/6: 逐章生成",
@@ -195,6 +199,7 @@ class ChapterScriptGenerator:
             call_fn=lambda: self._call6_validate(
                 script_json,
                 expected_npc_count=npc_count,
+                expected_decision_point_count=decision_point_count,
                 complete_script_md=merged_script_md,
                 continuity_review=continuity_review,
             ),
@@ -227,6 +232,7 @@ class ChapterScriptGenerator:
         story_background: str,
         extra_requirements: str,
         npc_count: int = 8,
+        decision_point_count: int = 3,
         progress_callback: GenerationProgressCallback | None = None,
     ) -> str:
         messages = build_call1_prompt(
@@ -240,6 +246,7 @@ class ChapterScriptGenerator:
             story_background=story_background,
             extra_requirements=extra_requirements,
             npc_count=npc_count,
+            decision_point_count=decision_point_count,
         )
         result = self._pa_complete(
             messages,
@@ -257,9 +264,10 @@ class ChapterScriptGenerator:
     def _call2_generate_outline(
         self,
         game_settings_md: str,
+        decision_point_count: int = 3,
         progress_callback: GenerationProgressCallback | None = None,
     ) -> str:
-        messages = build_call2_prompt(game_settings_md)
+        messages = build_call2_prompt(game_settings_md, decision_point_count)
         result = self._pa_complete(
             messages,
             temperature=0.3,
@@ -278,6 +286,7 @@ class ChapterScriptGenerator:
         game_settings_md: str,
         chapter_outline_md: str,
         chapter_count: int,
+        decision_point_count: int = 3,
         progress_callback: GenerationProgressCallback | None = None,
     ) -> list[str]:
         """逐章生成，每章独立 PA Backend 对话。
@@ -335,6 +344,7 @@ class ChapterScriptGenerator:
                 chapter_template_md=CHAPTER_TEMPLATE_MD,
                 few_shot_example_md=self._few_shot,
                 previous_chapters_summary=previous_summary,
+                decision_point_count=decision_point_count,
             )
 
             ch_md = None
@@ -502,12 +512,15 @@ class ChapterScriptGenerator:
         self,
         script_json: dict,
         expected_npc_count: int,
+        expected_decision_point_count: int | None = None,
         complete_script_md: str = "",
         continuity_review: dict[str, Any] | None = None,
     ) -> dict:
         """只执行确定性的结构校验和 Markdown→JSON 提取一致性校验。"""
         programmatic = ChapterValidator.validate_programmatic(
-            script_json, expected_npc_count=expected_npc_count,
+            script_json,
+            expected_npc_count=expected_npc_count,
+            expected_decision_point_count=expected_decision_point_count,
         )
         extraction = ChapterValidator.validate_extraction_fidelity(
             script_json, complete_script_md,

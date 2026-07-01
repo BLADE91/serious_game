@@ -9,12 +9,17 @@ import tempfile
 import unittest
 
 from src.services.chapter_revision_service import ChapterRevisionService
+from src.services.revision_impact_analyzer import RevisionImpactAnalyzer
 
 
 class FakeFlashClient:
     def __init__(self, responses: list[str]) -> None:
         self.responses = list(responses)
         self.calls: list[dict] = []
+        self.reset_count = 0
+
+    def reset_conversation(self) -> None:
+        self.reset_count += 1
 
     def complete(self, messages, **kwargs) -> str:
         self.calls.append({"messages": messages, **kwargs})
@@ -69,6 +74,8 @@ class TestChapterRevisionService(unittest.TestCase):
         manifest = json.loads((revision_dir / "revision_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual("complete", manifest["status"])
         self.assertEqual("v01", manifest["parent"])
+        self.assertEqual("human", manifest["revision_engine"])
+        self.assertEqual("none", manifest["sync_engine"])
 
     def test_revision_of_revision_uses_next_sibling_directory(self) -> None:
         service = ChapterRevisionService(outputs_dir=self.outputs_dir)
@@ -84,7 +91,7 @@ class TestChapterRevisionService(unittest.TestCase):
         flash = FakeFlashClient([candidate])
         service = ChapterRevisionService(
             outputs_dir=self.outputs_dir,
-            flash_client=flash,
+            pa_client=flash,
         )
 
         preview = service.preview_ai("v01", "ch01", "调整章节标题")
@@ -93,6 +100,95 @@ class TestChapterRevisionService(unittest.TestCase):
         self.assertIn("压力化解", preview["revised_content"])
         self.assertTrue(preview["changed"])
         self.assertFalse((self.base_dir / "revisions").exists())
+        self.assertEqual(1, flash.reset_count)
+        self.assertNotIn("response_format", flash.calls[0])
+        self.assertIn("调整章节标题", flash.calls[0]["messages"][1].content)
+
+    def test_settings_npc_change_only_marks_referencing_chapters(self) -> None:
+        original = """## 角色表
+### NPC 01：甲
+- npc_id: npc_01
+- 姓名: 甲
+"""
+        revised = original.replace("姓名: 甲", "姓名: 新甲")
+        impact = RevisionImpactAnalyzer().analyze(
+            "game_settings",
+            original,
+            revised,
+            {
+                "ch01": "- npc_id: npc_01",
+                "ch02": "- npc_id: npc_02",
+            },
+        )
+
+        self.assertEqual("medium", impact["impact_level"])
+        self.assertEqual(
+            ["ch01"],
+            [item["chapter_id"] for item in impact["affected_chapters"]],
+        )
+
+    def test_outline_change_marks_changed_and_following_chapters(self) -> None:
+        original = """# 大纲
+## 第 1 章：一
+- chapter_id: ch01
+- core_task: 一
+## 第 2 章：二
+- chapter_id: ch02
+- core_task: 二
+## 第 3 章：三
+- chapter_id: ch03
+- core_task: 三
+"""
+        revised = original.replace("core_task: 二", "core_task: 新二")
+        impact = RevisionImpactAnalyzer().analyze(
+            "chapter_outline",
+            original,
+            revised,
+            {"ch01": "一", "ch02": "二", "ch03": "三"},
+        )
+
+        self.assertEqual(
+            ["ch02", "ch03"],
+            [item["chapter_id"] for item in impact["affected_chapters"]],
+        )
+
+    def test_upstream_revision_requires_acknowledgement(self) -> None:
+        service = ChapterRevisionService(outputs_dir=self.outputs_dir)
+        original = (self.base_dir / "01_game_settings.md").read_text(encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "请先确认影响范围"):
+            service.apply_revision(
+                "v01",
+                "game_settings",
+                original + "\n全局约束发生变化。\n",
+                "manual",
+            )
+
+    def test_kept_affected_chapters_are_marked_review_required(self) -> None:
+        original = (self.base_dir / "01_game_settings.md").read_text(encoding="utf-8")
+        global_json = (self.base_dir / "06a_global.json").read_text(encoding="utf-8")
+        flash = FakeFlashClient([
+            json.dumps({"status": "pass", "continuity_issues": []}, ensure_ascii=False),
+            global_json,
+        ])
+        service = ChapterRevisionService(
+            outputs_dir=self.outputs_dir,
+            flash_client=flash,
+        )
+
+        result = service.apply_revision(
+            "v01",
+            "game_settings",
+            original + "\n新增全局制作约束。\n",
+            "manual",
+            impact_acknowledged=True,
+        )
+
+        self.assertEqual("review_required", result["revision_status"])
+        manifest = result["revision_manifest"]
+        self.assertTrue(manifest["unresolved_chapters"])
+        revision_dir = self.outputs_dir / result["revision_dir"]
+        self.assertTrue((revision_dir / "08_revision_impact.json").exists())
 
 
 if __name__ == "__main__":

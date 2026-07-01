@@ -89,6 +89,7 @@ class ScriptGenerationRequest:
     # --- 章节式生成字段 ---
     chapter_count: int = 6         # 章节数量（6-Call 管线使用）
     ending_count: int = 4         # 结局数量（6-Call 管线使用）
+    decision_point_count: int = 3  # 每章决策点数量（6-Call 管线使用）
     # --- 旧字段（保留兼容）---
     query: str = ""
     manual_queries: list[str] = field(default_factory=list)
@@ -106,6 +107,8 @@ class ScriptGenerationRequest:
             )
         if self.duration_minutes < 10 or self.duration_minutes > 120:
             raise ValueError("duration_minutes must be 10-120")
+        if self.decision_point_count < 1:
+            raise ValueError("decision_point_count must be at least 1")
 
 
 @dataclass(frozen=True)

@@ -30,10 +30,10 @@ cp .env.example .env
 章节式主流程同时需要两组配置：
 
 ```env
-# Call 4、Call 5 和 AI 修订
+# Call 4、Call 5 和受影响章节同步修订
 DASHSCOPE_API_KEY=your_dashscope_api_key
 
-# Call 1、Call 2、Call 3
+# Call 1、Call 2、Call 3 和根据用户意见生成修订候选
 PA_BACKEND_BASE_URL=https://apitest.know-pa.cn
 PA_BACKEND_ACCOUNT=your_account
 PA_BACKEND_PASSWORD=your_password
@@ -54,14 +54,16 @@ python run_server.py --reload
 
 打开 `http://localhost:8000`。Web 的生成按钮直接运行章节式主流程，结果页可查看概览、剧情分叉树、NPC、结局和 Markdown。
 
+NPC、章节、结局以及每章决策点数量均由用户输入。每章决策点数量会进入 Call 1、Call 2 和 Call 3，并在 Call 6 检查实际抽取数量是否一致。
+
 “一键生成”始终创建新版本；旁边的“续跑”按钮会列出全部未完成版本供用户选择，并复用已有阶段产物。新版本会保存原始生成参数，续跑时不会被当前表单中的新值覆盖。
 
 人工修订有两种方式：
 
 - **直接编辑**：在元素旁点击“编辑”，浮层只编辑该 ID 对应的 Markdown 内容块。
-- **AI 修订**：在元素旁点击“AI 修订”，先生成候选和 diff，确认后再应用。
+- **AI 修订**：在元素旁点击“AI 修订”，由 PA Backend 根据意见生成目标文件候选和 diff，确认后再应用。
 
-应用修订不会覆盖原版，而是在 `vNN/revisions/rNN/` 创建完整修订版本，并重新执行受影响的抽取和校验步骤。
+应用修订不会覆盖原版，而是在 `vNN/revisions/rNN/` 创建完整修订版本，并重新执行受影响的抽取和校验步骤。修改全局设定或大纲时，Web 会先列出受影响章节；勾选的章节使用 Qwen Flash 同步修订，未勾选章节保留原文并将版本标记为“待人工处理”。
 
 API 文档：`http://localhost:8000/docs`
 
@@ -77,7 +79,8 @@ python run_script_generation.py \
   --learning-goal "体验基层政策执行中的多重压力" \
   --duration 45 \
   --chapter-count 4 \
-  --ending-count 3
+  --ending-count 3 \
+  --decision-point-count 3
 ```
 
 直接用完整 Markdown 文件替换一个修订目标：
@@ -99,6 +102,7 @@ python run_script_generation.py \
 ```
 
 修订目标只接受 `game_settings`、`chapter_outline` 或 `chNN`。
+全局设定或大纲修订默认保留受影响章节并生成 `review_required` 版本；增加 `--revision-sync-affected` 可让 AI 同步修订全部受影响章节。
 
 ## 输出与续跑
 
@@ -162,6 +166,7 @@ python run_script_generation.py \
 | `POST` | `/api/cancel/{task_id}` | 取消生成 |
 | `GET` | `/api/revisions/source` | 读取修订目标 Markdown |
 | `POST` | `/api/revisions/preview` | 生成手工 diff 或 AI 候选 |
+| `POST` | `/api/revisions/impact` | 分析全局设定或大纲修订的章节影响 |
 | `POST` | `/api/revisions/apply` | 创建修订版本并重建产物 |
 | `GET` | `/api/versions` | 列出生成版和修订版 |
 | `GET` | `/api/version/{filename}` | 读取指定结果 |
@@ -178,6 +183,7 @@ python -m unittest discover -s tests
 - `src/generation/chapter_script_generator.py`：章节式生成、抽取、续跑和校验编排
 - `src/generation/chapter_validator.py`：确定性结构与提取校验
 - `src/services/chapter_revision_service.py`：人工及 AI 修订版本管线
+- `src/services/revision_impact_analyzer.py`：全局设定和大纲的确定性影响分析
 - `src/api/server.py`：Web API 和版本持久化
 - `frontend/index.html`：Web 操作界面
 - `run_script_generation.py`：CLI 入口

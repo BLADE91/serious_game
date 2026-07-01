@@ -14,7 +14,9 @@ from typing import Any
 
 from src.config import QwenConfig, load_dotenv
 from src.generation.chapter_script_generator import ChapterScriptGenerator
+from src.generation.pa_backend_script_client import PABackendScriptClient
 from src.generation.qwen_client import ChatMessage, QwenChatClient
+from src.services.revision_impact_analyzer import RevisionImpactAnalyzer
 
 
 class ChapterRevisionService:
@@ -29,10 +31,12 @@ class ChapterRevisionService:
         self,
         outputs_dir: str | Path = "outputs/script_drafts",
         flash_client: QwenChatClient | None = None,
+        pa_client: PABackendScriptClient | None = None,
         cancel_event: threading.Event | None = None,
     ) -> None:
         self._outputs_dir = Path(outputs_dir).resolve()
         self._flash_client = flash_client
+        self._pa_client = pa_client
         self._cancel_event = cancel_event
 
     def load_source(self, base_version: str, target: str) -> dict[str, Any]:
@@ -76,11 +80,11 @@ class ChapterRevisionService:
             current_content=source["content"],
             feedback=feedback,
         )
-        revised = self._flash().complete(
+        pa_client = self._pa()
+        pa_client.reset_conversation()
+        revised = pa_client.complete(
             messages,
             temperature=0.2,
-            response_format="text",
-            max_tokens=8192,
         )
         revised = self._clean_markdown(revised)
         if not revised.strip():
@@ -89,6 +93,27 @@ class ChapterRevisionService:
         payload["feedback"] = feedback.strip()
         return payload
 
+    def analyze_impact(
+        self,
+        base_version: str,
+        target: str,
+        content: str,
+    ) -> dict[str, Any]:
+        if not content.strip():
+            raise ValueError("修订后的 Markdown 不能为空")
+        source = self.load_source(base_version, target)
+        base_dir = self._resolve_base_dir(base_version)
+        chapters = {
+            path.stem.removeprefix("03_"): path.read_text(encoding="utf-8")
+            for path in sorted(base_dir.glob("03_ch[0-9][0-9].md"))
+        }
+        return RevisionImpactAnalyzer().analyze(
+            target=target,
+            original_content=source["content"],
+            revised_content=content,
+            chapters=chapters,
+        )
+
     def apply_revision(
         self,
         base_version: str,
@@ -96,6 +121,8 @@ class ChapterRevisionService:
         content: str,
         mode: str,
         feedback: str = "",
+        chapter_actions: dict[str, str] | None = None,
+        impact_acknowledged: bool = False,
     ) -> dict[str, Any]:
         if mode not in {"manual", "ai"}:
             raise ValueError("mode 必须是 manual 或 ai")
@@ -107,9 +134,30 @@ class ChapterRevisionService:
         if not (base_dir / filename).exists():
             raise ValueError(f"修订目标不存在: {target}")
 
+        impact = self.analyze_impact(base_version, target, content)
+        actions = chapter_actions or {}
+        allowed_actions = {"keep", "ai_revise"}
+        invalid_actions = sorted(
+            action for action in actions.values() if action not in allowed_actions
+        )
+        if invalid_actions:
+            raise ValueError(f"不支持的章节处理方式: {invalid_actions}")
+        if impact["requires_confirmation"] and not impact_acknowledged:
+            raise ValueError("该修订会影响其他章节，请先确认影响范围和处理方式")
+        affected_ids = {
+            item.get("chapter_id")
+            for item in impact.get("affected_chapters", [])
+            if isinstance(item, dict) and item.get("chapter_id")
+        }
+        uses_sync_model = any(
+            actions.get(chapter_id) == "ai_revise"
+            for chapter_id in affected_ids
+        )
+
         revision_dir, revision_name = self._reserve_revision_dir(base_dir)
         self._copy_revision_inputs(base_dir, revision_dir)
         (revision_dir / filename).write_text(content, encoding="utf-8")
+        self._write_json(revision_dir / "08_revision_impact.json", impact)
 
         manifest = {
             "revision": revision_name,
@@ -117,7 +165,14 @@ class ChapterRevisionService:
             "mode": mode,
             "target": target,
             "feedback": feedback.strip(),
+            "revision_engine": "pa_backend" if mode == "ai" else "human",
+            "sync_engine": "qwen_flash" if uses_sync_model else "none",
             "changed_files": [filename],
+            "impact": impact,
+            "chapter_actions": actions,
+            "resolved_chapters": [],
+            "unresolved_chapters": [],
+            "blocking_changes": impact.get("blocking_changes", []),
             "created_at": datetime.now().isoformat(timespec="seconds"),
             "status": "building",
         }
@@ -129,13 +184,15 @@ class ChapterRevisionService:
                 revision_dir=revision_dir,
                 target=target,
                 manifest=manifest,
+                impact=impact,
+                chapter_actions=actions,
             )
         except Exception:
             manifest["status"] = "failed"
             self._write_json(revision_dir / "revision_manifest.json", manifest)
             raise
 
-        manifest["status"] = "complete"
+        manifest["status"] = result["revision_status"]
         manifest["validation"] = result["script"].get("validation_report", {})
         self._write_json(revision_dir / "revision_manifest.json", manifest)
         result["revision_manifest"] = manifest
@@ -147,7 +204,15 @@ class ChapterRevisionService:
         revision_dir: Path,
         target: str,
         manifest: dict[str, Any],
+        impact: dict[str, Any],
+        chapter_actions: dict[str, str],
     ) -> dict[str, Any]:
+        resolved_chapters, unresolved_chapters = self._apply_chapter_actions(
+            revision_dir=revision_dir,
+            impact=impact,
+            chapter_actions=chapter_actions,
+            manifest=manifest,
+        )
         chapter_paths = sorted(revision_dir.glob("03_ch[0-9][0-9].md"))
         if not chapter_paths:
             raise ValueError("修订版本缺少章节 Markdown")
@@ -189,7 +254,7 @@ class ChapterRevisionService:
         for index, chapter_md in enumerate(chapters_md, start=1):
             chapter_id = f"ch{index:02d}"
             chapter_json_path = revision_dir / f"06b_{chapter_id}.json"
-            if target == chapter_id or not chapter_json_path.exists():
+            if target == chapter_id or chapter_id in resolved_chapters or not chapter_json_path.exists():
                 chapter_json = generator._call5b_extract_chapter(
                     chapter_md, chapter_id, index,
                 )
@@ -207,6 +272,7 @@ class ChapterRevisionService:
         validation = generator._call6_validate(
             merged_json,
             expected_npc_count=expected_npc_count,
+            expected_decision_point_count=self._expected_decision_point_count(revision_dir),
             complete_script_md=merged_md,
             continuity_review=continuity,
         )
@@ -235,10 +301,115 @@ class ChapterRevisionService:
             "revision_round": revision_round,
             "generation_mode": "chapter",
         }
+        continuity_status = continuity.get("status")
+        needs_review = bool(
+            unresolved_chapters
+            or impact.get("blocking_changes")
+            or not validation.get("valid")
+            or continuity_status != "pass"
+        )
+        if needs_review:
+            payload["generation_notes"].append(
+                "存在尚未处理的上游影响、校验问题或连续性建议，请继续人工修订。"
+            )
+        payload["revision_status"] = "review_required" if needs_review else "complete"
         self._write_json(revision_dir / result_name, payload)
         payload["saved_as"] = self._relative_ref(revision_dir / result_name)
         payload["revision_dir"] = self._relative_ref(revision_dir)
         return payload
+
+    def _apply_chapter_actions(
+        self,
+        revision_dir: Path,
+        impact: dict[str, Any],
+        chapter_actions: dict[str, str],
+        manifest: dict[str, Any],
+    ) -> tuple[set[str], list[str]]:
+        affected = impact.get("affected_chapters", [])
+        reason_map = {
+            item["chapter_id"]: item.get("reasons", [])
+            for item in affected
+            if isinstance(item, dict) and item.get("chapter_id")
+        }
+        resolved: set[str] = set()
+        unresolved: list[str] = []
+        settings_md = (revision_dir / "01_game_settings.md").read_text(encoding="utf-8")
+        outline_md = (revision_dir / "02_chapter_outline.md").read_text(encoding="utf-8")
+
+        for chapter_id in sorted(reason_map):
+            action = chapter_actions.get(chapter_id, "keep")
+            chapter_path = revision_dir / f"03_{chapter_id}.md"
+            if action == "ai_revise" and chapter_path.exists():
+                current = chapter_path.read_text(encoding="utf-8")
+                messages = self._build_chapter_sync_messages(
+                    chapter_id=chapter_id,
+                    current_content=current,
+                    settings_md=settings_md,
+                    outline_md=outline_md,
+                    reasons=reason_map[chapter_id],
+                )
+                revised = self._flash().complete(
+                    messages,
+                    temperature=0.2,
+                    response_format="text",
+                    max_tokens=8192,
+                )
+                revised = self._clean_markdown(revised)
+                if not revised.strip():
+                    raise ValueError(f"AI 同步修订 {chapter_id} 时返回了空内容")
+                chapter_path.write_text(revised, encoding="utf-8")
+                resolved.add(chapter_id)
+                if chapter_path.name not in manifest["changed_files"]:
+                    manifest["changed_files"].append(chapter_path.name)
+            else:
+                unresolved.append(chapter_id)
+
+        manifest["resolved_chapters"] = sorted(resolved)
+        manifest["unresolved_chapters"] = unresolved
+        return resolved, unresolved
+
+    @staticmethod
+    def _build_chapter_sync_messages(
+        chapter_id: str,
+        current_content: str,
+        settings_md: str,
+        outline_md: str,
+        reasons: list[str],
+    ) -> list[ChatMessage]:
+        reasons_text = "\n".join(f"- {reason}" for reason in reasons)
+        return [
+            ChatMessage(
+                role="system",
+                content=(
+                    "你是章节式剧本同步修订器。只修复上游设定或大纲变化对当前章节造成的影响，"
+                    "保留不受影响的剧情、ID、选项结构和文字。输出完整章节 Markdown，不要解释。"
+                ),
+            ),
+            ChatMessage(
+                role="user",
+                content=(
+                    f"## 章节\n{chapter_id}\n\n"
+                    f"## 影响原因\n{reasons_text}\n\n"
+                    f"## 最新全局设定\n{settings_md}\n\n"
+                    f"## 最新章节大纲\n{outline_md}\n\n"
+                    f"## 当前章节 Markdown\n{current_content}\n\n"
+                    "根据影响原因同步修订当前章节，并直接输出完整 Markdown。"
+                ),
+            ),
+        ]
+
+    def _expected_decision_point_count(self, revision_dir: Path) -> int | None:
+        generation_dir = self._generation_dir(revision_dir)
+        path = generation_dir / "00_generation_request.json"
+        if not path.exists():
+            return None
+        try:
+            value = json.loads(path.read_text(encoding="utf-8")).get(
+                "decision_point_count"
+            )
+        except (json.JSONDecodeError, OSError, AttributeError):
+            return None
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
 
     def _build_ai_revision_messages(
         self,
@@ -285,6 +456,14 @@ class ChapterRevisionService:
                 timeout_seconds=config.timeout_seconds,
             ))
         return self._flash_client
+
+    def _pa(self) -> PABackendScriptClient:
+        if self._pa_client is None:
+            load_dotenv(override=False)
+            self._pa_client = PABackendScriptClient(
+                cancel_event=self._cancel_event,
+            )
+        return self._pa_client
 
     def _resolve_base_dir(self, base_version: str) -> Path:
         raw = base_version.strip().strip("/")

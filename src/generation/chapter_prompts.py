@@ -7,6 +7,7 @@ Call 1-3 使用 PA Backend 创作，Call 4 检查事实连续性，Call 5 使用
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from src.generation.qwen_client import ChatMessage
@@ -56,6 +57,7 @@ def build_call1_prompt(
     story_background: str = "",
     extra_requirements: str = "",
     npc_count: int = 8,
+    decision_point_count: int = 3,
 ) -> list[ChatMessage]:
     """构建 Call 1（全局设定）的 Prompt。"""
 
@@ -68,6 +70,7 @@ def build_call1_prompt(
         goals_text,
         f"目标章节数: {chapter_count}",
         f"目标结局数: {ending_count}",
+        f"每章决策点数: {decision_point_count}",
         f"目标游戏时长: {duration_minutes} 分钟",
         f"NPC 数量要求: 必须恰好设计 {npc_count} 个 NPC 角色（不含玩家角色），覆盖不同群体和立场",
     ]
@@ -162,6 +165,8 @@ def build_call1_prompt(
 
 ## 章节数量: {chapter_count}
 
+## 每章决策点数量: {decision_point_count}
+
 ## 结局类型（共 {ending_count} 个）
 对每个结局填写：
 - ending_id:（ending_01 ~ ending_{ending_count:02d}）
@@ -194,11 +199,27 @@ def build_call1_prompt(
 # Call 2: 生成章节大纲
 # ============================================================
 
-def build_call2_prompt(game_settings_md: str) -> list[ChatMessage]:
+def build_call2_prompt(
+    game_settings_md: str,
+    decision_point_count: int = 3,
+) -> list[ChatMessage]:
     """构建 Call 2（章节大纲）的 Prompt。"""
 
+    second_decision_example = ""
+    if decision_point_count >= 2:
+        second_decision_example = """  - 决策点 2：标题
+    - 选项 A（标签）: ...
+    - 选项 B（标签）: ...
+    - 选项 C（标签）: ...
+"""
+    additional_decision_note = ""
+    if decision_point_count > 2:
+        additional_decision_note = (
+            f"  （继续按相同格式写到决策点 {decision_point_count}）\n"
+        )
+
     prompt = f"""你是一位游戏剧情架构师。你的任务是基于全局设定，设计可制作、可审校的章节规划。
-章节数量由全局设定决定。每章设计 2-4 个顺序执行的核心决策点。你不写详细剧情，只搭骨架、变量流、flag 流和制作约束。
+章节数量由全局设定决定。每章必须设计恰好 {decision_point_count} 个顺序执行的核心决策点。你不写详细剧情，只搭骨架、变量流、flag 流和制作约束。
 
 请基于以下全局设定，生成章节大纲。
 
@@ -240,17 +261,13 @@ def build_call2_prompt(game_settings_md: str) -> list[ChatMessage]:
   - 玩家获得的信息:
   - 解锁条件:
 - decision_framework:
-  （每章设计 2-4 个顺序决策点，第 N 个决策点的结果自然导向第 N+1 个决策点）
+  （本章必须设计恰好 {decision_point_count} 个顺序决策点，第 N 个决策点的结果自然导向第 N+1 个决策点）
   - 决策点 1：标题
     - 选项 A（标签）: 核心逻辑 → 主要变量影响方向 → NPC 状态变化 → 设置的 flag → 解锁/关闭内容 → 教学反馈重点
     - 选项 B（标签）: ...
     - 选项 C（标签）: ...
     - 选项 D（标签）: ...
-  - 决策点 2：标题
-    - 选项 A（标签）: ...
-    - 选项 B（标签）: ...
-    - 选项 C（标签）: ...
-- variables_in_focus: [本章重点关注的变量]
+{second_decision_example}{additional_decision_note}- variables_in_focus: [本章重点关注的变量]
 - flag_design: [本章可能设置的 flag 及设计意图]
 - npc_state_plan: [本章关键 NPC 的态度、信任、焦虑或信息状态如何变化]
 - production_notes: [本章前端、美术、音效或交互制作要点]
@@ -289,6 +306,43 @@ def build_call2_prompt(game_settings_md: str) -> list[ChatMessage]:
 # Call 3: 逐章生成 Markdown 剧本
 # ============================================================
 
+def _chapter_template_for_decision_count(
+    template: str,
+    decision_point_count: int,
+) -> str:
+    rendered = template.replace(
+        "- decision_point_count: N",
+        f"- decision_point_count: {decision_point_count}",
+        1,
+    ).replace(
+        "（本章包含生成请求指定数量的顺序决策点。",
+        f"（本章包含 {decision_point_count} 个顺序决策点。",
+        1,
+    )
+    if decision_point_count == 1:
+        rendered = re.sub(
+            r"\n### 决策点 2：.*?(?=\n## 分支结果)",
+            "\n",
+            rendered,
+            flags=re.DOTALL,
+        )
+        rendered = re.sub(
+            r"\n### 决策点 2 的结果.*?(?=\n## 章节结算)",
+            "\n",
+            rendered,
+            flags=re.DOTALL,
+        )
+    continuation = (
+        "（本章只有 1 个决策点，不再追加其他决策点。）"
+        if decision_point_count == 1
+        else f"（继续按相同结构写到决策点 {decision_point_count}，最后一个决策点的结果 next 指向 checkpoint。）"
+    )
+    return rendered.replace(
+        "（按生成请求指定的数量继续追加决策点。最后一个决策点的结果 next 指向 checkpoint。）",
+        continuation,
+        1,
+    )
+
 def build_call3_prompt(
     game_settings_md: str,
     chapter_outline_md: str,
@@ -301,6 +355,7 @@ def build_call3_prompt(
     chapter_template_md: str,
     few_shot_example_md: str,
     previous_chapters_summary: str = "",
+    decision_point_count: int = 3,
 ) -> list[ChatMessage]:
     """构建 Call 3（逐章生成）的 Prompt。
 
@@ -318,6 +373,10 @@ def build_call3_prompt(
         previous_chapters_summary: 前序章节摘要（用于控制上下文长度）
     """
 
+    chapter_template_md = _chapter_template_for_decision_count(
+        chapter_template_md,
+        decision_point_count,
+    )
     is_first = current_chapter_num == 1
     is_last = current_chapter_num == total_chapters
 
@@ -346,7 +405,7 @@ def build_call3_prompt(
 
 核心原则：
 1. 严格遵循模板格式。模板中的每一个字段都必须填写；输出必须像可交付给制作团队的章节制作包，而不是松散小说。
-2. 每章设计 2-4 个顺序决策点（具体数量在 chapter_info 的 decision_point_count 中指定）。
+2. 本章必须设计恰好 {decision_point_count} 个顺序决策点，并将 chapter_info 的 decision_point_count 写为 {decision_point_count}。
 3. 决策点按 order=1, 2, ... 顺序执行；前一个决策的即时后果作为后一个决策的情境铺垫。
 4. 每个决策点必须提供 3-5 个选项。只写 A/B 两个选项视为结构失败，必须补足第三种策略路径。
 5. 如果冲突看似只有二元选择，第三个选项应是有真实代价的折中、程序化、延迟处理、试点验证、公开协商或第三方介入方案，而不是换一种说法重复 A/B。
@@ -690,7 +749,7 @@ CHAPTER_TEMPLATE_MD = """# 第X章：章节标题
 - core_task: 本章核心任务（一句话）
 - main_question: 本章核心决策问题（以问号结尾）
 - decision_point_count: N
-  # 本章的决策点数量，2 ≤ N ≤ 4。决策点顺序执行，前一决策的结果影响后续决策的情境。
+  # N 必须等于生成请求指定的数量。决策点顺序执行，前一决策的结果影响后续决策的情境。
 - unlock_condition: null
   # 如果本章本身需要前置条件才能进入，在此写明
   # 格式：{flags_required: [...], flags_forbidden: [...], variables: {...}}
@@ -734,7 +793,7 @@ CHAPTER_TEMPLATE_MD = """# 第X章：章节标题
 
 ## 核心决策点
 
-（本章包含 2-4 个顺序决策点。玩家依次面对，前一个决策的即时后果将作为下一个决策的情境铺垫。每个决策点必须有 3-5 个选项，不能只有 A/B 两个选项。）
+（本章包含生成请求指定数量的顺序决策点。玩家依次面对，前一个决策的即时后果将作为下一个决策的情境铺垫。每个决策点必须有 3-5 个选项，不能只有 A/B 两个选项。）
 
 ### 决策点 1：决策标题
 
@@ -831,7 +890,7 @@ CHAPTER_TEMPLATE_MD = """# 第X章：章节标题
 
 （同上结构。即使是后续承接型决策点，也必须至少写 A/B/C 三个选项；不得只写 A/B。）
 
-（如有决策点 3、4，按同样格式追加。最后一个决策点的结果 next 指向 checkpoint。）
+（按生成请求指定的数量继续追加决策点。最后一个决策点的结果 next 指向 checkpoint。）
 
 ## 分支结果
 
