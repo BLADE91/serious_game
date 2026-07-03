@@ -153,6 +153,8 @@ class PABackendConfig:
     enable_web_search: bool = True
     verify_ssl: bool = True
     collection_id: str = ""
+    max_stage_retries: int = 2
+    retry_backoff_seconds: int = 2
 
     @classmethod
     def from_env(cls, dotenv_path: str | Path = ".env") -> "PABackendConfig":
@@ -176,6 +178,8 @@ class PABackendConfig:
             enable_web_search=_bool_from_env("PA_BACKEND_ENABLE_WEB_SEARCH", True),
             verify_ssl=_bool_from_env("PA_BACKEND_VERIFY_SSL", True),
             collection_id=os.getenv("PA_BACKEND_COLLECTION_ID", "").strip(),
+            max_stage_retries=_int_from_env("PA_BACKEND_MAX_STAGE_RETRIES", 2),
+            retry_backoff_seconds=_int_from_env("PA_BACKEND_RETRY_BACKOFF_SECONDS", 2),
         )
 
 

@@ -9,6 +9,7 @@ from http.client import HTTPSConnection, HTTPConnection, RemoteDisconnected
 import json
 import ssl
 import threading
+import time
 from typing import Any, Callable
 from urllib.parse import urlparse
 
@@ -47,6 +48,7 @@ class PABackendScriptClient:
         self._active_conn: HTTPConnection | HTTPSConnection | None = None
         self._active_conn_lock = threading.Lock()
         self._search_scope_logged = False
+        self._last_event_summary: dict[str, Any] = {}
 
     @property
     def conversation_id(self) -> str | None:
@@ -81,44 +83,59 @@ class PABackendScriptClient:
         if not self._config.base_url:
             raise PABackendClientError("PA_BACKEND_BASE_URL is required")
         auth = self._ensure_auth()
-        conversation_id = self._ensure_conversation(auth, self._stage_title(messages))
+        collection_ids = [self._config.collection_id] if self._config.collection_id else []
+        attempts = max(0, self._config.max_stage_retries) + 1
 
-        collection_ids = []
-        if self._config.collection_id:
-            collection_ids = [self._config.collection_id]
+        for attempt in range(attempts):
+            if attempt:
+                self.reset_conversation()
+                delay = max(0, self._config.retry_backoff_seconds) * (2 ** (attempt - 1))
+                if delay:
+                    time.sleep(delay)
 
-        payload = {
-            "query": self._stage_prompt(messages),
-            "collection_ids": collection_ids,
-            "conversation_id": conversation_id,
-            "search_preference": self._config.search_preference,
-            "enable_web_search": True,
-            "attachments_id": [],
-            "oss_keys": [],
-        }
-        if not self._search_scope_logged:
-            print(
-                "[pa_backend] search scope: "
-                f"collection_ids={json.dumps(collection_ids, ensure_ascii=False)}, "
-                "enable_web_search=true"
+            conversation_id = self._ensure_conversation(
+                auth, self._stage_title(messages),
             )
-            self._search_scope_logged = True
-        if stream_callback is None:
-            content = self._post(
-                self._url(self._config.agent_endpoint), payload, auth.access_token
-            )
-        else:
-            content = self._post(
-                self._url(self._config.agent_endpoint),
-                payload,
-                auth.access_token,
-                stream_callback=stream_callback,
-            )
-        if not stream_callback:
-            content = self._content_from_sse(content)
-        if not content.strip():
-            raise PABackendClientError("pa_backend returned empty stage content")
-        return content
+            payload = {
+                "query": self._stage_prompt(messages),
+                "collection_ids": collection_ids,
+                "conversation_id": conversation_id,
+                "search_preference": self._config.search_preference,
+                "enable_web_search": True,
+                "attachments_id": [],
+                "oss_keys": [],
+            }
+            if not self._search_scope_logged:
+                print(
+                    "[pa_backend] search scope: "
+                    f"collection_ids={json.dumps(collection_ids, ensure_ascii=False)}, "
+                    "enable_web_search=true"
+                )
+                self._search_scope_logged = True
+            if stream_callback is None:
+                raw_content = self._post(
+                    self._url(self._config.agent_endpoint), payload, auth.access_token
+                )
+                content = self._content_from_sse(raw_content)
+            else:
+                content = self._post(
+                    self._url(self._config.agent_endpoint),
+                    payload,
+                    auth.access_token,
+                    stream_callback=stream_callback,
+                )
+            if content.strip():
+                return content
+            if attempt < attempts - 1:
+                print(
+                    "[pa_backend] empty stage content; retrying with a new conversation "
+                    f"({attempt + 1}/{attempts - 1}), events={self._last_event_summary}"
+                )
+
+        raise PABackendClientError(
+            "pa_backend returned empty stage content "
+            f"after {attempts} attempts; events={self._last_event_summary}"
+        )
 
     def request_size_bytes(
         self,
@@ -287,6 +304,8 @@ class PABackendScriptClient:
         event_name = ""
         data_lines: list[str] = []
         last_content_len = 0
+        event_counts: dict[str, int] = {}
+        errors: list[str] = []
 
         while True:
             if self._cancel_event and self._cancel_event.is_set():
@@ -297,7 +316,9 @@ class PABackendScriptClient:
                 break
             line = raw_line.decode("utf-8", errors="replace").strip()
             if not line:
-                self._consume_event(event_name, data_lines, content_parts)
+                self._consume_event(
+                    event_name, data_lines, content_parts, event_counts, errors,
+                )
                 current_len = sum(len(part) for part in content_parts)
                 if current_len != last_content_len:
                     last_content_len = current_len
@@ -310,7 +331,8 @@ class PABackendScriptClient:
             elif line.startswith("data:"):
                 data_lines.append(line.removeprefix("data:").strip())
 
-        self._consume_event(event_name, data_lines, content_parts)
+        self._consume_event(event_name, data_lines, content_parts, event_counts, errors)
+        self._last_event_summary = {"counts": event_counts, "errors": errors[-3:]}
         current_len = sum(len(part) for part in content_parts)
         if current_len != last_content_len:
             stream_callback(current_len)
@@ -320,10 +342,14 @@ class PABackendScriptClient:
         content_parts: list[str] = []
         event_name = ""
         data_lines: list[str] = []
+        event_counts: dict[str, int] = {}
+        errors: list[str] = []
         for raw_line in response_text.splitlines():
             line = raw_line.strip()
             if not line:
-                self._consume_event(event_name, data_lines, content_parts)
+                self._consume_event(
+                    event_name, data_lines, content_parts, event_counts, errors,
+                )
                 event_name = ""
                 data_lines = []
                 continue
@@ -331,7 +357,8 @@ class PABackendScriptClient:
                 event_name = line.removeprefix("event:").strip()
             elif line.startswith("data:"):
                 data_lines.append(line.removeprefix("data:").strip())
-        self._consume_event(event_name, data_lines, content_parts)
+        self._consume_event(event_name, data_lines, content_parts, event_counts, errors)
+        self._last_event_summary = {"counts": event_counts, "errors": errors[-3:]}
         return "".join(content_parts).strip()
 
     def _consume_event(
@@ -339,12 +366,19 @@ class PABackendScriptClient:
         event_name: str,
         data_lines: list[str],
         content_parts: list[str],
+        event_counts: dict[str, int] | None = None,
+        errors: list[str] | None = None,
     ) -> None:
+        if event_name and event_counts is not None:
+            event_counts[event_name] = event_counts.get(event_name, 0) + 1
         if event_name == "clarification":
             raise PABackendClientError(
                 "ReAct Agent 意外触发追问（request_clarification），"
                 "请检查 prompt 是否包含禁止追问的指令。"
             )
+        if event_name == "error" and data_lines and errors is not None:
+            errors.append("\n".join(data_lines)[:500])
+            return
         if event_name != "content" or not data_lines:
             return
         data = "\n".join(data_lines)
@@ -355,6 +389,12 @@ class PABackendScriptClient:
             return
         if isinstance(parsed, str):
             content_parts.append(parsed)
+        elif isinstance(parsed, dict):
+            for key in ("content", "text", "delta"):
+                value = parsed.get(key)
+                if isinstance(value, str):
+                    content_parts.append(value)
+                    break
 
     def _url(self, path: str) -> str:
         if path.startswith("http://") or path.startswith("https://"):

@@ -253,6 +253,63 @@ class PABackendScriptClientTests(unittest.TestCase):
         self.assertEqual(content, "foobar")
         self.assertEqual(counts, [3, 6])
 
+    def test_retries_empty_stage_with_new_conversation(self) -> None:
+        class RetryClient(PABackendScriptClient):
+            def __init__(self):
+                super().__init__(PABackendConfig(
+                    base_url="http://pa.test",
+                    supabase_url="http://supabase.test",
+                    supabase_key="supabase-key",
+                    account="user@test.com",
+                    password="password",
+                    max_stage_retries=2,
+                    retry_backoff_seconds=0,
+                ))
+                self.agent_calls = 0
+                self.conversation_creates = 0
+
+            def _post(self, url, payload, token, extra_headers=None):
+                if url.endswith("/auth/sso/login-password"):
+                    return '{"access_token": "token-1", "user": {"id": "user-1"}}'
+                if url.endswith("/rest/v1/conversations?select=id"):
+                    self.conversation_creates += 1
+                    return json.dumps([{
+                        "id": f"conversation-{self.conversation_creates}",
+                    }])
+                self.agent_calls += 1
+                if self.agent_calls < 3:
+                    return "event: done\ndata: {}\n\n"
+                return 'event: content\ndata: {"content": "recovered"}\n\n'
+
+        client = RetryClient()
+        content = client.complete([FakeMessage("user", "retry")])
+
+        self.assertEqual(content, "recovered")
+        self.assertEqual(client.agent_calls, 3)
+        self.assertEqual(client.conversation_creates, 3)
+
+    def test_empty_stage_error_includes_event_summary(self) -> None:
+        class EmptyClient(PABackendScriptClient):
+            def __init__(self):
+                super().__init__(PABackendConfig(
+                    base_url="http://pa.test",
+                    supabase_url="http://supabase.test",
+                    supabase_key="supabase-key",
+                    account="user@test.com",
+                    password="password",
+                    max_stage_retries=0,
+                ))
+
+            def _post(self, url, payload, token, extra_headers=None):
+                if url.endswith("/auth/sso/login-password"):
+                    return '{"access_token": "token-1", "user": {"id": "user-1"}}'
+                if url.endswith("/rest/v1/conversations?select=id"):
+                    return '[{"id": "conversation-1"}]'
+                return 'event: error\ndata: "backend failed"\n\nevent: done\ndata: {}\n\n'
+
+        with self.assertRaisesRegex(Exception, "error.*done"):
+            EmptyClient().complete([FakeMessage("user", "fail")])
+
 
 class FakeMessage:
     def __init__(self, role: str, content: str) -> None:
