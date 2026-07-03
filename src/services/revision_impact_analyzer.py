@@ -41,6 +41,54 @@ class RevisionImpactAnalyzer:
             )
         raise ValueError(f"不支持的修订影响分析目标: {target}")
 
+    def analyze_batch(
+        self,
+        changes: dict[str, tuple[str, str]],
+        chapters: dict[str, str],
+    ) -> dict[str, Any]:
+        """Merge deterministic impact reports for several source edits."""
+        reports = [
+            self.analyze(target, original, revised, chapters)
+            for target, (original, revised) in changes.items()
+        ]
+        reasons: dict[str, list[str]] = {}
+        structural_changes: list[str] = []
+        blocking_changes: list[str] = []
+        level_rank = {"low": 0, "medium": 1, "high": 2}
+        level = "low"
+
+        for report in reports:
+            if level_rank.get(report.get("impact_level", "low"), 0) > level_rank[level]:
+                level = report["impact_level"]
+            target = report.get("target", "")
+            for item in report.get("affected_chapters", []):
+                chapter_id = item.get("chapter_id")
+                if not chapter_id:
+                    continue
+                for reason in item.get("reasons", []):
+                    self._add_reason(reasons, chapter_id, f"{target}: {reason}")
+            for value in report.get("structural_changes", []):
+                labeled = f"{target}: {value}"
+                if labeled not in structural_changes:
+                    structural_changes.append(labeled)
+            for value in report.get("blocking_changes", []):
+                labeled = f"{target}: {value}"
+                if labeled not in blocking_changes:
+                    blocking_changes.append(labeled)
+
+        return {
+            "target": "batch",
+            "changed_targets": sorted(changes),
+            "impact_level": level,
+            "affected_chapters": [
+                {"chapter_id": chapter_id, "reasons": chapter_reasons}
+                for chapter_id, chapter_reasons in sorted(reasons.items())
+            ],
+            "structural_changes": structural_changes,
+            "blocking_changes": blocking_changes,
+            "requires_confirmation": False,
+        }
+
     def _analyze_settings(
         self,
         original: str,

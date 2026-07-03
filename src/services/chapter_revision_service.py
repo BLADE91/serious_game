@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import difflib
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -33,11 +35,13 @@ class ChapterRevisionService:
         flash_client: QwenChatClient | None = None,
         pa_client: PABackendScriptClient | None = None,
         cancel_event: threading.Event | None = None,
+        max_workers: int = 3,
     ) -> None:
         self._outputs_dir = Path(outputs_dir).resolve()
         self._flash_client = flash_client
         self._pa_client = pa_client
         self._cancel_event = cancel_event
+        self._max_workers = max(1, min(max_workers, 3))
 
     def load_source(self, base_version: str, target: str) -> dict[str, Any]:
         base_dir = self._resolve_base_dir(base_version)
@@ -52,6 +56,139 @@ class ChapterRevisionService:
             "filename": filename,
             "content": content,
         }
+
+    def load_sources(self, base_version: str) -> dict[str, Any]:
+        """Load every editable Markdown source from a chapter version."""
+        base_dir = self._resolve_base_dir(base_version)
+        sources = []
+        targets = ["game_settings", "chapter_outline"]
+        targets.extend(
+            path.stem.removeprefix("03_")
+            for path in sorted(base_dir.glob("03_ch[0-9][0-9].md"))
+        )
+        for target in targets:
+            filename = self._target_filename(target)
+            path = base_dir / filename
+            if path.exists():
+                sources.append({
+                    "target": target,
+                    "filename": filename,
+                    "content": path.read_text(encoding="utf-8"),
+                })
+        return {
+            "base_version": self._relative_ref(base_dir),
+            "sources": sources,
+        }
+
+    def apply_batch_revision(
+        self,
+        base_version: str,
+        changed_sources: dict[str, str] | None = None,
+        feedback: str = "",
+    ) -> dict[str, Any]:
+        """Create one revision from several source edits and rebuild everything."""
+        base_dir = self._resolve_base_dir(base_version)
+        changes = changed_sources or {}
+        for target, content in changes.items():
+            self._target_filename(target)
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError(f"{target} 的 Markdown 不能为空")
+
+        revision_dir, revision_name = self._reserve_revision_dir(base_dir)
+        self._copy_source_inputs(base_dir, revision_dir)
+        original_contents: dict[str, str] = {}
+        for target, content in changes.items():
+            filename = self._target_filename(target)
+            path = revision_dir / filename
+            if not path.exists():
+                raise ValueError(f"修订目标不存在: {target}")
+            original_contents[target] = path.read_text(encoding="utf-8")
+            self._atomic_write_text(path, content)
+
+        chapters = {
+            path.stem.removeprefix("03_"): path.read_text(encoding="utf-8")
+            for path in sorted(revision_dir.glob("03_ch[0-9][0-9].md"))
+        }
+        impact_changes = {
+            target: (original_contents[target], content)
+            for target, content in changes.items()
+            if original_contents[target] != content
+        }
+        impact = RevisionImpactAnalyzer().analyze_batch(impact_changes, chapters)
+        self._write_json(revision_dir / "08_revision_impact.json", impact)
+
+        manifest = {
+            "revision": revision_name,
+            "parent": self._relative_ref(base_dir),
+            "mode": "batch",
+            "target": "batch",
+            "feedback": feedback.strip(),
+            "revision_engine": "human_or_external",
+            "sync_engine": "qwen_flash" if impact["affected_chapters"] else "none",
+            "changed_files": [self._target_filename(target) for target in impact_changes],
+            "impact": impact,
+            "resolved_chapters": [],
+            "unresolved_chapters": [],
+            "blocking_changes": impact.get("blocking_changes", []),
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "status": "building",
+        }
+        self._write_json(revision_dir / "revision_manifest.json", manifest)
+        job = self._new_revision_job(revision_dir, impact)
+        self._write_json(revision_dir / "revision_job.json", job)
+        self._write_json(
+            revision_dir / "revision_plan.json",
+            self._build_revision_plan(revision_dir, impact),
+        )
+
+        try:
+            result = self._rebuild_batch_revision(
+                base_dir=base_dir,
+                revision_dir=revision_dir,
+                manifest=manifest,
+                impact=impact,
+                job=job,
+            )
+        except Exception as exc:
+            manifest["status"] = "failed"
+            job["status"] = "failed"
+            self._write_json(revision_dir / "revision_manifest.json", manifest)
+            self._write_json(revision_dir / "revision_job.json", job)
+            raise RuntimeError(
+                f"{self._relative_ref(revision_dir)}: {exc}"
+            ) from exc
+        return result
+
+    def resume_batch_revision(self, revision_ref: str) -> dict[str, Any]:
+        """Resume a failed batch revision without repeating completed tasks."""
+        revision_dir = self._resolve_base_dir(revision_ref)
+        manifest_path = revision_dir / "revision_manifest.json"
+        job_path = revision_dir / "revision_job.json"
+        impact_path = revision_dir / "08_revision_impact.json"
+        if not (manifest_path.exists() and job_path.exists() and impact_path.exists()):
+            raise ValueError("该版本不是可续跑的批量修订")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+        impact = json.loads(impact_path.read_text(encoding="utf-8"))
+        base_dir = self._resolve_base_dir(manifest.get("parent", ""))
+        manifest["status"] = "building"
+        job["status"] = "running"
+        self._write_json(manifest_path, manifest)
+        self._write_json(job_path, job)
+        try:
+            return self._rebuild_batch_revision(
+                base_dir=base_dir,
+                revision_dir=revision_dir,
+                manifest=manifest,
+                impact=impact,
+                job=job,
+            )
+        except Exception:
+            manifest["status"] = "failed"
+            job["status"] = "failed"
+            self._write_json(manifest_path, manifest)
+            self._write_json(job_path, job)
+            raise
 
     def preview_manual(
         self,
@@ -69,10 +206,13 @@ class ChapterRevisionService:
         base_version: str,
         target: str,
         feedback: str,
+        current_content: str = "",
     ) -> dict[str, Any]:
         if not feedback.strip():
             raise ValueError("AI 修订反馈不能为空")
         source = self.load_source(base_version, target)
+        if current_content.strip():
+            source["content"] = current_content
         base_dir = self._resolve_base_dir(base_version)
         messages = self._build_ai_revision_messages(
             base_dir=base_dir,
@@ -197,6 +337,262 @@ class ChapterRevisionService:
         self._write_json(revision_dir / "revision_manifest.json", manifest)
         result["revision_manifest"] = manifest
         return result
+
+    def _rebuild_batch_revision(
+        self,
+        base_dir: Path,
+        revision_dir: Path,
+        manifest: dict[str, Any],
+        impact: dict[str, Any],
+        job: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Run resumable source synchronization, repair, extraction and validation."""
+        job["status"] = "running"
+        self._write_json(revision_dir / "revision_job.json", job)
+        generator = ChapterScriptGenerator(
+            flash_client=self._flash(),
+            cancel_event=self._cancel_event,
+        )
+        generator._output_dir = revision_dir
+
+        resolved = self._sync_batch_chapters(
+            revision_dir, impact, manifest, job,
+        )
+        manifest["resolved_chapters"] = sorted(resolved)
+
+        sources = self._read_source_files(revision_dir)
+        continuity_task = self._job_task(job, "continuity_repair")
+        continuity_path = revision_dir / "05_continuity_review.json"
+        if continuity_task["status"] == "complete" and continuity_path.exists():
+            continuity = json.loads(continuity_path.read_text(encoding="utf-8"))
+        else:
+            self._start_job_task(revision_dir, job, "continuity_repair")
+            try:
+                continuity, sources = generator.review_and_repair_sources(sources)
+                for filename, content in sources.items():
+                    self._atomic_write_text(revision_dir / filename, content)
+                self._write_json(continuity_path, continuity)
+                self._complete_job_task(
+                    revision_dir,
+                    job,
+                    "continuity_repair",
+                    continuity_path,
+                )
+                for fix in continuity.get("applied_fixes", []):
+                    filename = fix.get("file")
+                    if filename and filename not in manifest["changed_files"]:
+                        manifest["changed_files"].append(filename)
+            except Exception as exc:
+                self._fail_job_task(revision_dir, job, "continuity_repair", exc)
+                raise
+
+        source_paths = sorted(revision_dir.glob("03_ch[0-9][0-9].md"))
+        if not source_paths:
+            raise ValueError("批量修订版本缺少章节 Markdown")
+        settings_md = (revision_dir / "01_game_settings.md").read_text(encoding="utf-8")
+        outline_md = (revision_dir / "02_chapter_outline.md").read_text(encoding="utf-8")
+        chapters_md = [path.read_text(encoding="utf-8") for path in source_paths]
+
+        self._start_job_task(revision_dir, job, "merge_markdown")
+        merged_md = generator._merge_chapters(settings_md, outline_md, chapters_md)
+        merged_path = revision_dir / "04_merged.md"
+        self._atomic_write_text(merged_path, merged_md)
+        self._complete_job_task(revision_dir, job, "merge_markdown", merged_path)
+
+        chapter_ids = [f"ch{index:02d}" for index in range(1, len(chapters_md) + 1)]
+        global_json = self._extract_batch_global(
+            generator, revision_dir, merged_md, chapter_ids, job,
+        )
+        chapter_jsons = self._extract_batch_chapters(
+            generator, revision_dir, chapters_md, job,
+        )
+        merged_json = dict(global_json)
+        merged_json.pop("_chapter_ids", None)
+        merged_json["chapters"] = chapter_jsons
+        structure_path = revision_dir / "06_script_structure.json"
+        self._write_json(structure_path, merged_json)
+
+        self._start_job_task(revision_dir, job, "validate")
+        validation = generator._call6_validate(
+            merged_json,
+            expected_npc_count=len(merged_json.get("npcs", [])),
+            expected_decision_point_count=self._expected_decision_point_count(revision_dir),
+            complete_script_md=merged_md,
+            continuity_review=continuity,
+        )
+        validation_path = revision_dir / "07_validation_report.json"
+        self._write_json(validation_path, validation)
+        self._complete_job_task(revision_dir, job, "validate", validation_path)
+        merged_json["_validation"] = validation
+        script = generator._build_script_design(merged_json)
+
+        base_payload = self._load_latest_result(base_dir)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        final_path = revision_dir / f"final_{timestamp}.md"
+        self._atomic_write_text(final_path, merged_md)
+        needs_review = bool(
+            impact.get("blocking_changes")
+            or continuity.get("status") != "pass"
+            or not validation.get("valid")
+        )
+        payload = {
+            "script": self._jsonable(script),
+            "full_md": merged_md,
+            "contexts_used": base_payload.get("contexts_used", []),
+            "rewritten_queries": base_payload.get("rewritten_queries", []),
+            "generation_notes": [
+                f"批量修订 {revision_dir.name}",
+                "源 Markdown 已统一同步、连续性修复并全量重建 JSON。",
+            ],
+            "original_query": base_payload.get("original_query", ""),
+            "feedback": manifest.get("feedback", ""),
+            "revision_round": self._revision_number(revision_dir.name),
+            "generation_mode": "chapter",
+            "revision_status": "review_required" if needs_review else "complete",
+        }
+        result_path = revision_dir / f"script_revise_{timestamp}.json"
+        self._write_json(result_path, payload)
+        payload["saved_as"] = self._relative_ref(result_path)
+        payload["revision_dir"] = self._relative_ref(revision_dir)
+
+        manifest["status"] = payload["revision_status"]
+        manifest["validation"] = validation
+        manifest["continuity"] = continuity
+        job["status"] = "complete"
+        job["completed_at"] = datetime.now().isoformat(timespec="seconds")
+        self._write_json(revision_dir / "revision_manifest.json", manifest)
+        self._write_json(revision_dir / "revision_job.json", job)
+        payload["revision_manifest"] = manifest
+        return payload
+
+    def _sync_batch_chapters(
+        self,
+        revision_dir: Path,
+        impact: dict[str, Any],
+        manifest: dict[str, Any],
+        job: dict[str, Any],
+    ) -> set[str]:
+        affected = {
+            item["chapter_id"]: item.get("reasons", [])
+            for item in impact.get("affected_chapters", [])
+            if isinstance(item, dict) and item.get("chapter_id")
+        }
+        settings_md = (revision_dir / "01_game_settings.md").read_text(encoding="utf-8")
+        outline_md = (revision_dir / "02_chapter_outline.md").read_text(encoding="utf-8")
+        resolved: set[str] = set()
+        pending: dict[Any, tuple[str, Path, str]] = {}
+
+        def revise(chapter_id: str, path: Path, reasons: list[str]) -> str:
+            messages = self._build_chapter_sync_messages(
+                chapter_id=chapter_id,
+                current_content=path.read_text(encoding="utf-8"),
+                settings_md=settings_md,
+                outline_md=outline_md,
+                reasons=reasons,
+            )
+            value = self._flash().complete(
+                messages,
+                temperature=0.2,
+                response_format="text",
+                max_tokens=8192,
+            )
+            value = self._clean_markdown(value)
+            if not value.strip():
+                raise ValueError(f"同步修订 {chapter_id} 时返回了空内容")
+            return value
+
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+            for chapter_id, reasons in sorted(affected.items()):
+                task_id = f"sync_{chapter_id}"
+                path = revision_dir / f"03_{chapter_id}.md"
+                if self._job_task(job, task_id)["status"] == "complete" and path.exists():
+                    resolved.add(chapter_id)
+                    continue
+                if not path.exists():
+                    continue
+                self._start_job_task(revision_dir, job, task_id)
+                future = executor.submit(revise, chapter_id, path, reasons)
+                pending[future] = (chapter_id, path, task_id)
+
+            failures: list[Exception] = []
+            for future in as_completed(pending):
+                chapter_id, path, task_id = pending[future]
+                try:
+                    content = future.result()
+                    self._atomic_write_text(path, content)
+                    self._complete_job_task(revision_dir, job, task_id, path)
+                    resolved.add(chapter_id)
+                    if path.name not in manifest["changed_files"]:
+                        manifest["changed_files"].append(path.name)
+                except Exception as exc:
+                    self._fail_job_task(revision_dir, job, task_id, exc)
+                    failures.append(exc)
+            if failures:
+                raise failures[0]
+        return resolved
+
+    def _extract_batch_global(
+        self,
+        generator: ChapterScriptGenerator,
+        revision_dir: Path,
+        merged_md: str,
+        chapter_ids: list[str],
+        job: dict[str, Any],
+    ) -> dict[str, Any]:
+        task_id = "extract_global"
+        path = revision_dir / "06a_global.json"
+        if self._job_task(job, task_id)["status"] == "complete" and path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        self._start_job_task(revision_dir, job, task_id)
+        try:
+            value = generator._call5a_extract_global(merged_md, chapter_ids)
+            self._write_json(path, value)
+            self._complete_job_task(revision_dir, job, task_id, path)
+            return value
+        except Exception as exc:
+            self._fail_job_task(revision_dir, job, task_id, exc)
+            raise
+
+    def _extract_batch_chapters(
+        self,
+        generator: ChapterScriptGenerator,
+        revision_dir: Path,
+        chapters_md: list[str],
+        job: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        results: dict[int, dict[str, Any]] = {}
+        pending: dict[Any, tuple[int, str, Path, str]] = {}
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+            for index, chapter_md in enumerate(chapters_md, start=1):
+                chapter_id = f"ch{index:02d}"
+                task_id = f"extract_{chapter_id}"
+                path = revision_dir / f"06b_{chapter_id}.json"
+                if self._job_task(job, task_id)["status"] == "complete" and path.exists():
+                    results[index] = json.loads(path.read_text(encoding="utf-8"))
+                    continue
+                self._start_job_task(revision_dir, job, task_id)
+                future = executor.submit(
+                    generator._call5b_extract_chapter,
+                    chapter_md,
+                    chapter_id,
+                    index,
+                )
+                pending[future] = (index, chapter_id, path, task_id)
+
+            failures: list[Exception] = []
+            for future in as_completed(pending):
+                index, _, path, task_id = pending[future]
+                try:
+                    value = future.result()
+                    self._write_json(path, value)
+                    self._complete_job_task(revision_dir, job, task_id, path)
+                    results[index] = value
+                except Exception as exc:
+                    self._fail_job_task(revision_dir, job, task_id, exc)
+                    failures.append(exc)
+            if failures:
+                raise failures[0]
+        return [results[index] for index in range(1, len(chapters_md) + 1)]
 
     def _rebuild_revision(
         self,
@@ -533,6 +929,130 @@ class ChapterRevisionService:
             if source.exists():
                 shutil.copy2(source, revision_dir / filename)
 
+    @staticmethod
+    def _copy_source_inputs(base_dir: Path, revision_dir: Path) -> None:
+        filenames = ["01_game_settings.md", "02_chapter_outline.md"]
+        filenames.extend(
+            path.name for path in sorted(base_dir.glob("03_ch[0-9][0-9].md"))
+        )
+        for filename in filenames:
+            source = base_dir / filename
+            if source.exists():
+                shutil.copy2(source, revision_dir / filename)
+
+    @staticmethod
+    def _read_source_files(directory: Path) -> dict[str, str]:
+        paths = [directory / "01_game_settings.md", directory / "02_chapter_outline.md"]
+        paths.extend(sorted(directory.glob("03_ch[0-9][0-9].md")))
+        return {
+            path.name: path.read_text(encoding="utf-8")
+            for path in paths
+            if path.exists()
+        }
+
+    def _new_revision_job(
+        self,
+        revision_dir: Path,
+        impact: dict[str, Any],
+    ) -> dict[str, Any]:
+        chapter_ids = [
+            path.stem.removeprefix("03_")
+            for path in sorted(revision_dir.glob("03_ch[0-9][0-9].md"))
+        ]
+        sync_ids = {
+            item.get("chapter_id")
+            for item in impact.get("affected_chapters", [])
+            if isinstance(item, dict)
+        }
+        task_ids = [f"sync_{chapter_id}" for chapter_id in chapter_ids if chapter_id in sync_ids]
+        task_ids.extend(["continuity_repair", "merge_markdown", "extract_global"])
+        task_ids.extend(f"extract_{chapter_id}" for chapter_id in chapter_ids)
+        task_ids.append("validate")
+        return {
+            "job_version": 1,
+            "status": "pending",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "max_workers": self._max_workers,
+            "tasks": {
+                task_id: {
+                    "status": "pending",
+                    "attempts": 0,
+                    "output_file": "",
+                    "output_hash": "",
+                    "error": "",
+                }
+                for task_id in task_ids
+            },
+        }
+
+    def _build_revision_plan(
+        self,
+        revision_dir: Path,
+        impact: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "plan_version": 1,
+            "orchestrator": "deterministic",
+            "source_files": sorted(self._read_source_files(revision_dir)),
+            "impact": impact,
+            "execution_order": [
+                "sync affected chapter Markdown with bounded parallelism",
+                "review and repair continuity",
+                "merge repaired Markdown",
+                "extract global and chapter JSON with bounded parallelism",
+                "validate and publish result",
+            ],
+            "max_workers": self._max_workers,
+        }
+
+    @staticmethod
+    def _job_task(job: dict[str, Any], task_id: str) -> dict[str, Any]:
+        return job.setdefault("tasks", {}).setdefault(task_id, {
+            "status": "pending",
+            "attempts": 0,
+            "output_file": "",
+            "output_hash": "",
+            "error": "",
+        })
+
+    def _start_job_task(
+        self,
+        revision_dir: Path,
+        job: dict[str, Any],
+        task_id: str,
+    ) -> None:
+        task = self._job_task(job, task_id)
+        task["status"] = "running"
+        task["attempts"] = int(task.get("attempts", 0)) + 1
+        task["error"] = ""
+        self._write_json(revision_dir / "revision_job.json", job)
+
+    def _complete_job_task(
+        self,
+        revision_dir: Path,
+        job: dict[str, Any],
+        task_id: str,
+        output_path: Path,
+    ) -> None:
+        task = self._job_task(job, task_id)
+        task["status"] = "complete"
+        task["output_file"] = output_path.name
+        task["output_hash"] = hashlib.sha256(output_path.read_bytes()).hexdigest()
+        task["error"] = ""
+        self._write_json(revision_dir / "revision_job.json", job)
+
+    def _fail_job_task(
+        self,
+        revision_dir: Path,
+        job: dict[str, Any],
+        task_id: str,
+        error: Exception,
+    ) -> None:
+        task = self._job_task(job, task_id)
+        task["status"] = "failed"
+        task["error"] = str(error)
+        self._write_json(revision_dir / "revision_job.json", job)
+
     def _preview_payload(
         self,
         source: dict[str, Any],
@@ -584,10 +1104,17 @@ class ChapterRevisionService:
 
     @staticmethod
     def _write_json(path: Path, value: Any) -> None:
-        path.write_text(
+        ChapterRevisionService._atomic_write_text(
+            path,
             json.dumps(value, ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
+
+    @staticmethod
+    def _atomic_write_text(path: Path, value: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_name(f".{path.name}.{threading.get_ident()}.tmp")
+        temp_path.write_text(value, encoding="utf-8")
+        temp_path.replace(path)
 
     @staticmethod
     def _jsonable(value: Any) -> Any:

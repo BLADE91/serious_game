@@ -149,6 +149,19 @@ class ChapterRevisionImpactRequest(BaseModel):
     content: str = Field(..., min_length=1, description="确认后的完整 Markdown")
 
 
+class ChapterBatchRevisionRequest(BaseModel):
+    base_version: str = Field(..., min_length=1)
+    changed_sources: dict[str, str] = Field(
+        default_factory=dict,
+        description="一次提交的多个源 Markdown；为空时按磁盘现有源文件重建",
+    )
+    feedback: str = Field(default="")
+
+
+class ChapterBatchResumeRequest(BaseModel):
+    revision_ref: str = Field(..., min_length=1)
+
+
 # ---- SSE 工具 ----
 
 async def sse_event(event: str, data: Any) -> str:
@@ -572,6 +585,17 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @app.get("/api/revisions/sources")
+    async def get_revision_sources(base_version: str):
+        """读取章节式版本的全部可编辑 Markdown。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        try:
+            service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+            return service.load_sources(base_version)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @app.post("/api/revisions/preview")
     async def preview_chapter_revision(req: ChapterRevisionPreviewRequest):
         """生成直接编辑或 AI 修订的差异预览，不写入版本文件。"""
@@ -589,6 +613,7 @@ def create_app() -> FastAPI:
                     req.base_version,
                     req.target,
                     req.feedback,
+                    req.content,
                 )
             raise ValueError("mode 必须是 manual 或 ai")
         except ValueError as exc:
@@ -632,6 +657,40 @@ def create_app() -> FastAPI:
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/revisions/batch-apply")
+    async def apply_batch_chapter_revision(req: ChapterBatchRevisionRequest):
+        """一次应用多个源 Markdown，并全量重建章节式产物。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+        try:
+            return await asyncio.to_thread(
+                service.apply_batch_revision,
+                req.base_version,
+                req.changed_sources,
+                req.feedback,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, f"批量修订失败，可从失败的 rNN 续跑：{exc}") from exc
+
+    @app.post("/api/revisions/batch-resume")
+    async def resume_batch_chapter_revision(req: ChapterBatchResumeRequest):
+        """续跑失败的批量修订，只执行未完成任务。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+        try:
+            return await asyncio.to_thread(
+                service.resume_batch_revision,
+                req.revision_ref,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, f"续跑批量修订失败：{exc}") from exc
 
     # ---------- 旧结构修订（兼容历史三幕式版本） ----------
 
@@ -738,6 +797,47 @@ def create_app() -> FastAPI:
         )
 
     # ---------- 版本管理 ----------
+
+    @app.get("/api/source-versions")
+    async def list_source_versions():
+        """列出所有仍包含完整章节 Markdown 的原版和修订版。"""
+        if not OUTPUTS_DIR.exists():
+            return {"versions": []}
+        versions = []
+        candidates: list[Path] = []
+        for generation_dir in sorted(OUTPUTS_DIR.glob("v[0-9][0-9]"), reverse=True):
+            if not generation_dir.is_dir():
+                continue
+            candidates.append(generation_dir)
+            candidates.extend(sorted(
+                generation_dir.glob("revisions/r[0-9][0-9]"),
+                reverse=True,
+            ))
+        for directory in candidates:
+            if not (directory / "01_game_settings.md").exists():
+                continue
+            chapters = sorted(directory.glob("03_ch[0-9][0-9].md"))
+            if not chapters:
+                continue
+            manifest = {}
+            manifest_path = directory / "revision_manifest.json"
+            if manifest_path.exists():
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    manifest = {}
+            ref = _relative_output_ref(directory)
+            versions.append({
+                "version": ref,
+                "label": ref.upper(),
+                "chapter_count": len(chapters),
+                "status": manifest.get("status", "source_ready"),
+                "updated_at": datetime.fromtimestamp(
+                    max(path.stat().st_mtime for path in chapters)
+                ).isoformat(),
+            })
+        versions.sort(key=lambda item: item["updated_at"], reverse=True)
+        return {"versions": versions}
 
     @app.get("/api/versions")
     async def list_versions():

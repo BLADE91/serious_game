@@ -4,7 +4,7 @@
   Call 1: PA Backend → game_settings.md（全局设定）
   Call 2: PA Backend → chapter_outline.md（章节大纲）
   Call 3: PA Backend ×N → ch01.md ~ ch0N.md（逐章生成）
-  Call 4: Qwen Flash → continuity_review.json（事实连续性审查）
+  Call 4: Qwen Flash → 审查并修复源 Markdown，输出 continuity_review.json
   Call 5: Qwen Flash → script_structure.json（JSON 抽取）
   Call 6: 程序规则 → validation_report.json（结构与提取校验）
 """
@@ -39,6 +39,7 @@ from src.generation.chapter_prompts import (
     build_call2_prompt,
     build_call3_prompt,
     build_call4_prompt,
+    build_call4_repair_prompt,
     build_call5_prompt,
     build_initial_state_snapshot_text,
     build_locked_nodes_text,
@@ -73,6 +74,7 @@ class ChapterScriptGenerator:
 
     # Call 3 每章最多重试次数
     MAX_CHAPTER_RETRIES = 2
+    MAX_CONTINUITY_REPAIR_ROUNDS = 2
 
     def __init__(
         self,
@@ -167,19 +169,45 @@ class ChapterScriptGenerator:
             progress_callback=progress_callback,
         )
 
-        # ---- 合并（始终重做，无 API 调用） ----
-        merged_script_md = self._merge_chapters(game_settings_md, chapter_outline_md, chapters_md)
-        self._save_intermediate("04_merged_before_review.md", merged_script_md)
-
-        # ---- Call 4: 事实连续性审查 ----
-        # 只报告有两处原文证据的事实矛盾，不做质量评分，也不改写原文。
-        continuity_review = self._load_or_call_json(
-            "05_continuity_review.json",
-            call_fn=lambda: self._call4_consistency_review(merged_script_md),
-            label="Call 4/6: 事实连续性审查", stage=6,
-            progress_callback=progress_callback,
-            depends_on_content=merged_script_md,
+        # ---- Call 4: 事实连续性审查与源文件定点修复 ----
+        sources = {
+            "01_game_settings.md": game_settings_md,
+            "02_chapter_outline.md": chapter_outline_md,
+            **{
+                f"03_ch{index:02d}.md": chapter_md
+                for index, chapter_md in enumerate(chapters_md, start=1)
+            },
+        }
+        continuity_path = (
+            self._output_dir / "05_continuity_review.json"
+            if self._output_dir is not None else None
         )
+        continuity_review = None
+        if continuity_path is not None and continuity_path.exists():
+            cached_review = json.loads(continuity_path.read_text(encoding="utf-8"))
+            if cached_review.get("repair_version") == 1:
+                continuity_review = cached_review
+                print("  ⏭  跳过 Call 4/6: 连续性审查与修复（已完成）")
+        if continuity_review is None:
+            self._report(progress_callback, 6, 8, "Call 4/6: 连续性审查与修复")
+            continuity_review, sources = self.review_and_repair_sources(sources)
+            for filename, content in sources.items():
+                self._save_intermediate(filename, content)
+            self._save_intermediate(
+                "05_continuity_review.json",
+                json.dumps(continuity_review, ensure_ascii=False, indent=2),
+            )
+
+        game_settings_md = sources["01_game_settings.md"]
+        chapter_outline_md = sources["02_chapter_outline.md"]
+        chapters_md = [
+            sources[f"03_ch{index:02d}.md"]
+            for index in range(1, chapter_count + 1)
+        ]
+
+        # ---- 合并修复后的创作源（始终重做，无 API 调用） ----
+        merged_script_md = self._merge_chapters(game_settings_md, chapter_outline_md, chapters_md)
+        self._save_intermediate("04_merged.md", merged_script_md)
         complete_script_md = merged_script_md
 
         # ---- Call 5: JSON 抽取（分段：5a 全局 + 5b 逐章） ----
@@ -425,6 +453,108 @@ class ChapterScriptGenerator:
         if review.get("status") not in {"pass", "review_recommended"}:
             review["status"] = "review_recommended" if review["continuity_issues"] else "pass"
         return review
+
+    def review_and_repair_sources(
+        self,
+        sources: dict[str, str],
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """Review source Markdown and apply only uniquely matching text patches."""
+        current = dict(sources)
+        rounds: list[dict[str, Any]] = []
+        all_fixes: list[dict[str, Any]] = []
+        previous_issues: list[dict[str, Any]] = []
+
+        for round_number in range(1, self.MAX_CONTINUITY_REPAIR_ROUNDS + 2):
+            messages = build_call4_repair_prompt(current, previous_issues)
+            result = self._flash_complete(
+                messages,
+                temperature=0.1,
+                response_format="json_object",
+                max_tokens=8192,
+            )
+            review = self._parse_json(result)
+            issues = review.get("continuity_issues")
+            patches = review.get("patches")
+            if not isinstance(issues, list):
+                issues = []
+            if not isinstance(patches, list):
+                patches = []
+
+            round_result: dict[str, Any] = {
+                "round": round_number,
+                "issues": issues,
+                "applied_fixes": [],
+                "rejected_patches": [],
+            }
+            if not issues:
+                rounds.append(round_result)
+                return ({
+                    "repair_version": 1,
+                    "status": "pass",
+                    "continuity_issues": [],
+                    "applied_fixes": all_fixes,
+                    "rounds": rounds,
+                }, current)
+
+            if round_number > self.MAX_CONTINUITY_REPAIR_ROUNDS:
+                previous_issues = issues
+                rounds.append(round_result)
+                break
+
+            for patch in patches:
+                applied, detail = self._apply_continuity_patch(current, patch)
+                key = "applied_fixes" if applied else "rejected_patches"
+                round_result[key].append(detail)
+                if applied:
+                    all_fixes.append(detail)
+            rounds.append(round_result)
+            previous_issues = issues
+            if not round_result["applied_fixes"]:
+                break
+
+        return ({
+            "repair_version": 1,
+            "status": "review_required",
+            "continuity_issues": previous_issues,
+            "applied_fixes": all_fixes,
+            "rounds": rounds,
+        }, current)
+
+    @staticmethod
+    def _apply_continuity_patch(
+        sources: dict[str, str],
+        patch: Any,
+    ) -> tuple[bool, dict[str, Any]]:
+        if not isinstance(patch, dict):
+            return False, {"error": "patch 不是对象", "patch": patch}
+        filename = str(patch.get("file") or "").strip()
+        old_text = patch.get("old_text")
+        new_text = patch.get("new_text")
+        detail = {
+            "issue_code": str(patch.get("issue_code") or ""),
+            "file": filename,
+            "old_text": old_text,
+            "new_text": new_text,
+            "reason": str(patch.get("reason") or ""),
+        }
+        if filename not in sources:
+            detail["error"] = "目标文件不存在"
+            return False, detail
+        if not isinstance(old_text, str) or not old_text:
+            detail["error"] = "old_text 不能为空"
+            return False, detail
+        if not isinstance(new_text, str) or not new_text.strip():
+            detail["error"] = "new_text 不能为空"
+            return False, detail
+        occurrences = sources[filename].count(old_text)
+        if occurrences != 1:
+            detail["error"] = f"old_text 匹配次数为 {occurrences}，要求唯一匹配"
+            return False, detail
+        if old_text == new_text:
+            detail["error"] = "补丁没有产生变化"
+            return False, detail
+        sources[filename] = sources[filename].replace(old_text, new_text, 1)
+        return True, detail
 
     # ============================================================
     # Call 5: JSON 抽取

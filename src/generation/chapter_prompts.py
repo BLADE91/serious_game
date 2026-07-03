@@ -7,6 +7,7 @@ Call 1-3 使用 PA Backend 创作，Call 4 检查事实连续性，Call 5 使用
 
 from __future__ import annotations
 
+import json
 import re
 from typing import TYPE_CHECKING
 
@@ -515,6 +516,68 @@ def build_call4_prompt(complete_script_md: str, user_feedback: str = "") -> list
 
 没有明确矛盾时输出 status=pass 和空数组。只输出 JSON。"""
 
+    return _flash_messages(system, user)
+
+
+def build_call4_repair_prompt(
+    sources: dict[str, str],
+    previous_issues: list[dict] | None = None,
+) -> list[ChatMessage]:
+    """Build a strict continuity review prompt that returns safe text patches."""
+    source_text = "\n\n".join(
+        f"===== FILE: {filename} =====\n{content}"
+        for filename, content in sources.items()
+    )
+    previous_text = ""
+    if previous_issues:
+        previous_text = (
+            "\n\n上轮仍需复查的问题：\n"
+            + json.dumps(previous_issues, ensure_ascii=False, indent=2)
+        )
+    system = (
+        "你是剧本事实连续性修复器。只处理有两处原文证据直接冲突的问题，"
+        "并给出最小范围的精确文本替换。不得评价或重写策略、教学、人物塑造和叙事质量。"
+        "只输出 JSON。"
+    )
+    user = f"""检查以下剧本源 Markdown 的事实连续性，并为可安全修复的问题提供补丁。
+
+只检查：
+1. 同一 NPC 的身份、所属群体或既定事实前后直接矛盾
+2. 章节时间、事件发生顺序前后直接矛盾
+3. 前章明确结果与后章明确状态直接矛盾
+4. 同一客观数值存在不能同时成立的最终值
+
+修复优先级：全局设定高于章节大纲，章节大纲高于章节正文；章节之间以前章明确发生的结果为准。
+每个补丁的 old_text 必须逐字复制目标文件中一段能够唯一匹配的原文，new_text 只做解决矛盾所需的最小修改。
+无法确定正确事实、无法唯一定位或缺少双重证据时，只报告问题，不提供补丁。
+{previous_text}
+
+## 源文件
+{source_text}
+
+## 输出格式
+{{
+  "status": "pass | repair_required",
+  "continuity_issues": [
+    {{
+      "code": "CONTINUITY_001",
+      "message": "明确的事实矛盾",
+      "source_a": {{"file": "03_ch01.md", "quote": "原文证据"}},
+      "source_b": {{"file": "03_ch02.md", "quote": "冲突原文证据"}}
+    }}
+  ],
+  "patches": [
+    {{
+      "issue_code": "CONTINUITY_001",
+      "file": "03_ch02.md",
+      "old_text": "目标文件中唯一出现的原文",
+      "new_text": "修复后的最小替换文本",
+      "reason": "为什么选择修改这一处"
+    }}
+  ]
+}}
+
+没有明确矛盾时输出 status=pass、空 continuity_issues 和空 patches。只输出 JSON。"""
     return _flash_messages(system, user)
 
 

@@ -10,6 +10,7 @@ import unittest
 
 from src.services.chapter_revision_service import ChapterRevisionService
 from src.services.revision_impact_analyzer import RevisionImpactAnalyzer
+from src.generation.chapter_script_generator import ChapterScriptGenerator
 
 
 class FakeFlashClient:
@@ -189,6 +190,95 @@ class TestChapterRevisionService(unittest.TestCase):
         self.assertTrue(manifest["unresolved_chapters"])
         revision_dir = self.outputs_dir / result["revision_dir"]
         self.assertTrue((revision_dir / "08_revision_impact.json").exists())
+
+    def test_batch_revision_rebuilds_all_json_from_sources(self) -> None:
+        global_json = (self.base_dir / "06a_global.json").read_text(encoding="utf-8")
+        chapter_jsons = [
+            path.read_text(encoding="utf-8")
+            for path in sorted(self.base_dir.glob("06b_ch[0-9][0-9].json"))
+        ]
+        flash = FakeFlashClient([
+            json.dumps({
+                "status": "pass",
+                "continuity_issues": [],
+                "patches": [],
+            }, ensure_ascii=False),
+            global_json,
+            *chapter_jsons,
+        ])
+        service = ChapterRevisionService(
+            outputs_dir=self.outputs_dir,
+            flash_client=flash,
+            max_workers=1,
+        )
+        revised = self.original_chapter + "\n批量修订标记。\n"
+
+        result = service.apply_batch_revision(
+            "v01",
+            {"ch01": revised},
+        )
+
+        revision_dir = self.outputs_dir / result["revision_dir"]
+        self.assertEqual(revised, (revision_dir / "03_ch01.md").read_text(encoding="utf-8"))
+        self.assertTrue((revision_dir / "04_merged.md").exists())
+        self.assertTrue((revision_dir / "05_continuity_review.json").exists())
+        self.assertTrue((revision_dir / "06a_global.json").exists())
+        self.assertEqual(len(chapter_jsons), len(list(revision_dir.glob("06b_ch*.json"))))
+        self.assertTrue((revision_dir / "revision_job.json").exists())
+        self.assertEqual("complete", result["revision_status"])
+        self.assertEqual(2 + len(chapter_jsons), len(flash.calls))
+
+    def test_continuity_repair_applies_unique_patch_then_rechecks(self) -> None:
+        flash = FakeFlashClient([
+            json.dumps({
+                "status": "repair_required",
+                "continuity_issues": [{"code": "CONTINUITY_001"}],
+                "patches": [{
+                    "issue_code": "CONTINUITY_001",
+                    "file": "03_ch02.md",
+                    "old_text": "第二章发生在第3天",
+                    "new_text": "第二章发生在第4天",
+                    "reason": "与第一章结束时间一致",
+                }],
+            }, ensure_ascii=False),
+            json.dumps({
+                "status": "pass",
+                "continuity_issues": [],
+                "patches": [],
+            }, ensure_ascii=False),
+        ])
+        generator = ChapterScriptGenerator(flash_client=flash)
+
+        report, sources = generator.review_and_repair_sources({
+            "01_game_settings.md": "全局设定",
+            "02_chapter_outline.md": "章节大纲",
+            "03_ch01.md": "第一章结束于第3天",
+            "03_ch02.md": "第二章发生在第3天",
+        })
+
+        self.assertEqual("pass", report["status"])
+        self.assertEqual("第二章发生在第4天", sources["03_ch02.md"])
+        self.assertEqual(1, len(report["applied_fixes"]))
+
+    def test_batch_impact_merges_upstream_changes(self) -> None:
+        analyzer = RevisionImpactAnalyzer()
+        impact = analyzer.analyze_batch({
+            "game_settings": (
+                "## 规则\n旧规则",
+                "## 规则\n新规则",
+            ),
+            "ch01": ("旧章节", "新章节"),
+        }, {
+            "ch01": "第一章",
+            "ch02": "第二章",
+        })
+
+        self.assertEqual(["ch01", "game_settings"], impact["changed_targets"])
+        self.assertEqual("high", impact["impact_level"])
+        self.assertEqual(
+            ["ch01", "ch02"],
+            [item["chapter_id"] for item in impact["affected_chapters"]],
+        )
 
 
 if __name__ == "__main__":
