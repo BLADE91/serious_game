@@ -1849,7 +1849,6 @@ function renderChapterResult(data) {
         `;
       }).join('')}
     ` : ''}
-    ${data.generation_notes ? `<p style="margin-top:8px;font-size:12px;color:var(--text-muted);">📝 ${data.generation_notes.join('；')}</p>` : ''}
   `;
 
   // NPC 面板 — 章节式剧本同时展示 NPC 角色表和情报节点
@@ -1989,7 +1988,6 @@ function renderResult(data) {
         <p class="act-meta">决策点：${(a.decision_point_ids||[]).length} 个</p>
       </div>
     `).join('')}
-    ${data.generation_notes ? `<p style="margin-top:8px;font-size:12px;color:var(--text-muted);">📝 ${data.generation_notes.join('；')}</p>` : ''}
   `;
 
   // NPC 面板
