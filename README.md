@@ -1,6 +1,6 @@
 # 父母官严肃游戏剧本生成器
 
-本项目生成基层治理题材的严肃游戏剧本。当前主流程以 Markdown 为创作源，先分阶段生成全局设定、大纲和章节正文，再做事实连续性审查、结构化抽取和确定性校验。Web 与 CLI 共用同一套章节式生成服务。
+本项目生成基层治理题材的严肃游戏剧本。当前主流程以 Markdown 为创作源，先分阶段生成全局设定、大纲和章节正文，再自动修复有明确双重证据的事实连续性问题，最后完成结构化抽取和确定性校验。Web 与 CLI 共用同一套章节式生成服务。
 
 ## 当前工作流
 
@@ -9,8 +9,8 @@
 | Call 1 | PA Backend | `01_game_settings.md` | 全局变量、NPC、结局和创作约束 |
 | Call 2 | PA Backend | `02_chapter_outline.md` | 章节大纲、Flag 规划和结局可达性 |
 | Call 3 | PA Backend，逐章 | `03_chNN.md` | 章节正文、情报、决策、结果和结算 |
-| 合并 | 程序 | `04_merged_before_review.md` | 合并全部 Markdown 创作源 |
-| Call 4 | Qwen Flash | `05_continuity_review.json` | 仅报告有两处原文证据的事实矛盾，不自动改稿 |
+| Call 4 | Qwen Flash + 程序 | `05_continuity_review.json` | 审查事实矛盾，程序只应用唯一匹配的定点补丁并复审 |
+| 合并 | 程序 | `04_merged.md` | 合并修复后的全部 Markdown 创作源 |
 | Call 5a | Qwen Flash | `06a_global.json` | 抽取全局结构、NPC 和结局 |
 | Call 5b | Qwen Flash，逐章 | `06b_chNN.json` | 抽取各章剧情树 |
 | Call 5 合并 | 程序 | `06_script_structure.json` | 合并结构化结果 |
@@ -44,6 +44,8 @@ PA_BACKEND_SUPABASE_KEY=your_key
 
 `PA_BACKEND_COLLECTION_ID` 会作为 `collection_ids` 约束知识库检索；章节创作同时保持网络搜索开启，因此网络来源不受该 collection 限制。服务首次请求时会在终端打印实际生效的 collection 列表。
 
+PA Backend 阶段返回空内容时会更换会话并退避重试，默认最多重试 2 次。可通过 `PA_BACKEND_MAX_STAGE_RETRIES` 和 `PA_BACKEND_RETRY_BACKOFF_SECONDS` 调整。
+
 `SCRIPT_GENERATION_BACKEND` 仍用于旧的非章节式 CLI 流程，不改变上述章节式 Call 分工。
 
 ## Web 使用
@@ -58,12 +60,14 @@ NPC、章节、结局以及每章决策点数量均由用户输入。每章决�
 
 “一键生成”始终创建新版本；旁边的“续跑”按钮会列出全部未完成版本供用户选择，并复用已有阶段产物。新版本会保存原始生成参数，续跑时不会被当前表单中的新值覆盖。
 
-人工修订有两种方式：
+章节源文件修订支持一次编辑多个文件：
 
-- **直接编辑**：在元素旁点击“编辑”，浮层只编辑该 ID 对应的 Markdown 内容块。
-- **AI 修订**：在元素旁点击“AI 修订”，由 PA Backend 根据意见生成目标文件候选和 diff，确认后再应用。
+- **批量草稿**：全局设定、大纲和各章可全选并切换编辑，切换文件不会触发重建。
+- **直接编辑**：在元素旁点击“编辑”时，只把该 ID 对应的修改写入当前批量草稿。
+- **AI 候选**：PA Backend 根据当前草稿和意见生成候选，确认后仍只写入草稿。
+- **统一提交**：点击“提交全部修改并重建”后只创建一个 `rNN`，自动同步受影响章节、修复连续性并全量重建 JSON。
 
-应用修订不会覆盖原版，而是在 `vNN/revisions/rNN/` 创建完整修订版本，并重新执行受影响的抽取和校验步骤。修改全局设定或大纲时，Web 会先列出受影响章节；勾选的章节使用 Qwen Flash 同步修订，未勾选章节保留原文并将版本标记为“待人工处理”。
+“审查并重建”可以直接选择磁盘中仍有完整源 Markdown 的版本，因此使用 Claude 等外部工具替换源文件后，不需要手工删除 merge、final 或 JSON。失败的批量修订保留 `revision_job.json`，再次选择该 `rNN` 时只续跑未完成任务。
 
 API 文档：`http://localhost:8000/docs`
 
@@ -106,7 +110,7 @@ python run_script_generation.py \
 
 ## 输出与续跑
 
-输出位于 `outputs/script_drafts/vNN/`。`00_generation_request.json` 保存该版本的生成参数。生成器按文件是否存在决定复用：已有文件跳过，缺失文件重跑。它不会计算内容 hash，也不会因上游文件被手动修改而自动删除下游缓存。
+输出位于 `outputs/script_drafts/vNN/`。`00_generation_request.json` 保存该版本的生成参数。普通生成续跑按文件是否存在决定复用；批量修订和“审查并重建”只复制 Markdown 源，并从零生成全部派生 JSON。
 
 需要重跑抽取时，至少删除 `06_script_structure.json` 和目标 `06a_global.json` 或 `06b_chNN.json`；需要重跑校验时删除 `07_validation_report.json`。更完整的文件关系和修订目录说明见 [剧本草稿存储说明](outputs/script_drafts/剧本草稿存储说明.md)。
 
@@ -165,9 +169,13 @@ python run_script_generation.py \
 | `GET` | `/api/incomplete-versions` | 列出所有可续跑的未完成版本 |
 | `POST` | `/api/cancel/{task_id}` | 取消生成 |
 | `GET` | `/api/revisions/source` | 读取修订目标 Markdown |
+| `GET` | `/api/revisions/sources` | 读取版本的全部源 Markdown |
 | `POST` | `/api/revisions/preview` | 生成手工 diff 或 AI 候选 |
 | `POST` | `/api/revisions/impact` | 分析全局设定或大纲修订的章节影响 |
 | `POST` | `/api/revisions/apply` | 创建修订版本并重建产物 |
+| `POST` | `/api/revisions/batch-apply` | 批量提交源文件并全量重建 |
+| `POST` | `/api/revisions/batch-resume` | 续跑失败的批量修订任务 |
+| `GET` | `/api/source-versions` | 列出可从 Markdown 重建的版本 |
 | `GET` | `/api/versions` | 列出生成版和修订版 |
 | `GET` | `/api/version/{filename}` | 读取指定结果 |
 | `GET` | `/api/latest-result` | 读取最近结果 |
