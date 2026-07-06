@@ -67,7 +67,9 @@ NPC、章节、结局以及每章决策点数量均由用户输入。每章决�
 - **AI 候选**：PA Backend 根据当前草稿和意见生成候选，确认后仍只写入草稿。
 - **统一提交**：点击“提交全部修改并重建”后只创建一个 `rNN`，自动同步受影响章节、修复连续性并全量重建 JSON。
 
-“审查并重建”可以直接选择磁盘中仍有完整源 Markdown 的版本，因此使用 Claude 等外部工具替换源文件后，不需要手工删除 merge、final 或 JSON。失败的批量修订保留 `revision_job.json`，再次选择该 `rNN` 时只续跑未完成任务。
+“审查并重建”可以直接选择磁盘中仍有完整源 Markdown 的版本。使用 Claude 等外部工具替换源文件后，不需要手工删除 merge、final 或 JSON；程序会对照隐藏的源文件基线识别改动并同步受影响章节。旧版本没有基线时按全章节受影响处理。失败的批量修订保留 `revision_job.json`，再次选择该 `rNN` 时会复用输入和输出均未变化的已完成任务。
+
+批量提交和审查重建通过同一个 SSE 任务接口返回阶段进度，并支持取消。取消或失败后可以从版本历史中选择对应 `rNN` 继续执行。
 
 API 文档：`http://localhost:8000/docs`
 
@@ -106,13 +108,13 @@ python run_script_generation.py \
 ```
 
 修订目标只接受 `game_settings`、`chapter_outline` 或 `chNN`。
-全局设定或大纲修订默认保留受影响章节并生成 `review_required` 版本；增加 `--revision-sync-affected` 可让 AI 同步修订全部受影响章节。
+全局设定或大纲修订会自动分析影响，并用 Qwen Flash 同步修订全部受影响章节。`--revision-sync-affected` 仅为兼容旧命令保留，不再改变行为。
 
 ## 输出与续跑
 
-输出位于 `outputs/script_drafts/vNN/`。`00_generation_request.json` 保存该版本的生成参数。普通生成续跑按文件是否存在决定复用；批量修订和“审查并重建”只复制 Markdown 源，并从零生成全部派生 JSON。
+输出位于 `outputs/script_drafts/vNN/`。`00_generation_request.json` 保存该版本的生成参数。普通生成续跑会用 `.artifact_inputs.json` 比较派生产物的输入；源 Markdown 变化后，只重跑输入已过期的连续性审查、抽取或校验任务。批量修订和“审查并重建”只复制 Markdown 源，并重建派生 JSON。
 
-需要重跑抽取时，至少删除 `06_script_structure.json` 和目标 `06a_global.json` 或 `06b_chNN.json`；需要重跑校验时删除 `07_validation_report.json`。更完整的文件关系和修订目录说明见 [剧本草稿存储说明](outputs/script_drafts/剧本草稿存储说明.md)。
+通常不需要手工删除派生产物。需要强制重跑某个阶段时仍可删除对应文件；更完整的文件关系和修订目录说明见 [剧本草稿存储说明](outputs/script_drafts/剧本草稿存储说明.md)。
 
 新版本号按 `.version_counter` 和已有 `vNN` 目录中的较大值递增，计数器过期不会覆盖现有版本目录。
 
@@ -175,6 +177,8 @@ python run_script_generation.py \
 | `POST` | `/api/revisions/apply` | 创建修订版本并重建产物 |
 | `POST` | `/api/revisions/batch-apply` | 批量提交源文件并全量重建 |
 | `POST` | `/api/revisions/batch-resume` | 续跑失败的批量修订任务 |
+| `POST` | `/api/revisions/rebuild` | 对照源文件基线审查并重建 |
+| `POST` | `/api/revisions/run` | SSE 执行批量提交、重建或续跑 |
 | `GET` | `/api/source-versions` | 列出可从 Markdown 重建的版本 |
 | `GET` | `/api/versions` | 列出生成版和修订版 |
 | `GET` | `/api/version/{filename}` | 读取指定结果 |
@@ -192,6 +196,7 @@ python -m unittest discover -s tests
 - `src/generation/chapter_validator.py`：确定性结构与提取校验
 - `src/services/chapter_revision_service.py`：人工及 AI 修订版本管线
 - `src/services/revision_impact_analyzer.py`：全局设定和大纲的确定性影响分析
+- `src/services/source_snapshot_manager.py`：源 Markdown 基线、差异和内容哈希
 - `src/api/server.py`：Web API 和版本持久化
 - `frontend/index.html`：Web 操作界面
 - `run_script_generation.py`：CLI 入口
