@@ -280,7 +280,7 @@ body.modal-open { overflow: hidden; }
   <h2>⏳ 生成进度</h2>
   <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progressBar" style="width:0%"></div></div>
   <p class="progress-text" id="progressText">准备中...</p>
-  <button class="btn btn-secondary btn-sm" id="cancelBtn" onclick="cancelGeneration()" style="margin-top:12px;">⏹ 取消生成</button>
+  <button class="btn btn-secondary btn-sm" id="cancelBtn" onclick="cancelGeneration()" style="margin-top:12px;">⏹ 取消任务</button>
 </div>
 
 <!-- 结果区 -->
@@ -590,24 +590,11 @@ async function runSourceRebuild(version, status) {
   hide('error-card');
   setProgress(1, 1, status === 'failed' ? '正在续跑失败的批量修订' : '正在审查源文件并全量重建');
   try {
-    const endpoint = status === 'failed'
-      ? '/api/revisions/batch-resume'
-      : '/api/revisions/batch-apply';
-    const body = status === 'failed'
-      ? {revision_ref: version}
-      : {base_version: version, changed_sources: {}};
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || `审查并重建失败 ${resp.status}`);
-    lastResult = data;
-    lastFullMD = normalizeFullMD(data.full_md || '');
-    renderResult(data);
-    updateVersionLabel(data.saved_as || data.revision_dir || '', data.revision_status);
-    show('result-card');
+    await runRevisionTask(
+      status === 'failed'
+        ? {action: 'resume', revision_ref: version}
+        : {action: 'rebuild', base_version: version}
+    );
   } catch (err) {
     showError(err.message);
   } finally {
@@ -774,8 +761,11 @@ function syncBatchRevisionState() {
   const dirtyTargets = Object.keys(revisionDrafts).filter(
     target => revisionDrafts[target] !== revisionSources[target]
   );
+  const selectedDirtyCount = dirtyTargets.filter(
+    target => selectedRevisionSources.has(target)
+  ).length;
   document.getElementById('discardBatchRevisionBtn').disabled = dirtyTargets.length === 0;
-  document.getElementById('applyBatchRevisionBtn').disabled = selectedRevisionSources.size === 0;
+  document.getElementById('applyBatchRevisionBtn').disabled = selectedDirtyCount === 0;
 }
 
 function discardBatchRevision() {
@@ -963,6 +953,7 @@ async function generateInlineAiRevision(button) {
         mode: 'ai',
         feedback: scopedFeedback,
         content: context.source,
+        draft_sources: getChangedRevisionDrafts(),
       }),
     });
     const data = await resp.json().catch(() => ({}));
@@ -1032,6 +1023,7 @@ async function requestAiRevisionPreview() {
         mode: 'ai',
         feedback,
         content: revisionDrafts[target] || '',
+        draft_sources: getChangedRevisionDrafts(),
       }),
     });
     const data = await resp.json().catch(() => ({}));
@@ -1066,6 +1058,14 @@ function stageRevisionDraft(target, content) {
   syncBatchRevisionState();
 }
 
+function getChangedRevisionDrafts() {
+  return Object.fromEntries(
+    Object.keys(revisionDrafts)
+      .filter(target => revisionDrafts[target] !== revisionSources[target])
+      .map(target => [target, revisionDrafts[target]])
+  );
+}
+
 async function submitBatchRevision() {
   const btn = document.getElementById('applyBatchRevisionBtn');
   btn.disabled = true;
@@ -1077,27 +1077,55 @@ async function submitBatchRevision() {
         changedSources[target] = revisionDrafts[target];
       }
     }
-    setProgress(1, 1, '正在同步源文件、修复连续性并全量重建');
-    const resp = await fetch('/api/revisions/batch-apply', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
+    if (Object.keys(changedSources).length === 0) {
+      throw new Error('请先修改并选择至少一个源文件');
+    }
+    setProgress(0, 1, '正在创建批量修订任务');
+    await runRevisionTask({
+        action: 'apply',
         base_version: getRevisionBaseVersion(),
         changed_sources: changedSources,
-      }),
     });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.detail || `批量修订失败 ${resp.status}`);
-    lastResult = data;
-    lastFullMD = normalizeFullMD(data.full_md || '');
-    renderResult(data);
-    updateVersionLabel(data.saved_as || data.revision_dir || '', data.revision_status);
-    show('result-card');
   } catch (err) {
     showError(err.message);
   } finally {
-    btn.disabled = false;
+    syncBatchRevisionState();
     hide('progress-card');
+  }
+}
+
+async function runRevisionTask(payload) {
+  activeAbortController = new AbortController();
+  const resp = await fetch('/api/revisions/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+    signal: activeAbortController.signal,
+  });
+  activeTaskId = resp.headers.get('X-Task-Id');
+  if (!resp.ok) {
+    const error = await resp.json().catch(() => ({}));
+    throw new Error(error.detail || `批量任务启动失败 ${resp.status}`);
+  }
+  try {
+    for await (const {event, data} of readSSE(resp)) {
+      if (event === 'progress') {
+        setProgress(data.stage, data.total, data.name);
+      } else if (event === 'result') {
+        lastResult = data;
+        lastFullMD = normalizeFullMD(data.full_md || '');
+        renderResult(data);
+        updateVersionLabel(data.saved_as || data.revision_dir || '', data.revision_status);
+        show('result-card');
+      } else if (event === 'error') {
+        throw new Error(data.message || '批量任务失败');
+      } else if (event === 'cancelled') {
+        hide('progress-card');
+      }
+    }
+  } finally {
+    activeAbortController = null;
+    activeTaskId = null;
   }
 }
 

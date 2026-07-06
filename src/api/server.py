@@ -128,6 +128,10 @@ class ChapterRevisionPreviewRequest(BaseModel):
     mode: str = Field(..., description="manual | ai")
     content: str = Field(default="", description="manual 模式的完整 Markdown")
     feedback: str = Field(default="", description="ai 模式的修订反馈")
+    draft_sources: dict[str, str] = Field(
+        default_factory=dict,
+        description="批量编辑中其他尚未提交的源 Markdown 草稿",
+    )
 
 
 class ChapterRevisionApplyRequest(BaseModel):
@@ -160,6 +164,18 @@ class ChapterBatchRevisionRequest(BaseModel):
 
 class ChapterBatchResumeRequest(BaseModel):
     revision_ref: str = Field(..., min_length=1)
+
+
+class ChapterSourceRebuildRequest(BaseModel):
+    base_version: str = Field(..., min_length=1)
+
+
+class ChapterRevisionRunRequest(BaseModel):
+    action: str = Field(..., description="apply | rebuild | resume")
+    base_version: str = Field(default="")
+    revision_ref: str = Field(default="")
+    changed_sources: dict[str, str] = Field(default_factory=dict)
+    feedback: str = Field(default="")
 
 
 # ---- SSE 工具 ----
@@ -614,6 +630,7 @@ def create_app() -> FastAPI:
                     req.target,
                     req.feedback,
                     req.content,
+                    req.draft_sources,
                 )
             raise ValueError("mode 必须是 manual 或 ai")
         except ValueError as exc:
@@ -691,6 +708,119 @@ def create_app() -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:
             raise HTTPException(500, f"续跑批量修订失败：{exc}") from exc
+
+    @app.post("/api/revisions/rebuild")
+    async def rebuild_chapter_sources(req: ChapterSourceRebuildRequest):
+        """从磁盘源 Markdown 检测外部变化并全量重建。"""
+        from src.services.chapter_revision_service import ChapterRevisionService
+
+        service = ChapterRevisionService(outputs_dir=OUTPUTS_DIR)
+        try:
+            return await asyncio.to_thread(
+                service.rebuild_from_sources,
+                req.base_version,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(500, f"源文件重建失败：{exc}") from exc
+
+    @app.post("/api/revisions/run")
+    async def run_chapter_revision(req: ChapterRevisionRunRequest):
+        """以 SSE 运行批量修订、源文件重建或失败续跑。"""
+        if req.action not in {"apply", "rebuild", "resume"}:
+            raise HTTPException(400, "action 必须是 apply、rebuild 或 resume")
+        if req.action in {"apply", "rebuild"} and not req.base_version.strip():
+            raise HTTPException(400, "base_version 不能为空")
+        if req.action == "apply" and not req.changed_sources:
+            raise HTTPException(400, "批量修订至少需要一个已修改的源文件")
+        if req.action == "resume" and not req.revision_ref.strip():
+            raise HTTPException(400, "revision_ref 不能为空")
+
+        task_id = _create_task()
+
+        async def event_stream() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue[dict] = asyncio.Queue()
+
+            def progress_callback(stage: int, total: int, name: str) -> None:
+                event_type = "cancelled" if _is_cancelled(task_id) else "progress"
+                payload = (
+                    {"type": "cancelled", "message": "批量修订已被用户取消"}
+                    if event_type == "cancelled"
+                    else {"type": "progress", "stage": stage, "total": total, "name": name}
+                )
+                loop.call_soon_threadsafe(queue.put_nowait, payload)
+
+            def run_revision() -> None:
+                from src.services.chapter_revision_service import ChapterRevisionService
+
+                try:
+                    service = ChapterRevisionService(
+                        outputs_dir=OUTPUTS_DIR,
+                        cancel_event=_task_event(task_id),
+                        progress_callback=progress_callback,
+                    )
+                    entry = _active_tasks.get(task_id)
+                    if entry is not None:
+                        entry["service"] = service
+                    if req.action == "apply":
+                        result = service.apply_batch_revision(
+                            req.base_version,
+                            req.changed_sources,
+                            req.feedback,
+                        )
+                    elif req.action == "rebuild":
+                        result = service.rebuild_from_sources(req.base_version)
+                    else:
+                        result = service.resume_batch_revision(req.revision_ref)
+                    if _is_cancelled(task_id):
+                        loop.call_soon_threadsafe(queue.put_nowait, {
+                            "type": "cancelled", "message": "批量修订已被用户取消",
+                        })
+                        return
+                    loop.call_soon_threadsafe(queue.put_nowait, {
+                        "type": "result", **result,
+                    })
+                except Exception as exc:
+                    event_type = "cancelled" if _is_cancelled(task_id) else "error"
+                    payload = (
+                        {"type": "cancelled", "message": "批量修订已被用户取消"}
+                        if event_type == "cancelled"
+                        else {
+                            "type": "error",
+                            "message": f"批量修订失败：{exc}",
+                            "detail": traceback.format_exc(),
+                        }
+                    )
+                    loop.call_soon_threadsafe(queue.put_nowait, payload)
+
+            thread = threading.Thread(target=run_revision, daemon=True)
+            thread.start()
+            try:
+                while True:
+                    event_data = await queue.get()
+                    event_type = event_data.pop("type")
+                    yield await sse_event(event_type, event_data)
+                    if event_type in {"result", "error", "cancelled"}:
+                        break
+            except asyncio.CancelledError:
+                _cancel_task(task_id)
+                yield await sse_event("cancelled", {"message": "客户端断开连接"})
+            finally:
+                _cleanup_task(task_id)
+                thread.join(timeout=5)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Task-Id": task_id,
+            },
+        )
 
     # ---------- 旧结构修订（兼容历史三幕式版本） ----------
 
@@ -819,6 +949,11 @@ def create_app() -> FastAPI:
             chapters = sorted(directory.glob("03_ch[0-9][0-9].md"))
             if not chapters:
                 continue
+            source_files = [
+                directory / "01_game_settings.md",
+                directory / "02_chapter_outline.md",
+                *chapters,
+            ]
             manifest = {}
             manifest_path = directory / "revision_manifest.json"
             if manifest_path.exists():
@@ -833,7 +968,7 @@ def create_app() -> FastAPI:
                 "chapter_count": len(chapters),
                 "status": manifest.get("status", "source_ready"),
                 "updated_at": datetime.fromtimestamp(
-                    max(path.stat().st_mtime for path in chapters)
+                    max(path.stat().st_mtime for path in source_files if path.exists())
                 ).isoformat(),
             })
         versions.sort(key=lambda item: item["updated_at"], reverse=True)
