@@ -137,7 +137,7 @@ def main() -> None:
     parser.add_argument(
         "--revision-sync-affected",
         action="store_true",
-        help="全局设定或大纲修订时，用 AI 同步修订所有受影响章节",
+        help="已弃用；全局设定或大纲修订现在始终自动同步受影响章节",
     )
     parser.add_argument(
         "--full-draft",
@@ -231,16 +231,12 @@ def main() -> None:
                 print("\n=== 修订影响 ===")
                 print(f"影响级别: {impact['impact_level']}")
                 print(f"受影响章节: {', '.join(affected)}")
-            action = "ai_revise" if args.revision_sync_affected else "keep"
-            chapter_actions = {chapter_id: action for chapter_id in affected}
-
             revised = revision_service.apply_revision(
                 base_version=args.chapter_revise,
                 target=args.revision_target,
                 content=revised_content,
                 mode=mode,
                 feedback=args.feedback,
-                chapter_actions=chapter_actions,
                 impact_acknowledged=True,
             )
             print("\n=== 章节修订完成 ===")

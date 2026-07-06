@@ -7,10 +7,12 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import MagicMock
 
 from src.services.chapter_revision_service import ChapterRevisionService
 from src.services.revision_impact_analyzer import RevisionImpactAnalyzer
 from src.generation.chapter_script_generator import ChapterScriptGenerator
+from src.services.source_snapshot_manager import SourceSnapshotManager
 
 
 class FakeFlashClient:
@@ -26,7 +28,10 @@ class FakeFlashClient:
         self.calls.append({"messages": messages, **kwargs})
         if not self.responses:
             raise AssertionError("Unexpected model call")
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class TestChapterRevisionService(unittest.TestCase):
@@ -51,26 +56,33 @@ class TestChapterRevisionService(unittest.TestCase):
         self.assertIn("+人工修订标记。", preview["diff"])
         self.assertFalse((self.base_dir / "revisions").exists())
 
-    def test_apply_manual_revision_preserves_base_and_rebuilds_target(self) -> None:
-        extracted_chapter = (self.base_dir / "06b_ch01.json").read_text(encoding="utf-8")
+    def test_apply_manual_revision_preserves_base_and_rebuilds_all_json(self) -> None:
+        global_json = (self.base_dir / "06a_global.json").read_text(encoding="utf-8")
+        chapter_jsons = [
+            path.read_text(encoding="utf-8")
+            for path in sorted(self.base_dir.glob("06b_ch[0-9][0-9].json"))
+        ]
         flash = FakeFlashClient([
-            json.dumps({"status": "pass", "continuity_issues": []}, ensure_ascii=False),
-            extracted_chapter,
+            json.dumps({
+                "status": "pass", "continuity_issues": [], "patches": [],
+            }, ensure_ascii=False),
+            global_json,
+            *chapter_jsons,
         ])
         service = ChapterRevisionService(
             outputs_dir=self.outputs_dir,
             flash_client=flash,
+            max_workers=1,
         )
         revised = self.original_chapter + "\n人工修订标记。\n"
-        untouched_extraction = (self.base_dir / "06b_ch02.json").read_bytes()
 
         result = service.apply_revision("v01", "ch01", revised, "manual")
 
         revision_dir = self.outputs_dir / result["revision_dir"]
         self.assertEqual(self.original_chapter, (self.base_dir / "03_ch01.md").read_text(encoding="utf-8"))
         self.assertEqual(revised, (revision_dir / "03_ch01.md").read_text(encoding="utf-8"))
-        self.assertEqual(untouched_extraction, (revision_dir / "06b_ch02.json").read_bytes())
-        self.assertEqual(2, len(flash.calls))
+        self.assertEqual(len(chapter_jsons), len(list(revision_dir.glob("06b_ch*.json"))))
+        self.assertEqual(2 + len(chapter_jsons), len(flash.calls))
         self.assertTrue(result["script"]["validation_report"]["valid"])
         manifest = json.loads((revision_dir / "revision_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual("complete", manifest["status"])
@@ -104,6 +116,28 @@ class TestChapterRevisionService(unittest.TestCase):
         self.assertEqual(1, flash.reset_count)
         self.assertNotIn("response_format", flash.calls[0])
         self.assertIn("调整章节标题", flash.calls[0]["messages"][1].content)
+
+    def test_ai_preview_uses_other_changed_drafts_as_context(self) -> None:
+        candidate = self.original_chapter.replace("压力传导", "压力化解", 1)
+        pa = FakeFlashClient([candidate])
+        service = ChapterRevisionService(
+            outputs_dir=self.outputs_dir,
+            pa_client=pa,
+        )
+
+        service.preview_ai(
+            "v01",
+            "ch01",
+            "按新设定调整",
+            current_content=self.original_chapter,
+            draft_sources={
+                "game_settings": "# 当前批量草稿中的新全局设定",
+            },
+        )
+
+        prompt = pa.calls[0]["messages"][1].content
+        self.assertIn("当前批量草稿中的新全局设定", prompt)
+        self.assertIn("01_game_settings.md（当前批量草稿）", prompt)
 
     def test_settings_npc_change_only_marks_referencing_chapters(self) -> None:
         original = """## 角色表
@@ -165,16 +199,29 @@ class TestChapterRevisionService(unittest.TestCase):
                 "manual",
             )
 
-    def test_kept_affected_chapters_are_marked_review_required(self) -> None:
+    def test_upstream_single_revision_automatically_syncs_affected_chapters(self) -> None:
         original = (self.base_dir / "01_game_settings.md").read_text(encoding="utf-8")
         global_json = (self.base_dir / "06a_global.json").read_text(encoding="utf-8")
+        chapters = [
+            path.read_text(encoding="utf-8")
+            for path in sorted(self.base_dir.glob("03_ch[0-9][0-9].md"))
+        ]
+        chapter_jsons = [
+            path.read_text(encoding="utf-8")
+            for path in sorted(self.base_dir.glob("06b_ch[0-9][0-9].json"))
+        ]
         flash = FakeFlashClient([
-            json.dumps({"status": "pass", "continuity_issues": []}, ensure_ascii=False),
+            *chapters,
+            json.dumps({
+                "status": "pass", "continuity_issues": [], "patches": [],
+            }, ensure_ascii=False),
             global_json,
+            *chapter_jsons,
         ])
         service = ChapterRevisionService(
             outputs_dir=self.outputs_dir,
             flash_client=flash,
+            max_workers=1,
         )
 
         result = service.apply_revision(
@@ -185,9 +232,13 @@ class TestChapterRevisionService(unittest.TestCase):
             impact_acknowledged=True,
         )
 
-        self.assertEqual("review_required", result["revision_status"])
+        self.assertEqual("complete", result["revision_status"])
         manifest = result["revision_manifest"]
-        self.assertTrue(manifest["unresolved_chapters"])
+        self.assertEqual(
+            [f"ch{index:02d}" for index in range(1, len(chapters) + 1)],
+            manifest["resolved_chapters"],
+        )
+        self.assertFalse(manifest["unresolved_chapters"])
         revision_dir = self.outputs_dir / result["revision_dir"]
         self.assertTrue((revision_dir / "08_revision_impact.json").exists())
 
@@ -206,10 +257,14 @@ class TestChapterRevisionService(unittest.TestCase):
             global_json,
             *chapter_jsons,
         ])
+        progress = []
         service = ChapterRevisionService(
             outputs_dir=self.outputs_dir,
             flash_client=flash,
             max_workers=1,
+            progress_callback=lambda stage, total, name: progress.append(
+                (stage, total, name)
+            ),
         )
         revised = self.original_chapter + "\n批量修订标记。\n"
 
@@ -227,6 +282,8 @@ class TestChapterRevisionService(unittest.TestCase):
         self.assertTrue((revision_dir / "revision_job.json").exists())
         self.assertEqual("complete", result["revision_status"])
         self.assertEqual(2 + len(chapter_jsons), len(flash.calls))
+        self.assertTrue(progress)
+        self.assertEqual(progress[-1][0], progress[-1][1])
 
     def test_continuity_repair_applies_unique_patch_then_rechecks(self) -> None:
         flash = FakeFlashClient([
@@ -277,6 +334,150 @@ class TestChapterRevisionService(unittest.TestCase):
         self.assertEqual("high", impact["impact_level"])
         self.assertEqual(
             ["ch01", "ch02"],
+            [item["chapter_id"] for item in impact["affected_chapters"]],
+        )
+
+    def test_source_snapshot_detects_external_markdown_change(self) -> None:
+        SourceSnapshotManager.capture(self.base_dir)
+        settings_path = self.base_dir / "01_game_settings.md"
+        original = settings_path.read_text(encoding="utf-8")
+        settings_path.write_text(original + "\n外部修改。\n", encoding="utf-8")
+
+        changes, available = SourceSnapshotManager.diff(self.base_dir)
+
+        self.assertTrue(available)
+        self.assertEqual(original, changes["game_settings"][0])
+        self.assertIn("外部修改", changes["game_settings"][1])
+
+    def test_source_snapshot_repairs_incomplete_and_stale_baseline(self) -> None:
+        baseline_dir = self.base_dir / SourceSnapshotManager.BASELINE_DIR
+        baseline_dir.mkdir()
+        (baseline_dir / "01_game_settings.md").write_text("partial", encoding="utf-8")
+        (baseline_dir / "03_ch99.md").write_text("stale", encoding="utf-8")
+
+        captured = SourceSnapshotManager.capture_if_missing(self.base_dir)
+
+        self.assertIsNotNone(captured)
+        self.assertFalse((baseline_dir / "03_ch99.md").exists())
+        self.assertEqual(
+            {path.name for path in SourceSnapshotManager.source_paths(self.base_dir)},
+            {path.name for path in baseline_dir.glob("*.md")},
+        )
+
+    def test_external_rebuild_uses_snapshot_for_impact_analysis(self) -> None:
+        SourceSnapshotManager.capture(self.base_dir)
+        settings_path = self.base_dir / "01_game_settings.md"
+        settings_path.write_text(
+            settings_path.read_text(encoding="utf-8") + "\n外部全局约束。\n",
+            encoding="utf-8",
+        )
+        service = ChapterRevisionService(outputs_dir=self.outputs_dir)
+        service._rebuild_batch_revision = MagicMock(return_value={"ok": True})
+
+        result = service.rebuild_from_sources("v01")
+
+        self.assertEqual({"ok": True}, result)
+        impact = json.loads(
+            (self.base_dir / "revisions" / "r01" / "08_revision_impact.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertTrue(impact["baseline_available"])
+        self.assertEqual("high", impact["impact_level"])
+        self.assertEqual(
+            ["ch01", "ch02", "ch03", "ch04"],
+            [item["chapter_id"] for item in impact["affected_chapters"]],
+        )
+
+    def test_revision_validation_uses_requested_npc_count(self) -> None:
+        (self.base_dir / "00_generation_request.json").write_text(
+            json.dumps({"npc_count": 9}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        service = ChapterRevisionService(outputs_dir=self.outputs_dir)
+
+        self.assertEqual(9, service._expected_npc_count(self.base_dir))
+
+    def test_resume_reextracts_completed_chapter_when_source_changed(self) -> None:
+        global_json = (self.base_dir / "06a_global.json").read_text(encoding="utf-8")
+        chapter_jsons = [
+            path.read_text(encoding="utf-8")
+            for path in sorted(self.base_dir.glob("06b_ch[0-9][0-9].json"))
+        ]
+        continuity_pass = json.dumps({
+            "status": "pass",
+            "continuity_issues": [],
+            "patches": [],
+        }, ensure_ascii=False)
+        first_flash = FakeFlashClient([
+            continuity_pass,
+            global_json,
+            chapter_jsons[0],
+            RuntimeError("temporary extraction failure"),
+            *chapter_jsons[2:],
+        ])
+        service = ChapterRevisionService(
+            outputs_dir=self.outputs_dir,
+            flash_client=first_flash,
+            max_workers=1,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "temporary extraction failure"):
+            service.apply_batch_revision(
+                "v01",
+                {"ch01": self.original_chapter + "\n第一轮修改。\n"},
+            )
+
+        revision_dir = self.base_dir / "revisions" / "r01"
+        chapter_path = revision_dir / "03_ch01.md"
+        chapter_path.write_text(
+            chapter_path.read_text(encoding="utf-8") + "\n失败后人工修改。\n",
+            encoding="utf-8",
+        )
+        resume_flash = FakeFlashClient([
+            continuity_pass,
+            global_json,
+            chapter_jsons[0],
+            chapter_jsons[1],
+        ])
+        resumed = ChapterRevisionService(
+            outputs_dir=self.outputs_dir,
+            flash_client=resume_flash,
+            max_workers=1,
+        ).resume_batch_revision("v01/revisions/r01")
+
+        job = json.loads((revision_dir / "revision_job.json").read_text(encoding="utf-8"))
+        self.assertEqual("complete", resumed["revision_status"])
+        self.assertEqual(2, job["tasks"]["extract_ch01"]["attempts"])
+        self.assertEqual(1, job["tasks"]["extract_ch03"]["attempts"])
+        self.assertEqual(4, len(resume_flash.calls))
+
+    def test_resume_expands_impact_after_failed_global_source_edit(self) -> None:
+        service = ChapterRevisionService(outputs_dir=self.outputs_dir)
+        service._rebuild_batch_revision = MagicMock(
+            side_effect=RuntimeError("temporary failure")
+        )
+        with self.assertRaisesRegex(RuntimeError, "temporary failure"):
+            service.apply_batch_revision(
+                "v01",
+                {"ch01": self.original_chapter + "\n第一轮修改。\n"},
+            )
+
+        revision_dir = self.base_dir / "revisions" / "r01"
+        settings_path = revision_dir / "01_game_settings.md"
+        settings_path.write_text(
+            settings_path.read_text(encoding="utf-8") + "\n失败后全局修改。\n",
+            encoding="utf-8",
+        )
+        resumed_service = ChapterRevisionService(outputs_dir=self.outputs_dir)
+        resumed_service._rebuild_batch_revision = MagicMock(return_value={"ok": True})
+
+        resumed_service.resume_batch_revision("v01/revisions/r01")
+
+        impact = json.loads(
+            (revision_dir / "08_revision_impact.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            ["ch01", "ch02", "ch03", "ch04"],
             [item["chapter_id"] for item in impact["affected_chapters"]],
         )
 

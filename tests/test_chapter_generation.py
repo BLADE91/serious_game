@@ -818,7 +818,7 @@ class TestValidationPrompts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "07_validation_report.json"
             path.write_text(json.dumps({"validation_version": 1}), encoding="utf-8")
-            gen = ChapterScriptGenerator.__new__(ChapterScriptGenerator)
+            gen = ChapterScriptGenerator()
             gen._output_dir = Path(tmp)
             call_fn = MagicMock(return_value={"validation_version": 2})
 
@@ -832,6 +832,77 @@ class TestValidationPrompts(unittest.TestCase):
 
             call_fn.assert_called_once_with()
             assert result["validation_version"] == 2
+
+    def test_json_artifact_is_invalidated_when_dependency_changes(self):
+        from pathlib import Path
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gen = ChapterScriptGenerator()
+            gen._output_dir = Path(tmp)
+            first_call = MagicMock(return_value={"value": 1})
+            second_call = MagicMock(return_value={"value": 2})
+
+            first = gen._load_or_call_json(
+                "artifact.json",
+                call_fn=first_call,
+                label="测试产物",
+                stage=1,
+                depends_on_content="source-a",
+            )
+            reused = gen._load_or_call_json(
+                "artifact.json",
+                call_fn=MagicMock(return_value={"value": 9}),
+                label="测试产物",
+                stage=1,
+                depends_on_content="source-a",
+            )
+            rebuilt = gen._load_or_call_json(
+                "artifact.json",
+                call_fn=second_call,
+                label="测试产物",
+                stage=1,
+                depends_on_content="source-b",
+            )
+
+            self.assertEqual({"value": 1}, first)
+            self.assertEqual({"value": 1}, reused)
+            self.assertEqual({"value": 2}, rebuilt)
+            first_call.assert_called_once_with()
+            second_call.assert_called_once_with()
+
+    def test_json_artifact_input_index_preserves_concurrent_updates(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from pathlib import Path
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gen = ChapterScriptGenerator()
+            gen._output_dir = Path(tmp)
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [
+                    executor.submit(
+                        gen._load_or_call_json,
+                        f"artifact-{index}.json",
+                        lambda value=index: {"value": value},
+                        f"测试产物 {index}",
+                        1,
+                        None,
+                        f"source-{index}",
+                    )
+                    for index in range(4)
+                ]
+                for future in futures:
+                    future.result()
+
+            inputs = json.loads(
+                (Path(tmp) / ".artifact_inputs.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                {f"artifact-{index}.json" for index in range(4)},
+                set(inputs),
+            )
 
 
 class TestValidationPolicy(unittest.TestCase):

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import threading
@@ -49,6 +50,7 @@ from src.generation.chapter_prompts import (
 from src.generation.pa_backend_script_client import PABackendScriptClient
 from src.generation.chapter_validator import ChapterValidator
 from src.generation.qwen_client import ChatMessage, QwenChatClient
+from src.services.source_snapshot_manager import SourceSnapshotManager
 
 GenerationProgressCallback = Callable[[int, int, str, int], None]
 
@@ -86,6 +88,7 @@ class ChapterScriptGenerator:
         self._pa_client = pa_client
         self._flash_client = flash_client
         self._few_shot = _load_few_shot_example()
+        self._artifact_inputs_lock = threading.Lock()
 
     # ============================================================
     # 公开接口
@@ -99,8 +102,8 @@ class ChapterScriptGenerator:
     ) -> tuple[ScriptDesign, str]:
         """执行完整 6-Call 管线。
 
-        output_dir 下的每个中间产物文件（01_* ~ 07_*）如果已存在则跳过，
-        不存在则执行对应的 Call 并保存。删除某个文件即可重跑对应步骤。
+        output_dir 下的创作源按文件复用；派生 JSON 同时校验输入指纹，
+        输入变化或文件不存在时执行对应 Call 并保存。
 
         Args:
             request: ScriptGenerationRequest
@@ -183,9 +186,13 @@ class ChapterScriptGenerator:
             if self._output_dir is not None else None
         )
         continuity_review = None
+        current_source_hash = self._source_content_hash(sources)
         if continuity_path is not None and continuity_path.exists():
             cached_review = json.loads(continuity_path.read_text(encoding="utf-8"))
-            if cached_review.get("repair_version") == 1:
+            if (
+                cached_review.get("repair_version") == 1
+                and cached_review.get("source_hash") == current_source_hash
+            ):
                 continuity_review = cached_review
                 print("  ⏭  跳过 Call 4/6: 连续性审查与修复（已完成）")
         if continuity_review is None:
@@ -193,6 +200,7 @@ class ChapterScriptGenerator:
             continuity_review, sources = self.review_and_repair_sources(sources)
             for filename, content in sources.items():
                 self._save_intermediate(filename, content)
+            continuity_review["source_hash"] = self._source_content_hash(sources)
             self._save_intermediate(
                 "05_continuity_review.json",
                 json.dumps(continuity_review, ensure_ascii=False, indent=2),
@@ -204,6 +212,8 @@ class ChapterScriptGenerator:
             sources[f"03_ch{index:02d}.md"]
             for index in range(1, chapter_count + 1)
         ]
+        if self._output_dir is not None:
+            SourceSnapshotManager.capture_if_missing(self._output_dir)
 
         # ---- 合并修复后的创作源（始终重做，无 API 调用） ----
         merged_script_md = self._merge_chapters(game_settings_md, chapter_outline_md, chapters_md)
@@ -233,7 +243,13 @@ class ChapterScriptGenerator:
             ),
             label="Call 6/6: 校验", stage=8,
             progress_callback=progress_callback,
-            depends_on_content=json.dumps(script_json, ensure_ascii=False, sort_keys=True),
+            depends_on_content=json.dumps({
+                "script": script_json,
+                "merged_md": merged_script_md,
+                "continuity": continuity_review,
+                "expected_npc_count": npc_count,
+                "expected_decision_point_count": decision_point_count,
+            }, ensure_ascii=False, sort_keys=True),
             reuse_if=lambda report: report.get("validation_version") == 2,
         )
         script_json["_validation"] = validation_report
@@ -577,6 +593,7 @@ class ChapterScriptGenerator:
             call_fn=lambda: self._call5a_extract_global(complete_script_md, chapter_ids),
             label="Call 5a/6: 抽取全局结构 + NPC + 结局", stage=7,
             progress_callback=progress_callback,
+            depends_on_content=complete_script_md,
         )
 
         # -- 5b: 逐章抽取 --
@@ -591,6 +608,7 @@ class ChapterScriptGenerator:
                         self._call5b_extract_chapter(md, cid, cn),
                     label=f"Call 5b/6: 抽取第 {chapter_num} 章剧情树", stage=7,
                     progress_callback=progress_callback,
+                    depends_on_content=ch_md,
                 )
                 chapters_json.append(ch_json)
         else:
@@ -1322,19 +1340,69 @@ class ChapterScriptGenerator:
         reuse_if: Callable[[dict], bool] | None = None,
     ) -> dict:
         """JSON 版本的 _load_or_call。"""
+        input_hash = (
+            hashlib.sha256(depends_on_content.encode("utf-8")).hexdigest()
+            if depends_on_content is not None else ""
+        )
         if self._output_dir is not None:
             filepath = self._output_dir / filename
             if filepath.exists():
                 cached = json.loads(filepath.read_text(encoding="utf-8"))
-                if reuse_if is None or reuse_if(cached):
+                input_matches = (
+                    depends_on_content is None
+                    or self._artifact_input_matches(filename, input_hash)
+                )
+                if input_matches and (reuse_if is None or reuse_if(cached)):
                     print(f"  ⏭  跳过 {label}（{filename} 已存在）")
                     return cached
-                print(f"  ↻  重试 {label}（{filename} 未完成）")
+                print(f"  ↻  重试 {label}（输入变化或文件未完成）")
 
         self._report(progress_callback, stage, 8, label)
         result = call_fn()
         self._save_intermediate(filename, json.dumps(result, ensure_ascii=False, indent=2))
+        if depends_on_content is not None:
+            self._record_artifact_input(filename, input_hash)
         return result
+
+    def _artifact_input_matches(self, filename: str, input_hash: str) -> bool:
+        with self._artifact_inputs_lock:
+            return self._load_artifact_inputs().get(filename) == input_hash
+
+    def _record_artifact_input(self, filename: str, input_hash: str) -> None:
+        with self._artifact_inputs_lock:
+            artifact_inputs = self._load_artifact_inputs()
+            artifact_inputs[filename] = input_hash
+            self._save_artifact_inputs(artifact_inputs)
+
+    def _load_artifact_inputs(self) -> dict[str, str]:
+        if self._output_dir is None:
+            return {}
+        path = self._output_dir / ".artifact_inputs.json"
+        if not path.exists():
+            return {}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def _save_artifact_inputs(self, value: dict[str, str]) -> None:
+        if self._output_dir is None:
+            return
+        self._save_intermediate(
+            ".artifact_inputs.json",
+            json.dumps(value, ensure_ascii=False, indent=2),
+        )
+
+    @staticmethod
+    def _source_content_hash(sources: dict[str, str]) -> str:
+        digest = hashlib.sha256()
+        for filename, content in sorted(sources.items()):
+            digest.update(filename.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(content.encode("utf-8"))
+            digest.update(b"\0")
+        return digest.hexdigest()
 
     def _load_or_call_chapters(
         self,

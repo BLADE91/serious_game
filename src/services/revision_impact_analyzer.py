@@ -89,6 +89,28 @@ class RevisionImpactAnalyzer:
             "requires_confirmation": False,
         }
 
+    def conservative_external_impact(
+        self,
+        chapters: dict[str, str],
+    ) -> dict[str, Any]:
+        """Fallback for externally edited legacy versions without a baseline."""
+        return {
+            "target": "batch",
+            "changed_targets": ["game_settings", "chapter_outline", *sorted(chapters)],
+            "impact_level": "high",
+            "affected_chapters": [
+                {
+                    "chapter_id": chapter_id,
+                    "reasons": ["缺少修改前基线，按外部全量修订保守同步"],
+                }
+                for chapter_id in sorted(chapters, key=self._chapter_number)
+            ],
+            "structural_changes": ["缺少源 Markdown 基线，无法精确识别外部变化"],
+            "blocking_changes": [],
+            "requires_confirmation": False,
+            "baseline_available": False,
+        }
+
     def _analyze_settings(
         self,
         original: str,
