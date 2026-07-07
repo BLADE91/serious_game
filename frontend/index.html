@@ -49,6 +49,8 @@ textarea { resize: vertical; min-height: 60px; }
 .progress-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 8px 0; }
 .progress-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
 .progress-text { font-size: 13px; color: var(--text-muted); }
+.progress-log { margin-top: 10px; max-height: 132px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); padding: 8px 10px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.progress-log div + div { margin-top: 4px; }
 
 .tabs { display: flex; gap: 2px; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
 .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; background: var(--bg); color: var(--text-muted); border: 1px solid transparent; transition: all .2s; }
@@ -280,6 +282,7 @@ body.modal-open { overflow: hidden; }
   <h2>⏳ 生成进度</h2>
   <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progressBar" style="width:0%"></div></div>
   <p class="progress-text" id="progressText">准备中...</p>
+  <div class="progress-log hidden" id="progressLog"></div>
   <button class="btn btn-secondary btn-sm" id="cancelBtn" onclick="cancelGeneration()" style="margin-top:12px;">⏹ 取消任务</button>
 </div>
 
@@ -433,6 +436,25 @@ function setProgress(stage, total, name) {
   const pct = Math.round((stage / total) * 100);
   document.getElementById('progressBar').style.width = pct + '%';
   document.getElementById('progressText').textContent = `阶段 ${stage}/${total}：${name}`;
+  appendProgressLog(`阶段 ${stage}/${total}：${name}`);
+}
+function appendProgressLog(message) {
+  const log = document.getElementById('progressLog');
+  if (!log || !message) return;
+  show('progressLog');
+  const last = log.lastElementChild?.textContent || '';
+  if (last === message) return;
+  const row = document.createElement('div');
+  row.textContent = message;
+  log.appendChild(row);
+  while (log.children.length > 10) log.removeChild(log.firstElementChild);
+  log.scrollTop = log.scrollHeight;
+}
+function resetProgressLog() {
+  const log = document.getElementById('progressLog');
+  if (!log) return;
+  log.innerHTML = '';
+  hide('progressLog');
 }
 function showError(msg) {
   show('error-card');
@@ -588,6 +610,7 @@ function showSourceRebuildDialog(candidates) {
 
 async function runSourceRebuild(version, status) {
   hide('error-card');
+  resetProgressLog();
   setProgress(1, 1, status === 'failed' ? '正在续跑失败的批量修订' : '正在审查源文件并全量重建');
   try {
     await runRevisionTask(
@@ -1012,6 +1035,7 @@ async function requestAiRevisionPreview() {
     return;
   }
   hide('error-card');
+  resetProgressLog();
   setProgress(1, 1, '正在生成 AI 修订候选');
   try {
     const resp = await fetch('/api/revisions/preview', {
@@ -1655,6 +1679,7 @@ async function startGeneration(resumeVersion = '') {
 
   hide('error-card');
   hide('result-card');
+  resetProgressLog();
   const btn = document.getElementById('oneClickBtn');
   setButtonLoading(btn, true);
 
@@ -1729,6 +1754,7 @@ async function startRevision() {
   if (!lastResult) { showError('没有可修订的结果'); return; }
 
   hide('error-card');
+  resetProgressLog();
   show('progress-card');
   document.getElementById('progressBar').style.width = '50%';
   document.getElementById('progressText').textContent = '正在根据反馈修订剧本...';

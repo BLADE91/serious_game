@@ -76,7 +76,7 @@ class PABackendScriptClient:
         self,
         messages: list[ChatMessage],
         temperature: float = 0.2,
-        stream_callback: Callable[[int], None] | None = None,
+        stream_callback: Callable[..., None] | None = None,
     ) -> str:
         if self._cancel_event and self._cancel_event.is_set():
             raise PABackendClientError("生成已被用户取消")
@@ -230,7 +230,7 @@ class PABackendScriptClient:
         payload: dict | list,
         token: str,
         extra_headers: dict[str, str] | None = None,
-        stream_callback: Callable[[int], None] | None = None,
+        stream_callback: Callable[..., None] | None = None,
     ) -> str:
         """Send POST request with http.client for cross-thread cancellation."""
         parsed = urlparse(url)
@@ -297,7 +297,7 @@ class PABackendScriptClient:
     def _read_sse_response(
         self,
         response: Any,
-        stream_callback: Callable[[int], None],
+        stream_callback: Callable[..., None],
     ) -> str:
         """Read a text/event-stream response incrementally and return content text."""
         content_parts: list[str] = []
@@ -306,6 +306,7 @@ class PABackendScriptClient:
         last_content_len = 0
         event_counts: dict[str, int] = {}
         errors: list[str] = []
+        recent_events: list[dict[str, Any]] = []
 
         while True:
             if self._cancel_event and self._cancel_event.is_set():
@@ -316,13 +317,23 @@ class PABackendScriptClient:
                 break
             line = raw_line.decode("utf-8", errors="replace").strip()
             if not line:
+                progress_event = self._progress_event_from_sse(event_name, data_lines)
                 self._consume_event(
                     event_name, data_lines, content_parts, event_counts, errors,
                 )
+                if progress_event:
+                    recent_events.append(progress_event)
+                    recent_events = recent_events[-8:]
                 current_len = sum(len(part) for part in content_parts)
                 if current_len != last_content_len:
                     last_content_len = current_len
-                    stream_callback(current_len)
+                    self._notify_stream_callback(
+                        stream_callback,
+                        current_len,
+                        {"event": "content", "message": f"已接收正文 {current_len / 1024:.1f} KiB"},
+                    )
+                elif progress_event:
+                    self._notify_stream_callback(stream_callback, current_len, progress_event)
                 event_name = ""
                 data_lines = []
                 continue
@@ -331,11 +342,25 @@ class PABackendScriptClient:
             elif line.startswith("data:"):
                 data_lines.append(line.removeprefix("data:").strip())
 
+        progress_event = self._progress_event_from_sse(event_name, data_lines)
         self._consume_event(event_name, data_lines, content_parts, event_counts, errors)
-        self._last_event_summary = {"counts": event_counts, "errors": errors[-3:]}
+        if progress_event:
+            recent_events.append(progress_event)
+            recent_events = recent_events[-8:]
+        self._last_event_summary = {
+            "counts": event_counts,
+            "errors": errors[-3:],
+            "recent": recent_events[-5:],
+        }
         current_len = sum(len(part) for part in content_parts)
         if current_len != last_content_len:
-            stream_callback(current_len)
+            self._notify_stream_callback(
+                stream_callback,
+                current_len,
+                {"event": "content", "message": f"已接收正文 {current_len / 1024:.1f} KiB"},
+            )
+        elif progress_event:
+            self._notify_stream_callback(stream_callback, current_len, progress_event)
         return "".join(content_parts).strip()
 
     def _content_from_sse(self, response_text: str) -> str:
@@ -344,12 +369,17 @@ class PABackendScriptClient:
         data_lines: list[str] = []
         event_counts: dict[str, int] = {}
         errors: list[str] = []
+        recent_events: list[dict[str, Any]] = []
         for raw_line in response_text.splitlines():
             line = raw_line.strip()
             if not line:
+                progress_event = self._progress_event_from_sse(event_name, data_lines)
                 self._consume_event(
                     event_name, data_lines, content_parts, event_counts, errors,
                 )
+                if progress_event:
+                    recent_events.append(progress_event)
+                    recent_events = recent_events[-8:]
                 event_name = ""
                 data_lines = []
                 continue
@@ -357,9 +387,134 @@ class PABackendScriptClient:
                 event_name = line.removeprefix("event:").strip()
             elif line.startswith("data:"):
                 data_lines.append(line.removeprefix("data:").strip())
+        progress_event = self._progress_event_from_sse(event_name, data_lines)
         self._consume_event(event_name, data_lines, content_parts, event_counts, errors)
-        self._last_event_summary = {"counts": event_counts, "errors": errors[-3:]}
+        if progress_event:
+            recent_events.append(progress_event)
+        self._last_event_summary = {
+            "counts": event_counts,
+            "errors": errors[-3:],
+            "recent": recent_events[-5:],
+        }
         return "".join(content_parts).strip()
+
+    def _notify_stream_callback(
+        self,
+        stream_callback: Callable[..., None],
+        content_chars: int,
+        event: dict[str, Any] | None = None,
+    ) -> None:
+        try:
+            stream_callback(content_chars, event)
+        except TypeError:
+            stream_callback(content_chars)
+
+    def _progress_event_from_sse(
+        self,
+        event_name: str,
+        data_lines: list[str],
+    ) -> dict[str, Any] | None:
+        event_name = event_name.strip()
+        if not event_name:
+            return None
+        raw_data = "\n".join(data_lines).strip()
+        parsed: Any = raw_data
+        if raw_data:
+            try:
+                parsed = json.loads(raw_data)
+            except json.JSONDecodeError:
+                parsed = raw_data
+        message = self._summarize_event_message(event_name, parsed)
+        if not message:
+            return None
+        return {
+            "event": event_name,
+            "message": message,
+        }
+
+    def _summarize_event_message(self, event_name: str, payload: Any) -> str:
+        if event_name == "content":
+            return ""
+        if event_name in {"step", "status", "anchor"} and isinstance(payload, dict):
+            stage = self._short_text(payload.get("stage"))
+            message = self._short_text(payload.get("message"))
+            if stage and message:
+                return f"{stage}: {message}"
+            return message or stage or event_name
+        if event_name == "thought" and isinstance(payload, dict):
+            label = self._short_text(payload.get("label"))
+            stage = self._short_text(payload.get("stage"))
+            if stage and label:
+                return f"{stage}: {label}"
+            return label or stage or "正在执行工具动作"
+        if event_name == "tool_call" and isinstance(payload, dict):
+            name = self._short_text(payload.get("display_label") or payload.get("name"))
+            arguments = payload.get("arguments") or payload.get("input") or {}
+            detail = self._tool_argument_summary(arguments)
+            return f"调用工具 {name}{f'（{detail}）' if detail else ''}" if name else "调用工具"
+        if event_name == "tool_result" and isinstance(payload, dict):
+            name = self._short_text(payload.get("display_label") or payload.get("name"))
+            preview = self._short_text(payload.get("preview"))
+            status = "失败" if payload.get("is_error") else "完成"
+            if name and preview:
+                return f"工具 {name}{status}: {preview}"
+            return f"工具 {name}{status}" if name else f"工具{status}"
+        if event_name == "usage_update" and isinstance(payload, dict):
+            parts = []
+            for key, label in (
+                ("billing_mode", "计费"),
+                ("current_chain_tokens", "链路token"),
+                ("included_tokens", "含免费token"),
+                ("est_coins", "预估通晓币"),
+            ):
+                value = payload.get(key)
+                if value not in (None, ""):
+                    parts.append(f"{label}={value}")
+            return "；".join(parts) if parts else "用量已更新"
+        if event_name == "error":
+            if isinstance(payload, dict):
+                code = self._short_text(payload.get("code"))
+                message = self._short_text(payload.get("message") or payload.get("detail"))
+                return f"{code}: {message}" if code and message else message or code or "后端返回错误"
+            return self._short_text(payload) or "后端返回错误"
+        if event_name in {"doc", "web", "attachment_refs", "verify_results", "ads"}:
+            count = len(payload) if isinstance(payload, list) else None
+            label = {
+                "doc": "知识库引用",
+                "web": "网页引用",
+                "attachment_refs": "附件引用",
+                "verify_results": "核查结果",
+                "ads": "广告推荐",
+            }[event_name]
+            return f"收到{count}条{label}" if count is not None else f"收到{label}"
+        if event_name in {"done", "__end__"}:
+            return "AgentX 本轮结束"
+        if event_name == "usage_refund":
+            return "本轮费用已退回"
+        if event_name == "suggested_questions":
+            return "收到后续问题建议"
+        if event_name == "image":
+            return "收到图片结果"
+        if event_name == "evidence_package":
+            return "收到追问/证据包状态"
+        return f"收到 {event_name} 事件"
+
+    def _tool_argument_summary(self, arguments: Any) -> str:
+        if not isinstance(arguments, dict):
+            return ""
+        for key in ("query", "keyword", "url", "identifier", "collection_id", "skill_name"):
+            value = arguments.get(key)
+            if isinstance(value, str) and value.strip():
+                return f"{key}={self._short_text(value, 80)}"
+        return ""
+
+    def _short_text(self, value: Any, limit: int = 160) -> str:
+        if value is None:
+            return ""
+        text = " ".join(str(value).split())
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit]}..."
 
     def _consume_event(
         self,

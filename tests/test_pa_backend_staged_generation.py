@@ -253,6 +253,63 @@ class PABackendScriptClientTests(unittest.TestCase):
         self.assertEqual(content, "foobar")
         self.assertEqual(counts, [3, 6])
 
+    def test_reports_non_content_sse_events(self) -> None:
+        class FakeResponse:
+            def __init__(self, lines):
+                self._lines = [line.encode("utf-8") for line in lines]
+                self._index = 0
+
+            def readline(self):
+                if self._index >= len(self._lines):
+                    return b""
+                line = self._lines[self._index]
+                self._index += 1
+                return line
+
+        client = PABackendScriptClient(
+            PABackendConfig(
+                base_url="http://pa.test",
+                supabase_url="http://supabase.test",
+                supabase_key="supabase-key",
+                account="user@test.com",
+                password="password",
+            )
+        )
+        progress = []
+        response = FakeResponse([
+            "event: thought\n",
+            'data: {"stage": "search", "label": "正在检索知识库"}\n',
+            "\n",
+            "event: tool_call\n",
+            'data: {"name": "os_search", "arguments": {"query": "生态搬迁"}}\n',
+            "\n",
+            "event: tool_result\n",
+            'data: {"name": "os_search", "preview": "命中 3 条", "is_error": false}\n',
+            "\n",
+            "event: usage_update\n",
+            'data: {"billing_mode": "react_agent_entry", "current_chain_tokens": 1200}\n',
+            "\n",
+            "event: content\n",
+            'data: "done"\n',
+            "\n",
+        ])
+
+        content = client._read_sse_response(
+            response,
+            lambda chars, event=None: progress.append((chars, event)),
+        )
+
+        self.assertEqual(content, "done")
+        event_names = [event.get("event") for _, event in progress if event]
+        self.assertIn("thought", event_names)
+        self.assertIn("tool_call", event_names)
+        self.assertIn("tool_result", event_names)
+        self.assertIn("usage_update", event_names)
+        self.assertIn("content", event_names)
+        messages = [event.get("message", "") for _, event in progress if event]
+        self.assertTrue(any("正在检索知识库" in message for message in messages))
+        self.assertTrue(any("os_search" in message for message in messages))
+
     def test_retries_empty_stage_with_new_conversation(self) -> None:
         class RetryClient(PABackendScriptClient):
             def __init__(self):

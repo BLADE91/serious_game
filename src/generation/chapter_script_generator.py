@@ -113,8 +113,8 @@ class ChapterScriptGenerator:
         Returns:
             (ScriptDesign, complete_script_md)
         """
-        self._ensure_clients()
         self._output_dir = Path(output_dir) if output_dir else None
+        self._ensure_clients()
 
         # 从 request 提取参数
         scenario = getattr(request, "scenario", "")
@@ -333,7 +333,7 @@ class ChapterScriptGenerator:
         decision_point_count: int = 3,
         progress_callback: GenerationProgressCallback | None = None,
     ) -> list[str]:
-        """逐章生成，每章独立 PA Backend 对话。
+        """逐章生成，优先复用当前版本的 PA Backend 对话。
 
         状态快照在章间累积传递。
         """
@@ -395,8 +395,10 @@ class ChapterScriptGenerator:
             last_error = None
             for attempt in range(self.MAX_CHAPTER_RETRIES + 1):
                 try:
-                    # 每章使用全新的 PA Backend 对话
-                    self._pa_client.reset_conversation()
+                    # 首次尝试复用当前版本的 PA Backend 对话，让 AgentX 保留
+                    # 全局设定和大纲上下文；失败后的重试再切新对话隔离坏状态。
+                    if attempt > 0:
+                        self._pa_client.reset_conversation()
                     result = self._pa_complete(
                         messages,
                         temperature=0.4,
@@ -1116,8 +1118,22 @@ class ChapterScriptGenerator:
         last_reported = 0
         min_delta = 2048
 
-        def _callback(received_chars: int) -> None:
+        def _callback(received_chars: int, event: dict | None = None) -> None:
             nonlocal last_reported
+            if event and event.get("event") != "content":
+                event_name = str(event.get("event") or "event")
+                message = str(event.get("message") or "").strip()
+                detail = f"PA {event_name}"
+                if message:
+                    detail = f"{detail}: {message}"
+                self._report(
+                    progress_callback,
+                    stage,
+                    total,
+                    f"{label}｜{detail}",
+                    received_chars,
+                )
+                return
             if received_chars - last_reported < min_delta:
                 return
             last_reported = received_chars
