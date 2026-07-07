@@ -316,6 +316,8 @@ class TestPromptBuilders(unittest.TestCase):
         assert "测试主题" in msgs[0].content
         assert "分支与状态追踪总表" in msgs[0].content
         assert "制作备注" in msgs[0].content
+        assert "章节写作包" in msgs[0].content
+        assert "global_facts_for_this_chapter" in msgs[0].content
 
     def test_call3_prompt_includes_all_sections(self):
         msgs = build_call3_prompt(
@@ -323,7 +325,7 @@ class TestPromptBuilders(unittest.TestCase):
             chapter_outline_md=SAMPLE_OUTLINE_MD,
             current_chapter_num=1,
             total_chapters=3,
-            current_chapter_outline_entry="## 第 1 章",
+            current_chapter_outline_entry="## 第 1 章\n- chapter_id: ch01\n- core_task: 测试任务1",
             state_snapshot_text=build_initial_state_snapshot_text(),
             unlocked_nodes_text="（无）",
             locked_nodes_text="（无）",
@@ -333,7 +335,10 @@ class TestPromptBuilders(unittest.TestCase):
         assert len(msgs) == 1
         content = msgs[0].content
         assert "第 1 章" in content
-        assert "测试主题" in content
+        assert "当前章写作包" in content
+        assert "测试任务1" in content
+        assert "测试主题" not in content
+        assert "示例章节" not in content
         assert "状态快照" in content
         assert "NPC 状态变化" in content
         assert "制作备注" in content

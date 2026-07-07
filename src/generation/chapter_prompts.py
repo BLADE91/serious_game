@@ -219,16 +219,16 @@ def build_call2_prompt(
             f"  （继续按相同格式写到决策点 {decision_point_count}）\n"
         )
 
-    prompt = f"""你是一位游戏剧情架构师。你的任务是基于全局设定，设计可制作、可审校的章节规划。
-章节数量由全局设定决定。每章必须设计恰好 {decision_point_count} 个顺序执行的核心决策点。你不写详细剧情，只搭骨架、变量流、flag 流和制作约束。
+    prompt = f"""你是一位游戏剧情架构师。你的任务是基于全局设定，设计可制作、可审校、可直接交给逐章写作器展开的章节写作包。
+章节数量由全局设定决定。每章必须设计恰好 {decision_point_count} 个顺序执行的核心决策点。你不写完整章节正文，但必须把逐章写作所需的局部事实、变量流、flag 流、NPC 变化和制作约束一次性限定好。
 
-请基于以下全局设定，生成章节大纲。
+请基于以下全局设定，生成章节写作包集合。后续逐章生成时只会把“当前章写作包”发给写作器，不会再附带完整全局设定；因此每章写作包必须自洽，包含该章写作需要遵守的全局事实摘录和禁止改动事项。
 
 {game_settings_md}
 
 请按以下模板输出。必须使用这些标题，不要省略「分支与状态追踪总表」和「制作备注」。
 
-# 剧本制作包：章节规划
+# 剧本制作包：章节写作包集合
 
 ## 结局可达性验证
 
@@ -256,7 +256,16 @@ def build_call2_prompt(
 - core_task:
 - main_question:
 - learning_goals:
+- global_facts_for_this_chapter:
+  - 本章必须遵守的 NPC 身份、变量含义、世界观事实、结局约束或关键道具事实
+  - 本章禁止改动或新增的事实
+- entry_state_assumptions:
+  - 从前序章节承接的变量范围、已知信息、已激活 flag、NPC 初始态度
+- exit_state_contract:
+  - 本章结束时必须交付给后续章节的变量范围、flag、解锁节点、未解决线索
 - scene_brief: （本章主要场景、关键人物、需要呈现的氛围）
+- required_npcs:
+  - npc_id / 姓名 / 本章立场 / 本章目标 / 本章可能变化
 - info_nodes:
   - node_id:
   - 玩家获得的信息:
@@ -271,6 +280,7 @@ def build_call2_prompt(
 {second_decision_example}{additional_decision_note}- variables_in_focus: [本章重点关注的变量]
 - flag_design: [本章可能设置的 flag 及设计意图]
 - npc_state_plan: [本章关键 NPC 的态度、信任、焦虑或信息状态如何变化]
+- continuity_contract: [本章必须承接前章什么事实，并向后章交付什么事实]
 - production_notes: [本章前端、美术、音效或交互制作要点]
 
 ## 第 2 章：标题
@@ -307,42 +317,72 @@ def build_call2_prompt(
 # Call 3: 逐章生成 Markdown 剧本
 # ============================================================
 
-def _chapter_template_for_decision_count(
-    template: str,
-    decision_point_count: int,
+def _extract_outline_entry(outline_md: str, chapter_num: int) -> str:
+    pattern = rf'(## 第 {chapter_num} 章[^\n]*\n.*?)(?=\n## 第 {chapter_num + 1} 章|\n## Flag 全局规划|\n## 结局可达|\Z)'
+    match = re.search(pattern, outline_md, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    pattern2 = rf'(## 第{chapter_num}章[^\n]*\n.*?)(?=\n## 第{chapter_num + 1}章|\n## Flag 全局|\n## 结局可达|\Z)'
+    match2 = re.search(pattern2, outline_md, re.DOTALL)
+    return match2.group(1).strip() if match2 else ""
+
+
+def _chapter_writing_package_for_call3(
+    chapter_outline_md: str,
+    current_chapter_num: int,
+    current_chapter_outline_entry: str,
 ) -> str:
-    rendered = template.replace(
-        "- decision_point_count: N",
-        f"- decision_point_count: {decision_point_count}",
-        1,
-    ).replace(
-        "（本章包含生成请求指定数量的顺序决策点。",
-        f"（本章包含 {decision_point_count} 个顺序决策点。",
-        1,
-    )
-    if decision_point_count == 1:
-        rendered = re.sub(
-            r"\n### 决策点 2：.*?(?=\n## 分支结果)",
-            "\n",
-            rendered,
-            flags=re.DOTALL,
-        )
-        rendered = re.sub(
-            r"\n### 决策点 2 的结果.*?(?=\n## 章节结算)",
-            "\n",
-            rendered,
-            flags=re.DOTALL,
-        )
-    continuation = (
-        "（本章只有 1 个决策点，不再追加其他决策点。）"
-        if decision_point_count == 1
-        else f"（继续按相同结构写到决策点 {decision_point_count}，最后一个决策点的结果 next 指向 checkpoint。）"
-    )
-    return rendered.replace(
-        "（按生成请求指定的数量继续追加决策点。最后一个决策点的结果 next 指向 checkpoint。）",
-        continuation,
-        1,
-    )
+    package = current_chapter_outline_entry.strip()
+    if not package:
+        package = _extract_outline_entry(chapter_outline_md, current_chapter_num)
+    return package.strip() or f"## 第 {current_chapter_num} 章\n（章节写作包缺失，请基于前序状态补全。）"
+
+
+def _chapter_structure_contract(decision_point_count: int) -> str:
+    return f"""# 第X章：章节标题
+
+## chapter_info
+- chapter_id / title / day_range / decision_point_count: {decision_point_count} / entry_conditions
+
+## 背景情境
+写 300-500 字，包含明线压力、暗线线索、关键 NPC 动机、玩家当前约束。
+
+## 信息节点
+### 信息节点 1：标题
+- node_id / visible_if / content / reveals / related_npcs / unlocks:
+（按需要继续写信息节点。）
+
+## 决策点
+### 决策点 1：决策标题
+- decision_id: chXX_dp01
+- order: 1
+- situation:
+- visible_if:
+- options:
+  - option_id: A
+    label / action_cost / narrative:
+    effects: signed, social_stability, political_credit, public_trust, env_clue, media_pressure, budget, days_left 全部列出，无变化写 0
+    npc_state_changes: 覆盖 trust、attitude、anxiety、known_info 或 stance
+    flags_opened / flags_closed / unlocks / closes / next / feedback:
+  （每个决策点写 3-5 个选项；按相同结构写到决策点 {decision_point_count}；最后一个 next 指向 checkpoint。）
+
+## 分支结果
+### 决策点 1 的结果
+- A:
+  - immediate_result / delayed_result / npc_reactions / variable_logic:
+（继续写完所有决策点的结果。）
+
+## 章节结算
+- checkpoint_id / summary / variable_delta_summary / npc_state_summary / flags_opened / flags_closed / next_chapter:
+
+## 状态快照
+- variables / npc_states / open_flags / closed_flags / unresolved_threads:
+
+## 章节总结
+写清本章完成了什么、留下什么风险、如何牵引下一章。
+
+## 制作备注
+写 UI、场景背景图、音效、交互页面、需要人工确认的问题。"""
 
 def build_call3_prompt(
     game_settings_md: str,
@@ -361,23 +401,25 @@ def build_call3_prompt(
     """构建 Call 3（逐章生成）的 Prompt。
 
     Args:
-        game_settings_md: 全局设定全文
-        chapter_outline_md: 章节大纲全文
+        game_settings_md: 兼容旧签名，Call 3 不再直接发送完整全局设定
+        chapter_outline_md: 兼容旧签名，仅在当前章写作包缺失时用于抽取当前章
         current_chapter_num: 当前章节编号（1-based）
         total_chapters: 总章节数
-        current_chapter_outline_entry: 当前章在大纲中的条目
+        current_chapter_outline_entry: 当前章写作包
         state_snapshot_text: 前序状态快照的文本表示
         unlocked_nodes_text: 已解锁节点清单文本
         locked_nodes_text: 已关闭节点清单文本
-        chapter_template_md: 第 5 节的 Markdown 模板
-        few_shot_example_md: Few-shot 示例章节
+        chapter_template_md: 兼容旧签名，Call 3 使用内置结构契约
+        few_shot_example_md: 兼容旧签名，Call 3 不再发送 few-shot
         previous_chapters_summary: 前序章节摘要（用于控制上下文长度）
     """
 
-    chapter_template_md = _chapter_template_for_decision_count(
-        chapter_template_md,
-        decision_point_count,
+    chapter_writing_package = _chapter_writing_package_for_call3(
+        chapter_outline_md,
+        current_chapter_num,
+        current_chapter_outline_entry,
     )
+    structure_contract = _chapter_structure_contract(decision_point_count)
     is_first = current_chapter_num == 1
     is_last = current_chapter_num == total_chapters
 
@@ -405,33 +447,18 @@ def build_call3_prompt(
     prompt = f"""你是一位严肃游戏剧本作家。请生成第 {current_chapter_num} 章的剧本 Markdown 文本。
 
 核心原则：
-1. 严格遵循模板格式。模板中的每一个字段都必须填写；输出必须像可交付给制作团队的章节制作包，而不是松散小说。
-2. 本章必须设计恰好 {decision_point_count} 个顺序决策点，并将 chapter_info 的 decision_point_count 写为 {decision_point_count}。
-3. 决策点按 order=1, 2, ... 顺序执行；前一个决策的即时后果作为后一个决策的情境铺垫。
-4. 每个决策点必须提供 3-5 个选项。只写 A/B 两个选项视为结构失败，必须补足第三种策略路径。
-5. 如果冲突看似只有二元选择，第三个选项应是有真实代价的折中、程序化、延迟处理、试点验证、公开协商或第三方介入方案，而不是换一种说法重复 A/B。
-6. 每个选项必须有明确的变量影响（8 个变量全部列出，无变化写 0）、flag 变化、解锁/关闭节点。
-7. 每个选项必须写出 NPC 状态变化，至少覆盖受影响 NPC 的 trust、attitude、anxiety、known_info 或 stance 变化。
-8. 章内所有分支必须汇流到章节结算（最后一个决策点的结果 next 指向 checkpoint）。
-9. 在背景情境中使用 [若 flag]...[/若] 和 [若 变量>=N]...[/若] 反映不同到达状态。
-10. 叙事要有文学质感，但不能写成纯小说。背景情境控制在 300-500 字。
-11. 决策选项之间必须存在真实的伦理或策略张力——没有显然正确的选项。
-12. 每个选项的教学反馈必须从公共管理视角点明治理逻辑和代价。
-13. 变量变化必须有得有失——不存在所有变量同时上升的神选项。
-14. 不确定的地方做出合理假设，不要 request_clarification，并在「制作备注」标记仍需人工确认的问题。
-15. day_range 写"第X-Y天"时使用正序（X < Y），表示章节覆盖的游戏第X天到第Y天。
-    例如大纲写 Day 74 → Day 45（days_left 从74降到45），换算为正序：已过天数 = 90 - days_left。
-    ch02: 90-74=16, 90-45=45，所以 day_range 写"第16-45天"。
+1. 严格遵循模板，输出可交付给制作团队的章节制作包。
+2. 本章必须恰好 {decision_point_count} 个顺序决策点，chapter_info 中写 decision_point_count: {decision_point_count}。
+3. 每个决策点 3-5 个选项；每个选项必须写 signed, social_stability, political_credit, public_trust, env_clue, media_pressure, budget, days_left 的影响、NPC 状态变化、flag、解锁/关闭节点、next 和教学反馈。
+4. 决策点按 order 顺序承接，最后一个决策点的结果 next 指向 checkpoint。
+5. 背景情境控制在 300-500 字，必要时用 [若 flag]...[/若] 或 [若 变量>=N]...[/若] 表达条件状态。
+6. 选项之间要有真实治理张力；不存在所有变量同时上升的神选项。
+7. day_range 用正序“第X-Y天”（X < Y）。若大纲写 days_left 从74降到45，则写第16-45天。
+8. 不确定处自行合理假设，不要 request_clarification，并在「制作备注」标记人工确认项。
 {chapter_position_note}
 
-## 全局设定
-{game_settings_md}
-
-## 章节大纲
-{chapter_outline_md}
-
-## 当前章节大纲
-{current_chapter_outline_entry}
+## 当前章写作包
+{chapter_writing_package}
 
 {previous_context}
 ## 前序状态快照
@@ -446,10 +473,7 @@ def build_call3_prompt(
 {locked_nodes_text}
 
 ## Markdown 模板（必须严格遵循）
-{chapter_template_md}
-
-## Few-shot 示例（格式参考，题材不同请勿抄袭叙事内容）
-{few_shot_example_md}
+{structure_contract}
 
 注意：直接输出完整的 Markdown 文档。不要在末尾添加任何建议、下一步提示或向用户提问。"""
 
