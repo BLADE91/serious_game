@@ -1,7 +1,7 @@
-"""Use pa_backend ReAct agent as the script-generation backend.
+"""Use pa_backend General Agent as the script-generation backend.
 
-The ReAct agent supports os_search (with collection_ids) for classic literature,
-and w_baidu_search for real-world event retrieval.
+The General Agent supports knowledge-base scoped retrieval with collection_ids
+and optional web search.
 """
 
 from dataclasses import dataclass
@@ -28,13 +28,7 @@ class _PABackendAuth:
 
 
 class PABackendScriptClient:
-    """Minimal ChatClient-compatible adapter for pa_backend ReAct agent.
-
-    Uses the ReAct agent (/agent/os-search/react) which supports:
-    - os_search with collection_ids constraint → classic literature
-    - fetch_os_document_fulltext → read full documents from knowledge base
-    - w_baidu_search → real-world event search
-    """
+    """Minimal ChatClient-compatible adapter for pa_backend General Agent."""
 
     def __init__(
         self,
@@ -488,7 +482,7 @@ class PABackendScriptClient:
             }[event_name]
             return f"收到{count}条{label}" if count is not None else f"收到{label}"
         if event_name in {"done", "__end__"}:
-            return "AgentX 本轮结束"
+            return "General Agent 本轮结束"
         if event_name == "usage_refund":
             return "本轮费用已退回"
         if event_name == "suggested_questions":
@@ -528,7 +522,7 @@ class PABackendScriptClient:
             event_counts[event_name] = event_counts.get(event_name, 0) + 1
         if event_name == "clarification":
             raise PABackendClientError(
-                "ReAct Agent 意外触发追问（request_clarification），"
+                "General Agent 意外触发追问（request_clarification），"
                 "请检查 prompt 是否包含禁止追问的指令。"
             )
         if event_name == "error" and data_lines and errors is not None:

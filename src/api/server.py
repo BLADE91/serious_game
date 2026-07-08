@@ -19,9 +19,7 @@ from starlette.responses import FileResponse
 
 from src.config import load_dotenv
 from src.domain.script_design import ScriptGenerationRequest
-from src.generation.script_generator import QwenScriptGenerator
 from src.services.script_gen_service import ScriptGenService
-from src.services.script_validator import ScriptValidationError
 
 
 # ---- 任务追踪 ----
@@ -90,36 +88,10 @@ class GenerateRequest(BaseModel):
     character_settings: str = Field(default="", description="人物设定")
     story_background: str = Field(default="", description="故事背景")
     feedback: str = Field(default="")
-    full_draft: bool = Field(default=True)
     chapter_count: int = Field(default=6, ge=1, description="章节数量（章节式管线使用）")
     ending_count: int = Field(default=4, ge=1, description="结局数量（章节式管线使用）")
     decision_point_count: int = Field(default=3, ge=1, description="每章决策点数量（章节式管线使用）")
     resume_version: str = Field(default="", description="要续跑的未完成版本，如 v02")
-
-
-class ReviseRequest(BaseModel):
-    previous_result: dict[str, Any] = Field(
-        ..., description="上一轮的完整生成结果 JSON",
-    )
-    feedback: str = Field(
-        ..., min_length=1, description="人工反馈",
-    )
-    query: str = Field(
-        default="", description="原始 query（为空则从 previous_result 提取）",
-    )
-
-
-class ReviseElementRequest(BaseModel):
-    element_type: str = Field(..., description="decision_point | npc | relationship | option | ending | act")
-    element_id: str = Field(default="")
-    current_element: dict[str, Any] = Field(..., description="当前元素完整 JSON")
-    feedback: str = Field(..., min_length=1)
-    context: dict[str, Any] = Field(default_factory=dict, description="相关上下文（NPC摘要、关系摘要等）")
-
-
-class SaveManualRequest(BaseModel):
-    result: dict[str, Any] = Field(..., description="完整的 lastResult 对象")
-    source: str = Field(default="manual", description="manual | ai_element | ai_full")
 
 
 class ChapterRevisionPreviewRequest(BaseModel):
@@ -359,52 +331,6 @@ def _reserve_generation_number(outputs_dir: Path | None = None) -> int:
     return gen
 
 
-def _next_version(prefix: str) -> tuple[str, int, int]:
-    """获取下一个版本号，返回 (文件名, gen, rev)。"""
-    with _VERSION_LOCK:
-        counter = _load_counter()
-        if prefix == "script_generate":
-            gen = max(
-                int(counter.get("gen", 0)),
-                _max_existing_generation(),
-            ) + 1
-            rev = 0
-        else:
-            gen = max(
-                int(counter.get("gen", 0)),
-                _max_existing_generation(),
-                1,
-            )
-            rev = int(counter.get("rev", 0)) + 1
-        counter["gen"] = gen
-        counter["rev"] = rev
-        _save_counter(counter)
-    return f"v{gen:02d}-{rev:02d}_{prefix}", gen, rev
-
-
-def _save_script_draft(script_dict: dict, prefix: str = "script_revision", full_md: str = "") -> str:
-    """将剧本保存到 outputs/script_drafts/v{gen}/，返回文件名。
-
-    Args:
-        script_dict: 包含 script / contexts_used 等的完整结果字典
-        prefix: 版本前缀
-        full_md: MD 原文（可选，写入 saved JSON 的顶层字段）
-    """
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base, gen, rev = _next_version(prefix)
-    version_dir = OUTPUTS_DIR / f"v{gen:02d}"
-    version_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{base}_{ts}.json"
-    filepath = version_dir / filename
-    # 剔除前端传入的 filename 元数据，避免下次加载时覆盖真实文件名
-    clean = {k: v for k, v in script_dict.items() if k != "filename"}
-    if full_md:
-        clean["full_md"] = full_md
-    payload = json.dumps(clean, ensure_ascii=False, indent=2)
-    filepath.write_text(payload, encoding="utf-8")
-    return f"v{gen:02d}/{filename}"
-
-
 def _reserve_generation_version_dir() -> tuple[Path, int, int]:
     """Reserve a new generation version directory, matching CLI --chapter behavior."""
     gen = _reserve_generation_number()
@@ -468,7 +394,6 @@ def create_app() -> FastAPI:
             character_settings=request_values["character_settings"],
             story_background=request_values["story_background"],
             feedback=request_values["feedback"],
-            full_draft=True,
             chapter_count=request_values["chapter_count"],
             ending_count=request_values["ending_count"],
             decision_point_count=request_values["decision_point_count"],
@@ -822,110 +747,6 @@ def create_app() -> FastAPI:
             },
         )
 
-    # ---------- 旧结构修订（兼容历史三幕式版本） ----------
-
-    @app.post("/api/revise")
-    async def revise(req: ReviseRequest):
-        """提交修订请求，返回 SSE 流：progress → result。"""
-        task_id = _create_task()
-
-        async def event_stream() -> AsyncGenerator[str, None]:
-            loop = asyncio.get_running_loop()
-            queue: asyncio.Queue[dict] = asyncio.Queue()
-
-            def run_revision() -> None:
-                try:
-                    if _is_cancelled(task_id):
-                        return
-                    previous = req.previous_result
-                    original_query = req.query.strip() or previous.get("original_query", "")
-                    if not original_query:
-                        loop.call_soon_threadsafe(queue.put_nowait, {
-                            "type": "error", "message": "无法确定原始 query",
-                        })
-                        return
-
-                    contexts_raw = previous.get("contexts_used", [])
-                    from src.domain.source_context import SourceContext
-                    contexts = [
-                        SourceContext(
-                            id=c["id"], title=c["title"],
-                            content=c.get("content", ""),
-                            metadata=c.get("metadata", {}),
-                        )
-                        for c in contexts_raw
-                        if isinstance(c, dict) and c.get("id")
-                    ]
-
-                    from src.config import load_dotenv
-                    import os
-                    load_dotenv(override=False)
-                    cancel_evt = _task_event(task_id)
-                    generator = QwenScriptGenerator(cancel_event=cancel_evt)
-                    entry = _active_tasks.get(task_id)
-                    if entry is not None:
-                        entry["service"] = generator
-
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "progress", "stage": 1, "total": 1,
-                        "name": "正在根据反馈修订剧本", "request_bytes": 0,
-                    })
-
-                    revised = generator.revise_structured(
-                        original_query, previous, contexts, req.feedback,
-                    )
-                    script_dict = serialize_script(revised)
-                    result_payload = {
-                        "script": script_dict,
-                        "contexts_used": previous.get("contexts_used", []),
-                        "rewritten_queries": previous.get("rewritten_queries", []),
-                        "generation_notes": [f"根据人工反馈修订：{req.feedback[:100]}"],
-                        "original_query": original_query,
-                        "generation_mode": "revision",
-                    }
-                    saved_name = _save_script_draft(result_payload, prefix="script_revise")
-                    result_payload["saved_as"] = saved_name
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "result",
-                        **result_payload,
-                    })
-                except ScriptValidationError as exc:
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "error", "message": f"修订后剧本校验失败：{exc.issues}", "issues": exc.issues,
-                    })
-                except Exception as exc:
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "error", "message": f"修订失败：{exc}", "detail": traceback.format_exc(),
-                    })
-
-            import threading
-            thread = threading.Thread(target=run_revision, daemon=True)
-            thread.start()
-
-            try:
-                while True:
-                    event_data = await queue.get()
-                    event_type = event_data.pop("type")
-                    yield await sse_event(event_type, event_data)
-                    if event_type in ("result", "error", "cancelled"):
-                        break
-            except asyncio.CancelledError:
-                _cancel_task(task_id)
-                yield await sse_event("cancelled", {"message": "客户端断开连接"})
-            finally:
-                _cleanup_task(task_id)
-                thread.join(timeout=5)
-
-        return StreamingResponse(
-            event_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
-
     # ---------- 版本管理 ----------
 
     @app.get("/api/source-versions")
@@ -1007,7 +828,7 @@ def create_app() -> FastAPI:
                 # 从 JSON 读取 revision_round 和 generation_mode
                 rev_num = data.get("revision_round", 0) if isinstance(data, dict) else 0
                 mode = data.get("generation_mode", "") if isinstance(data, dict) else ""
-                mode_labels = {"chapter": "章节式", "full": "三幕式·完整", "compact": "三幕式·紧凑"}
+                mode_labels = {"chapter": "章节式"}
                 mode_tag = mode_labels.get(mode, "")
                 label = f"V{gen_num:02d}-{rev_num:02d}"
                 if mode_tag:
@@ -1051,43 +872,9 @@ def create_app() -> FastAPI:
         if "script" not in data:
             data = {"script": data, "contexts_used": [], "rewritten_queries": [],
                     "generation_notes": ["从文件加载"], "original_query": "",
-                    "generation_mode": "full"}
+                    "generation_mode": "chapter"}
         data.pop("filename", None)  # 防御：避免 JSON 内嵌的旧 filename 覆盖
         return {"filename": filename, **data}
-
-    # ---------- 局部元素修订 ----------
-
-    @app.post("/api/revise-element")
-    async def revise_element(req: ReviseElementRequest):
-        """局部 AI 修订：只发目标元素 + 上下文，返回修改后的元素 JSON。"""
-        from src.config import load_dotenv
-        load_dotenv(override=False)
-        cancel_evt = _task_event("")  # 短任务不需要取消
-        generator = QwenScriptGenerator(cancel_event=cancel_evt)
-        try:
-            revised = generator.revise_element(
-                element_type=req.element_type,
-                element_id=req.element_id,
-                current_element=req.current_element,
-                context=req.context,
-                feedback=req.feedback,
-            )
-            return {"element": revised}
-        except Exception as exc:
-            raise HTTPException(500, f"局部修订失败：{exc}")
-
-    # ---------- 手动保存 ----------
-
-    @app.post("/api/save-manual")
-    async def save_manual(req: SaveManualRequest):
-        """保存结果到服务端，source 区分来源。"""
-        prefix_map = {"manual": "script_manual", "ai_element": "script_ai_element", "ai_full": "script_ai_full"}
-        prefix = prefix_map.get(req.source, "script_manual")
-        try:
-            saved_name = _save_script_draft(req.result, prefix=prefix)
-            return {"saved_as": saved_name, "ok": True, "source": req.source}
-        except Exception as exc:
-            raise HTTPException(500, f"保存失败：{exc}")
 
     # ---------- 加载已有结果 ----------
 
@@ -1119,7 +906,7 @@ def create_app() -> FastAPI:
         if "script" not in data or data.get("script") is None:
             data = {"script": data, "contexts_used": [], "rewritten_queries": [],
                     "generation_notes": ["从文件加载"], "original_query": "",
-                    "generation_mode": "full"}
+                    "generation_mode": "chapter"}
         data.pop("filename", None)  # 防御：避免 JSON 内嵌的旧 filename 覆盖
         # 返回相对路径（含版本子目录）
         rel_path = _relative_output_ref(latest, outputs_dir)

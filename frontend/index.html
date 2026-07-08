@@ -136,44 +136,6 @@ body.modal-open { overflow: hidden; }
 .badge-neutral { background: #f39c1222; color: #d68910; }
 .badge-bad { background: #e74c3c22; color: #c0392b; }
 
-.inline-edit-btn { float: right; padding: 2px 8px; font-size: 11px; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; font-family: inherit; transition: all .2s; }
-.inline-edit-btn:hover { color: var(--accent); border-color: var(--accent-light); background: #fff; }
-.inline-edit-btn-sm { float: right; padding: 0px 6px; font-size: 10px; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; font-family: inherit; transition: all .2s; }
-.inline-edit-btn-sm:hover { color: var(--accent); border-color: var(--accent-light); background: #fff; }
-
-.inline-edit-panel { margin: 8px 0 12px; padding: 16px; background: #fdfaf5; border: 1px solid var(--accent-light); border-radius: var(--radius); }
-.inline-edit-panel h4 { font-size: 13px; color: var(--accent); margin-bottom: 12px; }
-.edit-field-row { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.edit-field-row label { font-size: 12px; color: var(--text-muted); min-width: 60px; margin-bottom: 0; }
-.edit-field-row input, .edit-field-row textarea, .edit-field-row select { flex: 1; padding: 6px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; color: var(--text); font-family: inherit; }
-.edit-field-row textarea { min-height: 48px; resize: vertical; }
-.edit-field-row input[type=number] { max-width: 100px; flex: 0 0 auto; }
-.edit-field-row input:focus, .edit-field-row textarea:focus, .edit-field-row select:focus { outline: none; border-color: var(--accent); }
-.edit-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-.edit-actions .btn { font-size: 12px; padding: 6px 14px; }
-.ai-feedback-row { margin-top: 8px; display: flex; gap: 6px; align-items: center; }
-.ai-feedback-row input { flex: 1; font-size: 12px; padding: 6px 8px; }
-
-
-/* 分叉树 */
-.tree-container { position: relative; width: 100%; height: 550px; border: 1px solid var(--border); border-radius: var(--radius); background: #fdfaf7; overflow: hidden; cursor: grab; user-select: none; }
-.tree-container:active { cursor: grabbing; }
-.tree-container svg { display: block; }
-.tree-node { cursor: pointer; transition: stroke .2s; }
-.tree-node:hover { stroke-width: 3px; }
-.tree-node.critical { stroke: var(--danger); stroke-width: 2.5px; }
-.tree-link { stroke: var(--accent-light); fill: none; stroke-width: 1.5px; }
-.tree-link.option { stroke: var(--text-muted); stroke-dasharray: 6 3; stroke-width: 1px; }
-.tree-ending.good .tree-node-bg { fill: #27ae6022; stroke: var(--success); }
-.tree-ending.bad .tree-node-bg { fill: #e74c3c22; stroke: var(--danger); }
-.tree-ending.neutral .tree-node-bg { fill: #f39c1222; stroke: #d68910; }
-.tree-label { font-size: 12px; fill: var(--text); pointer-events: none; }
-.tree-label-sm { font-size: 10px; fill: var(--text-muted); pointer-events: none; }
-.tree-tooltip { position: absolute; padding: 8px 12px; background: var(--card); border: 1px solid var(--accent-light); border-radius: var(--radius); box-shadow: var(--shadow); font-size: 12px; max-width: 300px; pointer-events: none; z-index: 100; display: none; }
-.tree-legend { display: flex; gap: 16px; padding: 8px 0; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
-.tree-legend span { display: flex; align-items: center; gap: 4px; }
-.tree-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
-
 @media (max-width: 640px) {
   .container { padding: 12px 8px; }
   .card { padding: 16px 12px; }
@@ -353,14 +315,6 @@ body.modal-open { overflow: hidden; }
     </div>
   </div>
 
-  <!-- 历史三幕式反馈修订 -->
-  <div id="legacyRevisionControls" style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
-    <label for="feedback">💬 反馈修订</label>
-    <div class="feedback-area">
-      <input id="feedback" placeholder="如：NPC关系网太简单，希望增加更多矛盾冲突">
-      <button class="btn btn-secondary btn-sm" id="reviseBtn" onclick="startRevision()">✏️ 修订</button>
-    </div>
-  </div>
 </div>
 
 <!-- 错误区 -->
@@ -429,8 +383,8 @@ async function* readSSE(response) {
 }
 
 // ===== UI 控制 =====
-function show(id) { document.getElementById(id).classList.remove('hidden'); }
-function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
 function setProgress(stage, total, name) {
   show('progress-card');
   const pct = Math.round((stage / total) * 100);
@@ -662,7 +616,6 @@ async function loadLatestResult() {
     renderResult(data);
     show('result-card');
     updateVersionLabel(data.filename || data.saved_as || '', data.revision_status);
-    document.getElementById('feedback').value = '';
     // 滚动到结果区
     document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
@@ -680,7 +633,6 @@ function getRevisionBaseVersion() {
 
 function configureChapterRevision(chapters) {
   show('chapterRevisionControls');
-  hide('legacyRevisionControls');
   clearRevisionPreview();
   loadRevisionSources();
 }
@@ -1162,236 +1114,6 @@ function applyChapterRevision() {
   clearRevisionPreview();
 }
 
-// ===== 行内手动编辑 =====
-let activeEditPanel = null;
-
-function getElementFields(elementType, elementId) {
-  // 从 lastResult.script 中查找元素，返回可编辑字段列表
-  const s = lastResult?.script;
-  if (!s) return [];
-
-  switch (elementType) {
-    case 'NPC': {
-      const npc = (s.npc_seed||[]).find(n => n.npc_id === elementId);
-      if (!npc) return [];
-      return [
-        {key:'name', label:'姓名', value:npc.name},
-        {key:'npc_type', label:'类型', value:npc.npc_type, type:'select', options:['cadre','external','villager']},
-        {key:'group', label:'所属群体', value:npc.group},
-        {key:'trust_to_player', label:'信任度', value:npc.trust_to_player, type:'number'},
-        {key:'attitude_score', label:'态度值', value:npc.attitude_score, type:'number'},
-        {key:'anxiety_level', label:'焦虑值', value:npc.anxiety_level, type:'number'},
-      ];
-    }
-    case '关系': {
-      const parts = elementId.split('|');
-      const idx = parseInt(parts[2]);
-      const rel = (s.npc_relationships||[])[idx];
-      if (!rel) return [];
-      return [
-        {key:'relation_type', label:'关系类型', value:rel.relation_type, type:'select', options:['亲属','上下级','利益同盟','矛盾对立','信息渠道','情感纽带']},
-        {key:'strength', label:'强度', value:rel.strength, type:'number'},
-        {key:'description', label:'描述', value:rel.description, type:'textarea'},
-      ];
-    }
-    case '选项': {
-      const [dpId, optId] = elementId.split('|');
-      const dp = (s.decision_points||[]).find(d => d.decision_id === dpId);
-      if (!dp) return [];
-      const opt = (dp.options||[]).find(o => o.option_id === optId);
-      if (!opt) return [];
-      return [
-        {key:'label', label:'标签', value:opt.label},
-        {key:'description', label:'描述', value:opt.description, type:'textarea'},
-        {key:'cost_action_points', label:'AP消耗', value:opt.cost_action_points, type:'number'},
-        {key:'budget_cost', label:'预算消耗', value:opt.budget_cost, type:'number'},
-        {key:'risks', label:'风险（一行一个）', value:(opt.risks||[]).join('\n'), type:'textarea'},
-      ];
-    }
-    case '决策点': {
-      const dp = (s.decision_points||[]).find(d => d.decision_id === elementId);
-      if (!dp) return [];
-      return [
-        {key:'title', label:'标题', value:dp.title},
-        {key:'day_window', label:'时间窗口', value:dp.day_window},
-        {key:'situation', label:'情境描述', value:dp.situation, type:'textarea'},
-        {key:'is_critical', label:'关键决策', value:dp.is_critical?'true':'false', type:'select', options:['false','true']},
-      ];
-    }
-    case '结局': {
-      const ending = (s.endings||[]).find(e => e.ending_id === elementId);
-      if (!ending) return [];
-      return [
-        {key:'title', label:'标题', value:ending.title},
-        {key:'ending_type', label:'类型', value:ending.ending_type, type:'select', options:['good','neutral','bad']},
-        {key:'description', label:'描述', value:ending.description, type:'textarea'},
-        {key:'conditions', label:'条件（一行一个）', value:(ending.conditions||[]).join('\n'), type:'textarea'},
-      ];
-    }
-    case '第1幕': case '第2幕': case '第3幕': {
-      const actNum = elementType === '第1幕' ? 1 : elementType === '第2幕' ? 2 : 3;
-      const act = (s.acts||[]).find(a => a.act_number === actNum);
-      if (!act) return [];
-      return [
-        {key:'title', label:'标题', value:act.title},
-        {key:'day_range', label:'时间窗口', value:act.day_range},
-        {key:'goal', label:'目标', value:act.goal, type:'textarea'},
-        {key:'description', label:'描述', value:act.description, type:'textarea'},
-      ];
-    }
-  }
-  return [];
-}
-
-function openManualEdit(targetEl, elementType, elementId, elementTitle) {
-  closeManualEdit();
-
-  const fields = getElementFields(elementType, elementId);
-  if (!fields.length) { showError('找不到可编辑的字段'); return; }
-
-  const panel = document.createElement('div');
-  panel.className = 'inline-edit-panel';
-  panel.id = 'inlineEditPanel';
-  panel.dataset.elementType = elementType;
-  panel.dataset.elementId = elementId;
-  panel.dataset.elementTitle = elementTitle;
-
-  let fieldsHtml = `<h4>✏️ 编辑：${elementType} ${elementId ? esc(elementId.split('|')[0] || elementId) : ''}「${esc(elementTitle)}」</h4>`;
-  for (const f of fields) {
-    if (f.type === 'textarea') {
-      fieldsHtml += `<div class="edit-field-row"><label>${esc(f.label)}</label><textarea data-key="${esc(f.key)}">${esc(String(f.value))}</textarea></div>`;
-    } else if (f.type === 'number') {
-      fieldsHtml += `<div class="edit-field-row"><label>${esc(f.label)}</label><input type="number" data-key="${esc(f.key)}" value="${esc(String(f.value))}"></div>`;
-    } else if (f.type === 'select') {
-      fieldsHtml += `<div class="edit-field-row"><label>${esc(f.label)}</label><select data-key="${esc(f.key)}">${(f.options||[]).map(o => `<option value="${esc(o)}" ${o===f.value?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
-    } else {
-      fieldsHtml += `<div class="edit-field-row"><label>${esc(f.label)}</label><input type="text" data-key="${esc(f.key)}" value="${esc(String(f.value))}"></div>`;
-    }
-  }
-
-  panel.innerHTML = fieldsHtml + `
-    <div class="edit-actions">
-      <button class="btn btn-primary" onclick="saveLocalEdit(this)" style="flex:1;">💾 本地保存</button>
-      <button class="btn btn-secondary" onclick="closeManualEdit()">↩ 取消</button>
-    </div>
-    <div class="ai-feedback-row">
-      <input id="aiFeedbackInput" placeholder="或用 AI 修订：输入修改意见...">
-      <button class="btn btn-secondary" onclick="submitAIRevision(this)">🤖 AI 修订</button>
-    </div>
-  `;
-
-  targetEl.parentNode.insertBefore(panel, targetEl.nextSibling);
-  activeEditPanel = panel;
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function closeManualEdit() {
-  if (activeEditPanel) {
-    activeEditPanel.remove();
-    activeEditPanel = null;
-  }
-}
-
-function saveLocalEdit(btn) {
-  const panel = btn.closest('.inline-edit-panel');
-  if (!panel) return;
-
-  const elementType = panel.dataset.elementType;
-  const elementId = panel.dataset.elementId;
-  const s = lastResult.script;
-
-  // 收集所有字段值
-  const values = {};
-  panel.querySelectorAll('[data-key]').forEach(el => {
-    values[el.dataset.key] = el.value;
-  });
-
-  // 根据类型定位并修改
-  try {
-    switch (elementType) {
-      case 'NPC': {
-        const npc = (s.npc_seed||[]).find(n => n.npc_id === elementId);
-        if (!npc) throw new Error('NPC not found');
-        if (values.name) npc.name = values.name;
-        if (values.npc_type) npc.npc_type = values.npc_type;
-        if (values.group) npc.group = values.group;
-        if (values.trust_to_player) npc.trust_to_player = parseInt(values.trust_to_player) || 0;
-        if (values.attitude_score) npc.attitude_score = parseInt(values.attitude_score) || 0;
-        if (values.anxiety_level) npc.anxiety_level = parseInt(values.anxiety_level) || 0;
-        break;
-      }
-      case '关系': {
-        // elementId 格式: "from_npc_id|to_npc_id|index"
-        const parts = elementId.split('|');
-        const idx = parseInt(parts[2]);
-        const rel = (s.npc_relationships||[])[idx];
-        if (!rel) throw new Error('关系 not found');
-        if (values.relation_type) rel.relation_type = values.relation_type;
-        if (values.strength) rel.strength = parseInt(values.strength) || 50;
-        if (values.description !== undefined) rel.description = values.description;
-        break;
-      }
-      case '选项': {
-        // elementId 格式: "decision_id|option_id"
-        const [dpId, optId] = elementId.split('|');
-        const dp = (s.decision_points||[]).find(d => d.decision_id === dpId);
-        if (!dp) throw new Error('决策点 not found');
-        const opt = (dp.options||[]).find(o => o.option_id === optId);
-        if (!opt) throw new Error('选项 not found');
-        if (values.label) opt.label = values.label;
-        if (values.description !== undefined) opt.description = values.description;
-        if (values.cost_action_points) opt.cost_action_points = parseInt(values.cost_action_points) || 0;
-        if (values.budget_cost) opt.budget_cost = parseInt(values.budget_cost) || 0;
-        if (values.risks !== undefined) opt.risks = values.risks.split('\n').map(s=>s.trim()).filter(Boolean);
-        break;
-      }
-      case '决策点': {
-        const dp = (s.decision_points||[]).find(d => d.decision_id === elementId);
-        if (!dp) throw new Error('决策点 not found');
-        if (values.title) dp.title = values.title;
-        if (values.day_window) dp.day_window = values.day_window;
-        if (values.situation !== undefined) dp.situation = values.situation;
-        if (values.is_critical !== undefined) dp.is_critical = values.is_critical === 'true';
-        break;
-      }
-      case '结局': {
-        const ending = (s.endings||[]).find(e => e.ending_id === elementId);
-        if (!ending) throw new Error('结局 not found');
-        if (values.title) ending.title = values.title;
-        if (values.description !== undefined) ending.description = values.description;
-        if (values.ending_type) ending.ending_type = values.ending_type;
-        if (values.conditions !== undefined) ending.conditions = values.conditions.split('\n').map(s=>s.trim()).filter(Boolean);
-        break;
-      }
-      case '第1幕': case '第2幕': case '第3幕': {
-        const actNum = elementType === '第1幕' ? 1 : elementType === '第2幕' ? 2 : 3;
-        const act = (s.acts||[]).find(a => a.act_number === actNum);
-        if (!act) throw new Error('幕 not found');
-        if (values.title) act.title = values.title;
-        if (values.day_range) act.day_range = values.day_range;
-        if (values.goal !== undefined) act.goal = values.goal;
-        if (values.description !== undefined) act.description = values.description;
-        break;
-      }
-    }
-  } catch (err) {
-    showError('本地保存失败：' + err.message);
-    return;
-  }
-
-  closeManualEdit();
-  renderResult(lastResult);
-  show('result-card');
-  // 异步保存到服务端
-  fetch('/api/save-manual', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ result: lastResult, source: 'manual' }),
-  }).then(r => r.json()).then(data => {
-    if (data.saved_as) updateVersionLabel(data.saved_as);
-  }).catch(() => {});
-}
-
 
 function downloadResult() {
   if (!lastResult) return;
@@ -1408,7 +1130,7 @@ function updateVersionLabel(filename, revisionStatus = '') {
   const el = document.getElementById('currentVersionLabel');
   if (!el) return;
   if (!filename) { el.style.display = 'none'; return; }
-  const sourceLabel = { script_generate:'初始生成', script_revise:'全局修订', script_ai_element:'局部AI', script_manual:'手动修改' };
+  const sourceLabel = { script_generate:'初始生成', script_revise:'源文件修订' };
   // 格式: v06/script_generate_*.json 或 v06/revisions/r01/script_revise_*.json
   const match = filename.match(/^(v\d{2})(?:\/revisions\/(r\d{2}))?\/(script_[a-z_]+?)_\d/);
   if (match) {
@@ -1444,8 +1166,7 @@ async function toggleVersions() {
       return;
     }
     const sourceLabel = {
-      'script_generate': '初始生成', 'script_revise': '全局修订',
-      'script_ai_element': '局部AI', 'script_manual': '手动修改',
+      'script_generate': '初始生成', 'script_revise': '源文件修订',
     };
     document.getElementById('versionsList').innerHTML = versions.map(v => {
       const pref = v.prefix || '';
@@ -1511,161 +1232,6 @@ async function loadVersion(filename) {
   }
 }
 
-async function submitAIRevision(btn) {
-  const panel = btn.closest('.inline-edit-panel');
-  if (!panel) return;
-  const input = panel.querySelector('#aiFeedbackInput');
-  const feedback = (input?.value || '').trim();
-  if (!feedback) { showError('请输入修改意见'); return; }
-
-  const elementType = panel.dataset.elementType;
-  const elementId = panel.dataset.elementId;
-  const elementTitle = panel.dataset.elementTitle;
-
-  // 获取当前元素数据
-  const fields = getElementFields(elementType, elementId);
-  if (!fields.length) { showError('找不到元素数据'); return; }
-  const currentElement = {};
-  fields.forEach(f => { currentElement[f.key] = f.value; });
-
-  // 构建最小上下文
-  const s = lastResult.script;
-  const context = {
-    script_title: s.title || '',
-    script_premise: s.premise || '',
-    npc_summary: (s.npc_seed||[]).map(n => ({npc_id:n.npc_id, name:n.name, npc_type:n.npc_type, group:n.group})),
-  };
-
-  closeManualEdit();
-  show('progress-card');
-  document.getElementById('progressBar').style.width = '30%';
-  document.getElementById('progressText').textContent = `正在修订：${elementType}「${elementTitle}」...`;
-
-  try {
-    const resp = await fetch('/api/revise-element', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ element_type: elementType, element_id: elementId, current_element: currentElement, feedback, context }),
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || '局部修订失败 ' + resp.status);
-    }
-
-    const { element: revised } = await resp.json();
-    if (!revised) throw new Error('返回的元素为空');
-
-    // 局部 merge 到 lastResult
-    mergeRevisedElement(elementType, elementId, revised);
-
-    hide('progress-card');
-    closeManualEdit();
-    renderResult(lastResult);
-    show('result-card');
-    // 异步保存合并后的完整结果到服务端（版本管理）
-    fetch('/api/save-manual', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ result: lastResult, source: 'ai_element' }),
-    }).then(r => r.json()).then(data => {
-      if (data.saved_as) updateVersionLabel(data.saved_as);
-    }).catch(() => {});
-  } catch (err) {
-    hide('progress-card');
-    showError(err.message);
-  }
-}
-
-function mergeRevisedElement(elementType, elementId, revised) {
-  const s = lastResult.script;
-  switch (elementType) {
-    case 'NPC': {
-      const idx = (s.npc_seed||[]).findIndex(n => n.npc_id === elementId);
-      if (idx >= 0) s.npc_seed[idx] = { ...s.npc_seed[idx], ...revised };
-      break;
-    }
-    case '关系': {
-      const parts = elementId.split('|');
-      const idx = parseInt(parts[2]);
-      if (idx >= 0 && idx < (s.npc_relationships||[]).length) {
-        s.npc_relationships[idx] = { ...s.npc_relationships[idx], ...revised };
-      }
-      break;
-    }
-    case '选项': {
-      const [dpId, optId] = elementId.split('|');
-      const dp = (s.decision_points||[]).find(d => d.decision_id === dpId);
-      if (dp) {
-        const oi = (dp.options||[]).findIndex(o => o.option_id === optId);
-        if (oi >= 0) dp.options[oi] = { ...dp.options[oi], ...revised };
-      }
-      break;
-    }
-    case '决策点': {
-      const idx = (s.decision_points||[]).findIndex(d => d.decision_id === elementId);
-      if (idx >= 0) s.decision_points[idx] = { ...s.decision_points[idx], ...revised };
-      break;
-    }
-    case '结局': {
-      const idx = (s.endings||[]).findIndex(e => e.ending_id === elementId);
-      if (idx >= 0) s.endings[idx] = { ...s.endings[idx], ...revised };
-      break;
-    }
-    case '第1幕': case '第2幕': case '第3幕': {
-      const actNum = elementType === '第1幕' ? 1 : elementType === '第2幕' ? 2 : 3;
-      const idx = (s.acts||[]).findIndex(a => a.act_number === actNum);
-      if (idx >= 0) s.acts[idx] = { ...s.acts[idx], ...revised };
-      break;
-    }
-  }
-}
-
-async function startRevisionWithTarget(feedback) {
-  if (!feedback) return;
-  if (!lastResult) { showError('没有可修订的结果'); return; }
-
-  hide('error-card');
-  show('progress-card');
-  document.getElementById('progressBar').style.width = '50%';
-  document.getElementById('progressText').textContent = '正在根据反馈修订剧本...';
-
-  activeAbortController = new AbortController();
-
-  try {
-    const resp = await fetch('/api/revise', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ previous_result: lastResult, feedback: feedback }),
-      signal: activeAbortController.signal,
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || '修订失败 ' + resp.status);
-    }
-
-    for await (const { event, data } of readSSE(resp)) {
-      if (event === 'result') {
-        lastResult = data;
-        renderResult(data);
-        hide('progress-card');
-        show('result-card');
-        updateVersionLabel(data.saved_as || '');
-        document.getElementById('feedback').value = '';
-      } else if (event === 'error') {
-        showError(data.message);
-      }
-    }
-  } catch (err) {
-    if (err.name !== 'AbortError') {
-      showError(err.message);
-    }
-  } finally {
-    activeAbortController = null;
-  }
-}
-
 // ===== 生成 =====
 async function startGeneration(resumeVersion = '') {
   const scenario = document.getElementById('scenario').value.trim();
@@ -1727,7 +1293,6 @@ async function startGeneration(resumeVersion = '') {
         hide('progress-card');
         show('result-card');
         updateVersionLabel(data.saved_as || '');
-        document.getElementById('feedback').value = '';
       } else if (event === 'error') {
         showError(data.message);
       } else if (event === 'cancelled') {
@@ -1744,57 +1309,6 @@ async function startGeneration(resumeVersion = '') {
     setButtonLoading(btn, false);
     activeAbortController = null;
     activeTaskId = null;
-  }
-}
-
-// ===== 修订 =====
-async function startRevision() {
-  const feedback = document.getElementById('feedback').value.trim();
-  if (!feedback) { showError('请输入反馈内容'); return; }
-  if (!lastResult) { showError('没有可修订的结果'); return; }
-
-  hide('error-card');
-  resetProgressLog();
-  show('progress-card');
-  document.getElementById('progressBar').style.width = '50%';
-  document.getElementById('progressText').textContent = '正在根据反馈修订剧本...';
-
-  activeAbortController = new AbortController();
-
-  try {
-    const resp = await fetch('/api/revise', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ previous_result: lastResult, feedback: feedback }),
-      signal: activeAbortController.signal,
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || '修订失败 ' + resp.status);
-    }
-
-    for await (const { event, data } of readSSE(resp)) {
-      if (event === 'result') {
-        lastResult = data;
-        if (data.full_md) {
-          lastFullMD = normalizeFullMD(data.full_md);
-                            }
-        renderResult(data);
-        hide('progress-card');
-        show('result-card');
-        updateVersionLabel(data.saved_as || '');
-        document.getElementById('feedback').value = '';
-      } else if (event === 'error') {
-        showError(data.message);
-      }
-    }
-  } catch (err) {
-    if (err.name !== 'AbortError') {
-      showError(err.message);
-    }
-  } finally {
-    activeAbortController = null;
   }
 }
 
@@ -1986,14 +1500,11 @@ function renderChapterResult(data) {
 function renderResult(data) {
   const s = data.script;
 
-  // Handle null script (MD-only result)
-  if (!s) {
+  if (!s || !(s.chapters && s.chapters.length)) {
     hide('chapterRevisionControls');
-    show('legacyRevisionControls');
-    document.getElementById('panel-overview').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">该历史文件只有剧本原文，没有结构化章节数据。</p>';
+    document.getElementById('panel-overview').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">该文件不是当前章节式剧本结构，只保留只读原文预览。</p>';
     document.getElementById('panel-npcs').innerHTML = '';
     document.getElementById('panel-tree').innerHTML = '';
-    // Show MD in mdtext panel with markdown
     const md = normalizeFullMD(data.full_md) || lastFullMD || '';
     if (md) {
       document.getElementById('panel-mdtext').innerHTML = `
@@ -2011,98 +1522,7 @@ function renderResult(data) {
     return;
   }
 
-  // 章节式剧本：使用独立的渲染路径
-  if (s.chapters && s.chapters.length) {
-    renderChapterResult(data);
-    return;
-  }
-
-  hide('chapterRevisionControls');
-  show('legacyRevisionControls');
-
-  const state = s.initial_game_state;
-  const typeLabels = { cadre: '干部', external: '外部', villager: '村民' };
-  const nameMap = {};
-  (s.npc_seed || []).forEach(n => { nameMap[n.npc_id] = n.name; });
-
-  // 概览面板
-  document.getElementById('panel-overview').innerHTML = `
-    <p><strong>标题：</strong>${esc(s.title)}</p>
-    <p><strong>设定：</strong>${esc(s.premise)}</p>
-    <p><strong>玩家角色：</strong>${esc(s.player_role)}</p>
-    <p><strong>核心冲突：</strong>${esc(s.core_conflict)}</p>
-    <p><strong>初始状态：</strong>第${state.day}天 | AP=${state.action_points} | 预算=${state.budget_remaining}${state.budget_unit} | 签约=${state.signed_households}/${state.total_households} | 稳定=${state.social_stability_index} | 信用=${state.political_credit} | 执行=${state.cadre_execution_index}</p>
-    <h3 style="margin-top:16px;">三幕结构</h3>
-    ${(s.acts||[]).map(a => `
-      <div class="act-card" id="act-${a.act_number}">
-        <button class="inline-edit-btn" onclick="event.stopPropagation();openManualEdit(document.getElementById('act-${a.act_number}'),'第${a.act_number}幕','','${esc(a.title)}')">✏️ 编辑</button>
-        <h3>第${a.act_number}幕：${esc(a.title)}（${esc(a.day_range)}）</h3>
-        <p class="act-meta">目标：${esc(a.goal)}</p>
-        <p style="font-size:13px;">${esc(a.description)}</p>
-        <p class="act-meta">决策点：${(a.decision_point_ids||[]).length} 个</p>
-      </div>
-    `).join('')}
-  `;
-
-  // NPC 面板
-  const relsByType = {};
-  (s.npc_relationships||[]).forEach(r => {
-    (relsByType[r.relation_type] = relsByType[r.relation_type]||[]).push(r);
-  });
-  document.getElementById('panel-npcs').innerHTML = `
-    <h3>NPC 角色（${(s.npc_seed||[]).length} 人）</h3>
-    <div class="npc-list">${(s.npc_seed||[]).map(n => `
-      <div class="npc-chip" id="npc-${esc(n.npc_id)}">
-        <button class="inline-edit-btn-sm" onclick="event.stopPropagation();openManualEdit(document.getElementById('npc-${esc(n.npc_id)}'),'NPC','${esc(n.npc_id)}','${esc(n.name)}')">✏️</button>
-        <span class="name">${esc(n.name)}</span>
-        <span class="type type-${n.npc_type}">${typeLabels[n.npc_type]||n.npc_type}</span>
-        <br><small>${esc(n.group)} | 信任=${n.trust_to_player} | 态度=${n.attitude_score}</small>
-      </div>
-    `).join('')}</div>
-    <h3 style="margin-top:16px;">关系网络（${(s.npc_relationships||[]).length} 条）</h3>
-    ${Object.entries(relsByType).map(([type, rels]) => `
-      <div class="rel-group">
-        <h4>【${esc(type)}】</h4>
-        ${rels.map((r, ri) => {
-          const relIdx = (s.npc_relationships||[]).indexOf(r);
-          const relId = `${esc(r.from_npc_id)}|${esc(r.to_npc_id)}|${relIdx}`;
-          const relTitle = `${esc(nameMap[r.from_npc_id]||r.from_npc_id)}→${esc(nameMap[r.to_npc_id]||r.to_npc_id)}`;
-          return `
-          <div class="rel-item" id="rel-${relIdx}">
-            <button class="inline-edit-btn-sm" onclick="event.stopPropagation();openManualEdit(document.getElementById('rel-${relIdx}'),'关系','${relId}','${relTitle}')">✏️</button>
-            <span>${esc(nameMap[r.from_npc_id]||r.from_npc_id)} <span class="arrow">→</span> ${esc(nameMap[r.to_npc_id]||r.to_npc_id)}</span>
-            <span class="desc">强度=${r.strength}：${esc(r.description)}</span>
-          </div>`;
-        }).join('')}
-      </div>
-    `).join('')}
-  `;
-
-  // 分叉树面板
-  renderTree(s);
-
-  // 剧本原文面板（Markdown 渲染 + 可切换编辑）
-  const md = normalizeFullMD(data.full_md) || lastFullMD || '';
-  if (md) {
-    document.getElementById('panel-mdtext').innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-        <span style="font-size:12px; color:var(--text-muted);">${md.length} 字符</span>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-secondary btn-sm" id="mdEditToggle" onclick="toggleMdEdit()">✏️ 编辑</button>
-        </div>
-      </div>
-      <div id="mdRendered" style="font-size:14px; line-height:1.9; padding:16px; background:var(--bg); border-radius:var(--radius); max-height:600px; overflow-y:auto;">${renderMarkdown(md)}</div>
-      <textarea id="mdEditor" style="display:none; width:100%; min-height:400px; font-size:13px; line-height:1.8; padding:16px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); resize:vertical;">${esc(md)}</textarea>
-    `;
-    lastFullMD = md;
-  } else {
-    document.getElementById('panel-mdtext').innerHTML = '<p style="color:var(--text-muted); padding:20px; text-align:center;">暂无剧本原文</p>';
-  }
-
-  // Show MD area with content
-  if (md) {
-        lastFullMD = md;
-  }
+  renderChapterResult(data);
 }
 
 // ===== 数据规范化 =====
@@ -2120,254 +1540,7 @@ function normalizeFullMD(raw) {
   return raw;
 }
 
-// ===== 分叉树渲染 =====
-let treeState = { offsetX: 0, offsetY: 0, scale: 1, dragging: false, startX: 0, startY: 0, collapsed: {} };
 let lastFullMD = '';
-
-function buildTreeData(script) {
-  const decisions = (script.decision_points || []).slice().sort((a, b) => {
-    const da = parseInt((a.day_window || '1').replace(/[^0-9]/g, '')) || 1;
-    const db = parseInt((b.day_window || '1').replace(/[^0-9]/g, '')) || 1;
-    return da - db;
-  });
-  const endings = script.endings || [];
-  // Group by act, then split into visual rows (max 4 per row)
-  const actGroups = [[], [], []];
-  decisions.forEach(d => {
-    const day = parseInt((d.day_window || '1').replace(/[^0-9]/g, '')) || 1;
-    if (day <= 20) actGroups[0].push(d);
-    else if (day <= 55) actGroups[1].push(d);
-    else actGroups[2].push(d);
-  });
-  // Flatten acts into visual rows
-  const MAX_PER_ROW = 4;
-  const visualRows = [];  // [{nodes, actLabel}]
-  for (let a = 0; a < 3; a++) {
-    const nodes = actGroups[a];
-    if (!nodes.length) continue;
-    const actNames = ['第一幕：开局破冰', '第二幕：矛盾激化', '第三幕：收束结局'];
-    for (let i = 0; i < nodes.length; i += MAX_PER_ROW) {
-      visualRows.push({
-        nodes: nodes.slice(i, i + MAX_PER_ROW),
-        actLabel: i === 0 ? actNames[a] : '',
-      });
-    }
-  }
-  return { decisions, endings, visualRows };
-}
-
-function renderTree(script) {
-	  const panel = document.getElementById('panel-tree');
-	  if (!panel) return;
-	  if (!script || !script.decision_points || !script.decision_points.length) {
-	    panel.innerHTML = '<p style="color:var(--text-muted); padding:40px; text-align:center;">暂无决策点数据，无法生成分叉树</p>';
-	    return;
-	  }
-	  const { decisions, endings, visualRows } = buildTreeData(script);
-	  const MAX_PER_COL = 4;
-	  const NODE_W = 170, NODE_H = 50, COL_W = 200, SLOT_H = 90, PAD_X = 60, PAD_Y = 30;
-
-	  // Build columns: each visualRows entry becomes a column (left→right)
-	  const columns = visualRows;  // [{nodes, actLabel}]
-	  const numCols = columns.length;
-	  const endingsCol = numCols;  // endings column index
-
-	  const totalW = PAD_X + COL_W * (numCols + 1) + PAD_X;
-	  const totalH = PAD_Y + MAX_PER_COL * SLOT_H + PAD_Y;
-
-	  treeState = { offsetX: 0, offsetY: 0, scale: 1, dragging: false, startX: 0, startY: 0, collapsed: {} };
-
-	  let svg = '<svg viewBox="0 0 ' + totalW + ' ' + totalH + '" style="width:100%; height:100%;">';
-
-	  // Act background bands (vertical)
-	  const actColors = ['#e8f0fe22', '#fef7e022', '#fce8e622'];
-	  let lastActLabel = '';
-	  for (let c = 0; c < numCols; c++) {
-	    const col = columns[c];
-	    if (col.actLabel && col.actLabel !== lastActLabel) {
-	      const x = PAD_X + COL_W * c;
-	      const w = COL_W;  // minimum width, will be extended
-	      svg += '<rect x="' + x + '" y="' + PAD_Y + '" width="' + w + '" height="' + (totalH - PAD_Y * 2) + '" rx="8" fill="' + actColors[c % 3] + '" stroke="var(--border)" stroke-dasharray="6 3" opacity="0.5"/>';
-	      svg += '<text x="' + (x + 8) + '" y="' + (PAD_Y + 14) + '" class="tree-label-sm" font-weight="600" fill="var(--text-muted)">' + col.actLabel + '</text>';
-	      lastActLabel = col.actLabel;
-	    }
-	  }
-
-	  // Helper: get node Y position within a column
-	  function nodeY(nodes, i) {
-	    const totalH_inner = nodes.length * SLOT_H;
-	    const startY = PAD_Y + (MAX_PER_COL * SLOT_H - totalH_inner) / 2;
-	    return startY + SLOT_H * i + SLOT_H / 2;
-	  }
-
-	  // Helper: get column center X
-	  function colX(colIndex) {
-	    return PAD_X + COL_W * colIndex + COL_W / 2;
-	  }
-
-	  // Root node (far left)
-	  const rootCX = PAD_X - 10, rootCY = totalH / 2;
-	  svg += '<rect x="' + (rootCX - 20) + '" y="' + (rootCY - 18) + '" width="70" height="36" rx="18" fill="var(--accent)" opacity="0.9"/>';
-	  svg += '<text x="' + rootCX + '" y="' + (rootCY + 5) + '" text-anchor="middle" class="tree-label" fill="#fff" font-weight="600" font-size="11">开始</text>';
-
-	  // Links root → first column
-	  if (numCols > 0) {
-	    const firstCol = columns[0].nodes;
-	    firstCol.forEach((d, i) => {
-	      const tx = colX(0) - NODE_W / 2;
-	      const ty = nodeY(firstCol, i);
-	      svg += '<line x1="' + (rootCX + 35) + '" y1="' + rootCY + '" x2="' + tx + '" y2="' + ty + '" class="tree-link" opacity="0.3"/>';
-	    });
-	  }
-
-	  // Build flat sequential list
-	  const flatNodes = [];
-	  columns.forEach((col, c) => {
-	    col.nodes.forEach((d, i) => {
-	      flatNodes.push({ node: d, col: c, idx: i });
-	    });
-	  });
-
-	  // Sequential chain links: DP1→DP2→DP3→...→DPn
-	  for (let i = 0; i < flatNodes.length - 1; i++) {
-	    const from = flatNodes[i];
-	    const to = flatNodes[i + 1];
-	    const fromNodes = columns[from.col].nodes;
-	    const toNodes = columns[to.col].nodes;
-	    const x1 = colX(from.col) + NODE_W / 2;
-	    const y1 = nodeY(fromNodes, from.idx);
-	    const x2 = colX(to.col) - NODE_W / 2;
-	    const y2 = nodeY(toNodes, to.idx);
-	    const sameCol = from.col === to.col;
-	    svg += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" class="tree-link" opacity="' + (sameCol ? '0.3' : '0.5') + '" stroke-width="' + (sameCol ? '1' : '1.5') + '"/>';
-	    if (!sameCol) {
-	      svg += '<text x="' + ((x1 + x2) / 2) + '" y="' + ((y1 + y2) / 2 + 4) + '" text-anchor="middle" class="tree-label-sm" fill="var(--text-muted)" font-size="9">▶</text>';
-	    }
-	  }
-
-	  // Links last decision → each ending
-	  if (flatNodes.length > 0 && endings.length > 0) {
-	    const lastNode = flatNodes[flatNodes.length - 1];
-	    const lastNodes = columns[lastNode.col].nodes;
-	    const lx = colX(lastNode.col) + NODE_W / 2;
-	    const ly = nodeY(lastNodes, lastNode.idx);
-	    endings.forEach((e, ei) => {
-	      const ex = colX(endingsCol) - NODE_W / 2;
-	      const ey = nodeY(endings, ei);
-	      const ec = e.ending_type === 'good' ? '#27ae60' : e.ending_type === 'bad' ? '#c0392b' : '#d68910';
-	      svg += '<line x1="' + lx + '" y1="' + ly + '" x2="' + ex + '" y2="' + ey + '" class="tree-link" stroke="' + ec + '" opacity="0.5" stroke-width="2"/>';
-	      const label = e.ending_type === 'good' ? '✓真结局' : e.ending_type === 'bad' ? '✗坏结局' : '≈中性';
-	      svg += '<text x="' + ((lx + ex) / 2) + '" y="' + ((ly + ey) / 2 - 4) + '" text-anchor="middle" class="tree-label-sm" fill="' + ec + '" font-size="9">' + label + '</text>';
-	    });
-	  }
-
-	  // Draw decision nodes
-	  columns.forEach((col, c) => {
-	    col.nodes.forEach((d, i) => {
-	      const cx = colX(c);
-	      const cy = nodeY(col.nodes, i);
-	      const x = cx - NODE_W / 2;
-	      const y = cy - NODE_H / 2;
-	      const bgColor = d.is_critical ? '#fde8e8' : '#fff';
-	      svg += '<g class="tree-node' + (d.is_critical ? ' critical' : '') + '" data-id="' + d.decision_id + '" data-type="decision" onclick="treeToggleCollapse(\'' + d.decision_id + '\')">';
-	      svg += '<rect x="' + x + '" y="' + y + '" width="' + NODE_W + '" height="' + NODE_H + '" rx="6" fill="' + bgColor + '" stroke="' + (d.is_critical ? 'var(--danger)' : 'var(--accent-light)') + '" stroke-width="' + (d.is_critical ? 2.5 : 1.5) + '" class="tree-node-bg"/>';
-	      const title = d.title.length > 12 ? d.title.slice(0, 12) + '…' : d.title;
-	      svg += '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" class="tree-label" font-weight="600">' + esc(d.decision_id) + ' ' + esc(title) + '</text>';
-	      svg += '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" class="tree-label-sm">' + esc(d.day_window) + ' | ' + (d.options || []).length + ' 选项</text>';
-	      svg += '</g>';
-	    });
-	  });
-
-	  // Ending nodes
-	  if (endings.length) {
-	    endings.forEach((e, i) => {
-	      const cx = colX(endingsCol);
-	      const cy = nodeY(endings, i);
-	      const x = cx - NODE_W / 2;
-	      const y = cy - NODE_H / 2;
-	      const ec = e.ending_type === 'good' ? '#27ae60' : e.ending_type === 'bad' ? '#c0392b' : '#d68910';
-	      const statusLabel = e.ending_type === 'good' ? '好结局' : e.ending_type === 'bad' ? '坏结局' : '中性';
-	      svg += '<g class="tree-ending ' + e.ending_type + '" data-id="' + e.ending_id + '" data-type="ending">';
-	      svg += '<rect x="' + x + '" y="' + y + '" width="' + NODE_W + '" height="' + NODE_H + '" rx="20" fill="' + ec + '22" stroke="' + ec + '" stroke-width="2" class="tree-node-bg"/>';
-	      svg += '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" class="tree-label" font-weight="600">' + esc(e.title) + '</text>';
-	      svg += '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" class="tree-label-sm">' + statusLabel + ' | ' + (e.conditions || []).length + ' 条件</text>';
-	      svg += '</g>';
-	    });
-	  }
-
-	  svg += '</svg>';
-
-	  const legend = '<div class="tree-legend">'
-	    + '<span><span class="dot" style="background:var(--danger);"></span> 关键决策</span>'
-	    + '<span><span class="dot" style="background:var(--accent-light);"></span> 普通决策</span>'
-	    + '<span><span class="dot" style="background:var(--success);"></span> 好结局</span>'
-	    + '<span><span class="dot" style="background:#d68910;"></span> 中性结局</span>'
-	    + '<span><span class="dot" style="background:var(--danger);"></span> 坏结局</span>'
-	    + '<span style="margin-left:8px;">🖱 拖拽平移 | 滚轮缩放 | 点击折叠</span>'
-	    + '</div>';
-
-	  panel.innerHTML = '<div class="tree-container" id="treeContainer">' + svg + '</div>' + legend;
-
-	  // Tooltip
-	  const oldTooltip = document.getElementById('treeTooltip');
-	  if (oldTooltip) oldTooltip.remove();
-	  const tooltip = document.createElement('div');
-	  tooltip.className = 'tree-tooltip';
-	  tooltip.id = 'treeTooltip';
-	  panel.appendChild(tooltip);
-
-	  const container = document.getElementById('treeContainer');
-	  if (!container) return;
-  container.addEventListener('mousedown', function(e) {
-    treeState.dragging = true;
-    treeState.startX = e.clientX - treeState.offsetX;
-    treeState.startY = e.clientY - treeState.offsetY;
-  });
-
-  container.addEventListener('mouseover', function(e) {
-    const g = e.target.closest('g[data-id]');
-    if (!g) { tooltip.style.display = 'none'; return; }
-    const id = g.dataset.id, type = g.dataset.type;
-    let html = '';
-    if (type === 'decision') {
-      const dp = decisions.find(function(d) { return d.decision_id === id; });
-      if (dp) {
-        html = '<strong>' + esc(dp.decision_id) + ' ' + esc(dp.title) + '</strong><br>';
-        html += '<small>' + esc(dp.day_window) + (dp.is_critical ? ' ★ 关键决策' : '') + '</small><br>';
-        html += '<p style="margin:4px 0;">' + esc(dp.situation) + '</p>';
-        html += (dp.options || []).map(function(o) { return '· ' + esc(o.label) + ': ' + esc(o.description).slice(0, 40) + '…'; }).join('<br>');
-      }
-    } else if (type === 'ending') {
-      const ending = endings.find(function(e) { return e.ending_id === id; });
-      if (ending) {
-        const sl = ending.ending_type === 'good' ? '好结局' : ending.ending_type === 'bad' ? '坏结局' : '中性';
-        html = '<strong>' + esc(ending.title) + '</strong> <span style="color:var(--text-muted);">' + sl + '</span><br>';
-        html += '<p style="margin:4px 0;">' + esc(ending.description) + '</p>';
-        html += (ending.conditions || []).map(function(c) { return '📋 ' + esc(c); }).join('<br>');
-      }
-    }
-    tooltip.innerHTML = html;
-    tooltip.style.display = 'block';
-    tooltip.style.left = (e.offsetX + 15) + 'px';
-    tooltip.style.top = (e.offsetY - 10) + 'px';
-  });
-
-  container.addEventListener('mouseout', function(e) {
-    if (!e.target.closest('g[data-id]')) tooltip.style.display = 'none';
-  });
-
-  container.addEventListener('wheel', function(e) {
-    e.preventDefault();
-    treeState.scale = Math.max(0.3, Math.min(3, treeState.scale - e.deltaY * 0.001));
-    const svgEl = container.querySelector('svg');
-    if (svgEl) svgEl.style.transform = 'translate(' + treeState.offsetX + 'px, ' + treeState.offsetY + 'px) scale(' + treeState.scale + ')';
-  });
-}
-
-function treeToggleCollapse(decisionId) {
-  treeState.collapsed[decisionId] = !treeState.collapsed[decisionId];
-  if (lastResult && lastResult.script) renderTree(lastResult.script);
-}
 
 async function startOneClickGeneration() {
   return startGeneration();
@@ -2462,27 +1635,6 @@ function processInline(text) {
   // Em dash
   text = text.replace(/---/g, '—');
   return text;
-}
-
-function toggleMdEdit() {
-  const rendered = document.getElementById('mdRendered');
-  const editor = document.getElementById('mdEditor');
-  const btn = document.getElementById('mdEditToggle');
-  if (!rendered || !editor) return;
-  if (editor.style.display === 'none') {
-    // Switch to edit mode
-    rendered.style.display = 'none';
-    editor.style.display = 'block';
-    btn.textContent = '👁 预览';
-    editor.value = lastFullMD || '';
-  } else {
-    // Switch to preview mode
-    lastFullMD = editor.value;
-    rendered.innerHTML = renderMarkdown(lastFullMD);
-    rendered.style.display = 'block';
-    editor.style.display = 'none';
-    btn.textContent = '✏️ 编辑';
-  }
 }
 
 function esc(s) {

@@ -6,7 +6,6 @@ from src.generation.npc_agent_generator import NpcAgentGenerator
 from src.generation.opensearch_agent_context_provider import OpenSearchAgentContextProvider
 from src.generation.retrieval_planner import QwenRetrievalPlanner, RetrievalPlan
 from src.generation.qwen_npc_agent_generator import QwenNpcAgentGenerator
-from src.generation.script_generator import QwenScriptGenerator
 
 __all__ = [
     "AgentContextProvider",
@@ -17,5 +16,4 @@ __all__ = [
     "QwenRetrievalPlanner",
     "RetrievalPlan",
     "QwenNpcAgentGenerator",
-    "QwenScriptGenerator",
 ]

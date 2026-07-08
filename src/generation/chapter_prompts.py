@@ -817,6 +817,118 @@ def build_call5b_prompt(chapter_md: str, chapter_id: str, chapter_num: int) -> l
     return _flash_messages(_CALL5_SYSTEM, user)
 
 
+def build_call5b_slice_prompt(
+    chapter_slice_md: str,
+    chapter_id: str,
+    chapter_num: int,
+    slice_index: int,
+    slice_total: int,
+) -> list[ChatMessage]:
+    """构建 Call 5b 分片抽取 Prompt。
+
+    只抽当前片段明确出现的章节字段、节点、选项、结果和结算字段。
+    """
+
+    user = f"""请从以下单章 Markdown 片段中提取局部剧情树 JSON。
+
+这是第 {chapter_num} 章（chapter_id={chapter_id}）的结构片段 {slice_index}/{slice_total}。
+只抽取本片段明确出现的内容；不要补全其他片段里的节点、选项或结果。
+
+## Markdown 片段
+{chapter_slice_md}
+
+## 输出 JSON Schema（只输出本片段字段）
+
+{{
+  "chapter_id": "{chapter_id}",
+  "title": "string 或 null",
+  "day_range": "string 或 null",
+  "core_task": "string 或 null",
+  "main_question": "string 或 null",
+  "learning_goals": ["string"],
+  "background": "string 或 null",
+  "info_nodes": [
+    {{
+      "node_id": "string",
+      "title": "string",
+      "content": "string",
+      "unlock_condition": null,
+      "next": "string 或 null"
+    }}
+  ],
+  "decision_points": [
+    {{
+      "node_id": "string",
+      "question": "string",
+      "order": "number",
+      "options": [
+        {{
+          "choice_id": "string",
+          "option_label": "string",
+          "text": "string",
+          "availability": null,
+          "effects": {{
+            "signed": "number",
+            "social_stability": "number",
+            "political_credit": "number",
+            "public_trust": "number",
+            "env_clue": "number",
+            "media_pressure": "number",
+            "budget": "number",
+            "days_left": "number"
+          }},
+          "npc_state_changes": {{}},
+          "unlock_nodes": ["string"],
+          "lock_nodes": ["string"],
+          "flags_added": ["string"],
+          "flags_removed": ["string"],
+          "immediate_result_text": "string",
+          "long_term_effect": "string",
+          "teaching_feedback": "string"
+        }}
+      ]
+    }}
+  ],
+  "results": [
+    {{
+      "node_id": "string",
+      "from_choice": "string",
+      "text": "string",
+      "next": "string 或 null"
+    }}
+  ],
+  "checkpoint": {{
+    "checkpoint_id": "string 或 null",
+    "merge_from": ["string"],
+    "next_chapter": "string 或 null",
+    "variable_snapshot": {{
+      "signed": "number",
+      "social_stability": "number",
+      "political_credit": "number",
+      "public_trust": "number",
+      "env_clue": "number",
+      "media_pressure": "number",
+      "budget": "number",
+      "days_left": "number"
+    }},
+    "active_flags": ["string"],
+    "unlocked_nodes": ["string"],
+    "locked_nodes": ["string"],
+    "summary": "string 或 null"
+  }}
+}}
+
+## 抽取规则
+1. 只抽本片段明确出现的结构；本片段没有出现的数组填 []，对象填 null 或空对象
+2. 不要为了构成完整章节而补写其他片段的节点、选项或结果
+3. 8 个变量的 effects 必须全部列出，即使值为 0
+4. checkpoint 只有在本片段出现「章节结算」或「状态快照」时才填写，否则填 {{}}
+5. 输出合法 JSON，不包含 markdown 代码块标记
+6. 直接输出纯 JSON，不要在 JSON 前后添加任何说明文字"""
+
+    return _flash_messages(_CALL5_SYSTEM, user)
+
+
 def build_call5_prompt(complete_script_md: str) -> list[ChatMessage]:
     """兼容旧接口：构建 Call 5（JSON 抽取）的 Prompt（单调用版，大剧本可能截断）。"""
     from src.generation.chapter_prompts import build_call5a_prompt, build_call5b_prompt

@@ -193,6 +193,7 @@ class ChapterValidator:
         script_json: dict,
         expected_npc_count: int | None = None,
         expected_decision_point_count: int | None = None,
+        expected_ending_count: int | None = None,
     ) -> dict:
         """Step 6a: 程序自动校验。
 
@@ -237,7 +238,7 @@ class ChapterValidator:
                     dp_id = dp.get("node_id", "?")
                     opts = dp.get("options", [])
                     if len(opts) < 3:
-                        issues.append({"code": "TOO_FEW_OPTIONS", "message": f"{dp_id} 选项少于 3 个（当前 {len(opts)} 个）", "severity": "error"})
+                        issues.append({"code": "TOO_FEW_OPTIONS", "message": f"{dp_id} 选项少于 3 个（当前 {len(opts)} 个）", "severity": "warning"})
 
                     for opt in opts:
                         choice_id = opt.get("choice_id", "?")
@@ -344,6 +345,12 @@ class ChapterValidator:
 
         # ---- 结局检查 ----
         endings = script_json.get("endings", [])
+        if expected_ending_count is not None and len(endings) != expected_ending_count:
+            issues.append({
+                "code": "ENDING_COUNT_MISMATCH",
+                "message": f"结局数量应为 {expected_ending_count}，当前 {len(endings)}",
+                "severity": "error",
+            })
         if len(endings) < 3:
             issues.append({"code": "TOO_FEW_ENDINGS", "message": f"结局少于 3 个（当前 {len(endings)} 个）", "severity": "error"})
 
@@ -392,3 +399,100 @@ class ChapterValidator:
             "error_count": len(errors),
             "warning_count": len([i for i in issues if i.get("severity") == "warning"]),
         }
+
+    @staticmethod
+    def validate_source_invariants(source_md: str) -> dict:
+        """Check deterministic global facts that should be consistent in Markdown."""
+        issues: list[dict] = []
+        household_total = ChapterValidator._infer_household_total(source_md)
+        if household_total is not None:
+            conflicts = ChapterValidator._household_total_conflicts(
+                source_md,
+                household_total,
+            )
+            if conflicts:
+                issues.append({
+                    "code": "HOUSEHOLD_TOTAL_CONFLICT",
+                    "message": (
+                        f"全村总户数应为 {household_total}，但文本中出现冲突表述: "
+                        + "；".join(conflicts[:8])
+                    ),
+                    "severity": "error",
+                })
+
+        errors = [i for i in issues if i.get("severity") == "error"]
+        return {
+            "valid": len(errors) == 0,
+            "issues": issues,
+            "error_count": len(errors),
+            "warning_count": len([i for i in issues if i.get("severity") == "warning"]),
+        }
+
+    @staticmethod
+    def _infer_household_total(source_md: str) -> int | None:
+        patterns = (
+            r"雀林村共有\s*(三十[一二三四五六七八九]?|[1-9]\d?)\s*户",
+            r"全村总户数\s*(三十[一二三四五六七八九]?|[1-9]\d?)\s*户",
+            r"全村共\s*(三十[一二三四五六七八九]?|[1-9]\d?)\s*户",
+            r"共\s*(三十[一二三四五六七八九]?|[1-9]\d?)\s*户农家",
+            r"range[\"'：:\s]+0-(\d+)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, source_md)
+            if match:
+                return ChapterValidator._parse_small_int(match.group(1))
+        return None
+
+    @staticmethod
+    def _household_total_conflicts(source_md: str, household_total: int) -> list[str]:
+        conflicts: list[str] = []
+        seen: set[str] = set()
+        household_pattern = re.compile(
+            r"(?P<context>.{0,20})(?P<num>三十[一二三四五六七八九]?|[1-9]\d?)\s*户(?P<tail>.{0,20})"
+        )
+        for match in household_pattern.finditer(source_md):
+            value = ChapterValidator._parse_small_int(match.group("num"))
+            if value is None or value <= household_total:
+                continue
+            context = match.group(0).strip()
+            if context not in seen:
+                seen.add(context)
+                conflicts.append(context)
+
+        signed_pattern = re.compile(r"signed\s*(?:=|：|:)\s*(\d+)")
+        for match in signed_pattern.finditer(source_md):
+            value = int(match.group(1))
+            if value <= household_total:
+                continue
+            line_start = source_md.rfind("\n", 0, match.start()) + 1
+            line_end = source_md.find("\n", match.end())
+            if line_end < 0:
+                line_end = len(source_md)
+            context = source_md[line_start:line_end].strip()
+            if context not in seen:
+                seen.add(context)
+                conflicts.append(context)
+        return conflicts
+
+    @staticmethod
+    def _parse_small_int(value: str) -> int | None:
+        value = value.strip()
+        if value.isdigit():
+            return int(value)
+        chinese = {
+            "一": 1,
+            "二": 2,
+            "三": 3,
+            "四": 4,
+            "五": 5,
+            "六": 6,
+            "七": 7,
+            "八": 8,
+            "九": 9,
+        }
+        if value == "三十":
+            return 30
+        match = re.fullmatch(r"三十([一二三四五六七八九])", value)
+        if match:
+            return 30 + chinese[match.group(1)]
+        return None

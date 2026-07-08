@@ -139,6 +139,52 @@ class TestChapterRevisionService(unittest.TestCase):
         self.assertIn("当前批量草稿中的新全局设定", prompt)
         self.assertIn("01_game_settings.md（当前批量草稿）", prompt)
 
+    def test_ai_preview_with_marker_only_sends_and_replaces_block(self) -> None:
+        source = """# 第 1 章
+
+## 决策一
+- decision_id: dp_01
+旧内容
+
+## 决策二
+- decision_id: dp_02
+保留内容
+"""
+        revised_block = """## 决策一
+- decision_id: dp_01
+新内容"""
+        pa = FakeFlashClient([revised_block])
+        service = ChapterRevisionService(
+            outputs_dir=self.outputs_dir,
+            pa_client=pa,
+        )
+
+        preview = service.preview_ai(
+            "v01",
+            "ch01",
+            "仅修订元素 dp_01 所属内容块：改成新内容",
+            current_content=source,
+        )
+
+        prompt = pa.calls[0]["messages"][1].content
+        self.assertIn("当前 Markdown 内容块", prompt)
+        self.assertIn("旧内容", prompt)
+        self.assertNotIn("保留内容", prompt)
+        self.assertIn("新内容", preview["revised_content"])
+        self.assertIn("保留内容", preview["revised_content"])
+
+    def test_ai_preview_rejects_long_chapter_without_marker(self) -> None:
+        service = ChapterRevisionService(outputs_dir=self.outputs_dir)
+        long_chapter = "# 第 1 章\n" + ("长内容\n" * 10000)
+
+        with self.assertRaisesRegex(ValueError, "长章节 AI 修订必须使用元素级修订入口"):
+            service.preview_ai(
+                "v01",
+                "ch01",
+                "整体润色这一章",
+                current_content=long_chapter,
+            )
+
     def test_settings_npc_change_only_marks_referencing_chapters(self) -> None:
         original = """## 角色表
 ### NPC 01：甲
@@ -388,14 +434,54 @@ class TestChapterRevisionService(unittest.TestCase):
             [item["chapter_id"] for item in impact["affected_chapters"]],
         )
 
+    def test_external_rebuild_without_baseline_preserves_source_chapters(self) -> None:
+        baseline_dir = self.base_dir / SourceSnapshotManager.BASELINE_DIR
+        if baseline_dir.exists():
+            shutil.rmtree(baseline_dir)
+        global_json = (self.base_dir / "06a_global.json").read_text(encoding="utf-8")
+        chapter_jsons = [
+            path.read_text(encoding="utf-8")
+            for path in sorted(self.base_dir.glob("06b_ch[0-9][0-9].json"))
+        ]
+        flash = FakeFlashClient([
+            json.dumps({
+                "status": "pass",
+                "continuity_issues": [],
+                "patches": [],
+            }, ensure_ascii=False),
+            global_json,
+            *chapter_jsons,
+        ])
+        service = ChapterRevisionService(
+            outputs_dir=self.outputs_dir,
+            flash_client=flash,
+            max_workers=1,
+        )
+
+        result = service.rebuild_from_sources("v01")
+
+        revision_dir = self.outputs_dir / result["revision_dir"]
+        manifest = result["revision_manifest"]
+        impact = manifest["impact"]
+        self.assertFalse(impact["baseline_available"])
+        self.assertEqual([], impact["affected_chapters"])
+        self.assertEqual([], manifest["resolved_chapters"])
+        self.assertEqual("none", manifest["sync_engine"])
+        self.assertEqual(
+            self.original_chapter,
+            (revision_dir / "03_ch01.md").read_text(encoding="utf-8"),
+        )
+        self.assertEqual(2 + len(chapter_jsons), len(flash.calls))
+
     def test_revision_validation_uses_requested_npc_count(self) -> None:
         (self.base_dir / "00_generation_request.json").write_text(
-            json.dumps({"npc_count": 9}, ensure_ascii=False),
+            json.dumps({"npc_count": 9, "ending_count": 18}, ensure_ascii=False),
             encoding="utf-8",
         )
         service = ChapterRevisionService(outputs_dir=self.outputs_dir)
 
         self.assertEqual(9, service._expected_npc_count(self.base_dir))
+        self.assertEqual(18, service._expected_ending_count(self.base_dir))
 
     def test_resume_reextracts_completed_chapter_when_source_changed(self) -> None:
         global_json = (self.base_dir / "06a_global.json").read_text(encoding="utf-8")

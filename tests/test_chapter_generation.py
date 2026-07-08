@@ -24,6 +24,7 @@ from src.generation.chapter_prompts import (
     build_call3_prompt,
     build_call4_prompt,
     build_call5a_prompt,
+    build_call5b_slice_prompt,
     build_call5_prompt,
     build_initial_state_snapshot_text,
     build_state_snapshot_text,
@@ -725,7 +726,8 @@ class TestChapterValidator(unittest.TestCase):
             "endings": [{"ending_id": "end_01", "type": "good"}, {"ending_id": "end_02", "type": "bad"}],
         }
         result = ChapterValidator.validate_programmatic(script)
-        assert any(i["code"] == "TOO_FEW_OPTIONS" for i in result["issues"])
+        issue = next(i for i in result["issues"] if i["code"] == "TOO_FEW_OPTIONS")
+        assert issue["severity"] == "warning"
 
     def test_too_few_endings(self):
         script = {
@@ -794,6 +796,145 @@ class TestChapterValidator(unittest.TestCase):
 
         assert any(i["code"] == "UNKNOWN_NPC_STATE_CHANGE" for i in result["issues"])
 
+    def test_normalizes_extracted_npc_state_change_keys(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        global_json = {
+            "npcs": [
+                {
+                    "npc_id": "NPC-01",
+                    "name": "陈建国",
+                    "group": "村干部",
+                    "npc_type": "cadre",
+                    "trust_to_player": 20,
+                    "attitude_score": 30,
+                    "anxiety_level": 40,
+                    "granovetter_threshold": 50,
+                },
+                {
+                    "npc_id": "NPC-03",
+                    "name": "王宗福",
+                    "group": "承包商",
+                    "npc_type": "external",
+                    "trust_to_player": 20,
+                    "attitude_score": 30,
+                    "anxiety_level": 40,
+                    "granovetter_threshold": 50,
+                },
+            ],
+            "endings": [
+                {"ending_id": "end_01", "type": "good"},
+                {"ending_id": "end_02", "type": "neutral"},
+                {"ending_id": "end_03", "type": "bad"},
+            ],
+        }
+        chapters = [{
+            "chapter_id": "ch01",
+            "decision_points": [{
+                "node_id": "ch01_dp01",
+                "options": [
+                    {
+                        "choice_id": "ch01_A",
+                        "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0},
+                        "npc_state_changes": {"陈建国": "trust+5", "wang_zongfu": {"anxiety_level": 10}, "trust": "+3"},
+                    },
+                    {"choice_id": "ch01_B", "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0}, "npc_state_changes": {}},
+                    {"choice_id": "ch01_C", "effects": {"signed": 0, "social_stability": 0, "political_credit": 0, "public_trust": 0, "env_clue": 0, "media_pressure": 0, "budget": 0, "days_left": 0}, "npc_state_changes": {}},
+                ],
+            }],
+            "checkpoint": {"checkpoint_id": "ch01_cp", "merge_from": ["ch01_A"], "next_chapter": "ending_evaluation"},
+        }]
+
+        ChapterScriptGenerator._normalize_extracted_structure(global_json, chapters)
+        script = dict(global_json)
+        script["chapters"] = chapters
+        result = ChapterValidator.validate_programmatic(script, expected_npc_count=2)
+
+        changes = chapters[0]["decision_points"][0]["options"][0]["npc_state_changes"]
+        assert set(changes) == {"NPC-01", "NPC-03"}
+        assert global_json["_extraction_normalization"]["npc_state_changes"]["mapped_count"] == 2
+        assert global_json["_extraction_normalization"]["npc_state_changes"]["dropped_count"] == 1
+        assert not any(i["code"] == "UNKNOWN_NPC_STATE_CHANGE" for i in result["issues"])
+
+    def test_chapter_extraction_view_compacts_long_prose(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        prose = "普通叙事。\n" * 6000
+        chapter_md = f"""# 第 1 章
+
+## 开场叙事
+{prose}
+
+### 玩家行动选项
+**选项A：如实说明**
+- 变量变化：public_trust+5
+
+### 状态快照
+| 变量 | 最小 | 最大 | 最可能 |
+| signed | 0 | 1 | 0 |
+"""
+
+        view = ChapterScriptGenerator._build_chapter_extraction_view(chapter_md)
+
+        assert len(view) < len(chapter_md)
+        assert "玩家行动选项" in view
+        assert "选项A" in view
+        assert "状态快照" in view
+        assert "普通叙事" not in view[:1000]
+
+    def test_long_chapter_extraction_is_split_into_cacheable_slices(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        blocks = []
+        for index in range(1, 8):
+            blocks.append(
+                f"### 玩家行动选项 {index}\n"
+                f"**选项A：方案{index}A**\n- 变量变化：public_trust+{index}\n"
+                f"**选项B：方案{index}B**\n- 变量变化：budget-{index}\n"
+                + ("叙事补充。\n" * 1100)
+            )
+        chapter_md = "# 第 1 章\n- chapter_id: ch01\n\n" + "\n\n".join(blocks)
+
+        slices = ChapterScriptGenerator._build_chapter_extraction_slices(
+            chapter_md,
+            max_chars=7000,
+        )
+
+        assert len(slices) > 1
+        assert all(len(item) <= 7600 for item in slices)
+        assert all("chapter_id: ch01" in item for item in slices)
+        assert any("玩家行动选项 7" in item for item in slices)
+
+    def test_merges_chapter_extract_parts_without_duplicates(self):
+        from src.generation.chapter_script_generator import ChapterScriptGenerator
+
+        merged = ChapterScriptGenerator._merge_chapter_extract_parts("ch01", [
+            {
+                "chapter_id": "ch01",
+                "title": "第一章",
+                "learning_goals": ["目标A"],
+                "decision_points": [{"node_id": "dp01", "options": []}],
+                "results": [{"node_id": "r01", "text": "结果"}],
+                "checkpoint": {},
+            },
+            {
+                "chapter_id": "ch01",
+                "title": "",
+                "learning_goals": ["目标A", "目标B"],
+                "decision_points": [
+                    {"node_id": "dp01", "options": []},
+                    {"node_id": "dp02", "options": []},
+                ],
+                "results": [{"node_id": "r02", "text": "结果2"}],
+                "checkpoint": {"checkpoint_id": "cp01", "next_chapter": "ch02"},
+            },
+        ])
+
+        assert merged["title"] == "第一章"
+        assert merged["learning_goals"] == ["目标A", "目标B"]
+        assert [item["node_id"] for item in merged["decision_points"]] == ["dp01", "dp02"]
+        assert merged["checkpoint"]["checkpoint_id"] == "cp01"
+
 
 class TestValidationPrompts(unittest.TestCase):
     def test_call5a_requires_ending_comparison_operators(self):
@@ -816,6 +957,13 @@ class TestValidationPrompts(unittest.TestCase):
         assert "变量条件: stability < 30 OR pressure > 90" in lines
         assert "至少具备一个 flag: flag_a, flag_b" in lines
         assert "不得有 flag: flag_c" in lines
+
+    def test_call5b_slice_prompt_limits_scope_to_current_slice(self):
+        prompt = build_call5b_slice_prompt("### 玩家行动选项", "ch01", 1, 2, 4)[1].content
+
+        assert "结构片段 2/4" in prompt
+        assert "不要补全其他片段" in prompt
+        assert "checkpoint 只有在本片段出现" in prompt
 
     def test_outdated_validation_report_is_not_reused(self):
         from pathlib import Path
@@ -939,6 +1087,58 @@ class TestValidationPolicy(unittest.TestCase):
         assert report["valid"] is False
         assert any(
             issue["code"] == "DECISION_POINT_COUNT_MISMATCH"
+            for issue in report["issues"]
+        )
+
+    def test_expected_ending_count_is_enforced(self):
+        effects = {name: 0 for name in ChapterValidator.EXPECTED_VARIABLES}
+        script = {
+            "chapters": [{
+                "chapter_id": "ch01",
+                "decision_points": [{
+                    "node_id": "ch01_dp",
+                    "options": [
+                        {"choice_id": "A", "effects": effects},
+                        {"choice_id": "B", "effects": effects},
+                        {"choice_id": "C", "effects": effects},
+                    ],
+                }],
+            }],
+            "npcs": [],
+            "endings": [
+                {"ending_id": "end_01", "type": "good", "conditions": {"variables": {"signed": ">= 10"}}},
+                {"ending_id": "end_02", "type": "neutral", "conditions": {"variables": {"signed": ">= 5"}}},
+                {"ending_id": "end_03", "type": "bad", "conditions": {"variables": {"signed": "< 5"}}},
+            ],
+        }
+
+        report = ChapterValidator.validate_programmatic(
+            script,
+            expected_npc_count=0,
+            expected_ending_count=4,
+        )
+
+        assert report["valid"] is False
+        assert any(
+            issue["code"] == "ENDING_COUNT_MISMATCH"
+            for issue in report["issues"]
+        )
+
+    def test_source_invariants_detect_household_total_conflict(self):
+        source = """# 《三十六签》
+
+雀林村共有三十六户农家。
+
+## 第八章
+- signed = 38
+全村三十八户，全部签约完成。
+"""
+
+        report = ChapterValidator.validate_source_invariants(source)
+
+        assert report["valid"] is False
+        assert any(
+            issue["code"] == "HOUSEHOLD_TOTAL_CONFLICT"
             for issue in report["issues"]
         )
 
@@ -1168,31 +1368,22 @@ class TestFullPipeline(unittest.TestCase):
 
 
 # ============================================================
-# Tests: Regression - Backward Compatibility
+# Tests: Regression - Chapter Request Shape
 # ============================================================
 
-class TestBackwardCompatibility(unittest.TestCase):
-    """确保旧管线不受影响。"""
+class TestChapterRequestShape(unittest.TestCase):
+    """确保章节式请求和结构字段可用。"""
 
-    def test_script_design_supports_both_acts_and_chapters(self):
+    def test_script_design_supports_chapters(self):
         from src.domain.script_design import ScriptDesign
         from src.domain.game_state import GameState
 
-        # 旧式（3-act）
-        old = ScriptDesign(
-            title="旧", premise="", player_role="", core_conflict="",
-            initial_game_state=GameState(),
-            acts=[],  # 3-act field
-        )
-        assert old.acts is not None
-
-        # 新式（chapters）
-        new = ScriptDesign(
+        script = ScriptDesign(
             title="新", premise="", player_role="", core_conflict="",
             initial_game_state=GameState(),
-            chapters=[],  # new field
+            chapters=[],
         )
-        assert new.chapters is not None
+        assert script.chapters is not None
 
     def test_script_generation_request_has_new_fields(self):
         from src.domain.script_design import ScriptGenerationRequest

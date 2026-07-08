@@ -271,13 +271,14 @@ class ChapterRevisionService:
         if current_content.strip():
             source["content"] = current_content
         base_dir = self._resolve_base_dir(base_version)
-        messages = self._build_ai_revision_messages(
+        revision_scope = self._build_ai_revision_scope(
             base_dir=base_dir,
             target=target,
             current_content=source["content"],
             feedback=feedback,
             draft_sources=draft_sources or {},
         )
+        messages = revision_scope["messages"]
         pa_client = self._pa()
         pa_client.reset_conversation()
         revised = pa_client.complete(
@@ -287,6 +288,13 @@ class ChapterRevisionService:
         revised = self._clean_markdown(revised)
         if not revised.strip():
             raise ValueError("AI 返回了空的 Markdown")
+        if revision_scope["mode"] == "block":
+            revised = self._replace_content_range(
+                source["content"],
+                revision_scope["start"],
+                revision_scope["end"],
+                revised,
+            )
         payload = self._preview_payload(source, revised, mode="ai")
         payload["feedback"] = feedback.strip()
         return payload
@@ -427,6 +435,7 @@ class ChapterRevisionService:
         chapter_jsons = self._extract_batch_chapters(
             generator, revision_dir, chapters_md, job,
         )
+        generator._normalize_extracted_structure(global_json, chapter_jsons)
         merged_json = dict(global_json)
         merged_json.pop("_chapter_ids", None)
         merged_json["chapters"] = chapter_jsons
@@ -435,12 +444,15 @@ class ChapterRevisionService:
 
         expected_npc_count = self._expected_npc_count(revision_dir)
         expected_decision_count = self._expected_decision_point_count(revision_dir)
+        expected_ending_count = self._expected_ending_count(revision_dir)
         validation_input_hash = self._content_hash(
             merged_json,
             merged_md,
             continuity,
             expected_npc_count,
             expected_decision_count,
+            expected_ending_count,
+            4,
         )
         self._start_job_task(
             revision_dir,
@@ -456,6 +468,7 @@ class ChapterRevisionService:
                 else len(merged_json.get("npcs", []))
             ),
             expected_decision_point_count=expected_decision_count,
+            expected_ending_count=expected_ending_count,
             complete_script_md=merged_md,
             continuity_review=continuity,
         )
@@ -759,6 +772,17 @@ class ChapterRevisionService:
             return None
         return value if isinstance(value, int) and not isinstance(value, bool) else None
 
+    def _expected_ending_count(self, revision_dir: Path) -> int | None:
+        generation_dir = self._generation_dir(revision_dir)
+        path = generation_dir / "00_generation_request.json"
+        if not path.exists():
+            return None
+        try:
+            value = json.loads(path.read_text(encoding="utf-8")).get("ending_count")
+        except (json.JSONDecodeError, OSError, AttributeError):
+            return None
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
     def _build_ai_revision_messages(
         self,
         base_dir: Path,
@@ -806,6 +830,157 @@ class ChapterRevisionService:
                 ),
             ),
         ]
+
+    def _build_ai_revision_scope(
+        self,
+        base_dir: Path,
+        target: str,
+        current_content: str,
+        feedback: str,
+        draft_sources: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        marker = self._extract_revision_marker(feedback)
+        if marker:
+            block = self._find_markdown_block(current_content, marker)
+            if not block:
+                raise ValueError(f"源文件中找不到元素 {marker}")
+            return {
+                "mode": "block",
+                "start": block["start"],
+                "end": block["end"],
+                "messages": self._build_ai_block_revision_messages(
+                    base_dir=base_dir,
+                    target=target,
+                    marker=marker,
+                    block_content=block["text"],
+                    feedback=feedback,
+                    draft_sources=draft_sources or {},
+                ),
+            }
+
+        if re.fullmatch(r"ch\d{2}", target) and len(current_content) > 30000:
+            raise ValueError(
+                "长章节 AI 修订必须使用元素级修订入口，避免把完整章节发送给 PA Backend"
+            )
+
+        return {
+            "mode": "full",
+            "messages": self._build_ai_revision_messages(
+                base_dir=base_dir,
+                target=target,
+                current_content=current_content,
+                feedback=feedback,
+                draft_sources=draft_sources or {},
+            ),
+        }
+
+    def _build_ai_block_revision_messages(
+        self,
+        base_dir: Path,
+        target: str,
+        marker: str,
+        block_content: str,
+        feedback: str,
+        draft_sources: dict[str, str] | None = None,
+    ) -> list[ChatMessage]:
+        context = self._build_compact_revision_context(
+            base_dir, target, draft_sources or {},
+        )
+        return [
+            ChatMessage(
+                role="system",
+                content=(
+                    "你是章节式剧本 Markdown 局部修订器。只修改用户指定的 Markdown 内容块，"
+                    "保留该块内未被反馈要求修改的 ID、结构、数值和格式。"
+                    "不要输出完整文件，不要解释，不要代码块。"
+                ),
+            ),
+            ChatMessage(
+                role="user",
+                content=(
+                    f"修订目标: {target}\n"
+                    f"元素 ID: {marker}\n"
+                    f"修订反馈: {feedback.strip()}\n\n"
+                    f"## 压缩约束上下文\n{context}\n\n"
+                    f"## 当前 Markdown 内容块\n{block_content}\n\n"
+                    "直接输出修订后的完整内容块。不得输出目标块之外的 Markdown。"
+                ),
+            ),
+        ]
+
+    def _build_compact_revision_context(
+        self,
+        base_dir: Path,
+        target: str,
+        draft_sources: dict[str, str],
+    ) -> str:
+        parts: list[str] = []
+        for draft_target, draft_content in draft_sources.items():
+            if draft_target == target or not isinstance(draft_content, str) or not draft_content.strip():
+                continue
+            filename = self._target_filename(draft_target)
+            parts.append(f"## {filename}（当前批量草稿摘要）\n{self._summarize_revision_context(draft_content)}")
+        for filename in ("01_game_settings.md", "02_chapter_outline.md"):
+            path = base_dir / filename
+            context_target = self.target_for_filename(filename)
+            if not path.exists() or context_target == target or context_target in draft_sources:
+                continue
+            parts.append(f"## {filename}（摘要）\n{self._summarize_revision_context(path.read_text(encoding='utf-8'))}")
+        return "\n\n".join(parts) or "无额外上下文。"
+
+    @staticmethod
+    def _summarize_revision_context(content: str, limit: int = 6000) -> str:
+        if len(content) <= limit:
+            return content
+        head = content[: int(limit * 0.65)]
+        tail = content[-int(limit * 0.30):]
+        return head + "\n\n<!-- 中间长上下文已省略 -->\n\n" + tail
+
+    @staticmethod
+    def _extract_revision_marker(feedback: str) -> str:
+        match = re.search(r"仅修订元素\s+(.+?)\s+所属内容块", feedback)
+        return match.group(1).strip() if match else ""
+
+    @staticmethod
+    def _find_markdown_block(content: str, marker: str) -> dict[str, Any] | None:
+        marker_index = content.find(marker)
+        if marker_index < 0:
+            return None
+        headings = [
+            {"index": match.start(), "level": len(match.group(1))}
+            for match in re.finditer(r"(?m)^(#{1,6})\s+.+$", content)
+        ]
+        start_heading = None
+        for heading in headings:
+            if heading["index"] <= marker_index:
+                start_heading = heading
+            else:
+                break
+        if start_heading is None:
+            line_start = content.rfind("\n", 0, marker_index) + 1
+            line_end = content.find("\n", marker_index)
+            end = line_end + 1 if line_end >= 0 else len(content)
+            return {"start": line_start, "end": end, "text": content[line_start:end]}
+        end = len(content)
+        for heading in headings:
+            if heading["index"] > start_heading["index"] and heading["level"] <= start_heading["level"]:
+                end = heading["index"]
+                break
+        return {
+            "start": start_heading["index"],
+            "end": end,
+            "text": content[start_heading["index"]:end].rstrip(),
+        }
+
+    @staticmethod
+    def _replace_content_range(
+        content: str,
+        start: int,
+        end: int,
+        replacement: str,
+    ) -> str:
+        separator = "\n\n" if end < len(content) else "\n"
+        return content[:start] + replacement.rstrip() + separator + content[end:]
 
     @classmethod
     def target_for_filename(cls, filename: str) -> str:

@@ -93,19 +93,19 @@ class RevisionImpactAnalyzer:
         self,
         chapters: dict[str, str],
     ) -> dict[str, Any]:
-        """Fallback for externally edited legacy versions without a baseline."""
+        """Fallback for externally edited legacy versions without a baseline.
+
+        Without a previous snapshot we cannot tell which chapters were changed.
+        Do not send every chapter through the sync-rewrite step: for imported or
+        externally revised Markdown, the safer operation is to preserve the
+        source text, run continuity repair, then rebuild merge/JSON artifacts.
+        """
         return {
             "target": "batch",
             "changed_targets": ["game_settings", "chapter_outline", *sorted(chapters)],
             "impact_level": "high",
-            "affected_chapters": [
-                {
-                    "chapter_id": chapter_id,
-                    "reasons": ["缺少修改前基线，按外部全量修订保守同步"],
-                }
-                for chapter_id in sorted(chapters, key=self._chapter_number)
-            ],
-            "structural_changes": ["缺少源 Markdown 基线，无法精确识别外部变化"],
+            "affected_chapters": [],
+            "structural_changes": ["缺少源 Markdown 基线，保留现有源文件并全量重构产物"],
             "blocking_changes": [],
             "requires_confirmation": False,
             "baseline_available": False,

@@ -77,6 +77,24 @@ class ChapterScriptGenerator:
     # Call 3 每章最多重试次数
     MAX_CHAPTER_RETRIES = 2
     MAX_CONTINUITY_REPAIR_ROUNDS = 2
+    EXTRACT_PART_CACHE_VERSION = 2
+    NPC_NAME_ALIASES = {
+        "陈建国": ["chen_jianguo", "chen_jian_guo", "chenjianguo"],
+        "赵明才": ["zhao_mingcai", "zhao_ming_cai", "zhaomingcai"],
+        "王宗福": ["wang_zongfu", "wang_zong_fu", "wangzongfu"],
+        "孙秀英": ["sun_xiuying", "sun_xiu_ying", "sunxiuying"],
+        "王建国": ["wang_jianguo", "wang_jian_guo", "wangjianguo"],
+        "张晓敏": ["zhang_xiaomin", "zhang_xiao_min", "zhangxiaomin"],
+        "李发财": ["li_facai", "li_fa_cai", "lifacai"],
+        "张建军": ["zhang_jianjun", "zhang_jian_jun", "zhangjianjun"],
+        "李翠花": ["li_cuihua", "li_cui_hua", "licuihua"],
+        "王大海": ["wang_dahai", "wang_da_hai", "wangdahai"],
+        "赵德明": ["zhao_deming", "zhao_de_ming", "zhaodeming"],
+        "周志远": ["zhou_zhiyuan", "zhou_zhi_yuan", "zhouzhiyuan"],
+        "李大柱": ["li_dazhu", "li_da_zhu", "lidazhu"],
+        "刘老根": ["liu_laogen", "liu_lao_gen", "liulaogen"],
+        "孙强": ["sun_qiang", "sunqiang"],
+    }
 
     def __init__(
         self,
@@ -238,6 +256,7 @@ class ChapterScriptGenerator:
                 script_json,
                 expected_npc_count=npc_count,
                 expected_decision_point_count=decision_point_count,
+                expected_ending_count=ending_count,
                 complete_script_md=merged_script_md,
                 continuity_review=continuity_review,
             ),
@@ -249,8 +268,10 @@ class ChapterScriptGenerator:
                 "continuity": continuity_review,
                 "expected_npc_count": npc_count,
                 "expected_decision_point_count": decision_point_count,
+                "expected_ending_count": ending_count,
+                "validation_version": 4,
             }, ensure_ascii=False, sort_keys=True),
-            reuse_if=lambda report: report.get("validation_version") == 2,
+            reuse_if=lambda report: report.get("validation_version") == 4,
         )
         script_json["_validation"] = validation_report
 
@@ -395,7 +416,7 @@ class ChapterScriptGenerator:
             last_error = None
             for attempt in range(self.MAX_CHAPTER_RETRIES + 1):
                 try:
-                    # 首次尝试复用当前版本的 PA Backend 对话，让 AgentX 保留
+                    # 首次尝试复用当前版本的 PA Backend 对话，让 General Agent 保留
                     # 全局设定和大纲上下文；失败后的重试再切新对话隔离坏状态。
                     if attempt > 0:
                         self._pa_client.reset_conversation()
@@ -618,12 +639,118 @@ class ChapterScriptGenerator:
             chapters_json = []
 
         # -- 合并 --
+        self._normalize_extracted_structure(global_json, chapters_json)
         merged = dict(global_json)
         merged.pop("_chapter_ids", None)
         merged["chapters"] = chapters_json
         self._save_intermediate("06_script_structure.json",
                                 json.dumps(merged, ensure_ascii=False, indent=2))
         return merged
+
+    @classmethod
+    def _normalize_extracted_structure(
+        cls,
+        global_json: dict[str, Any],
+        chapters_json: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Normalize model-extracted structural JSON before deterministic validation.
+
+        The extractor occasionally emits NPC state-change keys as display names,
+        romanized aliases, or relationship metrics. Only canonical npc_id keys
+        are valid in the runtime structure.
+        """
+        alias_to_id = cls._build_npc_alias_map(global_json.get("npcs", []))
+        dropped: list[dict[str, str]] = []
+        mapped: list[dict[str, str]] = []
+
+        for chapter in chapters_json:
+            chapter_id = str(chapter.get("chapter_id") or "")
+            for dp in cls._iter_extracted_decision_points(chapter):
+                dp_id = str(dp.get("node_id") or "")
+                for option in dp.get("options", []) or []:
+                    if not isinstance(option, dict):
+                        continue
+                    changes = option.get("npc_state_changes") or {}
+                    if not isinstance(changes, dict):
+                        option["npc_state_changes"] = {}
+                        continue
+                    normalized: dict[str, Any] = {}
+                    for raw_key, value in changes.items():
+                        key = str(raw_key).strip()
+                        npc_id = alias_to_id.get(key) or alias_to_id.get(cls._normalize_alias_key(key))
+                        if not npc_id:
+                            dropped.append({
+                                "chapter_id": chapter_id,
+                                "decision_point_id": dp_id,
+                                "choice_id": str(option.get("choice_id") or ""),
+                                "raw_key": key,
+                            })
+                            continue
+                        if npc_id != key:
+                            mapped.append({
+                                "chapter_id": chapter_id,
+                                "decision_point_id": dp_id,
+                                "choice_id": str(option.get("choice_id") or ""),
+                                "raw_key": key,
+                                "npc_id": npc_id,
+                            })
+                        cls._merge_npc_state_change(normalized, npc_id, value)
+                    option["npc_state_changes"] = normalized
+
+        normalization = global_json.setdefault("_extraction_normalization", {})
+        normalization["npc_state_changes"] = {
+            "mapped_count": len(mapped),
+            "dropped_count": len(dropped),
+            "mapped": mapped[:100],
+            "dropped": dropped[:100],
+        }
+        return normalization
+
+    @classmethod
+    def _build_npc_alias_map(cls, npcs: Any) -> dict[str, str]:
+        alias_to_id: dict[str, str] = {}
+        if not isinstance(npcs, list):
+            return alias_to_id
+        for npc in npcs:
+            if not isinstance(npc, dict):
+                continue
+            npc_id = str(npc.get("npc_id") or "").strip()
+            name = str(npc.get("name") or "").strip()
+            if not npc_id:
+                continue
+            for alias in [npc_id, name, *cls.NPC_NAME_ALIASES.get(name, [])]:
+                if not alias:
+                    continue
+                alias_to_id[alias] = npc_id
+                alias_to_id[cls._normalize_alias_key(alias)] = npc_id
+        return alias_to_id
+
+    @staticmethod
+    def _normalize_alias_key(value: str) -> str:
+        return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", value.strip().lower())
+
+    @staticmethod
+    def _iter_extracted_decision_points(chapter: dict[str, Any]) -> list[dict[str, Any]]:
+        points = chapter.get("decision_points")
+        if isinstance(points, list):
+            return [point for point in points if isinstance(point, dict)]
+        point = chapter.get("decision_point")
+        if isinstance(point, dict):
+            return [point]
+        return []
+
+    @staticmethod
+    def _merge_npc_state_change(target: dict[str, Any], npc_id: str, value: Any) -> None:
+        if npc_id not in target:
+            target[npc_id] = value
+            return
+        existing = target[npc_id]
+        if isinstance(existing, dict) and isinstance(value, dict):
+            existing.update(value)
+        elif isinstance(existing, list):
+            existing.append(value)
+        else:
+            target[npc_id] = [existing, value]
 
     def _call5a_extract_global(
         self,
@@ -635,7 +762,7 @@ class ChapterScriptGenerator:
         messages = build_call5a_prompt(complete_script_md, chapter_ids)
         result = self._flash_complete(
             messages, temperature=0.1, response_format="json_object",
-            max_tokens=8192,
+            max_tokens=32768,
         )
         return self._parse_json(result)
 
@@ -646,13 +773,258 @@ class ChapterScriptGenerator:
         chapter_num: int,
     ) -> dict:
         """Call 5b: 从单章 Markdown 中抽取剧情树 JSON。"""
-        from src.generation.chapter_prompts import build_call5b_prompt
-        messages = build_call5b_prompt(chapter_md, chapter_id, chapter_num)
-        result = self._flash_complete(
-            messages, temperature=0.1, response_format="json_object",
-            max_tokens=8192,
+        slices = self._build_chapter_extraction_slices(chapter_md)
+        partials: list[dict[str, Any]] = []
+        for index, text in enumerate(slices, start=1):
+            cached = self._load_cached_chapter_extract_part(
+                chapter_id, index, text,
+            )
+            if cached is not None:
+                partials.append(cached)
+                continue
+            slice_md = self._format_chapter_extract_slice(text, index, len(slices))
+            messages = self._build_call5b_messages(
+                slice_md, chapter_id, chapter_num, index, len(slices),
+            )
+            result = self._flash_complete(
+                messages, temperature=0.1, response_format="json_object",
+                max_tokens=12288,
+            )
+            parsed = self._parse_json(result)
+            self._save_cached_chapter_extract_part(
+                chapter_id, index, text, parsed,
+            )
+            partials.append(parsed)
+        return self._merge_chapter_extract_parts(chapter_id, partials)
+
+    @staticmethod
+    def _build_call5b_messages(
+        chapter_md: str,
+        chapter_id: str,
+        chapter_num: int,
+        slice_index: int,
+        slice_total: int,
+    ) -> list[ChatMessage]:
+        if slice_total == 1:
+            from src.generation.chapter_prompts import build_call5b_prompt
+            return build_call5b_prompt(chapter_md, chapter_id, chapter_num)
+        from src.generation.chapter_prompts import build_call5b_slice_prompt
+        return build_call5b_slice_prompt(
+            chapter_md, chapter_id, chapter_num, slice_index, slice_total,
         )
-        return self._parse_json(result)
+
+    @classmethod
+    def _build_chapter_extraction_view(cls, chapter_md: str) -> str:
+        """Create a compact Markdown view for structural extraction."""
+        return "\n\n---\n\n".join(cls._build_chapter_extraction_slices(chapter_md))
+
+    @classmethod
+    def _build_chapter_extraction_slices(
+        cls,
+        chapter_md: str,
+        max_chars: int = 7000,
+    ) -> list[str]:
+        """Split long chapters into cacheable structural extraction slices.
+
+        Long Claude-authored chapters can include thousands of lines of
+        dialogue and prose. Call 5b only needs the structural blocks that define
+        nodes, choices, effects, results and checkpoints, and each model call
+        should produce a small JSON fragment rather than a whole-chapter blob.
+        """
+        if len(chapter_md) <= 30000:
+            return [chapter_md]
+
+        header = cls._build_chapter_extract_header(chapter_md)
+        keywords = (
+            "chapter_id", "core_task", "main_question", "learning", "学习",
+            "信息节点", "核心信息", "背景", "决策", "玩家行动", "行动选项",
+            "玩家汇报选项", "选项", "行动", "变量", "效果", "结果",
+            "分支", "结算", "状态快照", "flag", "Flag", "AP消耗",
+            "条件", "checkpoint", "choice_id", "node_id",
+        )
+        blocks = re.split(r"(?m)(?=^#{1,4}\s+)", chapter_md)
+        kept: list[str] = []
+        for index, block in enumerate(blocks):
+            stripped = block.strip()
+            if not stripped:
+                continue
+            first_line = stripped.splitlines()[0] if stripped.splitlines() else ""
+            should_keep = index == 0 or any(keyword in stripped for keyword in keywords)
+            if not should_keep:
+                continue
+            kept.append(cls._truncate_extraction_block(stripped, first_line))
+
+        slices: list[str] = []
+        current = header
+        for block in kept:
+            candidate = current + "\n\n---\n\n" + block
+            if current != header and len(candidate) > max_chars:
+                slices.append(current.strip())
+                current = header + "\n\n---\n\n" + block
+            else:
+                current = candidate
+        if current.strip():
+            slices.append(current.strip())
+        return slices or [chapter_md[:max_chars]]
+
+    @staticmethod
+    def _build_chapter_extract_header(chapter_md: str) -> str:
+        lines = chapter_md.splitlines()
+        selected: list[str] = []
+        for line in lines[:120]:
+            stripped = line.strip()
+            if (
+                stripped.startswith("#")
+                or "chapter_id" in stripped
+                or "day_range" in stripped
+                or "core_task" in stripped
+                or "main_question" in stripped
+                or "learning" in stripped.lower()
+                or "学习" in stripped
+            ):
+                selected.append(line)
+        return "\n".join(selected[:40]).strip() or "\n".join(lines[:20]).strip()
+
+    @staticmethod
+    def _truncate_extraction_block(block: str, first_line: str) -> str:
+        if len(block) <= 5000:
+            return block
+        return (
+            first_line
+            + "\n"
+            + block[:2400]
+            + "\n\n<!-- 本节长叙事已省略 -->\n\n"
+            + block[-1800:]
+        )
+
+    @staticmethod
+    def _format_chapter_extract_slice(text: str, index: int, total: int) -> str:
+        if total == 1:
+            return text
+        return (
+            f"<!-- 结构抽取片段 {index}/{total}：只抽取本片段明确出现的节点、选项、"
+            "结果和结算字段；不要补全其他片段内容。 -->\n\n"
+            + text
+        )
+
+    def _load_cached_chapter_extract_part(
+        self,
+        chapter_id: str,
+        index: int,
+        text: str,
+    ) -> dict[str, Any] | None:
+        if self._output_dir is None:
+            return None
+        path = self._chapter_extract_part_path(chapter_id, index)
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return None
+        if payload.get("_input_hash") != self._extract_part_input_hash(chapter_id, index, text):
+            return None
+        data = payload.get("data")
+        return data if isinstance(data, dict) else None
+
+    def _save_cached_chapter_extract_part(
+        self,
+        chapter_id: str,
+        index: int,
+        text: str,
+        data: dict[str, Any],
+    ) -> None:
+        if self._output_dir is None:
+            return
+        path = self._chapter_extract_part_path(chapter_id, index)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "_input_hash": self._extract_part_input_hash(chapter_id, index, text),
+            "data": data,
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _chapter_extract_part_path(self, chapter_id: str, index: int) -> Path:
+        assert self._output_dir is not None
+        return self._output_dir / f"06b_{chapter_id}_parts" / f"part_{index:02d}.json"
+
+    @staticmethod
+    def _extract_part_input_hash(chapter_id: str, index: int, text: str) -> str:
+        payload = json.dumps(
+            [ChapterScriptGenerator.EXTRACT_PART_CACHE_VERSION, chapter_id, index, text],
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _merge_chapter_extract_parts(
+        cls,
+        chapter_id: str,
+        parts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        merged: dict[str, Any] = {"chapter_id": chapter_id}
+        for field in ("title", "day_range", "core_task", "main_question", "background"):
+            merged[field] = cls._first_non_empty(part.get(field) for part in parts)
+        merged["learning_goals"] = cls._merge_unique_scalars(
+            goal
+            for part in parts
+            for goal in (part.get("learning_goals") or [])
+        )
+        merged["info_nodes"] = cls._merge_unique_objects(parts, "info_nodes", "node_id")
+        merged["decision_points"] = cls._merge_unique_objects(parts, "decision_points", "node_id")
+        merged["results"] = cls._merge_unique_objects(parts, "results", "node_id")
+        checkpoints = [
+            part.get("checkpoint")
+            for part in parts
+            if isinstance(part.get("checkpoint"), dict)
+            and any(part.get("checkpoint", {}).values())
+        ]
+        merged["checkpoint"] = checkpoints[-1] if checkpoints else {}
+        return merged
+
+    @staticmethod
+    def _first_non_empty(values: Any) -> Any:
+        for value in values:
+            if value not in ("", None, [], {}):
+                return value
+        return ""
+
+    @staticmethod
+    def _merge_unique_scalars(values: Any) -> list[Any]:
+        result: list[Any] = []
+        seen: set[str] = set()
+        for value in values:
+            key = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(value)
+        return result
+
+    @staticmethod
+    def _merge_unique_objects(
+        parts: list[dict[str, Any]],
+        field: str,
+        id_key: str,
+    ) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for part in parts:
+            items = part.get(field) or []
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                identity = str(item.get(id_key) or "").strip()
+                if not identity:
+                    identity = json.dumps(item, ensure_ascii=False, sort_keys=True, default=str)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                result.append(item)
+        return result
 
     # ============================================================
     # Call 6: 校验
@@ -663,6 +1035,7 @@ class ChapterScriptGenerator:
         script_json: dict,
         expected_npc_count: int,
         expected_decision_point_count: int | None = None,
+        expected_ending_count: int | None = None,
         complete_script_md: str = "",
         continuity_review: dict[str, Any] | None = None,
     ) -> dict:
@@ -671,20 +1044,25 @@ class ChapterScriptGenerator:
             script_json,
             expected_npc_count=expected_npc_count,
             expected_decision_point_count=expected_decision_point_count,
+            expected_ending_count=expected_ending_count,
         )
         extraction = ChapterValidator.validate_extraction_fidelity(
             script_json, complete_script_md,
         )
-        all_issues = programmatic["issues"] + extraction["issues"]
+        source_invariants = ChapterValidator.validate_source_invariants(
+            complete_script_md,
+        )
+        all_issues = programmatic["issues"] + extraction["issues"] + source_invariants["issues"]
         errors = [i for i in all_issues if i.get("severity") == "error"]
         return {
-            "validation_version": 2,
+            "validation_version": 4,
             "valid": len(errors) == 0,
             "issues": all_issues,
             "error_count": len(errors),
             "warning_count": len([i for i in all_issues if i.get("severity") == "warning"]),
             "structure_validation": programmatic,
             "extraction_validation": extraction,
+            "source_invariant_validation": source_invariants,
             "continuity_review": continuity_review or {
                 "status": "not_run",
                 "continuity_issues": [],

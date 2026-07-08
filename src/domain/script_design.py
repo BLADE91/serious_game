@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from src.domain.act_structure import ActStructure
 from src.domain.decision_point import DecisionPoint
 from src.domain.ending_condition import EndingCondition
 from src.domain.game_action import GameActionRule
@@ -55,10 +54,9 @@ class ScriptDesign:
     night_rules: list[str] = field(default_factory=list)
     payoff_notes: list[str] = field(default_factory=list)
     citations: list[ScriptCitation] = field(default_factory=list)
-    # --- 新字段（Phase 2 生成器填充）---
+    # --- 结构化兼容字段（章节式抽取会填充部分字段供前端统计和导出）---
     npc_relationships: list[NPCRelationship] = field(default_factory=list)
     decision_points: list[DecisionPoint] = field(default_factory=list)
-    acts: list[ActStructure] = field(default_factory=list)
     endings: list[EndingCondition] = field(default_factory=list)
     # --- 章节式生成字段（6-Call 管线填充）---
     chapters: list[Any] = field(default_factory=list)  # list[Chapter]
@@ -90,12 +88,11 @@ class ScriptGenerationRequest:
     chapter_count: int = 6         # 章节数量（6-Call 管线使用）
     ending_count: int = 4         # 结局数量（6-Call 管线使用）
     decision_point_count: int = 3  # 每章决策点数量（6-Call 管线使用）
-    # --- 旧字段（保留兼容）---
+    # --- 兼容字段 ---
     query: str = ""
     manual_queries: list[str] = field(default_factory=list)
     feedback: str = ""
     max_contexts: int = 4
-    full_draft: bool = True
 
     def __post_init__(self) -> None:
         has_structured = bool(self.scenario.strip() and self.player_role.strip())
@@ -123,4 +120,4 @@ class ScriptGenerationResult:
     original_query: str = ""
     feedback: str = ""
     revision_round: int = 0
-    generation_mode: str = "compact"
+    generation_mode: str = "chapter"
