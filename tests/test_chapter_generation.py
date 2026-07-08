@@ -340,6 +340,7 @@ class TestPromptBuilders(unittest.TestCase):
         assert "测试主题" not in content
         assert "示例章节" not in content
         assert "状态快照" in content
+        assert "核心决策点" in content
         assert "NPC 状态变化" in content
         assert "制作备注" in content
 

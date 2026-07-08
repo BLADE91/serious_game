@@ -352,7 +352,7 @@ def _chapter_structure_contract(decision_point_count: int) -> str:
 - node_id / visible_if / content / reveals / related_npcs / unlocks:
 （按需要继续写信息节点。）
 
-## 决策点
+## 核心决策点
 ### 决策点 1：决策标题
 - decision_id: chXX_dp01
 - order: 1
