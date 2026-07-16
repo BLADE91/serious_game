@@ -16,6 +16,7 @@
 - 本文档定义“需要画什么、交付什么规格、如何验收”。
 - `technical_design.md` 定义“代码如何读取、校验、缓存和渲染这些资源”。
 - 所有正式进入游戏的美术资源都必须登记到剧本包的 `assets_manifest.json`。
+- `最终剧本.md` 是人物、剧情、事件日期和结局的内容权威；`art_need_arguments.md` 是已按该剧本整理的具体生产清单与提示词权威，包含 30 名独立人物、5 类事件群像、24 个场景、12 张关键事件插图和 24 张主结局封面。
 
 ## 2. 总体美术目标
 
@@ -109,7 +110,7 @@
 | 手绘地图 | 必需 | 地理关系、NPC 房屋、事件风险 |
 | 地图交互图层 | 必需 | 前端按状态高亮和点击 |
 | 场景背景图 | 必需 | 会议、入户、村委、档案室等场景 |
-| 事件插图 | 必需 | 固定事件、突发事件、舆情、巡视 |
+| 事件插图 | 必需 | 固定事件、突发事件、舆情、巡察与迎检 |
 | 证据/档案图 | 必需 | 暗线线索、合同、账册、环评材料 |
 | 结局图 | 必需 | 结局页和复盘页 |
 | 加载/空状态/错误状态 | 必需 | 登录、读档、LLM 等待、资源缺失 |
@@ -126,10 +127,12 @@
 outputs/script_packages/
   pkg_YYYYMMDD_HHMMSS/
     assets_manifest.json
+    art_story_mapping.json
     art/
       brand/
       ui/
       icons/
+      player/
       npc/
       map/
       scenes/
@@ -178,13 +181,13 @@ art_source/
 brand_title_main
 ui_panel_dialogue_default
 icon_action_home_visit
-npc_yang_deqing_portrait_neutral
-map_fuxi_overview_base
-map_house_npc_yang_deqing_default
+npc_zhou_dashan_portrait_neutral
+map_yunxi_liulin_overview_base
+map_house_npc_zhou_dashan_default
 scene_village_committee_day
-event_d07_elder_visit_bg
+event_d31_municipal_inspection_arrival
 evidence_env_report_redacted
-ending_stable_relocation_cover
+ending_main_22_cover
 system_loading_llm
 ```
 
@@ -193,10 +196,10 @@ system_loading_llm
 文件名应与 `asset_id` 保持一致：
 
 ```text
-npc_yang_deqing_portrait_neutral.webp
-event_d07_elder_visit_bg.webp
+npc_zhou_dashan_portrait_neutral.webp
+event_d31_municipal_inspection_arrival.webp
 icon_status_signed.svg
-map_fuxi_overview_layers.svg
+map_yunxi_liulin_overview_layers.svg
 ```
 
 ### 5.3 版本命名
@@ -205,7 +208,7 @@ map_fuxi_overview_layers.svg
 
 ```json
 {
-  "asset_id": "npc_yang_deqing_portrait_neutral",
+  "asset_id": "npc_zhou_dashan_portrait_neutral",
   "version": "1.0.0"
 }
 ```
@@ -221,7 +224,7 @@ map_fuxi_overview_layers.svg
 ```json
 {
   "schema_version": 1,
-  "package_id": "pkg_20260706_001",
+  "package_id": "pkg_20260715_001",
   "art_direction_version": "art_v1",
   "base_path": "art/",
   "design_tokens": {
@@ -235,13 +238,13 @@ map_fuxi_overview_layers.svg
 
 ```json
 {
-  "asset_id": "npc_yang_deqing_portrait_neutral",
+  "asset_id": "npc_zhou_dashan_portrait_neutral",
   "category": "npc",
   "type": "portrait",
-  "path": "art/npc/npc_yang_deqing/portrait_neutral.webp",
+  "path": "art/npc/npc_zhou_dashan/portrait_neutral.webp",
   "fallback_asset_id": "npc_unknown_portrait_neutral",
   "linked_entity_type": "npc",
-  "linked_entity_id": "npc_yang_deqing",
+  "linked_entity_id": "npc_zhou_dashan",
   "state": "neutral",
   "usage": ["dialogue", "npc_profile", "review"],
   "format": "webp",
@@ -256,10 +259,10 @@ map_fuxi_overview_layers.svg
   },
   "version": "1.0.0",
   "author": "art_team",
-  "source_file": "art_source/npc/npc_yang_deqing.psd",
+  "source_file": "art_source/npc/npc_zhou_dashan.psd",
   "license": "project_internal",
   "commercial_use": true,
-  "alt_text": "杨德清普通状态头像",
+  "alt_text": "周大山普通状态头像",
   "notes": "用于第一版中性表情"
 }
 ```
@@ -287,6 +290,7 @@ map_fuxi_overview_layers.svg
 
 ```text
 brand
+player
 ui
 icon
 npc
@@ -298,6 +302,24 @@ ending
 tutorial
 system
 ```
+
+`player` 仅用于玩家角色李致远的肖像、差分和宣传资源；其稳定实体 ID 为 `player_li_zhiyuan`，不创建 NPCState。历史草稿中误用 NPC 前缀的玩家资产必须在发布前迁移为 `player_li_zhiyuan_*`。
+
+### 6.4.1 linked_entity_type 枚举
+
+```text
+player
+npc
+event
+location
+evidence
+ending
+scene
+map
+system
+```
+
+玩家肖像必须使用 `linked_entity_type=player`、`linked_entity_id=player_li_zhiyuan`。其他资源只能引用剧本包或美术映射中已注册的实体 ID；禁止把中文名、旧项目 ID 或临时文件名写入关联字段。
 
 ### 6.5 type 枚举
 
@@ -357,12 +379,12 @@ error
 | 游戏首页 | 继续最近一局、新开一局 | 状态卡、按钮、最近存档摘要 |
 | 游戏主界面 | 三栏布局 | 完整 UI 设计稿和组件规范 |
 | NPC 对话界面 | 玩家与 NPC 自由对话 | 气泡、头像、输入框、快捷行动 |
-| NPC 档案抽屉 | 身份、诉求、关系、已知线索 | 档案卡、标签、状态条 |
+| NPC 档案抽屉 | 身份、玩家已知诉求、公开关系与已获线索 | 档案卡、标签；不得显示人物信任度或隐藏数值 |
 | 地图面板 | 村庄地图和地点状态 | 地图底图、图层、高亮状态 |
-| 事件卡片 | 固定事件、条件事件、突发事件 | 风险等级、选项、倒计时 |
+| 事件卡片 | 固定事件、条件事件、突发事件 | 选项、故事日/剩余天数；仅服务端显式声明超时时显示现实时间倒计时 |
 | 证据库 | 暗线线索和档案材料 | 文档缩略图、可信度标记 |
-| 日终结算页 | 当日行动总结、夜间摘要 | 指标变化、风险提示 |
-| 结局页 | 最终结局和评分 | 结局图、评分模块 |
+| 日终结算页 | 当日行动总结、夜间摘要 | 不含数字 delta 的体感回执、风险提示 |
+| 结局页 | 主结局、亚结局、十四轴文字档位和终局台账 | 结局图、轴档位与台账排版；禁止综合评分 |
 | 复盘页 | 时间线、关键决策、隐藏信息 | 曲线、时间线、日志卡 |
 | 加载/错误页 | LLM 等待、资源缺失、网络错误 | 空状态、错误状态、重试按钮 |
 
@@ -383,7 +405,7 @@ error
 - 右侧强调“信息研判”。
 - 同屏必须能看到当前行动点、预算、目标 NPC 和最新风险。
 - 不要把玩法说明做成大段文字墙。
-- 指标变化必须有颜色、图标和文字三重提示。
+- 五项体感指标只能显示无刻度进度条和当前文字档位；后果提示不得显示数值、涨跌量或可反推人物信任度的信息。状态区分仍需颜色、图标和文字三重编码，但颜色不能成为唯一信号。
 
 ### 7.3 组件清单
 
@@ -407,7 +429,7 @@ UI 组件必须覆盖：
 - 地图图例。
 - 夜间摘要卡。
 - 系统日志条。
-- 结局评分卡。
+- 结局台账与十四轴档位卡（不含分数、星级或评级）。
 - 复盘时间线。
 - 弹窗和确认框。
 - Toast 提示。
@@ -429,9 +451,9 @@ UI 组件必须覆盖：
     "text_primary": "#1F2933",
     "text_secondary": "#5B6470",
     "border": "#C9C1B2",
-    "risk_low": "#5A8F68",
-    "risk_medium": "#B9893A",
-    "risk_high": "#B84A3A",
+    "alert_low": "#5A8F68",
+    "alert_medium": "#B9893A",
+    "alert_high": "#B84A3A",
     "info": "#3F6F8F"
   },
   "radius": {
@@ -473,12 +495,12 @@ NPC 视觉必须能区分以下类别：
 | 县级干部 | 正式、谨慎、会议和文件语境 |
 | 企业方 | 商务感、项目推进压力、利益诉求 |
 | 媒体 | 采访设备、独立调查或舆情传播气质 |
-| 上级巡视组 | 严肃、程序性、审查感 |
+| 上级巡察组 | 严肃、程序性、审查感 |
 | 暗线相关人物 | 不能一眼暴露反派身份，但要有可回看细节 |
 
 ### 8.1.1 每个人物必须单独做美术设定
 
-当前文档不能只写“村民、干部、媒体”这种大类要求。第一版每个可对话 NPC 都必须有独立的人物美术设定表，并与 `npc_profiles.json` 中的 `npc_id` 一一对应。
+当前文档不能只写“村民、干部、媒体”这种大类要求。第一版按 `art_need_arguments.md` 为玩家李致远、县委书记蒋崇岳、23 名主要 NPC 和 5 名配角分别制作人物设定，共 30 人。NPC 资源与剧本包稳定 `npc_id` 一一对应；玩家使用 `player_li_zhiyuan_portrait_*` 资产 ID、`linked_entity_type=player` 和 `linked_entity_id=player_li_zhiyuan`，不创建 NPCState。
 
 每个人物至少需要明确：
 
@@ -534,7 +556,7 @@ NPC 视觉必须能区分以下类别：
 - 对应 asset_id：
 ```
 
-美术交付时应另建 `art_character_bible.md` 或同等角色美术设定表文件，逐个 NPC 填写。`art_requirement.md` 负责规定模板和验收规则，具体人物名单以最终 `npc_profiles.json` 或 v01 剧本包为准。
+逐人物设定、统一风格词、反向词、资产 ID 和优先级已写入 `art_need_arguments.md`。`art_requirement.md` 负责规格与验收；运行时名单以从 `最终剧本.md` 抽取并发布的 `npc_profiles.json` 为准，历史 v01 剧本包不得覆盖当前名单。
 
 ### 8.1.2 人物设计与参考图风格的关系
 
@@ -608,15 +630,17 @@ M2 建议补齐：
 
 技术映射：
 
-| NPC 状态 | 优先头像 |
+| 服务端玩家可见 `portrait_state` | 优先头像 |
 |---|---|
-| `trust_to_player >= 70` | `trust` |
-| `anxiety_level >= 70` | `worried` |
-| `attitude_score <= 30` | `resistant` |
-| 最近冲突事件 | `angry` |
+| `trust` | `trust` |
+| `worried` | `worried` |
+| `resistant` | `resistant` |
+| `angry` | `angry` |
+| `tense` | `tense` |
+| `relieved` | `relieved` |
 | 默认 | `neutral` |
 
-如果目标状态头像不存在，前端必须回退到 `neutral`。
+`portrait_state` 由服务端根据最终剧本、人物档级和玩家可见性白名单给出。前端不得读取或比较 `trust_score`、`attitude_score`、`anxiety_score`，也不得从头像文件名向玩家展示“信任达到多少”等规则解释。第二档和第三档人物没有数值状态时，只能由剧情节点显式指定差分。目标差分不存在时回退到 `neutral`。
 
 ### 8.4 角色差异化要求
 
@@ -627,13 +651,13 @@ M2 建议补齐：
 - 家庭或职业背景。
 - 性格倾向。
 - 与搬迁事件的关系。
-- 是否可能掌握暗线线索的视觉暗示。
+- 与玩家已知职业和公开经历相符的随身物件；不得用服装、光影或道具提前暗示尚未解锁的暗线线索。
 
 注意：
 
 - 不能把暗线人物画得过于脸谱化。
 - 同村村民之间要有亲缘、邻里、年龄和经济状态差异。
-- 干部类角色要区分基层干部、县级领导、职能部门和巡视组。
+- 干部类角色要区分基层干部、县级领导、职能部门和巡察组。
 
 ### 8.5 不同人物类型的细化设计要求
 
@@ -708,9 +732,9 @@ M2 建议补齐：
 - 背景可用采访现场、村道、办公室门口。
 - 不同媒体角色要区分独立调查、追热点、受引导或被利用等状态。
 
-#### 8.5.6 上级巡视组和监督角色
+#### 8.5.6 上级巡察组和监督角色
 
-巡视组要体现程序性审查和外部压力。
+巡察组要体现程序性审查和外部压力。
 
 视觉要点：
 
@@ -748,8 +772,8 @@ npc_{npc_id}/ending_related.webp
 
 每个人物资源必须登记到 `assets_manifest.json`，并满足：
 
-- `linked_entity_type` 为 `npc`。
-- `linked_entity_id` 等于该人物 `npc_id`。
+- NPC 的 `linked_entity_type` 为 `npc`，`linked_entity_id` 等于该人物 `npc_id`。
+- 李致远的 `linked_entity_type` 为 `player`，`linked_entity_id` 固定为 `player_li_zhiyuan`。
 - `state` 对应 `neutral`、`trust`、`tense` 等情绪状态。
 - `usage` 至少包含 `dialogue`、`npc_profile`、`review` 中一种。
 - 缺少情绪差分时必须设置 `fallback_asset_id` 到中性头像。
@@ -785,20 +809,18 @@ npc_{npc_id}/ending_related.webp
 
 地图必须包含：
 
-- 上湾组。
-- 中湾组。
-- 下湾组。
-- 河流或流域主线。
-- 化工厂拟选址。
-- 安置区。
-- 镇政府。
-- 村委会。
-- 县政府或县城方向。
-- 关键道路。
-- 桥、渡口或交通节点。
-- 关键 NPC 房屋。
-- 可能发生集体行动的公共空间。
-- 暗线相关地点，例如账册、环评、旧厂址、仓库或办公室。
+- 云溪县城与县政府大院。
+- 县委小楼及常委会会议地点。
+- 渡口镇方向。
+- 柳林村三十六户聚居区与村委会。
+- 清江河道、河湾、浅井和宏达化工围堰/排污口。
+- 宏达化工项目区、旧冶炼厂方向和新安置区。
+- 周氏祠堂、后山祖坟与迁坟路线。
+- 周大山家、吴秀英家/旧村小、袁桂兰旧屋、何铁柱老屋、马长顺小卖部等剧情明确地点。
+- 县档案室、信访办、县医院、县城酒楼、茶楼和废弃粮站。
+- 关键道路、渡口、村口及可能发生堵路、接访和媒体采访的公共空间。
+
+禁止使用参考图和旧项目中的“伏羲”“青河县”“上游村/中游村/下游村”“上湾组/中湾组/下湾组”等名称。地图对象必须从 `art_need_arguments.md` 的 24 个场景和剧本包 `location_id` 生成，不能由美术自行另建地理层级。
 
 ### 9.3 交互状态
 
@@ -808,17 +830,17 @@ npc_{npc_id}/ending_related.webp
 unknown
 known
 visited
-negotiating
-swing
+available
+locked
+cooldown
+completed
 signed
-resist
-risk_low
-risk_medium
-risk_high
 event_active
 clue_available
 clue_collected
 ```
+
+这些状态只表现服务端玩家可见 DTO 已明确给出的机会、事件、线索和签约事实。禁止由前端根据隐藏信任度、焦虑、人物立场或风险分数自行推导 `swing/resist/risk_*` 并显示在地图上。
 
 每个状态必须提供视觉规则：
 
@@ -832,10 +854,10 @@ clue_collected
 
 推荐交付：
 
-- `map_fuxi_overview_base.svg`：基础地图。
-- `map_fuxi_overview_layers.svg`：带可交互图层的 SVG。
+- `map_yunxi_liulin_overview_base.svg`：基础地图。
+- `map_yunxi_liulin_overview_layers.svg`：带可交互图层的 SVG。
 - `map_layers.json`：地点、房屋、NPC、事件的映射数据。
-- `map_fuxi_overview_preview.webp`：低成本预览图。
+- `map_yunxi_liulin_overview_preview.webp`：低成本预览图。
 
 SVG 要求：
 
@@ -848,23 +870,23 @@ SVG 要求：
 
 ```json
 {
-  "map_id": "map_fuxi_overview",
+  "map_id": "map_yunxi_liulin_overview",
   "viewBox": "0 0 1920 1080",
   "locations": [
     {
-      "location_id": "loc_shangwan_group",
-      "asset_id": "map_loc_shangwan_group",
-      "label": "上湾组",
-      "type": "village_group",
+      "location_id": "loc_liulin_village",
+      "asset_id": "map_loc_liulin_village",
+      "label": "柳林村",
+      "type": "village",
       "x": 420,
       "y": 300
     }
   ],
   "houses": [
     {
-      "house_id": "house_npc_yang_deqing",
-      "npc_id": "npc_yang_deqing",
-      "asset_id": "map_house_npc_yang_deqing",
+      "house_id": "house_npc_zhou_dashan",
+      "npc_id": "npc_zhou_dashan",
+      "asset_id": "map_house_npc_zhou_dashan",
       "x": 520,
       "y": 360
     }
@@ -876,7 +898,7 @@ SVG 要求：
 
 ### 10.1 场景清单
 
-第一版建议至少准备以下场景：
+第一版固定交付 24 个可复用场景，具体 ID、构图和提示词以 `art_need_arguments.md` 第 4 节为准。下表仅是技术分类示例，不得据此把数量缩成 8–10 张：
 
 | asset_id | 场景 | 用途 |
 |---|---|---|
@@ -911,20 +933,9 @@ SVG 要求：
 
 ### 11.1 固定事件
 
-第一版建议覆盖：
+第一版固定交付 12 张关键事件插图，具体事件 ID 和提示词以 `art_need_arguments.md` 第 5 节为准。事件日期与机构名称必须遵守最终剧本：市委巡察组由张立带队，D31 进驻、D45 撤离；顾克明带队的环保迎检组 D59 进驻；张立在 D90 以验收主检身份再次出现。三次节点是不同事件，人物、材料、车辆与场景状态不得混画。
 
-- D1 开局部署会。
-- D7 老人上门或群体诉求。
-- 首次集体谈判。
-- 补偿差异传闻扩散。
-- 媒体采访。
-- 上访预警。
-- 巡视组进驻。
-- 书记视察。
-- 暗线证据出现。
-- 暗线证据被转移。
-- 预算超支风险。
-- 社会稳定风险升高。
+12 张固定为：到任第一脚踩进云溪的泥、接风宴手提袋、渡口堵路、病儿急送、谭老六堵县政府门、市委巡察组进驻、血铅患儿曝光/传真闯门、祠堂里的第二堵墙、起灵与依礼迁坟、围堰漫水、媒体采访与舆情压力、第九十日验收落槌。资产 ID 逐项读取 `art_need_arguments.md`，不得用这段中文临时拼主键。
 
 ### 11.2 事件图规格
 
@@ -937,9 +948,9 @@ SVG 要求：
 事件图必须能与 `event_id` 对应：
 
 ```text
-event_d07_elder_visit_bg.webp
-event_media_interview_bg.webp
-event_inspection_team_arrival_bg.webp
+event_d01_arrival_muddy_road.webp
+event_media_interview_river.webp
+event_d31_municipal_inspection_arrival.webp
 ```
 
 ## 12. 证据与档案美术需求
@@ -959,19 +970,17 @@ event_inspection_team_arrival_bg.webp
 
 ### 12.2 视觉规则
 
-证据要有可信度和状态提示：
+证据只表现剧本包 `facts_and_clues.json` 已注册、且玩家有权看到的状态：
 
 ```text
-unverified
-verified
-contradictory
+locked
+discovered
+available
 redacted
-critical
 used
-expired
 ```
 
-每种状态要有图标、标签和颜色规则。
+每种状态要有图标、标签和颜色规则。不得自行增加“可信度分数”“关键等级”“已过期”等机制；若具体证据确有相互矛盾、失效或销毁规则，必须由剧本包提供注册状态和玩家可见文案后再制作，不由美术或前端推断。
 
 ### 12.3 规格
 
@@ -990,18 +999,7 @@ expired
 
 ### 13.1 结局类型
 
-至少需要覆盖以下结局视觉类型：
-
-- 稳定完成搬迁。
-- 完成搬迁但民怨积累。
-- 资金超支。
-- 群体性事件失控。
-- 项目流产。
-- 舆情翻车。
-- 暗线揭露成功。
-- 暗线反噬。
-- 玩家被问责。
-- 灰色平衡结局。
+第一版为最终剧本主结局表的 24 行各制作一张主结局封面，ID、标题与提示词以 `art_need_arguments.md` 第 6 节为准。95 个亚结局共用所属主结局封面，通过前端文字和局部版式区分，不另要求 95 张图；3 个附加位只追加文字，不参与图像选择。
 
 ### 13.2 规格
 
@@ -1011,7 +1009,7 @@ expired
 | 结局缩略图 | 480x270 | WebP |
 | 分享/报告封面 | 1200x630 | WebP/PNG |
 
-结局图必须预留标题、评分和核心指标显示区域。
+结局图必须预留标题、四项终局台账、五项体感回执和十四轴文字档位区域。禁止预留综合评分、星级、奖杯、S/A/B 评级、“成功/失败”印章或分数线；图片不烘焙结局标题与数值，由前端动态渲染。
 
 ## 14. 图标需求
 
@@ -1022,36 +1020,67 @@ expired
 行动类：
 
 - 入户走访。
-- 干部私谈。
-- 调阅档案。
-- 提高补偿。
-- 公开承诺。
-- 接待媒体。
-- 接待巡视组。
-- 加班协调。
-- 日终结算。
+- 促膝谈心。
+- 借意见领袖传话。
+- 请党员户示范带头。
+- 开公开听证会。
+- 提高整体补偿标准。
+- 差异化补偿。
+- 调配更好的安置房。
+- 就业与创业扶持。
+- 低保与医疗兜底。
+- 召开班子会。
+- 成立搬迁专班。
+- 约谈干部。
+- 启动问责。
+- 查村账。
+- 调阅县档案。
+- 请第三方取水样送检。
+- 走访取血铅体检单。
+- 私下取口供。
+- 接触记者。
+- 对接巡察组张立。
+- 交叉印证已有线索。
+- 依法征收。
+- 走司法程序。
+- 对闹事者依规隔离处置。
+- 强制清场。
+- 请郑向东做线索汇总。
+- 面见县委书记。
+- 向市里递话。
+- 下乡进村。
+- 攻坚宗族族长。
+
+以上名称逐字取自最终剧本第 8.1 节工具价目表。日终结算、编号决策点和突发事件不是政策工具，使用系统类图标，不混入行动价目图标。
 
 资源类：
 
 - 行动点。
-- 预算。
-- 时间。
-- 政治信用。
-- 干部执行力。
-- 公众信任。
+- 财政预算。
+- 剩余天数。
+- 签约户数。
+- 民众信任度。
+- 社会稳定度。
+- 政治资本。
+- 舆论压力。
+- 领导班子不满度。
+
+前四项台账中的剩余天数、行动点、签约户数和财政预算可以显示精确数字；后五项只显示无刻度进度条和文字档位。环评线索、廉政清白指数和腐败证据是暗档，不制作 HUD 状态图标，也不得出现在玩家界面。
 
 状态类：
 
-- 未接触。
-- 已走访。
-- 谈判中。
+- 未知。
+- 已知。
+- 可互动。
+- 已锁定。
+- 冷却中。
+- 已处理。
 - 已签约。
-- 抵制。
-- 观望。
-- 高风险。
-- 线索。
-- 承诺。
-- 违约。
+- 事件进行中。
+- 有线索可取。
+- 线索已收集。
+
+这些状态只能对应玩家可见 DTO 或剧本显式注册的机会、地点、事件和线索状态。不得根据人物信任度、焦虑度、真实立场或其他暗档推导“抵制”“观望”“高风险”等标签。
 
 系统类：
 
@@ -1077,7 +1106,7 @@ expired
 
 第一版需要：
 
-- 游戏中文标题字样。
+- 游戏中文标题字样：`浊流之下·清江搬迁记`。
 - 登录页标题图。
 - 浏览器 favicon。
 - 加载页标识。
@@ -1086,7 +1115,7 @@ expired
 要求：
 
 - 标题设计要偏严肃游戏和档案感，不做商业手游风。
-- 标题字样不能遮蔽“生态搬迁动员模拟”的题材识别。
+- 不添加最终剧本已经删除的副标题；题材识别由页面说明文案承担，不把“生态搬迁动员模拟”等临时说明并入标题图。
 - 标题图应能适配登录页和首页。
 
 ## 16. 系统状态美术
@@ -1110,7 +1139,7 @@ expired
 
 第一版不强制复杂动效，但建议定义轻量动效规则：
 
-- 指标上升/下降：短暂颜色和箭头反馈。
+- 五项体感指标发生玩家可见档位变化：短暂颜色和方向提示，不显示数值或 delta；暗档、人物信任度和未跨档变化不播放升降动效。
 - 风险升高：卡片边缘闪烁一次，不循环干扰。
 - 新事件出现：事件卡滑入。
 - 日夜切换：低成本遮罩过渡。
@@ -1121,30 +1150,32 @@ expired
 
 ## 18. 第一版最低交付清单
 
-在 M1/M2 可玩闭环前，美术至少交付：
+交付分为 P0 垂直切片和完整首版两个门槛。P0 数量严格沿用 `art_need_arguments.md` 第 7 节，用于技术设计 M1；完整首版是发布完整六章前的验收线，不能把 P0 数量误当成最终资产总量。
 
-| 编号 | 资产 | 数量 | 备注 |
-|---|---:|---:|---|
-| A01 | 视觉风格板 | 1 | 色彩、材质、UI 气质 |
-| A02 | 设计 Token | 1 | `design_tokens.json` |
-| A03 | 登录页设计 | 1 | 含错误状态 |
-| A04 | 游戏首页设计 | 1 | 继续/新开 |
-| A05 | 游戏主界面设计 | 1 | 三栏布局 |
-| A06 | 日终结算页设计 | 1 | 指标变化 |
-| A07 | 复盘页设计 | 1 | 时间线和曲线 |
-| A08 | 结局页设计 | 1 | 主图和评分 |
-| A09 | UI 组件集 | 1 套 | 按钮、卡片、输入框等 |
-| A10 | 图标集 | 40+ | 行动、资源、状态、系统 |
-| A11 | 手绘地图底图 | 1 | SVG 优先 |
-| A12 | 地图交互图层 | 1 | `map_layers.json` |
-| A13 | NPC 中性头像 | 按可对话 NPC 数量 | 第一版最低一人一张 |
-| A14 | 通用未知 NPC 头像 | 1 | fallback |
-| A15 | 场景背景 | 8-10 | 会议、入户、村委等 |
-| A16 | 事件插图 | 8-12 | 固定事件优先 |
-| A17 | 证据/档案模板 | 6-10 | 文档、照片、账册等 |
-| A18 | 结局图 | 至少 8 | 先覆盖主结局类型 |
-| A19 | 系统状态图 | 8+ | 加载、错误、空状态 |
-| A20 | `assets_manifest.json` 初版 | 1 | 与导出资源一致 |
+| 编号 | 资产 | P0 垂直切片 | 完整首版 | 备注 |
+|---|---|---:|---:|---|
+| A01 | 视觉风格板 | 1 | 1 | 色彩、材质、UI 气质 |
+| A02 | 设计 Token | 1 | 1 | `design_tokens.json` |
+| A03 | 登录页设计 | 1 | 1 | 含错误状态 |
+| A04 | 游戏首页设计 | 1 | 1 | 继续/新开 |
+| A05 | 游戏主界面设计 | 1 | 1 | 三栏布局 |
+| A06 | 日终结算页设计 | 1 | 1 | 五项体感回执，不显示数值 delta |
+| A07 | 复盘页设计 | 1 | 1 | 玩家可见时间线和曲线 |
+| A08 | 结局页设计 | 1 | 1 | 主图、台账、体感回执和十四轴，不含评分 |
+| A09 | UI 组件集 | 1 套 | 1 套 | 按钮、卡片、输入框等 |
+| A10 | 图标集 | 覆盖切片动作 | 60+ | 完整价目表、台账、五项体感、机会和系统状态 |
+| A11 | 手绘地图底图 | 1 | 1 | `map_yunxi_liulin_overview_base.svg` |
+| A12 | 地图交互图层 | 1 | 1 | `map_layers.json` |
+| A13 | 独立人物中性头像/设定 | 12 | 30 | 玩家 1、县委书记 1、23 名主要 NPC、5 名配角 |
+| A14 | 通用未知 NPC 头像 | 1 | 1 | fallback |
+| A15 | 事件角色/群像模板 | 按切片事件需要 | 5 | 血铅患儿与家属、巡察组随员、电视摄像师、村民群像、工作组干部群像 |
+| A16 | 场景背景 | 12 | 24 | 按 `art_need_arguments.md` 第 4、7 节 |
+| A17 | 事件插图 | 7 | 12 | 按 `art_need_arguments.md` 第 5、7 节 |
+| A18 | 证据/档案模板 | 3+ | 6–10 | 文档、照片、账册等，不烘焙关键文字 |
+| A19 | 结局封面 | 8 | 24 | 主结局逐行对应；95 个亚结局复用 |
+| A20 | 系统状态图 | 8+ | 8+ | 加载、错误、空状态 |
+| A21 | `assets_manifest.json` | 1 | 1 | 与阶段实际导出资源一致 |
+| A22 | `art_story_mapping.json` | 1 | 1 | 所有引用 ID 必须可解析 |
 
 ## 19. 后续扩展清单
 
@@ -1162,9 +1193,9 @@ expired
 前端不得直接写死图片路径，应通过以下流程加载：
 
 ```text
-读取 session.package_id
+读取 session.package_id + package_content_hash
   ↓
-GET /api/script-packages/{package_id}/assets
+GET /api/game/session/{session_id}/assets-manifest
   ↓
 按 asset_id / linked_entity_id / usage 查询资源
   ↓
@@ -1174,6 +1205,8 @@ GET /api/script-packages/{package_id}/assets
   ↓
 仍不存在则使用 system_missing_asset
 ```
+
+该接口由服务端校验当前账号的 session 所有权，并按 session 锁定的内容哈希读取不可变包。前端缓存键至少包含 `package_content_hash + asset_id + asset.version`，禁止同名 `asset_id` 被另一个包的资源覆盖。
 
 ### 20.1 NPC 头像选择
 
@@ -1193,7 +1226,7 @@ system_missing_asset
 
 - 底图由 `map_base` 资源提供。
 - 可点击对象由 `map_layers.json` 提供。
-- 状态颜色和图标由前端根据 NPC 状态、事件状态和 design tokens 渲染。
+- 状态颜色和图标由前端根据服务端 `PlayerVisibleDTO.map_visual_state`、一次性 `newly_unlocked` 提示和 design tokens 渲染；不得读取隐藏 NPC 状态自行推导。
 
 ### 20.3 事件图选择
 
@@ -1227,13 +1260,10 @@ system_missing_asset
 
 ## 22. 当前待确认问题
 
-正式制作前仍需确认：
+人物名单、结局数量、场景数和事件插图数已由最终剧本及 `art_need_arguments.md` 冻结，不再列为未决。正式生产前仍需确认：
 
-- 第一版最终 NPC 名单和 `npc_id`。
-- 第一版地图草图和地点清单。
-- 第一版结局数量。
-- 事件插图是否按全部固定事件制作，还是先覆盖主事件。
-- 是否允许 AI 生成图作为概念稿或临时资源。
+- 24 个场景与可交互地图地点的最终 `location_id` 映射和 SVG 点击区。
+- AI 生成图可用作概念稿、原型还是正式资产，以及所用模型、素材来源和商用授权证明。
 - 最终商用授权边界。
 - 是否需要移动端适配导出。
 - 是否需要音效和环境声进入同一资源 manifest。
@@ -1252,8 +1282,10 @@ system_missing_asset
 | `newly_unlocked` | 因证据、事件或关系新开放 | 提供一次性提示标记，阅读后可消失 |
 | `locked` | 当前不能互动 | 可见但弱化；前端展示剧本提供的非剧透原因 |
 | `cooldown` | 刚互动过，暂时不可再约谈 | 时间/日程标记，避免使用失败或禁止色误导 |
-| `risk` | 会面可能引发风险或事件 | 使用与全局风险系统一致的警示符号 |
+| `event_active` | 当前有玩家可见事件占用或影响该入口 | 使用事件标记；具体风险只展示剧本提供的非剧透公开文案 |
 | `completed` | 当前机会已处理或由其他剧情关闭 | 档案/地点保留历史痕迹，不从地图无故消失 |
+
+其中 `available`、`locked`、`cooldown`、`completed`、`event_active` 属于 `map_visual_state` 主状态；`newly_unlocked` 是服务端返回的一次性提示布尔值，不与主状态互斥，也不得由前端自行推导。
 
 ### 23.2 剧本对象到美术对象的映射
 
@@ -1262,27 +1294,27 @@ system_missing_asset
 ```json
 {
   "schema_version": 1,
-  "package_id": "pkg_20260706_001",
+  "package_id": "pkg_20260715_001",
   "npc_entries": [
     {
-      "npc_id": "npc_yang_deqing",
-      "portrait_asset_id": "npc_yang_deqing_portrait_neutral",
-      "map_entity_id": "house_npc_yang_deqing",
+      "npc_id": "npc_zhou_dashan",
+      "portrait_asset_id": "npc_zhou_dashan_portrait_neutral",
+      "map_entity_id": "house_npc_zhou_dashan",
       "profile_usage": "npc_profile",
       "opportunity_entry_assets": ["icon_action_home_visit"]
     }
   ],
   "event_entries": [
     {
-      "event_id": "event_d07_elder_visit",
-      "card_asset_id": "event_d07_elder_visit_bg",
-      "fallback_asset_id": "scene_village_committee_day"
+      "event_id": "event_d31_municipal_inspection_arrival",
+      "card_asset_id": "event_d31_municipal_inspection_arrival",
+      "fallback_asset_id": "scene_party_committee_meeting_room"
     }
   ],
-  "clue_entries": [
+  "evidence_entries": [
     {
-      "clue_id": "clue_ancestral_record",
-      "evidence_asset_id": "evidence_ancestral_record_redacted",
+      "evidence_id": "evidence_lead_test_fax",
+      "evidence_asset_id": "evidence_lead_test_fax_redacted",
       "unlock_indicator_asset_id": "icon_clue_new"
     }
   ]
