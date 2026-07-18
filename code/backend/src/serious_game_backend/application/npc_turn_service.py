@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from serious_game_backend.application.ports import RoleLLMGateway
+from serious_game_backend.application.state_delta_validator import StateDeltaValidator
+from serious_game_backend.domain.llm import RoleTurnContext, ValidatedRoleTurn
+from serious_game_backend.domain.npc_state import NPCState
+from serious_game_backend.domain.errors import RoleLLMResponseError, RoleLLMUnavailableError
+
+
+class NPCTurnService:
+    """角色回合门面；真实供应商接入时保持此服务签名不变。"""
+
+    def __init__(self, gateway: RoleLLMGateway, validator: StateDeltaValidator) -> None:
+        self._gateway = gateway
+        self._validator = validator
+
+    def run(
+        self,
+        context: RoleTurnContext,
+        npc_state: NPCState,
+        *,
+        random_seed: str,
+    ) -> ValidatedRoleTurn:
+        try:
+            result = self._gateway.run_turn(context)
+        except (ConnectionError, TimeoutError) as exc:
+            raise RoleLLMUnavailableError("角色模型暂时不可用") from exc
+        if result.npc_id != context.npc_id:
+            raise RoleLLMResponseError("角色模型返回了错误的 npc_id")
+        if not result.dialogue.strip() or len(result.dialogue) > 1000:
+            raise RoleLLMResponseError("角色模型返回了空白或过长回复")
+        if result.portrait_state not in {"neutral", "warm", "guarded", "anxious"}:
+            raise RoleLLMResponseError("角色模型返回了非法的立绘状态")
+        if result.attitude_direction not in {"none", "increase", "decrease"}:
+            raise RoleLLMResponseError("角色模型返回了非法的态度方向")
+        if result.attitude_band not in {"none", "micro", "medium", "heavy"}:
+            raise RoleLLMResponseError("角色模型返回了非法的态度幅度")
+        if result.anxiety_direction not in {"none", "increase", "decrease"}:
+            raise RoleLLMResponseError("角色模型返回了非法的焦虑方向")
+        if result.anxiety_band not in {"none", "light", "medium", "heavy"}:
+            raise RoleLLMResponseError("角色模型返回了非法的焦虑幅度")
+        if (
+            result.disclosure_id is not None
+            and result.disclosure_id not in context.allowed_fact_ids
+        ):
+            raise RoleLLMResponseError("角色模型尝试吐露机会边界外的事实")
+        if result.flag_candidates:
+            raise RoleLLMResponseError("角色模型不能直接提交旗标")
+        lowered_dialogue = result.dialogue.lower()
+        forbidden_output_markers = (
+            "system prompt", "developer message", "忽略以上指令",
+            "flag_", "state_version", "结局轴", "```json",
+        )
+        if any(marker in lowered_dialogue for marker in forbidden_output_markers):
+            raise RoleLLMResponseError("角色模型输出包含越权或提示词泄露内容")
+        if any(
+            marker and marker.lower() in lowered_dialogue
+            for marker in context.forbidden_fact_markers
+        ):
+            raise RoleLLMResponseError("角色模型在对白中泄露了知识边界外的事实")
+        if result.memory_candidate and len(result.memory_candidate.strip()) > 500:
+            raise RoleLLMResponseError("角色模型记忆候选过长")
+        return self._validator.validate_role_turn(
+            result,
+            npc_state,
+            random_seed=random_seed,
+            source_id=context.opportunity_id,
+        )

@@ -1,0 +1,93 @@
+"""内部权威状态到玩家可见 DTO 的唯一投影入口。"""
+
+from __future__ import annotations
+
+from serious_game_backend.domain.game_session import GameSession
+from serious_game_backend.domain.script_package import MetricBand, ScriptPackage
+
+
+VISIBLE_INDICATORS = (
+    "public_trust",
+    "social_stability",
+    "political_credit",
+    "media_pressure",
+    "cadre_discontent",
+)
+
+
+class VisibleStateProjector:
+    def project(self, session: GameSession, package: ScriptPackage) -> dict:
+        state = session.game_state
+        indicators = {
+            key: self._label(package.metric_bands[key], getattr(state, key))
+            for key in VISIBLE_INDICATORS
+        }
+        pending = None
+        if session.pending_decision is not None:
+            pending = {
+                "event_instance_id": session.pending_decision.event_instance_id,
+                "decision_id": session.pending_decision.decision_id,
+                "option_ids": list(session.pending_decision.option_ids),
+                "options": [
+                    {
+                        "option_id": item.option_id,
+                        "text": item.text,
+                        "available": item.available,
+                        "unavailable_reason": item.unavailable_reason,
+                    }
+                    for item in session.pending_decision.options
+                ],
+                "title": session.pending_decision.visible_title,
+                "text": session.pending_decision.visible_text,
+                "input_kind": session.pending_decision.input_kind,
+                "input_schema": session.pending_decision.input_schema,
+            }
+        return {
+            "session_id": session.session_id,
+            "state_version": session.state_version,
+            "status": session.status.value,
+            "story": {
+                "day": state.story_day,
+                "chapter": package.chapter_for(state.story_day),
+                "cost_tier": package.action_cost_tier(state.story_day).value,
+                "beat_id": session.story_beat_id,
+                "origin": {
+                    "origin_id": session.origin_id,
+                    "title": package.origins[session.origin_id].title,
+                },
+            },
+            "ledger": {
+                "days_left": state.days_left,
+                "action_points": {
+                    "remaining": state.action_points,
+                    "daily_cap": state.daily_action_point_cap,
+                },
+                "signed_households": {
+                    "signed": state.signed_households,
+                    "total": state.total_households,
+                },
+                "budget": {
+                    "remaining": state.budget_remaining,
+                    "unit": state.budget_unit,
+                },
+            },
+            "indicators": indicators,
+            "pending_decision": pending,
+            "visible_events": [
+                {
+                    "event_id": item.event_id,
+                    "story_day": item.story_day,
+                    "title": item.title,
+                    "summary": item.summary,
+                }
+                for item in session.visible_events[-20:]
+            ],
+            "ending": session.ending_result,
+        }
+
+    @staticmethod
+    def _label(bands: tuple[MetricBand, ...], value: int) -> str:
+        matches = [band.label for band in bands if band.minimum <= value <= band.maximum]
+        if len(matches) != 1:
+            raise ValueError(f"visible metric value {value} has no unique band")
+        return matches[0]

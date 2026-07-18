@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+from serious_game_backend.domain.script_package import ScriptPackage
+
+
+class PackageValidationService:
+    def build_report(self, package: ScriptPackage) -> dict:
+        chapter_counts = {
+            str(chapter): sum(
+                item.chapter == chapter for item in package.decision_catalog
+            )
+            for chapter in range(1, 7)
+        }
+        return {
+            "package_id": package.package_id,
+            "package_version": package.package_version,
+            "content_hash": package.content_hash,
+            "status": package.status,
+            "valid": True,
+            "counts": {
+                "story_days": len(package.story_days),
+                "actions": len(package.action_rules),
+                "npcs": len(package.npc_profiles),
+                "npc_role_profiles": sum(
+                    bool(item.role_setting) for item in package.npc_profiles
+                ),
+                "facts_and_clues": len(package.facts),
+                "interaction_opportunities": len(package.interaction_opportunities),
+                "decision_catalog": len(package.decision_catalog),
+                "event_catalog": len(package.event_catalog),
+                "runtime_decisions": len(package.decisions),
+                "runtime_options": sum(
+                    len(item.options) for item in package.decisions.values()
+                ),
+                "sorting_decisions": sum(
+                    item.input_kind == "sorting" for item in package.decisions.values()
+                ),
+                "allocation_decisions": sum(
+                    item.input_kind == "allocation" for item in package.decisions.values()
+                ),
+                "night_rules": len(package.story_days),
+                "source_night_blocks": sum(
+                    len(item.night_blocks) for item in package.story_days.values()
+                ),
+                "conditional_night_rules": sum(
+                    len(item.night_conditional_effects)
+                    for item in package.story_days.values()
+                ),
+                "map_locations": len(package.map_locations),
+                "main_endings": len(package.main_endings),
+                "sub_endings": len(package.sub_endings),
+                "ending_appendices": len(package.ending_appendices),
+            },
+            "decision_counts_by_chapter": chapter_counts,
+            "anchors": {
+                item.event_id: item.story_day
+                for item in package.fixed_events
+                if item.story_day in {31, 45, 59, 90}
+            },
+            "source_sha256": package.source_sha256,
+        }

@@ -1,0 +1,456 @@
+from __future__ import annotations
+
+from pathlib import Path
+import unittest
+
+from serious_game_backend.application.action_service import ActionService
+from serious_game_backend.domain.enums import ActionCostTier, NPCStateTier
+from serious_game_backend.infrastructure.script_packages.file_loader import FileScriptPackageLoader
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_backend_dev_v1"
+
+
+class ScriptPackageTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.package = FileScriptPackageLoader().load(PACKAGE_DIR)
+
+    def test_package_has_frozen_first_release_counts(self) -> None:
+        self.assertEqual(31, len(self.package.action_rules))
+        self.assertEqual(29, len(self.package.npc_profiles))
+        self.assertEqual(
+            19,
+            sum(item.state_tier is NPCStateTier.DEEP for item in self.package.npc_profiles),
+        )
+        self.assertEqual(
+            9,
+            sum(item.state_tier is NPCStateTier.LIMITED for item in self.package.npc_profiles),
+        )
+        role_profiles = [item for item in self.package.npc_profiles if item.role_setting]
+        self.assertEqual(29, len(role_profiles))
+        self.assertTrue(all(item.source_line > 0 for item in role_profiles))
+        self.assertEqual(18, len(self.package.facts))
+        self.assertTrue(all(item.source_line > 0 for item in self.package.facts.values()))
+        self.assertEqual(
+            {item.npc_id for item in self.package.npc_profiles},
+            {item.npc_id for item in self.package.interaction_opportunities},
+        )
+
+    def test_action_cost_table_matches_final_script(self) -> None:
+        script_path = BACKEND_ROOT.parents[1] / "最终剧本.md"
+        lines = script_path.read_text(encoding="utf-8").splitlines()
+        start = next(i for i, line in enumerate(lines) if line.startswith("| 工具"))
+        expected = {}
+        for line in lines[start + 2:]:
+            if line.startswith(":::代码"):
+                break
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) == 5 and cells[2].isdigit():
+                expected[cells[0]] = (
+                    cells[1],
+                    int(cells[2]),
+                    int(cells[3]),
+                    int(cells[4]),
+                )
+
+        actual = {
+            rule.name: (
+                rule.category,
+                rule.costs[ActionCostTier.NORMAL],
+                rule.costs[ActionCostTier.SENSITIVE],
+                rule.costs[ActionCostTier.ACCEPTANCE],
+            )
+            for rule in self.package.action_rules.values()
+        }
+        self.assertEqual(expected, actual)
+
+    def test_conditional_options_are_registered_from_final_script(self) -> None:
+        dp3_02 = self.package.decisions["dp3_02"]
+        self.assertEqual(frozenset({"见过原件"}), dp3_02.option("a").required_flags)
+        self.assertEqual(
+            frozenset({"见过原件", "罗健留底"}),
+            dp3_02.option("c").required_any_flags,
+        )
+        dp4_09 = self.package.decisions["dp4_09"]
+        self.assertIn("赵建国书面自证在手", dp4_09.option("b").forbidden_flags)
+
+    def test_dp2_07_keeps_real_and_reported_signing_separate(self) -> None:
+        decision = self.package.decisions["dp2_07"]
+        option_a = decision.option("a")
+        option_b = decision.option("b")
+
+        self.assertNotIn("signed_households", option_a.effects.ledger_deltas)
+        self.assertNotIn("reported_signed_households", option_a.effects.ledger_deltas)
+        self.assertEqual(1, len(option_a.conditional_effects))
+        branch = option_a.conditional_effects[0]
+        self.assertEqual(frozenset({"虚假签约"}), branch.required_flags)
+        self.assertEqual(
+            (-4, -2), branch.effects.ledger_deltas["reported_signed_households"]
+        )
+        self.assertNotIn("signed_households", branch.effects.ledger_deltas)
+        self.assertEqual(frozenset({"虚假签约"}), branch.effects.close_flags)
+
+        self.assertNotIn("signed_households", option_b.effects.ledger_deltas)
+        self.assertIn("reported_signed_households", option_b.effects.ledger_deltas)
+
+        without_false_signing = ActionService._effective_effects(option_a, set())
+        with_false_signing = ActionService._effective_effects(
+            option_a, {"虚假签约"}
+        )
+        self.assertNotIn(
+            "reported_signed_households", without_false_signing.ledger_deltas
+        )
+        self.assertEqual(
+            (-4, -2),
+            with_false_signing.ledger_deltas["reported_signed_households"],
+        )
+        self.assertIn("虚假签约", with_false_signing.close_flags)
+
+    def test_lead_roster_uses_five_value_state_and_runtime_gates(self) -> None:
+        roster = self.package.decisions["dp4_roster_disposition"]
+        self.assertEqual(46, roster.story_day)
+        self.assertEqual(
+            {"未获取", "己方封存", "呈交上级", "被销毁"},
+            {
+                item.effects.state_assignments["lead_roster_disposition"]
+                for item in roster.options
+            },
+        )
+        dp6_03 = self.package.decisions["dp6_03"]
+        self.assertEqual(
+            "己方封存",
+            dp6_03.option("c").effects.state_assignments[
+                "lead_roster_disposition"
+            ],
+        )
+        dp6_06 = self.package.decisions["dp6_06"]
+        self.assertFalse(
+            dp6_06.option("a").is_available(
+                set(), {"lead_roster_disposition": "未获取"}
+            )
+        )
+        self.assertTrue(
+            dp6_06.option("a").is_available(
+                set(), {"lead_roster_disposition": "己方封存"}
+            )
+        )
+        self.assertEqual(
+            "交给记者",
+            dp6_06.option("a").effects.state_assignments[
+                "lead_roster_disposition"
+            ],
+        )
+
+    def test_dp6_03_household_settlement_obeys_both_guards(self) -> None:
+        option = self.package.decisions["dp6_03"].option("a")
+
+        normal = ActionService._effective_effects(option, set())
+        duplicate = ActionService._effective_effects(option, {"苗喜旺已入账"})
+        blocked = ActionService._effective_effects(option, {"差异化口子已开"})
+        allowed_with_board = ActionService._effective_effects(
+            option, {"差异化口子已开", "进度榜已上墙"}
+        )
+
+        self.assertEqual((1, 1), normal.ledger_deltas["signed_households"])
+        self.assertIn("苗喜旺已入账", normal.open_flags)
+        self.assertNotIn("signed_households", duplicate.ledger_deltas)
+        self.assertNotIn("signed_households", blocked.ledger_deltas)
+        self.assertEqual(
+            (1, 1), allowed_with_board.ledger_deltas["signed_households"]
+        )
+
+    def test_chapter_six_household_guards_are_idempotent(self) -> None:
+        old_stubborn = self.package.decisions["dp6_02"].option("b")
+        self.assertEqual(
+            (1, 1),
+            ActionService._effective_effects(old_stubborn, set()).ledger_deltas[
+                "signed_households"
+            ],
+        )
+        self.assertNotIn(
+            "signed_households",
+            ActionService._effective_effects(
+                old_stubborn, {"老倔头已入账"}
+            ).ledger_deltas,
+        )
+
+        ning_fallback = self.package.decisions["ev6_01"].option("a")
+        self.assertEqual(
+            (2, 2),
+            ActionService._effective_effects(ning_fallback, set()).ledger_deltas[
+                "signed_households"
+            ],
+        )
+        self.assertNotIn(
+            "signed_households",
+            ActionService._effective_effects(
+                ning_fallback, {"宁德海线已锁死"}
+            ).ledger_deltas,
+        )
+
+        livelihood_first = self.package.decisions["dp6_07"].option("a_b_c_d_e")
+        self.assertEqual(
+            (1, 1),
+            ActionService._effective_effects(livelihood_first, set()).ledger_deltas[
+                "signed_households"
+            ],
+        )
+        self.assertNotIn(
+            "signed_households",
+            ActionService._effective_effects(
+                livelihood_first, {"邓守本已入账"}
+            ).ledger_deltas,
+        )
+
+    def test_chapter_five_deferred_households_use_named_locks(self) -> None:
+        self.assertEqual(
+            frozenset({"村账在手"}),
+            self.package.decisions["dp5_04"].required_flags,
+        )
+
+        ning = self.package.decisions["dp5_06"].option("a")
+        self.assertNotIn(
+            "signed_households", ActionService._effective_effects(ning, set()).ledger_deltas
+        )
+        self.assertEqual(
+            (2, 2),
+            ActionService._effective_effects(ning, {"代签已查实"}).ledger_deltas[
+                "signed_households"
+            ],
+        )
+
+        ma = self.package.decisions["dp5_07"]
+        self.assertNotIn(
+            "signed_households",
+            ActionService._effective_effects(ma.option("d"), set()).ledger_deltas,
+        )
+        self.assertNotIn(
+            "signed_households",
+            ActionService._effective_effects(ma.option("e"), set()).ledger_deltas,
+        )
+        self.assertEqual(
+            (3, 3),
+            ActionService._effective_effects(
+                ma.option("e"), {"党员样板已立"}
+            ).ledger_deltas["signed_households"],
+        )
+
+        he = self.package.decisions["dp5_08"].option("b")
+        self.assertIn("何铁柱已冷", ActionService._effective_effects(he, set()).open_flags)
+        self.assertEqual(
+            (4, 4),
+            ActionService._effective_effects(
+                he, {"何铁柱欠你一个人情"}
+            ).ledger_deltas["signed_households"],
+        )
+
+        zhou = self.package.decisions["dp5_09"]
+        self.assertEqual(
+            (6, 6),
+            ActionService._effective_effects(zhou.option("a"), set()).ledger_deltas[
+                "signed_households"
+            ],
+        )
+        self.assertEqual(
+            (4, 4),
+            ActionService._effective_effects(
+                zhou.option("a"), {"周大山预付已入账"}
+            ).ledger_deltas["signed_households"],
+        )
+        pressured = ActionService._effective_effects(
+            zhou.option("b"), {"周大山被压价"}
+        )
+        self.assertNotIn("signed_households", pressured.ledger_deltas)
+        self.assertIn("周大山已寒心", pressured.open_flags)
+
+    def test_d86_cross_chapter_recovery_is_structured(self) -> None:
+        day = self.package.story_day(86)
+        self.assertEqual(2, len(day.night_blocks))
+        self.assertEqual(3, len(day.night_conditional_effects))
+        self.assertEqual(
+            (4, 4),
+            day.night_conditional_effects[0].effects.ledger_deltas[
+                "signed_households"
+            ],
+        )
+
+    def test_ma_changshun_natural_trigger_reads_hidden_ratio_ledger(self) -> None:
+        branches = self.package.story_day(75).night_conditional_effects
+        normal = branches[0]
+        lowered = branches[1]
+        flags = {"马长顺待自然触发"}
+        self.assertFalse(normal.matches(flags, {}, {"signed_households": 2}))
+        self.assertTrue(normal.matches(flags, {}, {"signed_households": 3}))
+        self.assertTrue(
+            lowered.matches(
+                flags | {"进度榜已上墙"}, {}, {"signed_households": 1}
+            )
+        )
+
+    def test_dp6_07_invalid_environment_first_falls_back_to_second(self) -> None:
+        option = self.package.decisions["dp6_07"].option("b_a_c_d_e")
+        fallback = ActionService._effective_effects(option, set())
+        valid_environment = ActionService._effective_effects(
+            option, {"环评揭穿"}
+        )
+
+        self.assertIn("民生优先", fallback.open_flags)
+        self.assertEqual((1, 1), fallback.ledger_deltas["signed_households"])
+        self.assertNotIn("合规优先", fallback.open_flags)
+        self.assertIn("合规优先", valid_environment.open_flags)
+        self.assertIn("面子优先", valid_environment.close_flags)
+        self.assertNotIn("民生优先", valid_environment.open_flags)
+        self.assertNotIn("signed_households", valid_environment.ledger_deltas)
+
+    def test_chapter_four_household_layers_use_cross_npc_guards(self) -> None:
+        zhou = self.package.decisions["dp4_05"]
+        self.assertEqual(frozenset({"周氏松口"}), zhou.required_flags)
+        self.assertEqual(
+            (4, 4),
+            ActionService._effective_effects(zhou.option("a"), set()).ledger_deltas[
+                "signed_households"
+            ],
+        )
+
+        tan = self.package.decisions["dp4_06"].option("a")
+        self.assertIn("谭老六被空口应付", ActionService._effective_effects(tan, set()).open_flags)
+        self.assertEqual(
+            (3, 3),
+            ActionService._effective_effects(
+                tan, {"旧账缺口已坐实"}
+            ).ledger_deltas["signed_households"],
+        )
+
+        yuan = self.package.decisions["ev4_01"].option("a")
+        self.assertEqual(
+            (2, 2),
+            ActionService._effective_effects(yuan, set()).ledger_deltas[
+                "signed_households"
+            ],
+        )
+        self.assertNotIn(
+            "signed_households",
+            ActionService._effective_effects(
+                yuan, {"赔付换谅解在册"}
+            ).ledger_deltas,
+        )
+
+        wu = self.package.decisions["dp4_07"].option("a")
+        self.assertNotIn(
+            "signed_households", ActionService._effective_effects(wu, set()).ledger_deltas
+        )
+        self.assertEqual(
+            (6, 6),
+            ActionService._effective_effects(
+                wu, {"普查结果公开"}
+            ).ledger_deltas["signed_households"],
+        )
+
+        he = self.package.decisions["dp4_08"].option("a")
+        combined = ActionService._effective_effects(
+            he, {"吴秀英已入账", "谭老六已安抚"}
+        )
+        self.assertEqual((6, 6), combined.ledger_deltas["signed_households"])
+        self.assertTrue({"何铁柱已入账", "杨波已入账"}.issubset(combined.open_flags))
+
+    def test_calendar_uses_precomputed_cost_tiers(self) -> None:
+        self.assertEqual(ActionCostTier.NORMAL, self.package.action_cost_tier(1))
+        self.assertEqual(ActionCostTier.SENSITIVE, self.package.action_cost_tier(31))
+        self.assertEqual(ActionCostTier.ACCEPTANCE, self.package.action_cost_tier(59))
+        self.assertEqual(ActionCostTier.SENSITIVE, self.package.action_cost_tier(61))
+        self.assertEqual(ActionCostTier.ACCEPTANCE, self.package.action_cost_tier(76))
+
+    def test_four_timeline_anchors_are_independent(self) -> None:
+        anchors = {item.event_id: item.story_day for item in self.package.fixed_events}
+        self.assertEqual(31, anchors["event_d31_municipal_inspection_arrival"])
+        self.assertEqual(45, anchors["event_d45_municipal_inspection_departure"])
+        self.assertEqual(59, anchors["event_d59_environmental_reception_arrival"])
+        self.assertEqual(90, anchors["event_d90_final_acceptance"])
+
+    def test_d1_tutorial_decision_is_structured_and_zero_cost(self) -> None:
+        day_one = self.package.story_day(1)
+        self.assertIsNotNone(day_one)
+        self.assertEqual("beat_d01_arrival_and_reception", day_one.beat_id)
+        self.assertFalse(day_one.allow_actions)
+        self.assertTrue(day_one.allow_end_day)
+        self.assertEqual("ev1_01_reception_bag", day_one.opening_decision_id)
+
+        decision = self.package.decisions["ev1_01_reception_bag"]
+        self.assertEqual(0, decision.action_point_cost)
+        self.assertFalse(decision.skippable)
+        self.assertEqual(4, len(decision.options))
+        self.assertEqual(
+            {
+                "a_reject_on_site",
+                "b_file_with_discipline",
+                "c_return_next_day",
+                "d_keep_in_drawer",
+            },
+            {item.option_id for item in decision.options},
+        )
+
+        day_two = self.package.story_day(2)
+        self.assertIsNotNone(day_two)
+        self.assertTrue(day_two.allow_actions)
+        self.assertTrue(day_two.allow_end_day)
+        self.assertEqual(
+            "dp1_01_taskforce_faction_map", day_two.opening_decision_id
+        )
+        self.assertEqual(
+            {"flag_wu_first_talk_completed"},
+            set(day_two.end_day_requires_flags),
+        )
+
+    def test_d1_player_text_is_sourced_from_final_script(self) -> None:
+        script_text = (BACKEND_ROOT.parents[1] / "最终剧本.md").read_text(
+            encoding="utf-8"
+        )
+        normalized_script_text = script_text.replace("**", "")
+        for label in ("A·", "B·", "C·", "D·", "E·"):
+            normalized_script_text = normalized_script_text.replace(label, "")
+        compact_script_text = "".join(normalized_script_text.split())
+        for story_day in (1, 2, 3):
+            beat = self.package.story_day(story_day)
+            for block in (*beat.opening_blocks, *beat.night_blocks):
+                if block.kind != "system":
+                    self.assertIn(block.text, script_text, block.block_id)
+
+        decision = self.package.decisions["ev1_01_reception_bag"]
+        self.assertIn(decision.prompt, script_text)
+        for option in decision.options:
+            self.assertIn(
+                "".join(option.text.split()), compact_script_text, option.option_id
+            )
+            self.assertIn(option.consequence, script_text, option.option_id)
+        for decision in self.package.decisions.values():
+            self.assertIn(decision.prompt, script_text)
+            for block in decision.followup_blocks:
+                self.assertIn(block.text, script_text, block.block_id)
+            for option in decision.options:
+                if " > " in option.text:
+                    self.assertEqual(
+                        option.option_id.split("_"),
+                        [item.lower() for item in option.text.split(" > ")],
+                    )
+                else:
+                    self.assertIn(
+                        "".join(option.text.split()),
+                        compact_script_text,
+                        option.option_id,
+                    )
+                self.assertIn(option.consequence, script_text, option.option_id)
+        for opportunity in self.package.interaction_opportunities:
+            for block in opportunity.completion_blocks:
+                self.assertIn(block.text, script_text, block.block_id)
+
+    def test_content_hash_is_deterministic(self) -> None:
+        loader = FileScriptPackageLoader()
+        self.assertEqual(
+            loader.compute_content_hash(PACKAGE_DIR),
+            loader.compute_content_hash(PACKAGE_DIR),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

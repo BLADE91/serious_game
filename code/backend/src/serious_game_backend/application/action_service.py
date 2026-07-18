@@ -1,0 +1,709 @@
+from __future__ import annotations
+
+from dataclasses import replace
+import secrets
+
+from serious_game_backend.application.hashing import canonical_request_hash
+from serious_game_backend.application.idempotency import (
+    raise_stored_operation_error,
+    serialize_operation_error,
+)
+from serious_game_backend.application.interaction_opportunity_service import (
+    InteractionOpportunityService,
+)
+from serious_game_backend.application.npc_turn_service import NPCTurnService
+from serious_game_backend.application.npc_memory_service import NPCMemoryService
+from serious_game_backend.application.package_lock import require_locked_package
+from serious_game_backend.application.ports import (
+    GameSessionRepository,
+    OperationRepository,
+    RuntimeTransactionRepository,
+    ScriptPackageRepository,
+)
+from serious_game_backend.application.scripted_effect_service import ScriptedEffectService
+from serious_game_backend.application.story_flow_service import StoryFlowService
+from serious_game_backend.application.visible_state import VisibleStateProjector
+from serious_game_backend.domain.action import ActionCommand, ActionRule
+from serious_game_backend.domain.enums import ActionInputMode, OperationStatus, SessionStatus
+from serious_game_backend.domain.errors import (
+    ActionUnavailableError,
+    DecisionRequiredError,
+    IdempotencyKeyReusedError,
+    InsufficientActionPointsError,
+    NotFoundError,
+    OperationRetryRequiredError,
+    SessionBusyError,
+    SessionEndedError,
+    StateVersionConflictError,
+)
+from serious_game_backend.domain.operation import OperationRecord, utc_now_iso
+from serious_game_backend.domain.llm import RoleTurnContext
+from serious_game_backend.domain.fact_markers import disclosure_markers_for
+from serious_game_backend.domain.story import ScriptedEffects
+
+
+class ActionService:
+    """短预留 -> 锁外执行 -> 短提交的原子动作门面。"""
+
+    def __init__(
+        self,
+        sessions: GameSessionRepository,
+        operations: OperationRepository,
+        transactions: RuntimeTransactionRepository,
+        packages: ScriptPackageRepository,
+        projector: VisibleStateProjector,
+        opportunities: InteractionOpportunityService,
+        npc_turns: NPCTurnService,
+        scripted_effects: ScriptedEffectService,
+        story_flow: StoryFlowService,
+        npc_memories: NPCMemoryService,
+    ) -> None:
+        self._sessions = sessions
+        self._operations = operations
+        self._transactions = transactions
+        self._packages = packages
+        self._projector = projector
+        self._opportunities = opportunities
+        self._npc_turns = npc_turns
+        self._scripted_effects = scripted_effects
+        self._story_flow = story_flow
+        self._npc_memories = npc_memories
+
+    def execute(self, *, account_id: str, session_id: str, command: ActionCommand) -> dict:
+        request_hash = canonical_request_hash({
+            "session_id": session_id,
+            **command.canonical_payload(),
+        })
+        existing = self._operations.get(account_id, session_id, command.client_action_id)
+        if existing is not None:
+            if existing.request_hash != request_hash:
+                raise IdempotencyKeyReusedError("client_action_id 已用于不同请求")
+            if existing.status is OperationStatus.SUCCEEDED and existing.response is not None:
+                return existing.response
+            if existing.status is OperationStatus.PROCESSING:
+                return {
+                    "operation_id": existing.operation_id,
+                    "status": OperationStatus.PROCESSING.value,
+                    "poll_after_ms": 500,
+                }
+            if existing.status is OperationStatus.FAILED_FINAL:
+                raise_stored_operation_error(existing)
+            if existing.status is OperationStatus.FAILED_RETRYABLE and not command.retry:
+                raise OperationRetryRequiredError(
+                    "上次执行为可重试失败；请确认后显式设置 retry=true",
+                    details={"operation_id": existing.operation_id},
+                )
+
+        session = self._owned_session(session_id, account_id)
+        package = require_locked_package(self._packages, session)
+        self._validate_write_gate(session, command)
+        beat = package.story_day(session.game_state.story_day)
+        if (
+            command.input_mode is not ActionInputMode.DECISION
+            and beat is not None
+            and not beat.allow_actions
+        ):
+            raise ActionUnavailableError("当前剧情节点不开放自主行动")
+        operation_id = (
+            existing.operation_id if existing is not None else f"act_{secrets.token_hex(12)}"
+        )
+
+        # 短预留：真实 MySQL 适配器在此做条件更新；不在这之后持数据库锁。
+        session.processing_action_id = operation_id
+        session.touch()
+        if existing is None:
+            operation = OperationRecord(
+                operation_id=operation_id,
+                account_id=account_id,
+                session_id=session_id,
+                client_action_id=command.client_action_id,
+                request_hash=request_hash,
+            )
+        else:
+            operation = replace(
+                existing,
+                status=OperationStatus.PROCESSING,
+                attempt_count=existing.attempt_count + 1,
+                error=None,
+                updated_at=utc_now_iso(),
+            )
+        self._transactions.reserve_operation(
+            session,
+            expected_version=command.state_version,
+            operation=operation,
+            create_operation=existing is None,
+        )
+
+        try:
+            draft = self._build_draft(
+                session,
+                package,
+                command,
+                account_id=account_id,
+                operation_id=operation_id,
+            )
+            # 真实 LLM 接入后只允许在这里（事务外）调用。
+            current = self._owned_session(session_id, account_id)
+            if current.processing_action_id != operation_id:
+                raise SessionBusyError("当前动作预留已失效")
+            if current.state_version != command.state_version:
+                raise StateVersionConflictError("状态版本已变化，请刷新后重试")
+            self._apply_draft(current, package, draft)
+            current.processing_action_id = None
+            current.state_version += 1
+            current.touch()
+            response = {
+                "operation_id": operation_id,
+                "status": OperationStatus.SUCCEEDED.value,
+                "state_version": current.state_version,
+                "narrative": draft["narrative"],
+                "visible_state": self._projector.project(current, package),
+            }
+            if draft.get("npc_reply") is not None:
+                response["npc_reply"] = draft["npc_reply"]
+            completed_operation = replace(
+                operation,
+                status=OperationStatus.SUCCEEDED,
+                response=response,
+                updated_at=utc_now_iso(),
+            )
+            self._transactions.finish_operation(
+                current,
+                expected_version=command.state_version,
+                operation=completed_operation,
+            )
+            if draft["kind"] == "free_text":
+                try:
+                    self._npc_memories.record(
+                        session_id=session_id,
+                        account_id=account_id,
+                        npc_id=draft["npc_id"],
+                        operation_id=operation_id,
+                        story_day=current.game_state.story_day,
+                        candidate=draft["turn"].memory_candidate,
+                    )
+                except Exception:
+                    # 记忆是可重建的软状态，不允许反向破坏已提交的权威回合。
+                    pass
+            return response
+        except Exception as exc:
+            current = self._sessions.get_owned(session_id, account_id)
+            if current is not None and current.processing_action_id == operation_id:
+                current.processing_action_id = None
+                current.touch()
+                failure_status = (
+                    OperationStatus.FAILED_RETRYABLE
+                    if getattr(exc, "retryable", False)
+                    else OperationStatus.FAILED_FINAL
+                )
+                failed_operation = replace(
+                    operation,
+                    status=failure_status,
+                    error=serialize_operation_error(exc),
+                    updated_at=utc_now_iso(),
+                )
+                self._transactions.finish_operation(
+                    current,
+                    expected_version=current.state_version,
+                    operation=failed_operation,
+                )
+            raise
+
+    def _build_draft(
+        self,
+        session,
+        package,
+        command: ActionCommand,
+        *,
+        account_id: str = "",
+        operation_id: str = "",
+    ) -> dict:
+        if command.input_mode is ActionInputMode.TOOL:
+            if not command.action_id or not command.opportunity_id:
+                raise ActionUnavailableError("tool 模式缺少 opportunity_id 或 action_id")
+            opportunity = self._opportunities.require_available(
+                command.opportunity_id, session, package
+            )
+            if opportunity.action_id != command.action_id:
+                raise ActionUnavailableError("行动与当前机会不匹配")
+            if command.target_npc_id and opportunity.npc_id != command.target_npc_id:
+                raise ActionUnavailableError("目标 NPC 与当前机会不匹配")
+            rule = package.action_rules.get(command.action_id)
+            if rule is None:
+                raise ActionUnavailableError("行动未在当前剧本包注册")
+            cost = self._validate_tool(session, package, rule)
+            return {
+                "kind": "tool",
+                "rule": rule,
+                "opportunity": opportunity,
+                "cost": cost,
+                "narrative": f"已执行：{rule.name}。具体后果将在剧情和后续状态中体现。",
+            }
+        if command.input_mode is ActionInputMode.DECISION:
+            pending = session.pending_decision
+            if pending is None:
+                raise ActionUnavailableError("当前没有待处理决策")
+            decision = package.decisions.get(command.decision_id)
+            if decision is None or command.decision_id != pending.decision_id:
+                raise ActionUnavailableError("决策与当前实例不匹配")
+            parameters: dict = {}
+            option_id = command.option_id
+            effects = None
+            if decision.input_kind == "allocation":
+                option_id = "submit"
+                parameters = self._validate_allocation(decision, command.parameters)
+                effects = self._dp2_10_allocation_effects(parameters, decision.option(option_id))
+            elif decision.input_kind == "sorting" and command.ordered_option_ids:
+                option_id = "_".join(item.lower() for item in command.ordered_option_ids)
+            if option_id not in pending.option_ids:
+                raise ActionUnavailableError("决策选项与当前实例不匹配")
+            option = decision.option(option_id)
+            if option is None:
+                raise ActionUnavailableError("决策选项未在剧本包注册")
+            return {
+                "kind": "decision",
+                "decision_id": command.decision_id,
+                "option_id": option_id,
+                "option": option,
+                "effects": effects or self._effective_effects(
+                    option,
+                    session.flags,
+                    session.state_values,
+                    self._ledger_values(session),
+                    pending.context,
+                    decision_id=decision.decision_id,
+                ),
+                "parameters": parameters,
+                "narrative": option.consequence,
+            }
+        if not command.opportunity_id or not command.target_npc_id or not command.player_text:
+            raise ActionUnavailableError("自由文字请求字段不完整")
+        opportunity = self._opportunities.require_available(
+            command.opportunity_id, session, package
+        )
+        if opportunity.npc_id != command.target_npc_id:
+            raise ActionUnavailableError("目标 NPC 与互动机会不匹配")
+        rule = package.action_rules[opportunity.action_id]
+        cost = self._validate_tool(session, package, rule)
+        npc_state = session.npc_states[opportunity.npc_id]
+        profile = next(
+            item for item in package.npc_profiles
+            if item.npc_id == opportunity.npc_id
+        )
+        allowed_fact_texts = {
+            fact_id: package.facts[fact_id].text
+            for fact_id in opportunity.allowed_fact_ids
+            if fact_id in package.facts
+        }
+        permitted_fact_ids = set(opportunity.allowed_fact_ids) | session.known_fact_ids
+        forbidden_fact_markers = tuple(
+            fact.title
+            for fact_id, fact in package.facts.items()
+            if fact_id not in permitted_fact_ids and len(fact.title.strip()) >= 4
+        )
+        memory_items = self._npc_memories.retrieve(
+            session_id=session.session_id,
+            npc_id=opportunity.npc_id,
+            story_day=session.game_state.story_day,
+            query=command.player_text,
+        )
+        beat = package.story_day(session.game_state.story_day)
+        turn = self._npc_turns.run(
+            RoleTurnContext(
+                session_id=session.session_id,
+                account_id=account_id,
+                operation_id=operation_id,
+                npc_id=opportunity.npc_id,
+                player_text=command.player_text,
+                story_day=session.game_state.story_day,
+                opportunity_id=opportunity.opportunity_id,
+                allowed_fact_ids=opportunity.allowed_fact_ids,
+                npc_name=profile.name,
+                npc_state_tier=profile.state_tier.value,
+                role_setting=profile.role_setting,
+                prompt_template=package.role_turn_prompt,
+                prompt_version=package.role_turn_prompt_version,
+                allowed_fact_texts=allowed_fact_texts,
+                allowed_fact_markers=disclosure_markers_for(
+                    opportunity.allowed_fact_ids
+                ),
+                forbidden_fact_markers=forbidden_fact_markers,
+                memory_items=memory_items,
+                visible_world_context={
+                    "player_identity": "李致远，云溪县县长",
+                    "story_day": session.game_state.story_day,
+                    "story_title": beat.title if beat is not None else "",
+                    "origin": package.origins[session.origin_id].title,
+                    "known_facts": [
+                        package.facts[item].title
+                        for item in sorted(session.known_fact_ids)
+                        if item in package.facts
+                    ],
+                },
+            ),
+            npc_state,
+            random_seed=session.random_seed,
+        )
+        return {
+            "kind": "free_text",
+            "rule": rule,
+            "cost": cost,
+            "opportunity": opportunity,
+            "npc_id": opportunity.npc_id,
+            "turn": turn,
+            "narrative": turn.dialogue,
+            "npc_reply": {
+                "npc_id": turn.npc_id,
+                "text": turn.dialogue,
+                "portrait_state": turn.portrait_state,
+            },
+        }
+
+    def _validate_tool(self, session, package, rule: ActionRule) -> int:
+        state = session.game_state
+        if rule.daily_cap is not None:
+            used = state.daily_action_counts.get(rule.action_id, 0)
+            if used >= rule.daily_cap:
+                raise ActionUnavailableError("该行动已达到今日次数上限")
+        if rule.half_day and state.half_day_action_used:
+            raise ActionUnavailableError("今日半日行程已经占用")
+        if rule.hard_force and state.fatigue >= 75:
+            raise ActionUnavailableError("当前状态不能执行强制手段")
+        if rule.precondition_flags_any and not any(
+            flag in session.flags for flag in rule.precondition_flags_any
+        ):
+            raise ActionUnavailableError("行动前置条件尚未满足")
+        cost = rule.cost_for(package.action_cost_tier(state.story_day))
+        if state.action_points < cost:
+            raise InsufficientActionPointsError(
+                "当日行动点不足",
+                details={"required": cost, "remaining": state.action_points},
+            )
+        return cost
+
+    def _apply_draft(self, session, package, draft: dict) -> None:
+        if draft["kind"] in {"tool", "free_text"}:
+            rule: ActionRule = draft["rule"]
+            session.game_state = session.game_state.spend_action_points(
+                rule.action_id,
+                draft["cost"],
+                half_day=rule.half_day,
+            )
+            log = {
+                "type": "tool_action",
+                "story_day": session.game_state.story_day,
+                "action_id": rule.action_id,
+                "cost_action_points": draft["cost"],
+                "visible_to_player": True,
+            }
+            opportunity = draft.get("opportunity")
+            if opportunity is not None and (
+                opportunity.completion_effects.metric_deltas
+                or opportunity.completion_effects.ledger_deltas
+                or opportunity.completion_effects.open_flags
+                or opportunity.completion_effects.close_flags
+                or opportunity.completion_effects.state_assignments
+            ):
+                self._scripted_effects.apply(
+                    session,
+                    package,
+                    opportunity.completion_effects,
+                    source_id=f"opportunity:{opportunity.opportunity_id}",
+                )
+            if opportunity is not None and opportunity.completion_decision_id:
+                if opportunity.completion_decision_id not in session.pending_decision_queue:
+                    session.pending_decision_queue.insert(
+                        0, opportunity.completion_decision_id
+                    )
+            if opportunity is not None and draft["kind"] == "tool":
+                session.known_fact_ids.update(opportunity.completion_fact_ids)
+                session.flags.update(opportunity.completion_flags)
+                self._story_flow.append_blocks(session, opportunity.completion_blocks)
+            if draft["kind"] == "free_text":
+                turn = draft["turn"]
+                opportunity = draft["opportunity"]
+                npc_state = session.npc_states[draft["npc_id"]]
+                session.npc_states[draft["npc_id"]] = replace(
+                    npc_state,
+                    attitude_score=(
+                        max(0, min(100, npc_state.attitude_score + turn.attitude_delta))
+                        if npc_state.attitude_score is not None
+                        else None
+                    ),
+                    anxiety_score=(
+                        max(0, min(100, npc_state.anxiety_score + turn.anxiety_delta))
+                        if npc_state.anxiety_score is not None
+                        else None
+                    ),
+                )
+                log["type"] = "free_text_turn"
+                log["npc_id"] = draft["npc_id"]
+                if turn.disclosure_id is not None:
+                    session.known_fact_ids.add(turn.disclosure_id)
+                session.known_fact_ids.update(opportunity.completion_fact_ids)
+                session.flags.update(opportunity.completion_flags)
+                npc_name = next(
+                    (
+                        item.name
+                        for item in package.npc_profiles
+                        if item.npc_id == draft["npc_id"]
+                    ),
+                    draft["npc_id"],
+                )
+                session.append_narrative(
+                    story_day=session.game_state.story_day,
+                    kind="dialogue",
+                    speaker=npc_name,
+                    text=turn.dialogue,
+                )
+                self._story_flow.append_blocks(
+                    session, opportunity.completion_blocks
+                )
+                # 玩家日志不记录内部 delta；权威审计适配器另行保存来源字段。
+            session.logs.append(log)
+            if opportunity is not None and opportunity.completion_decision_id:
+                self._story_flow.present_next_decision(session, package)
+        else:
+            repeat_decision = False
+            pending_context = dict(
+                session.pending_decision.context if session.pending_decision else {}
+            )
+            if draft["decision_id"] == "dp4_04":
+                if draft["option_id"] == "a":
+                    pending_context["listened_once"] = True
+                    repeat_decision = True
+                elif draft["option_id"] == "b":
+                    pending_context["talk_money_count"] = int(
+                        pending_context.get("talk_money_count", 0)
+                    ) + 1
+                    repeat_decision = pending_context["talk_money_count"] < 3
+            option = self._story_flow.resolve_decision(
+                session,
+                package,
+                decision_id=draft["decision_id"],
+                option_id=draft["option_id"],
+                complete=not repeat_decision,
+            )
+            self._scripted_effects.apply(
+                session,
+                package,
+                draft["effects"],
+                source_id=f"{draft['decision_id']}:{draft['option_id']}",
+            )
+            if draft.get("parameters"):
+                session.decision_parameters[draft["decision_id"]] = dict(
+                    draft["parameters"]
+                )
+            session.logs.append({
+                "type": "decision",
+                "story_day": session.game_state.story_day,
+                "decision_id": draft["decision_id"],
+                "option_id": draft["option_id"],
+                "cost_action_points": 0,
+                "visible_to_player": True,
+                **(
+                    {"parameters": dict(draft["parameters"])}
+                    if draft.get("parameters")
+                    else {}
+                ),
+            })
+            if (
+                draft["decision_id"] == "dp5_04_recovery"
+                and draft["option_id"] == "a"
+            ):
+                session.pending_decision_queue.insert(0, "dp5_05_recovery")
+            if repeat_decision:
+                session.pending_decision = None
+                # 重新投影同一节点的选项面；局部计数保存在待决策实例中。
+                from serious_game_backend.domain.events import PendingDecision
+                session.pending_decision = PendingDecision(
+                    event_instance_id=f"evt_{session.session_id}_{draft['decision_id']}_repeat",
+                    decision_id=draft["decision_id"],
+                    option_ids=(),
+                    context=pending_context,
+                )
+                self._story_flow._present_decision_id(
+                    session, package, draft["decision_id"]
+                )
+            else:
+                self._story_flow.present_next_decision(session, package)
+
+    def _owned_session(self, session_id: str, account_id: str):
+        session = self._sessions.get_owned(session_id, account_id)
+        if session is None:
+            raise NotFoundError("游戏不存在")
+        return session
+
+    @staticmethod
+    def _validate_allocation(decision, parameters: dict) -> dict[str, int]:
+        schema = decision.input_schema
+        fields = tuple(schema.get("fields", []))
+        total = int(schema.get("total", 0))
+        values = parameters.get("allocations", parameters)
+        if not isinstance(values, dict) or set(values) != set(fields):
+            raise ActionUnavailableError(
+                "分配题必须提交全部去向",
+                details={"required_fields": list(fields)},
+            )
+        if any(type(values[item]) is not int or values[item] < 0 for item in fields):
+            raise ActionUnavailableError("分配额度必须是非负整数")
+        normalized = {item: int(values[item]) for item in fields}
+        if sum(normalized.values()) != total:
+            raise ActionUnavailableError(
+                "分配总额不正确",
+                details={"required_total": total, "actual_total": sum(normalized.values())},
+            )
+        return normalized
+
+    @staticmethod
+    def _dp2_10_allocation_effects(
+        allocations: dict[str, int], base_option
+    ) -> ScriptedEffects:
+        if set(allocations) != {
+            "signing_compensation",
+            "livelihood_support",
+            "environmental_retest",
+            "emergency_stability",
+        }:
+            raise ActionUnavailableError("当前分配题字段与剧本不一致")
+        total = sum(allocations.values())
+        uniform_quarter = len(set(allocations.values())) == 1
+        values = {
+            "signing_compensation": {
+                "public_trust": (0, -1, -2),
+                "social_stability": (1, 2, 2),
+                "env_clue": (0, -2, -3),
+            },
+            "livelihood_support": {
+                "public_trust": (3, 5, 6),
+                "social_stability": (2, 3, 4),
+            },
+            "environmental_retest": {
+                "env_clue": (4, 6, 8),
+                "social_stability": (0, -1, -2),
+            },
+            "emergency_stability": {
+                "public_trust": (),
+                "social_stability": (3, 5, 6),
+                "media_pressure": (-2, -4, -5),
+                "env_clue": (0, 1, 2),
+            },
+        }
+        deltas: dict[str, int] = {}
+        for field, amount in allocations.items():
+            if amount == 0:
+                continue
+            ratio = amount / total
+            if uniform_quarter or ratio < 0.25:
+                band = 0
+            elif ratio < 0.5:
+                band = 1
+            else:
+                band = 2
+            for metric, bands in values[field].items():
+                if not bands:
+                    continue
+                deltas[metric] = deltas.get(metric, 0) + bands[band]
+        return ScriptedEffects(
+            metric_deltas={key: (value, value) for key, value in deltas.items()},
+            ledger_deltas=base_option.effects.ledger_deltas,
+            open_flags=base_option.effects.open_flags,
+            close_flags=base_option.effects.close_flags,
+        )
+
+    @staticmethod
+    def _effective_effects(
+        option,
+        flags: set[str],
+        state_values: dict[str, str] | None = None,
+        ledger_values: dict[str, int] | None = None,
+        context: dict | None = None,
+        *,
+        decision_id: str = "",
+    ) -> ScriptedEffects:
+        state_values = state_values or {}
+        ledger_values = ledger_values or {}
+        context = context or {}
+        metric_deltas = dict(option.effects.metric_deltas)
+        ledger_deltas = dict(option.effects.ledger_deltas)
+        open_flags = set(option.effects.open_flags)
+        close_flags = set(option.effects.close_flags)
+        state_assignments = dict(option.effects.state_assignments)
+        for branch in option.conditional_effects:
+            if not branch.matches(flags, state_values, ledger_values):
+                continue
+            if branch.replace_base:
+                metric_deltas = {}
+                ledger_deltas = {}
+                open_flags = set()
+                close_flags = set()
+                state_assignments = {}
+            for field, delta in branch.effects.metric_deltas.items():
+                current = metric_deltas.get(field, (0, 0))
+                metric_deltas[field] = (
+                    current[0] + delta[0], current[1] + delta[1]
+                )
+            for field, delta in branch.effects.ledger_deltas.items():
+                current = ledger_deltas.get(field, (0, 0))
+                ledger_deltas[field] = (
+                    current[0] + delta[0], current[1] + delta[1]
+                )
+            open_flags.update(branch.effects.open_flags)
+            close_flags.update(branch.effects.close_flags)
+            state_assignments.update(branch.effects.state_assignments)
+        if decision_id == "dp4_04" and option.option_id == "c" and not (
+            int(context.get("talk_money_count", 0)) == 0
+            and "周家祖坟事由已知" in flags
+        ):
+            metric_deltas = {"public_trust": (2, 2)}
+            ledger_deltas = {}
+            open_flags = {"迁坟条件待议"}
+            close_flags = set()
+            state_assignments = {}
+        if decision_id == "dp6_10":
+            attitudes = {"蒋崇岳背书", "蒋崇岳默许", "蒋崇岳弃保", "蒋崇岳否决"}
+            open_flags.difference_update(attitudes)
+            close_flags.difference_update(attitudes)
+            public_agenda = bool({"环评已处理", "账目揭发"} & flags)
+            endorsed = "蒋崇岳背书" in flags
+            if public_agenda and not endorsed:
+                open_flags.add("蒋崇岳否决")
+                close_flags.update(attitudes - {"蒋崇岳否决"})
+                close_flags.add("环评已处理")
+            elif endorsed and option.option_id == "c":
+                open_flags.add("蒋崇岳弃保")
+                close_flags.update(attitudes - {"蒋崇岳弃保"})
+        open_flags.difference_update(close_flags)
+        return ScriptedEffects(
+            metric_deltas=metric_deltas,
+            ledger_deltas=ledger_deltas,
+            open_flags=frozenset(open_flags),
+            close_flags=frozenset(close_flags),
+            state_assignments=state_assignments,
+        )
+
+    @staticmethod
+    def _ledger_values(session) -> dict[str, int]:
+        return {
+            "budget_remaining": session.game_state.budget_remaining,
+            "signed_households": session.game_state.signed_households,
+            "reported_signed_households": session.game_state.reported_signed_households,
+            "chapter_overtime_count": session.game_state.chapter_overtime_count,
+        }
+
+    @staticmethod
+    def _validate_write_gate(session, command: ActionCommand) -> None:
+        if session.status is not SessionStatus.ACTIVE:
+            raise SessionEndedError("当前游戏不可继续写入")
+        if session.processing_action_id is not None:
+            raise SessionBusyError("当前游戏正在处理另一个动作")
+        if (
+            session.pending_decision is not None
+            and command.input_mode is not ActionInputMode.DECISION
+        ):
+            raise DecisionRequiredError("必须先处理当前决策")
+        if session.state_version != command.state_version:
+            raise StateVersionConflictError(
+                "状态版本已变化，请刷新后重试",
+                details={"current_state_version": session.state_version},
+            )
