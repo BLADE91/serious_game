@@ -24,6 +24,11 @@ class GameSession:
     random_seed: str
     game_state: GameState
     origin_id: str
+    environment: str = "sandbox"
+    consent_record_id: str | None = None
+    research_subject_id: str | None = None
+    experiment_id: str | None = None
+    experiment_group_id: str | None = None
     npc_states: dict[str, NPCState] = field(default_factory=dict)
     status: SessionStatus = SessionStatus.ACTIVE
     state_version: int = 1

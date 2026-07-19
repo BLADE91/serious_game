@@ -11,6 +11,13 @@ from serious_game_backend.domain.errors import StateVersionConflictError
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.operation import OperationRecord
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
+from serious_game_backend.domain.consent import ConsentDocument, ConsentRecord
+from serious_game_backend.domain.identity import Account, AuthSession
+from serious_game_backend.domain.research import (
+    ExperimentAssignment,
+    ResearchEvent,
+    ResearchSubject,
+)
 from serious_game_backend.infrastructure.repositories.codec import (
     decode_operation,
     decode_session,
@@ -18,6 +25,10 @@ from serious_game_backend.infrastructure.repositories.codec import (
     encode_operation,
     encode_session,
 )
+from serious_game_backend.infrastructure.migrations import SqliteMigrationRunner
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[4]
 
 
 class SqliteRuntimeStore:
@@ -44,75 +55,9 @@ class SqliteRuntimeStore:
             connection.close()
 
     def _initialize(self) -> None:
-        with self.connect() as connection:
-            connection.execute("pragma journal_mode = wal")
-            connection.executescript(
-                """
-                create table if not exists runtime_schema_versions (
-                  version integer primary key,
-                  applied_at text not null default current_timestamp
-                );
-
-                create table if not exists runtime_game_sessions (
-                  session_id text primary key,
-                  account_id text not null,
-                  status text not null,
-                  state_version integer not null,
-                  processing_action_id text null,
-                  updated_at text not null,
-                  payload_json text not null
-                );
-                create index if not exists idx_runtime_sessions_account
-                  on runtime_game_sessions(account_id, status, updated_at);
-
-                create table if not exists runtime_operations (
-                  operation_id text primary key,
-                  account_id text not null,
-                  session_id text not null,
-                  client_action_id text not null,
-                  status text not null,
-                  payload_json text not null,
-                  unique(account_id, session_id, client_action_id)
-                );
-
-                create table if not exists runtime_session_requests (
-                  account_id text not null,
-                  client_request_id text not null,
-                  status text not null,
-                  payload_json text not null,
-                  primary key(account_id, client_request_id)
-                );
-
-                create table if not exists runtime_llm_call_audits (
-                  audit_id text primary key,
-                  session_id text not null,
-                  operation_id text not null,
-                  request_hash text not null,
-                  status text not null,
-                  payload_json text not null
-                );
-                create index if not exists idx_runtime_llm_session
-                  on runtime_llm_call_audits(session_id, status);
-                create index if not exists idx_runtime_llm_operation
-                  on runtime_llm_call_audits(operation_id, request_hash, status);
-
-                create table if not exists runtime_npc_memories (
-                  memory_id text primary key,
-                  session_id text not null,
-                  npc_id text not null,
-                  valid_from_day integer not null,
-                  expires_after_day integer null,
-                  invalidated_at text null,
-                  created_at text not null,
-                  payload_json text not null
-                );
-                create index if not exists idx_runtime_memory_lookup
-                  on runtime_npc_memories(session_id, npc_id, valid_from_day);
-
-                insert or ignore into runtime_schema_versions(version) values (1);
-                insert or ignore into runtime_schema_versions(version) values (2);
-                """
-            )
+        SqliteMigrationRunner(
+            self.path, BACKEND_ROOT / "migrations" / "sqlite"
+        ).migrate()
 
 
 class SqliteLLMCallAuditRepository:
@@ -469,6 +414,7 @@ class SqliteRuntimeTransactionRepository:
         *,
         expected_version: int,
         operation: OperationRecord,
+        research_event: ResearchEvent | None = None,
     ) -> None:
         with self._store.connect() as connection:
             cursor = connection.execute(
@@ -485,6 +431,21 @@ class SqliteRuntimeTransactionRepository:
             if cursor.rowcount != 1:
                 raise StateVersionConflictError("动作预留已失效或状态版本冲突")
             self._update_operation(connection, operation)
+            if research_event is not None:
+                connection.execute(
+                    """
+                    insert into runtime_research_outbox(
+                      research_event_id, research_subject_id, status,
+                      attempt_count, created_at, payload_json
+                    ) values (?, ?, 'pending', 0, ?, ?)
+                    """,
+                    (
+                        research_event.research_event_id,
+                        research_event.research_subject_id,
+                        research_event.created_at,
+                        dumps(asdict(research_event)),
+                    ),
+                )
 
     def complete_session_request(
         self,
@@ -572,3 +533,311 @@ class SqliteRuntimeTransactionRepository:
         )
         if cursor.rowcount != 1:
             raise ValueError("operation does not exist")
+
+
+class SqliteAccountRepository:
+    def __init__(self, store: SqliteRuntimeStore) -> None:
+        self._store = store
+
+    def create(self, account: Account) -> None:
+        payload = asdict(account)
+        payload["roles"] = sorted(account.roles)
+        try:
+            with self._store.connect() as connection:
+                connection.execute(
+                    """
+                    insert into runtime_accounts(
+                      account_id, username, disabled, created_at, updated_at, payload_json
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        account.account_id, account.username, int(account.disabled),
+                        account.created_at, account.updated_at, dumps(payload),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("duplicate account") from exc
+
+    def get_by_id(self, account_id: str) -> Account | None:
+        return self._get("account_id = ?", (account_id,))
+
+    def get_by_username(self, username: str) -> Account | None:
+        return self._get("username = ?", (username,))
+
+    def _get(self, where: str, parameters: tuple[object, ...]) -> Account | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                f"select payload_json from runtime_accounts where {where}", parameters
+            ).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(row["payload_json"])
+        payload["roles"] = frozenset(payload.get("roles", ()))
+        return Account(**payload)
+
+
+class SqliteAuthSessionRepository:
+    def __init__(self, store: SqliteRuntimeStore) -> None:
+        self._store = store
+
+    def create(self, session: AuthSession) -> None:
+        try:
+            with self._store.connect() as connection:
+                connection.execute(
+                    """
+                    insert into runtime_auth_sessions(
+                      token_hash, account_id, expires_at, revoked_at, payload_json
+                    ) values (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session.token_hash, session.account_id, session.expires_at,
+                        session.revoked_at, dumps(asdict(session)),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("duplicate auth session") from exc
+
+    def get(self, token_hash: str) -> AuthSession | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                "select payload_json from runtime_auth_sessions where token_hash = ?",
+                (token_hash,),
+            ).fetchone()
+        return AuthSession(**json.loads(row["payload_json"])) if row else None
+
+    def save(self, session: AuthSession) -> None:
+        with self._store.connect() as connection:
+            cursor = connection.execute(
+                """
+                update runtime_auth_sessions
+                set expires_at = ?, revoked_at = ?, payload_json = ?
+                where token_hash = ?
+                """,
+                (
+                    session.expires_at, session.revoked_at,
+                    dumps(asdict(session)), session.token_hash,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("auth session does not exist")
+
+
+class SqliteConsentRepository:
+    def __init__(self, store: SqliteRuntimeStore) -> None:
+        self._store = store
+
+    def publish_document(self, document: ConsentDocument) -> None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                "select document_hash from runtime_consent_documents where consent_version = ?",
+                (document.consent_version,),
+            ).fetchone()
+            if row is not None:
+                if row["document_hash"] != document.document_hash:
+                    raise ValueError("consent version is immutable")
+                return
+            connection.execute(
+                """
+                insert into runtime_consent_documents(
+                  consent_version, document_hash, payload_json
+                ) values (?, ?, ?)
+                """,
+                (document.consent_version, document.document_hash, dumps(asdict(document))),
+            )
+
+    def get_document(self, consent_version: str) -> ConsentDocument | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                "select payload_json from runtime_consent_documents where consent_version = ?",
+                (consent_version,),
+            ).fetchone()
+        return ConsentDocument(**json.loads(row["payload_json"])) if row else None
+
+    def create_record(self, record: ConsentRecord) -> None:
+        payload = self._record_payload(record)
+        try:
+            with self._store.connect() as connection:
+                connection.execute(
+                    """
+                    insert into runtime_consent_records(
+                      consent_record_id, account_id, consent_version,
+                      signed_at, withdrawn_at, payload_json
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        record.consent_record_id, record.account_id,
+                        record.consent_version, record.signed_at,
+                        record.withdrawn_at, dumps(payload),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("duplicate or invalid consent record") from exc
+
+    def get_record(self, consent_record_id: str) -> ConsentRecord | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                "select payload_json from runtime_consent_records where consent_record_id = ?",
+                (consent_record_id,),
+            ).fetchone()
+        return self._decode_record(row["payload_json"]) if row else None
+
+    def latest_for_account(self, account_id: str) -> ConsentRecord | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                """
+                select payload_json from runtime_consent_records
+                where account_id = ? order by signed_at desc limit 1
+                """,
+                (account_id,),
+            ).fetchone()
+        return self._decode_record(row["payload_json"]) if row else None
+
+    def save_record(self, record: ConsentRecord) -> None:
+        current = self.get_record(record.consent_record_id)
+        if current is None:
+            raise ValueError("consent record does not exist")
+        if (
+            current.account_id != record.account_id
+            or current.consent_version != record.consent_version
+            or current.document_hash != record.document_hash
+            or current.scopes != record.scopes
+            or current.signed_at != record.signed_at
+        ):
+            raise ValueError("signed consent fields are immutable")
+        with self._store.connect() as connection:
+            connection.execute(
+                """
+                update runtime_consent_records
+                set withdrawn_at = ?, payload_json = ? where consent_record_id = ?
+                """,
+                (
+                    record.withdrawn_at, dumps(self._record_payload(record)),
+                    record.consent_record_id,
+                ),
+            )
+
+    @staticmethod
+    def _record_payload(record: ConsentRecord) -> dict:
+        payload = asdict(record)
+        payload["scopes"] = sorted(record.scopes)
+        return payload
+
+    @staticmethod
+    def _decode_record(value: str) -> ConsentRecord:
+        payload = json.loads(value)
+        payload["scopes"] = frozenset(payload.get("scopes", ()))
+        return ConsentRecord(**payload)
+
+
+class SqliteResearchIdentityRepository:
+    def __init__(self, store: SqliteRuntimeStore) -> None:
+        self._store = store
+
+    def get_or_create(self, account_id: str) -> ResearchSubject:
+        current = self.get_for_account(account_id)
+        if current is not None:
+            return current
+        import secrets
+        subject = ResearchSubject(
+            research_subject_id=f"rs_{secrets.token_hex(16)}", account_id=account_id
+        )
+        try:
+            with self._store.connect() as connection:
+                connection.execute(
+                    """
+                    insert into runtime_research_subjects(
+                      research_subject_id, account_id, retired_at, payload_json
+                    ) values (?, ?, ?, ?)
+                    """,
+                    (
+                        subject.research_subject_id, subject.account_id,
+                        subject.retired_at, dumps(asdict(subject)),
+                    ),
+                )
+        except sqlite3.IntegrityError:
+            current = self.get_for_account(account_id)
+            if current is None:
+                raise
+            return current
+        return subject
+
+    def get_for_account(self, account_id: str) -> ResearchSubject | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                "select payload_json from runtime_research_subjects where account_id = ?",
+                (account_id,),
+            ).fetchone()
+        return ResearchSubject(**json.loads(row["payload_json"])) if row else None
+
+
+class SqliteExperimentAssignmentRepository:
+    def __init__(self, store: SqliteRuntimeStore) -> None:
+        self._store = store
+
+    def create(self, assignment: ExperimentAssignment) -> None:
+        try:
+            with self._store.connect() as connection:
+                connection.execute(
+                    """
+                    insert into runtime_experiment_assignments(
+                      assignment_id, research_subject_id, experiment_id,
+                      experiment_group_id, environment, payload_json
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        assignment.assignment_id, assignment.research_subject_id,
+                        assignment.experiment_id, assignment.experiment_group_id,
+                        assignment.environment, dumps(asdict(assignment)),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("experiment assignment is immutable") from exc
+
+    def get_for_subject(
+        self, research_subject_id: str, experiment_id: str
+    ) -> ExperimentAssignment | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                """
+                select payload_json from runtime_experiment_assignments
+                where research_subject_id = ? and experiment_id = ?
+                """,
+                (research_subject_id, experiment_id),
+            ).fetchone()
+        return ExperimentAssignment(**json.loads(row["payload_json"])) if row else None
+
+
+class SqliteResearchEventRepository:
+    def __init__(self, store: SqliteRuntimeStore) -> None:
+        self._store = store
+
+    def append(self, event: ResearchEvent) -> None:
+        try:
+            with self._store.connect() as connection:
+                connection.execute(
+                    """
+                    insert into runtime_research_events(
+                      research_event_id, research_subject_id, experiment_id,
+                      experiment_group_id, event_type, story_day, created_at, payload_json
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event.research_event_id, event.research_subject_id,
+                        event.experiment_id, event.experiment_group_id,
+                        event.event_type, event.story_day, event.created_at,
+                        dumps(asdict(event)),
+                    ),
+                )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("duplicate research event") from exc
+
+    def list_for_subject(self, research_subject_id: str) -> tuple[ResearchEvent, ...]:
+        with self._store.connect() as connection:
+            rows = connection.execute(
+                """
+                select payload_json from runtime_research_events
+                where research_subject_id = ? order by created_at
+                """,
+                (research_subject_id,),
+            ).fetchall()
+        return tuple(ResearchEvent(**json.loads(row["payload_json"])) for row in rows)

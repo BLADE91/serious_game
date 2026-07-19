@@ -7,6 +7,19 @@ from serious_game_backend.domain.llm import RoleTurnContext, RoleTurnResult
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
 from serious_game_backend.domain.operation import OperationRecord
 from serious_game_backend.domain.script_package import ScriptPackage
+from serious_game_backend.domain.consent import ConsentDocument, ConsentRecord
+from serious_game_backend.domain.identity import Account, AuthSession
+from serious_game_backend.domain.research import (
+    ExperimentAssignment,
+    ResearchEvent,
+    ResearchSubject,
+)
+from serious_game_backend.domain.governance import (
+    DataSubjectRequest,
+    ExportJob,
+    PrivilegedAccessAudit,
+    RetentionResult,
+)
 
 
 class GameSessionRepository(Protocol):
@@ -56,6 +69,7 @@ class RuntimeTransactionRepository(Protocol):
         *,
         expected_version: int,
         operation: OperationRecord,
+        research_event: ResearchEvent | None = None,
     ) -> None: ...
 
     def complete_session_request(
@@ -91,3 +105,83 @@ class NPCMemoryRepository(Protocol):
     ) -> tuple[NPCMemory, ...]: ...
 
     def invalidate(self, memory_ids: tuple[str, ...], invalidated_at: str) -> None: ...
+
+
+class AccountRepository(Protocol):
+    def create(self, account: Account) -> None: ...
+
+    def get_by_id(self, account_id: str) -> Account | None: ...
+
+    def get_by_username(self, username: str) -> Account | None: ...
+
+
+class AuthSessionRepository(Protocol):
+    def create(self, session: AuthSession) -> None: ...
+
+    def get(self, token_hash: str) -> AuthSession | None: ...
+
+    def save(self, session: AuthSession) -> None: ...
+
+
+class ConsentRepository(Protocol):
+    def publish_document(self, document: ConsentDocument) -> None: ...
+
+    def get_document(self, consent_version: str) -> ConsentDocument | None: ...
+
+    def create_record(self, record: ConsentRecord) -> None: ...
+
+    def get_record(self, consent_record_id: str) -> ConsentRecord | None: ...
+
+    def latest_for_account(self, account_id: str) -> ConsentRecord | None: ...
+
+    def save_record(self, record: ConsentRecord) -> None: ...
+
+
+class ResearchIdentityRepository(Protocol):
+    def get_or_create(self, account_id: str) -> ResearchSubject: ...
+
+    def get_for_account(self, account_id: str) -> ResearchSubject | None: ...
+
+
+class ExperimentAssignmentRepository(Protocol):
+    def create(self, assignment: ExperimentAssignment) -> None: ...
+
+    def get_for_subject(
+        self, research_subject_id: str, experiment_id: str
+    ) -> ExperimentAssignment | None: ...
+
+
+class ResearchEventRepository(Protocol):
+    def append(self, event: ResearchEvent) -> None: ...
+
+    def list_for_subject(
+        self, research_subject_id: str
+    ) -> tuple[ResearchEvent, ...]: ...
+
+
+class GovernanceRepository(Protocol):
+    def create_export(self, job: ExportJob) -> None: ...
+
+    def get_export(self, export_job_id: str) -> ExportJob | None: ...
+
+    def save_export(self, job: ExportJob) -> None: ...
+
+    def research_export_rows(self, conditions: dict) -> tuple[dict, ...]: ...
+
+    def create_subject_request(self, request: DataSubjectRequest) -> None: ...
+
+    def get_subject_request(self, request_id: str) -> DataSubjectRequest | None: ...
+
+    def save_subject_request(self, request: DataSubjectRequest) -> None: ...
+
+    def subject_data(self, account_id: str) -> dict: ...
+
+    def erase_subject(self, account_id: str) -> dict: ...
+
+    def append_privileged_audit(self, audit: PrivilegedAccessAudit) -> None: ...
+
+    def apply_retention(self, *, cutoff_at: str, policy_version: str) -> RetentionResult: ...
+
+
+class ResearchOutboxRepository(Protocol):
+    def drain(self, limit: int = 100) -> int: ...

@@ -6,12 +6,17 @@ import secrets
 from serious_game_backend.application.hashing import canonical_request_hash
 from serious_game_backend.application.event_service import EventService
 from serious_game_backend.application.ports import (
+    ConsentRepository,
     GameSessionRepository,
+    ResearchIdentityRepository,
     RuntimeTransactionRepository,
     ScriptPackageRepository,
     SessionRequestRepository,
 )
 from serious_game_backend.application.story_flow_service import StoryFlowService
+from serious_game_backend.application.experiment_assignment_service import (
+    ExperimentAssignmentService,
+)
 from serious_game_backend.domain.enums import AvailabilityMode, NPCStateTier, OperationStatus
 from serious_game_backend.domain.errors import (
     ContentValidationError,
@@ -34,6 +39,13 @@ class GameSessionService:
         packages: ScriptPackageRepository,
         story_flow: StoryFlowService,
         events: EventService,
+        *,
+        environment: str = "sandbox",
+        consents: ConsentRepository | None = None,
+        research_identities: ResearchIdentityRepository | None = None,
+        experiment_assignments: ExperimentAssignmentService | None = None,
+        model_id: str = "",
+        prompt_version: str = "",
     ) -> None:
         self._sessions = sessions
         self._requests = session_requests
@@ -41,6 +53,12 @@ class GameSessionService:
         self._packages = packages
         self._story_flow = story_flow
         self._events = events
+        self._environment = environment
+        self._consents = consents
+        self._research_identities = research_identities
+        self._experiment_assignments = experiment_assignments
+        self._model_id = model_id
+        self._prompt_version = prompt_version
 
     def start_session(
         self,
@@ -105,6 +123,23 @@ class GameSessionService:
                 ) from exc
 
         session_id = f"sess_{secrets.token_hex(16)}"
+        consent = self._consents.latest_for_account(account_id) if self._consents else None
+        research_subject = None
+        if (
+            consent is not None
+            and consent.grants("research_structured")
+            and self._research_identities is not None
+        ):
+            research_subject = self._research_identities.get_or_create(account_id)
+        assignment = None
+        if research_subject is not None and self._experiment_assignments is not None:
+            assignment = self._experiment_assignments.assign(
+                research_subject,
+                environment=self._environment,
+                package_content_hash=package.content_hash,
+                model_id=self._model_id,
+                prompt_version=self._prompt_version,
+            )
         session = GameSession(
             session_id=session_id,
             account_id=account_id,
@@ -114,6 +149,15 @@ class GameSessionService:
             random_seed=secrets.token_hex(32),
             game_state=GameState.new_game(),
             origin_id=origin_id,
+            environment=self._environment,
+            consent_record_id=(consent.consent_record_id if consent else None),
+            research_subject_id=(
+                research_subject.research_subject_id if research_subject else None
+            ),
+            experiment_id=(assignment.experiment_id if assignment else None),
+            experiment_group_id=(
+                assignment.experiment_group_id if assignment else None
+            ),
             npc_states=self._initial_npc_states(package.npc_profiles),
         )
         self._events.trigger_fixed_events(session, package)

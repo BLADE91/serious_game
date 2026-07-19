@@ -1,7 +1,7 @@
 -- MySQL 8.0+ 权威运行时基线。
 -- DDL 与 code/backend/src 的仓储端口对应；执行前由正式迁移工具登记版本。
 
-create table accounts (
+create table if not exists accounts (
   account_id varchar(64) primary key,
   username varchar(128) not null,
   password_hash varchar(255) not null,
@@ -14,7 +14,7 @@ create table accounts (
   unique key uq_accounts_username(username)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table auth_sessions (
+create table if not exists auth_sessions (
   token_hash varchar(128) primary key,
   account_id varchar(64) not null,
   csrf_token_hash varchar(128) not null,
@@ -26,7 +26,7 @@ create table auth_sessions (
   index idx_auth_sessions_account(account_id, expires_at)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table script_packages (
+create table if not exists script_packages (
   package_id varchar(128) not null,
   package_version varchar(64) not null,
   content_hash char(71) not null,
@@ -40,7 +40,7 @@ create table script_packages (
   unique key uq_script_packages_hash(content_hash)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table game_session_requests (
+create table if not exists game_session_requests (
   account_id varchar(64) not null,
   client_request_id varchar(128) not null,
   request_hash char(71) not null,
@@ -53,7 +53,7 @@ create table game_session_requests (
   constraint fk_game_session_requests_account foreign key(account_id) references accounts(account_id)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table game_sessions (
+create table if not exists game_sessions (
   session_id varchar(64) primary key,
   account_id varchar(64) not null,
   package_id varchar(128) not null,
@@ -78,7 +78,7 @@ create table game_sessions (
   index idx_game_sessions_package(package_id, package_content_hash)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table game_snapshots (
+create table if not exists game_snapshots (
   snapshot_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -95,7 +95,7 @@ create table game_snapshots (
   index idx_game_snapshots_session_created(session_id, created_at)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table game_actions (
+create table if not exists game_actions (
   operation_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -123,7 +123,7 @@ create table game_actions (
   index idx_game_actions_session_status(session_id, status, updated_at)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table decision_instances (
+create table if not exists decision_instances (
   event_instance_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -142,7 +142,7 @@ create table decision_instances (
   unique key uq_decision_instances_session_decision(session_id, decision_id)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table action_logs (
+create table if not exists action_logs (
   log_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -156,7 +156,7 @@ create table action_logs (
   index idx_action_logs_session_day(session_id, story_day, created_at)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table dialogue_logs (
+create table if not exists dialogue_logs (
   dialogue_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -172,7 +172,7 @@ create table dialogue_logs (
   index idx_dialogue_logs_session_npc(session_id, npc_id, created_at)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table event_logs (
+create table if not exists event_logs (
   event_log_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -185,7 +185,7 @@ create table event_logs (
   index idx_event_logs_session_day(session_id, story_day, created_at)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table night_logs (
+create table if not exists night_logs (
   night_log_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -197,7 +197,7 @@ create table night_logs (
   unique key uq_night_logs_session_day(session_id, story_day)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table llm_call_audits (
+create table if not exists llm_call_audits (
   model_audit_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -220,7 +220,7 @@ create table llm_call_audits (
   index idx_llm_call_audits_session_created(session_id, created_at)
 ) engine=InnoDB default charset=utf8mb4 collate=utf8mb4_unicode_ci;
 
-create table npc_memories (
+create table if not exists npc_memories (
   memory_id varchar(64) primary key,
   session_id varchar(64) not null,
   account_id varchar(64) not null,
@@ -230,6 +230,7 @@ create table npc_memories (
   content_json json not null,
   visibility varchar(32) not null,
   valid_from_day int not null,
+  expires_after_day int null,
   invalidated_at datetime(6) null,
   created_at datetime(6) not null,
   constraint fk_npc_memories_session foreign key(session_id) references game_sessions(session_id),

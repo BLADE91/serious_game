@@ -1,0 +1,36 @@
+# M4 研究与生产治理基线
+
+更新时间：2026-07-19
+
+## 已落地
+
+- MySQL 8 生产适配器与按校验和执行的顺序迁移；业务库只保留加密身份映射与研究 outbox，去身份化研究事件投影到 `RESEARCH_MYSQL_URL` 指向的独立库。SQLite 保留为本地开发库并使用同样的迁移账本。
+- 正式环境只接受服务端 Cookie 会话，不接受 `X-Account-ID`；Cookie 为 HttpOnly/Secure/SameSite=Lax，所有写接口校验 CSRF；角色权限覆盖玩家、研究员、内容编辑、运维和管理员。
+- 知情同意文件按版本与哈希不可变发布，第三方模型、结构化研究数据和研究原文分别授权；撤回后新的模型调用与研究写入立即停止。
+- 玩家文字进入第三方模型前执行个人信息最小化；正式 MySQL 中快照、LLM 原始输出、NPC 记忆、研究身份及可选研究原文使用 AES-256-GCM 用途绑定信封加密。
+- 实验分组由服务端 HMAC 确定并在同一实验中不可变，记录环境、剧本哈希、模型及提示词版本。
+- 游戏事务将研究事件写入同库 outbox，独立出箱处理器幂等投影到研究事件表，避免研究写入破坏游戏硬结算事务。
+- 匿名导出采用字段白名单、查询条件、最小单元数（至少 5）、申请/审批账号分离、数据集哈希与特权访问审计；永不导出账号 ID、session ID 或原文。
+- 受试者可提交访问或删除请求；处理后撤销登录、撤回同意、清除研究身份和事件、清除可识别原文并禁用账号。保留期任务会清除过期研究原文密文和过期登录会话。
+
+## 生产硬门槛
+
+`Settings.validate()` 会拒绝下列生产配置：非 MySQL、Fake LLM、Fake 降级、非 Secure Cookie、草稿同意书、未披露模型供应商或处理地域、未启用模型同意、缺少字段加密密钥、草稿保留策略或开发审计盐。研究模式还必须提供实验 ID、组别、服务端分组盐，以及与业务库 URL 不同的独立研究库。
+
+## 管理接口
+
+- `POST /api/privacy/requests`：本人发起访问/删除请求。
+- `POST /api/admin/privacy/requests/{id}/process`：获批管理员处理请求。
+- `POST /api/admin/research/exports`：研究员申请匿名导出。
+- `POST /api/admin/research/exports/{id}/approve`：另一名有审批权限的账号批准。
+- `POST /api/admin/research/exports/{id}/materialize`：按批准条件生成并哈希数据集。
+- `POST /api/admin/research/outbox/drain`：运维投影研究 outbox。
+- `POST /api/admin/retention/run`：执行冻结版本的保留期策略。
+
+所有管理写接口都要求正式 Cookie 身份、CSRF Token、对应权限和用途说明。沙盒身份头不能访问管理接口。
+
+首个管理员不经公开 HTTP 接口创建。在完成 production 环境变量后，从 `code/backend` 执行 `$env:PYTHONPATH="src"; python tools/create_account.py <用户名> --role admin`，密码仅由交互式输入读取。
+
+## 尚需外部确认
+
+代码基线不能代替伦理与部署决策。正式招募受试者前仍需冻结同意书、隐私政策、实验方案、分组、保留期限、数据控制者和受试者联络流程；提供 MySQL/KMS/密钥、管理员名单以及第三方模型的数据处理地域和保留承诺，并在类生产环境完成恢复、并发和删除演练。

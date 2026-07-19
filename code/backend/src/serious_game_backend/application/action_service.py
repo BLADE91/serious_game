@@ -23,6 +23,10 @@ from serious_game_backend.application.ports import (
 from serious_game_backend.application.scripted_effect_service import ScriptedEffectService
 from serious_game_backend.application.story_flow_service import StoryFlowService
 from serious_game_backend.application.visible_state import VisibleStateProjector
+from serious_game_backend.application.model_input_policy import ModelInputPolicy
+from serious_game_backend.application.research_projection_service import (
+    ResearchProjectionService,
+)
 from serious_game_backend.domain.action import ActionCommand, ActionRule
 from serious_game_backend.domain.enums import ActionInputMode, OperationStatus, SessionStatus
 from serious_game_backend.domain.errors import (
@@ -57,6 +61,8 @@ class ActionService:
         scripted_effects: ScriptedEffectService,
         story_flow: StoryFlowService,
         npc_memories: NPCMemoryService,
+        model_input_policy: ModelInputPolicy | None = None,
+        research_projection: ResearchProjectionService | None = None,
     ) -> None:
         self._sessions = sessions
         self._operations = operations
@@ -68,6 +74,8 @@ class ActionService:
         self._scripted_effects = scripted_effects
         self._story_flow = story_flow
         self._npc_memories = npc_memories
+        self._model_input_policy = model_input_policy
+        self._research_projection = research_projection
 
     def execute(self, *, account_id: str, session_id: str, command: ActionCommand) -> dict:
         request_hash = canonical_request_hash({
@@ -167,10 +175,15 @@ class ActionService:
                 response=response,
                 updated_at=utc_now_iso(),
             )
+            research_event = (
+                self._research_projection.build_action_event(current, command, draft)
+                if self._research_projection is not None else None
+            )
             self._transactions.finish_operation(
                 current,
                 expected_version=command.state_version,
                 operation=completed_operation,
+                research_event=research_event,
             )
             if draft["kind"] == "free_text":
                 try:
@@ -307,6 +320,11 @@ class ActionService:
             story_day=session.game_state.story_day,
             query=command.player_text,
         )
+        prepared_input = (
+            self._model_input_policy.prepare(account_id, command.player_text)
+            if self._model_input_policy is not None
+            else None
+        )
         beat = package.story_day(session.game_state.story_day)
         turn = self._npc_turns.run(
             RoleTurnContext(
@@ -314,7 +332,7 @@ class ActionService:
                 account_id=account_id,
                 operation_id=operation_id,
                 npc_id=opportunity.npc_id,
-                player_text=command.player_text,
+                player_text=(prepared_input.text if prepared_input else command.player_text),
                 story_day=session.game_state.story_day,
                 opportunity_id=opportunity.opportunity_id,
                 allowed_fact_ids=opportunity.allowed_fact_ids,
@@ -357,6 +375,11 @@ class ActionService:
                 "text": turn.dialogue,
                 "portrait_state": turn.portrait_state,
             },
+            "privacy": ({
+                "consent_record_id": prepared_input.consent_record_id,
+                "pii_types": prepared_input.pii_types,
+                "replacement_count": prepared_input.replacement_count,
+            } if prepared_input else None),
         }
 
     def _validate_tool(self, session, package, rule: ActionRule) -> int:
@@ -438,6 +461,13 @@ class ActionService:
                 )
                 log["type"] = "free_text_turn"
                 log["npc_id"] = draft["npc_id"]
+                privacy = draft.get("privacy")
+                if privacy is not None:
+                    log["model_input_minimization"] = {
+                        "consent_record_id": privacy["consent_record_id"],
+                        "pii_types": list(privacy["pii_types"]),
+                        "replacement_count": privacy["replacement_count"],
+                    }
                 if turn.disclosure_id is not None:
                     session.known_fact_ids.add(turn.disclosure_id)
                 session.known_fact_ids.update(opportunity.completion_fact_ids)

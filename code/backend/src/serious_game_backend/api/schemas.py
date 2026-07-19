@@ -86,3 +86,47 @@ class EndDayRequest(BaseModel):
     client_action_id: str = Field(min_length=8, max_length=128)
     state_version: int = Field(ge=1)
     active_rest: bool = False
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class ConsentSignRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    consent_version: str = Field(min_length=1, max_length=128)
+    scopes: list[str] = Field(min_length=1, max_length=8)
+
+
+class ConsentWithdrawRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class SubjectRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    request_type: str = Field(pattern="^(access|erase)$")
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class ExportRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    purpose: str = Field(min_length=3, max_length=1000)
+    fields: list[str] = Field(min_length=1, max_length=16)
+    conditions: dict[str, str | int | None] = Field(default_factory=dict)
+    minimum_cell_size: int = Field(default=5, ge=5, le=100)
+
+
+class GovernancePurposeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    purpose: str = Field(min_length=3, max_length=1000)
+
+
+class RetentionRunBody(GovernancePurposeBody):
+    cutoff_at: str = Field(min_length=20, max_length=64)
+    policy_version: str = Field(min_length=1, max_length=128)

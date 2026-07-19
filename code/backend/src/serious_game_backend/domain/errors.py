@@ -105,3 +105,33 @@ class RoleLLMConfigurationError(DomainError):
     code = "ROLE_LLM_CONFIGURATION_ERROR"
     http_status = 503
     retryable = False
+
+
+class AuthenticationRequiredError(DomainError):
+    code = "AUTHENTICATION_REQUIRED"
+    http_status = 401
+
+
+class InvalidCredentialsError(DomainError):
+    code = "INVALID_CREDENTIALS"
+    http_status = 401
+
+
+class PermissionDeniedError(DomainError):
+    code = "PERMISSION_DENIED"
+    http_status = 403
+
+
+class CSRFValidationError(DomainError):
+    code = "CSRF_VALIDATION_FAILED"
+    http_status = 403
+
+
+class ConsentRequiredError(DomainError):
+    code = "CONSENT_REQUIRED"
+    http_status = 451
+
+
+class ConsentVersionError(DomainError):
+    code = "CONSENT_VERSION_INVALID"
+    http_status = 409

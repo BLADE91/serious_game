@@ -1,13 +1,34 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, Header, Query, Request
+from contextvars import ContextVar
+
+from fastapi import FastAPI, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 
-from serious_game_backend.api.schemas import ActionRequest, EndDayRequest, StartSessionRequest
+from serious_game_backend.api.schemas import (
+    ActionRequest,
+    ConsentSignRequest,
+    ConsentWithdrawRequest,
+    EndDayRequest,
+    LoginRequest,
+    ExportRequestBody,
+    GovernancePurposeBody,
+    RetentionRunBody,
+    SubjectRequestBody,
+    StartSessionRequest,
+)
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.bootstrap import Container, build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.errors import DomainError, NotFoundError
+from serious_game_backend.domain.errors import AuthenticationRequiredError
+from serious_game_backend.domain.identity import PERMISSION_PLAY, Principal
+from serious_game_backend.domain.identity import PERMISSION_OPERATE
+
+
+_principal_context: ContextVar[Principal | None] = ContextVar(
+    "serious_game_principal", default=None
+)
 
 
 def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
@@ -20,23 +41,60 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     )
     app.state.container = runtime
 
-    @app.exception_handler(DomainError)
-    async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
+    def error_response(exc: DomainError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.http_status,
             content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
         )
 
+    @app.exception_handler(DomainError)
+    async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
+        return error_response(exc)
+
+    @app.middleware("http")
+    async def production_authentication(request: Request, call_next):
+        if effective_settings.environment != "production":
+            return await call_next(request)
+        public_paths = {
+            "/health/live", "/health/ready", "/api/auth/login",
+            "/docs", "/openapi.json", "/redoc",
+        }
+        if request.url.path in public_paths:
+            return await call_next(request)
+        try:
+            principal = runtime.auth.authenticate(
+                request.cookies.get(effective_settings.auth_cookie_name)
+            )
+            if request.url.path.startswith("/api/game"):
+                runtime.auth.require(principal, PERMISSION_PLAY)
+            if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                runtime.auth.verify_csrf(
+                    principal, request.headers.get("X-CSRF-Token")
+                )
+        except DomainError as exc:
+            return error_response(exc)
+        context_token = _principal_context.set(principal)
+        try:
+            return await call_next(request)
+        finally:
+            _principal_context.reset(context_token)
+
     def current_account_id(x_account_id: str | None = Header(default=None)) -> str:
         if effective_settings.environment == "production":
-            raise DomainError(
-                "生产环境必须使用 Cookie AuthSession 适配器",
-                details={"code": "AUTH_ADAPTER_REQUIRED"},
-            )
+            principal = _principal_context.get()
+            if principal is None:
+                raise AuthenticationRequiredError("缺少可信登录身份")
+            return principal.account_id
         value = (x_account_id or "").strip()
         if not value:
             raise DomainError("沙盒请求必须提供 X-Account-ID")
         return value
+
+    def privileged_principal() -> Principal:
+        principal = _principal_context.get()
+        if principal is None:
+            raise AuthenticationRequiredError("治理接口仅接受正式 Cookie 登录身份")
+        return principal
 
     def command_gate(session, package) -> dict:
         pending = session.pending_decision is not None
@@ -78,6 +136,159 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "llm_model": effective_settings.role_llm_model,
             "repository": effective_settings.repository,
         }
+
+    @app.post("/api/auth/login")
+    async def login(body: LoginRequest, response: Response) -> dict:
+        raw_token, csrf_token, principal, expires_at = runtime.auth.login(
+            body.username, body.password
+        )
+        response.set_cookie(
+            key=effective_settings.auth_cookie_name,
+            value=raw_token,
+            httponly=True,
+            secure=effective_settings.auth_cookie_secure,
+            samesite="lax",
+            max_age=effective_settings.auth_session_ttl_seconds,
+            path="/",
+        )
+        return {
+            "account_id": principal.account_id,
+            "roles": sorted(principal.roles),
+            "csrf_token": csrf_token,
+            "expires_at": expires_at,
+        }
+
+    @app.post("/api/auth/logout", status_code=204)
+    async def logout(request: Request, response: Response) -> Response:
+        runtime.auth.logout(request.cookies.get(effective_settings.auth_cookie_name))
+        response.delete_cookie(
+            effective_settings.auth_cookie_name,
+            path="/",
+            secure=effective_settings.auth_cookie_secure,
+            httponly=True,
+            samesite="lax",
+        )
+        response.status_code = 204
+        return response
+
+    @app.get("/api/auth/me")
+    async def auth_me(x_account_id: str | None = Header(default=None)) -> dict:
+        account_id = current_account_id(x_account_id)
+        principal = _principal_context.get()
+        return {
+            "account_id": account_id,
+            "roles": sorted(principal.roles) if principal else ["sandbox"],
+        }
+
+    @app.get("/api/consent/current")
+    async def current_consent(
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        record = runtime.consents.latest(account_id)
+        return {
+            "required_version": effective_settings.consent_version,
+            "document_hash": effective_settings.consent_document_hash,
+            "model_provider": effective_settings.consent_model_provider,
+            "processing_region": effective_settings.consent_processing_region,
+            "record": ({
+                "consent_record_id": record.consent_record_id,
+                "consent_version": record.consent_version,
+                "scopes": sorted(record.scopes),
+                "signed_at": record.signed_at,
+                "withdrawn_at": record.withdrawn_at,
+            } if record else None),
+        }
+
+    @app.post("/api/consent")
+    async def sign_consent(
+        body: ConsentSignRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        record = runtime.consents.sign(
+            account_id=account_id,
+            consent_version=body.consent_version,
+            scopes=frozenset(body.scopes),
+        )
+        return {
+            "consent_record_id": record.consent_record_id,
+            "consent_version": record.consent_version,
+            "scopes": sorted(record.scopes),
+            "signed_at": record.signed_at,
+        }
+
+    @app.post("/api/consent/withdraw")
+    async def withdraw_consent(
+        body: ConsentWithdrawRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        record = runtime.consents.withdraw(account_id=account_id, reason=body.reason)
+        return {
+            "consent_record_id": record.consent_record_id,
+            "withdrawn_at": record.withdrawn_at,
+        }
+
+    @app.post("/api/privacy/requests", status_code=202)
+    async def create_subject_request(
+        body: SubjectRequestBody,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        request = runtime.governance.request_subject_action(
+            current_account_id(x_account_id), body.request_type, body.reason
+        )
+        return {"request_id": request.request_id, "status": request.status,
+                "request_type": request.request_type, "created_at": request.created_at}
+
+    @app.post("/api/admin/privacy/requests/{request_id}/process")
+    async def process_subject_request(request_id: str, body: GovernancePurposeBody) -> dict:
+        result = runtime.governance.process_subject_action(
+            privileged_principal(), request_id, purpose=body.purpose
+        )
+        return {"request_id": result.request_id, "status": result.status,
+                "completed_at": result.completed_at, "result": result.result}
+
+    @app.post("/api/admin/research/exports", status_code=202)
+    async def request_research_export(body: ExportRequestBody) -> dict:
+        job = runtime.governance.request_export(
+            privileged_principal(), purpose=body.purpose,
+            fields=tuple(body.fields), conditions=body.conditions,
+            minimum_cell_size=body.minimum_cell_size,
+        )
+        return {"export_job_id": job.export_job_id, "status": job.status}
+
+    @app.post("/api/admin/research/exports/{export_job_id}/approve")
+    async def approve_research_export(export_job_id: str, body: GovernancePurposeBody) -> dict:
+        job = runtime.governance.approve_export(
+            privileged_principal(), export_job_id, purpose=body.purpose
+        )
+        return {"export_job_id": job.export_job_id, "status": job.status,
+                "approved_by": job.approved_by}
+
+    @app.post("/api/admin/research/exports/{export_job_id}/materialize")
+    async def materialize_research_export(export_job_id: str, body: GovernancePurposeBody) -> dict:
+        return runtime.governance.materialize_export(
+            privileged_principal(), export_job_id, purpose=body.purpose
+        )
+
+    @app.post("/api/admin/retention/run")
+    async def run_retention(body: RetentionRunBody) -> dict:
+        result = runtime.governance.apply_retention(
+            privileged_principal(), cutoff_at=body.cutoff_at,
+            policy_version=body.policy_version, purpose=body.purpose,
+        )
+        return result.__dict__ if hasattr(result, "__dict__") else {
+            "policy_version": result.policy_version, "cutoff_at": result.cutoff_at,
+            "raw_research_text_removed": result.raw_research_text_removed,
+            "auth_sessions_removed": result.auth_sessions_removed,
+        }
+
+    @app.post("/api/admin/research/outbox/drain")
+    async def drain_research_outbox(limit: int = Query(default=100, ge=1, le=1000)) -> dict:
+        principal = privileged_principal()
+        runtime.auth.require(principal, PERMISSION_OPERATE)
+        return {"dispatched": runtime.research_outbox.drain(limit)}
 
     @app.post("/api/game/session", status_code=201)
     async def start_session(

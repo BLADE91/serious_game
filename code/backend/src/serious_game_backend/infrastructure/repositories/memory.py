@@ -8,6 +8,14 @@ from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.operation import OperationRecord
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
+from serious_game_backend.domain.consent import ConsentDocument, ConsentRecord
+from serious_game_backend.domain.identity import Account, AuthSession
+from serious_game_backend.domain.research import (
+    ExperimentAssignment,
+    ResearchEvent,
+    ResearchSubject,
+)
+import secrets
 
 
 class InMemoryGameSessionRepository:
@@ -125,10 +133,12 @@ class InMemoryRuntimeTransactionRepository:
         sessions: InMemoryGameSessionRepository,
         operations: InMemoryOperationRepository,
         requests: InMemorySessionRequestRepository,
+        research_events: InMemoryResearchEventRepository | None = None,
     ) -> None:
         self._sessions = sessions
         self._operations = operations
         self._requests = requests
+        self._research_events = research_events
         self._lock = RLock()
 
     def reserve_operation(
@@ -152,10 +162,13 @@ class InMemoryRuntimeTransactionRepository:
         *,
         expected_version: int,
         operation: OperationRecord,
+        research_event: ResearchEvent | None = None,
     ) -> None:
         with self._lock:
             self._sessions.save(session, expected_version=expected_version)
             self._operations.save(operation)
+            if research_event is not None and self._research_events is not None:
+                self._research_events.append(research_event)
 
     def complete_session_request(
         self,
@@ -232,3 +245,162 @@ class InMemoryNPCMemoryRepository:
                     self._items[memory_id] = replace(
                         current, invalidated_at=invalidated_at
                     )
+
+
+class InMemoryAccountRepository:
+    def __init__(self) -> None:
+        self._items: dict[str, Account] = {}
+        self._usernames: dict[str, str] = {}
+        self._lock = RLock()
+
+    def create(self, account: Account) -> None:
+        with self._lock:
+            if account.account_id in self._items or account.username in self._usernames:
+                raise ValueError("duplicate account")
+            self._items[account.account_id] = deepcopy(account)
+            self._usernames[account.username] = account.account_id
+
+    def get_by_id(self, account_id: str) -> Account | None:
+        with self._lock:
+            value = self._items.get(account_id)
+            return deepcopy(value) if value else None
+
+    def get_by_username(self, username: str) -> Account | None:
+        with self._lock:
+            account_id = self._usernames.get(username)
+            value = self._items.get(account_id) if account_id else None
+            return deepcopy(value) if value else None
+
+
+class InMemoryAuthSessionRepository:
+    def __init__(self) -> None:
+        self._items: dict[str, AuthSession] = {}
+        self._lock = RLock()
+
+    def create(self, session: AuthSession) -> None:
+        with self._lock:
+            if session.token_hash in self._items:
+                raise ValueError("duplicate auth session")
+            self._items[session.token_hash] = deepcopy(session)
+
+    def get(self, token_hash: str) -> AuthSession | None:
+        with self._lock:
+            value = self._items.get(token_hash)
+            return deepcopy(value) if value else None
+
+    def save(self, session: AuthSession) -> None:
+        with self._lock:
+            if session.token_hash not in self._items:
+                raise ValueError("auth session does not exist")
+            self._items[session.token_hash] = deepcopy(session)
+
+
+class InMemoryConsentRepository:
+    def __init__(self) -> None:
+        self._documents: dict[str, ConsentDocument] = {}
+        self._records: dict[str, ConsentRecord] = {}
+        self._lock = RLock()
+
+    def publish_document(self, document: ConsentDocument) -> None:
+        with self._lock:
+            current = self._documents.get(document.consent_version)
+            if current is not None and current.document_hash != document.document_hash:
+                raise ValueError("consent version is immutable")
+            self._documents[document.consent_version] = deepcopy(document)
+
+    def get_document(self, consent_version: str) -> ConsentDocument | None:
+        with self._lock:
+            value = self._documents.get(consent_version)
+            return deepcopy(value) if value else None
+
+    def create_record(self, record: ConsentRecord) -> None:
+        with self._lock:
+            if record.consent_record_id in self._records:
+                raise ValueError("duplicate consent record")
+            self._records[record.consent_record_id] = deepcopy(record)
+
+    def get_record(self, consent_record_id: str) -> ConsentRecord | None:
+        with self._lock:
+            value = self._records.get(consent_record_id)
+            return deepcopy(value) if value else None
+
+    def latest_for_account(self, account_id: str) -> ConsentRecord | None:
+        with self._lock:
+            values = [item for item in self._records.values() if item.account_id == account_id]
+            return deepcopy(max(values, key=lambda item: item.signed_at)) if values else None
+
+    def save_record(self, record: ConsentRecord) -> None:
+        with self._lock:
+            current = self._records.get(record.consent_record_id)
+            if current is None:
+                raise ValueError("consent record does not exist")
+            if (
+                current.account_id != record.account_id
+                or current.consent_version != record.consent_version
+                or current.document_hash != record.document_hash
+                or current.scopes != record.scopes
+                or current.signed_at != record.signed_at
+            ):
+                raise ValueError("signed consent fields are immutable")
+            self._records[record.consent_record_id] = deepcopy(record)
+
+
+class InMemoryResearchIdentityRepository:
+    def __init__(self) -> None:
+        self._items: dict[str, ResearchSubject] = {}
+        self._lock = RLock()
+
+    def get_or_create(self, account_id: str) -> ResearchSubject:
+        with self._lock:
+            current = self._items.get(account_id)
+            if current is None:
+                current = ResearchSubject(
+                    research_subject_id=f"rs_{secrets.token_hex(16)}",
+                    account_id=account_id,
+                )
+                self._items[account_id] = current
+            return deepcopy(current)
+
+    def get_for_account(self, account_id: str) -> ResearchSubject | None:
+        with self._lock:
+            value = self._items.get(account_id)
+            return deepcopy(value) if value else None
+
+
+class InMemoryExperimentAssignmentRepository:
+    def __init__(self) -> None:
+        self._items: dict[tuple[str, str], ExperimentAssignment] = {}
+        self._lock = RLock()
+
+    def create(self, assignment: ExperimentAssignment) -> None:
+        key = (assignment.research_subject_id, assignment.experiment_id)
+        with self._lock:
+            if key in self._items:
+                raise ValueError("experiment assignment is immutable")
+            self._items[key] = deepcopy(assignment)
+
+    def get_for_subject(
+        self, research_subject_id: str, experiment_id: str
+    ) -> ExperimentAssignment | None:
+        with self._lock:
+            value = self._items.get((research_subject_id, experiment_id))
+            return deepcopy(value) if value else None
+
+
+class InMemoryResearchEventRepository:
+    def __init__(self) -> None:
+        self._items: list[ResearchEvent] = []
+        self._lock = RLock()
+
+    def append(self, event: ResearchEvent) -> None:
+        with self._lock:
+            if any(item.research_event_id == event.research_event_id for item in self._items):
+                raise ValueError("duplicate research event")
+            self._items.append(deepcopy(event))
+
+    def list_for_subject(self, research_subject_id: str) -> tuple[ResearchEvent, ...]:
+        with self._lock:
+            return tuple(deepcopy([
+                item for item in self._items
+                if item.research_subject_id == research_subject_id
+            ]))

@@ -50,7 +50,7 @@ def encode_session(session: GameSession) -> dict:
             "context": session.pending_decision.context,
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "session_id": session.session_id,
         "account_id": session.account_id,
         "package_id": session.package_id,
@@ -58,6 +58,11 @@ def encode_session(session: GameSession) -> dict:
         "package_content_hash": session.package_content_hash,
         "random_seed": session.random_seed,
         "origin_id": session.origin_id,
+        "environment": session.environment,
+        "consent_record_id": session.consent_record_id,
+        "research_subject_id": session.research_subject_id,
+        "experiment_id": session.experiment_id,
+        "experiment_group_id": session.experiment_group_id,
         "game_state": asdict(session.game_state),
         "npc_states": {
             npc_id: {
@@ -131,6 +136,11 @@ def decode_session(value: dict) -> GameSession:
         random_seed=str(value["random_seed"]),
         game_state=GameState(**value["game_state"]),
         origin_id=str(value["origin_id"]),
+        environment=str(value.get("environment", "sandbox")),
+        consent_record_id=value.get("consent_record_id"),
+        research_subject_id=value.get("research_subject_id"),
+        experiment_id=value.get("experiment_id"),
+        experiment_group_id=value.get("experiment_group_id"),
         npc_states={
             npc_id: NPCState(
                 npc_id=str(item["npc_id"]),

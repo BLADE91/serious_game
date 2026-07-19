@@ -29,7 +29,7 @@ python run_server.py --reload
 
 接口文档：`http://localhost:8100/docs`。
 
-当前默认使用 SQLite 持久化仓储和 `X-Account-ID` 沙盒身份头。数据库默认写入 `code/backend/data/serious_game.db`，后端重启后可用终端的 `continue` 或 `load` 继续已提交的存档。测试可设置 `GAME_REPOSITORY=memory` 使用内存仓储。生产环境不得启用沙盒身份；后续 MySQL 仓储和 Cookie 登录必须实现 `application/ports.py` 中的端口，并继续执行按 `session_id + account_id` 查询的所有权约束。
+当前默认使用 SQLite 持久化仓储和 `X-Account-ID` 沙盒身份头。数据库默认写入 `code/backend/data/serious_game.db`，后端重启后可用终端的 `continue` 或 `load` 继续已提交的存档。测试可设置 `GAME_REPOSITORY=memory` 使用内存仓储。正式环境必须使用已实现的 MySQL 仓储、服务端 Cookie 登录、CSRF 与 RBAC；`X-Account-ID` 在 production 中无效，所有游戏存取继续按 `session_id + account_id` 校验所有权。
 
 ## 当前已落地的规则
 
@@ -57,9 +57,9 @@ python run_server.py --reload
 
 ## 当前里程碑边界
 
-M0–M3 已完成。M3 同时通过 Fake/相反软状态双网关回放与真实 `qwen3.6-plus` D1–D90 回放；LLM 软输出不会改变硬结算和终局判定。详见 `../MILESTONES.md`、`docs/m2_semantic_closure.md` 与 `docs/m3_llm_runtime.md`。
+M0–M3 已完成。M4 的可测试代码基线已落地，但正式制度文本、生产资源和类生产验收尚未完成，因此 M4 状态仍为进行中。详见 `../MILESTONES.md`、`docs/m3_llm_runtime.md` 与 `docs/m4_governance_readiness.md`。
 
-- MySQL 仓储、Cookie 登录、CSRF 与研究数据治理适配器。
+- 正式 MySQL/KMS 环境的迁移、恢复、并发和删除演练。
 - 第三方供应商生产级 SLA、余额告警、数据治理及正式密钥轮换。
 - 正式图形前端；当前只有同级 `code/frontend/terminal/` 文字测试客户端，不得复用仓库根目录的旧 `frontend/`。
 

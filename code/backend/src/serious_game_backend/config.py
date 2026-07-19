@@ -35,6 +35,25 @@ class Settings:
     content_root: Path = BACKEND_ROOT / "content" / "packages"
     repository: str = "sqlite"
     database_path: Path = BACKEND_ROOT / "data" / "serious_game.db"
+    mysql_url: str = ""
+    research_mysql_url: str = ""
+    auth_cookie_name: str = "serious_game_session"
+    auth_cookie_secure: bool = True
+    auth_session_ttl_seconds: int = 8 * 60 * 60
+    consent_version: str = "draft-consent-v1"
+    consent_document_hash: str = "sha256:draft"
+    consent_model_provider: str = "未配置"
+    consent_processing_region: str = "未配置"
+    raw_text_retention_days: int = 180
+    require_model_consent: bool = False
+    field_encryption_key_env: str = "SERIOUS_GAME_FIELD_KEY"
+    field_encryption_key_id: str = "local-dev"
+    research_enabled: bool = False
+    experiment_id: str = ""
+    experiment_groups: tuple[str, ...] = ()
+    experiment_assignment_salt: str = ""
+    governance_audit_salt: str = "local-dev-governance-audit"
+    retention_policy_version: str = "draft-retention-v1"
     role_llm_provider: str = "fake"
     role_llm_base_url: str = "https://api.qianzhang-ai.cn/v1"
     role_llm_model: str = "qwen3.6-plus"
@@ -70,6 +89,59 @@ class Settings:
             content_root=content_root.resolve(),
             repository=os.getenv("GAME_REPOSITORY", "sqlite").strip().lower(),
             database_path=database_path.resolve(),
+            mysql_url=os.getenv("GAME_MYSQL_URL", "").strip(),
+            research_mysql_url=os.getenv("RESEARCH_MYSQL_URL", "").strip(),
+            auth_cookie_name=os.getenv(
+                "AUTH_COOKIE_NAME", "serious_game_session"
+            ).strip(),
+            auth_cookie_secure=os.getenv(
+                "AUTH_COOKIE_SECURE", "true"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            auth_session_ttl_seconds=int(os.getenv(
+                "AUTH_SESSION_TTL_SECONDS", str(8 * 60 * 60)
+            )),
+            consent_version=os.getenv(
+                "CONSENT_VERSION", "draft-consent-v1"
+            ).strip(),
+            consent_document_hash=os.getenv(
+                "CONSENT_DOCUMENT_HASH", "sha256:draft"
+            ).strip(),
+            consent_model_provider=os.getenv(
+                "CONSENT_MODEL_PROVIDER", "未配置"
+            ).strip(),
+            consent_processing_region=os.getenv(
+                "CONSENT_PROCESSING_REGION", "未配置"
+            ).strip(),
+            raw_text_retention_days=int(os.getenv(
+                "RAW_TEXT_RETENTION_DAYS", "180"
+            )),
+            require_model_consent=os.getenv(
+                "REQUIRE_MODEL_CONSENT",
+                "true" if os.getenv("GAME_ENVIRONMENT", "sandbox").strip().lower() == "production" else "false",
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            field_encryption_key_env=os.getenv(
+                "FIELD_ENCRYPTION_KEY_ENV", "SERIOUS_GAME_FIELD_KEY"
+            ).strip(),
+            field_encryption_key_id=os.getenv(
+                "FIELD_ENCRYPTION_KEY_ID", "local-dev"
+            ).strip(),
+            research_enabled=os.getenv(
+                "RESEARCH_ENABLED", "false"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            experiment_id=os.getenv("EXPERIMENT_ID", "").strip(),
+            experiment_groups=tuple(
+                item.strip() for item in os.getenv("EXPERIMENT_GROUPS", "").split(",")
+                if item.strip()
+            ),
+            experiment_assignment_salt=os.getenv(
+                "EXPERIMENT_ASSIGNMENT_SALT", ""
+            ).strip(),
+            governance_audit_salt=os.getenv(
+                "GOVERNANCE_AUDIT_SALT", "local-dev-governance-audit"
+            ).strip(),
+            retention_policy_version=os.getenv(
+                "RETENTION_POLICY_VERSION", "draft-retention-v1"
+            ).strip(),
             role_llm_provider=os.getenv("ROLE_LLM_PROVIDER", "fake").strip().lower(),
             role_llm_base_url=os.getenv(
                 "ROLE_LLM_BASE_URL",
@@ -109,8 +181,42 @@ class Settings:
             raise ValueError("GAME_REPOSITORY must be memory, sqlite, or mysql")
         if self.environment == "production" and self.repository != "mysql":
             raise ValueError("production must use the MySQL repository")
+        if self.repository == "mysql" and not self.mysql_url:
+            raise ValueError("MySQL repository requires GAME_MYSQL_URL")
+        if self.repository == "mysql" and self.research_enabled and (
+            not self.research_mysql_url or self.research_mysql_url == self.mysql_url
+        ):
+            raise ValueError("research mode requires a physically separate RESEARCH_MYSQL_URL")
         if self.environment == "production" and self.role_llm_provider == "fake":
             raise ValueError("production must not use the fake role LLM")
+        if self.environment == "production" and self.role_llm_fallback_to_fake:
+            raise ValueError("production must not silently fall back to the fake role LLM")
+        if self.environment == "production" and not self.auth_cookie_secure:
+            raise ValueError("production auth cookie must be Secure")
+        if self.environment == "production" and (
+            self.consent_version.startswith("draft-")
+            or self.consent_document_hash in {"", "sha256:draft"}
+            or self.consent_model_provider == "未配置"
+            or self.consent_processing_region == "未配置"
+        ):
+            raise ValueError("production requires a frozen consent document and provider disclosure")
+        if self.environment == "production" and not self.require_model_consent:
+            raise ValueError("production must require third-party model consent")
+        if self.environment == "production" and (
+            self.governance_audit_salt == "local-dev-governance-audit"
+            or self.retention_policy_version.startswith("draft-")
+        ):
+            raise ValueError("production requires frozen retention policy and secret audit salt")
+        if self.repository == "mysql" and not os.getenv(self.field_encryption_key_env, ""):
+            raise ValueError(
+                f"MySQL repository requires field encryption key env {self.field_encryption_key_env}"
+            )
+        if self.research_enabled and (
+            not self.experiment_id
+            or len(self.experiment_groups) < 1
+            or not self.experiment_assignment_salt
+        ):
+            raise ValueError("research mode requires experiment id, groups, and assignment salt")
         if self.role_llm_provider not in {"fake", "openai_compatible"}:
             raise ValueError("ROLE_LLM_PROVIDER must be fake or openai_compatible")
         if self.role_llm_provider == "openai_compatible":
@@ -128,3 +234,5 @@ class Settings:
             self.role_llm_max_tokens_per_session,
         ) <= 0:
             raise ValueError("role LLM budgets must be positive")
+        if self.auth_session_ttl_seconds <= 0 or self.raw_text_retention_days <= 0:
+            raise ValueError("invalid auth session TTL or raw text retention")
