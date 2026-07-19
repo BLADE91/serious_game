@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from http.cookiejar import CookieJar
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 from uuid import uuid4
 
 
@@ -33,12 +34,16 @@ class ApiClient:
         account_id: str,
         *,
         timeout: float = 15.0,
-        opener: Callable[..., Any] = urlopen,
+        opener: Callable[..., Any] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.account_id = account_id.strip()
         self.timeout = timeout
-        self._opener = opener
+        self._cookie_jar = CookieJar()
+        self._opener = opener or build_opener(
+            HTTPCookieProcessor(self._cookie_jar)
+        ).open
+        self.csrf_token: str | None = None
         if not self.account_id:
             raise ValueError("account_id 不能为空")
 
@@ -48,6 +53,33 @@ class ApiClient:
 
     def health(self) -> dict:
         return self._request("GET", "/health/live")
+
+    def readiness(self) -> dict:
+        return self._request("GET", "/health/ready")
+
+    def register(self, username: str, password: str) -> dict:
+        result = self._request("POST", "/api/auth/register", {
+            "username": username, "password": password,
+        })
+        self.csrf_token = str(result["csrf_token"])
+        self.account_id = str(result["account_id"])
+        return result
+
+    def login(self, username: str, password: str) -> dict:
+        result = self._request("POST", "/api/auth/login", {
+            "username": username, "password": password,
+        })
+        self.csrf_token = str(result["csrf_token"])
+        self.account_id = str(result["account_id"])
+        return result
+
+    def me(self) -> dict:
+        return self._request("GET", "/api/auth/me")
+
+    def logout(self) -> None:
+        self._request("POST", "/api/auth/logout")
+        self.csrf_token = None
+        self._cookie_jar.clear()
 
     def new_session(
         self,
@@ -208,15 +240,18 @@ class ApiClient:
         data = None
         if payload is not None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Account-ID": self.account_id,
+        }
+        if self.csrf_token and method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+            headers["X-CSRF-Token"] = self.csrf_token
         request = Request(
             f"{self.base_url}{path}",
             data=data,
             method=method,
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/json; charset=utf-8",
-                "X-Account-ID": self.account_id,
-            },
+            headers=headers,
         )
         try:
             with self._opener(request, timeout=self.timeout) as response:

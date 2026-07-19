@@ -1,13 +1,13 @@
 # M2 终端文字协议
 
-版本：`v0.2`
+版本：`v0.3`
 适用范围：M1 D1–D3 教程切片及 M2 D1–D90 完整文字运行时
 
 ## 1. 协议边界
 
 - 后端是游戏状态、剧本结算、时间推进和幂等性的唯一权威来源。
 - 客户端只展示玩家可见 DTO，不读取数据库、剧本包或内部领域对象。
-- 当前开发环境使用 `X-Account-ID` 标识沙盒账号；生产环境必须替换为 Cookie 会话认证。
+- 默认本地配置使用 SQLite Cookie 账号；只有显式设置 `AUTH_REQUIRED=false` 时才使用 `X-Account-ID` 兼容沙盒身份。生产环境禁止沙盒身份和开放式自助注册。
 - 所有 session 接口都校验 `session.account_id == 当前账号`。无权访问时统一返回 `404`，不泄露 session 是否存在。
 - 玩家响应不得出现精确信任度、`integrity`、`env_clue`、`corruption_evidence`、内部 flags、LLM 评估或精确暗档 delta。
 
@@ -15,7 +15,7 @@
 
 基础地址默认为 `http://127.0.0.1:8100`，请求与响应均为 UTF-8 JSON。
 
-开发请求头：
+关闭认证时的兼容开发请求头：
 
 ```http
 Accept: application/json
@@ -30,10 +30,16 @@ X-Account-ID: terminal-local
 
 同一幂等键重复提交同一请求会返回第一次的结果；携带不同请求体会返回 `IDEMPOTENCY_KEY_REUSED`。处理中操作可通过操作查询接口轮询。可重试失败必须复用原请求并显式设置 `retry=true`。
 
+启用本地认证时先调用 `POST /api/auth/register` 或 `POST /api/auth/login`。服务端返回 HttpOnly Cookie 和响应体中的 CSRF Token；后续所有写请求携带 `X-CSRF-Token`，读取请求只需 Cookie。密码最少 12 个字符并以 scrypt 随机盐哈希保存。
+
 ## 3. 接口清单
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
+| `POST` | `/api/auth/register` | 仅在非生产环境显式开放时注册并自动登录 |
+| `POST` | `/api/auth/login` | 登录并取得 Cookie 与 CSRF Token |
+| `POST` | `/api/auth/logout` | 注销当前会话 |
+| `GET` | `/api/auth/me` | 查看当前账号与角色 |
 | `GET` | `/api/game/origins` | 获取五种开局出身 |
 | `POST` | `/api/game/session` | 幂等创建新局 |
 | `GET` | `/api/game/session/latest-active` | 获取当前账号最近的活动存档 |

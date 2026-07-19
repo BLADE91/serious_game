@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shlex
 import time
+from getpass import getpass
 from typing import Callable
 
 from .api_client import ApiClient, ApiError
@@ -15,6 +16,10 @@ from .renderer import (
 
 
 HELP_TEXT = """可用命令：
+  register <username>         注册本地测试账号（交互输入密码）
+  login <username>            登录已有账号（交互输入密码）
+  whoami                     查看当前登录账号
+  logout                     退出账号
   origins                     查看五种开局出身
   new <origin_id>             选择出身并新开一局
   continue                    继续当前账号最近一局
@@ -45,11 +50,13 @@ class TerminalApp:
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
         sleep_fn: Callable[[float], None] = time.sleep,
+        password_fn: Callable[[str], str] = getpass,
     ) -> None:
         self.api = api
         self.input = input_fn
         self.output = output_fn
         self.sleep = sleep_fn
+        self.password = password_fn
         self.session_id: str | None = None
         self.state_version: int | None = None
         self.feed_cursor = 0
@@ -58,7 +65,15 @@ class TerminalApp:
 
     def run(self) -> int:
         self.output("《浊流之下·清江搬迁记》文字测试客户端")
-        self.output("输入 origins 查看出身；输入 new <origin_id> 开始游戏。")
+        try:
+            readiness_call = getattr(self.api, "readiness", None)
+            readiness = readiness_call() if readiness_call else {}
+        except ApiError:
+            readiness = {}
+        if readiness.get("authentication_required"):
+            self.output("本地账号模式已启用：输入 register <用户名> 或 login <用户名>。")
+        else:
+            self.output("输入 origins 查看出身；输入 new <origin_id> 开始游戏。")
         while True:
             try:
                 raw = self.input("> ").strip()
@@ -91,6 +106,30 @@ class TerminalApp:
             return False
         if command in {"help", "?"}:
             self.output(HELP_TEXT)
+        elif command == "register":
+            if len(args) != 1:
+                raise ValueError("用法：register <username>")
+            password = self.password("密码（至少 12 个字符）：")
+            if password != self.password("再次输入密码："):
+                raise ValueError("两次输入的密码不一致")
+            result = self.api.register(args[0], password)
+            self.output(f"注册并登录成功：{result['account_id']}")
+        elif command == "login":
+            if len(args) != 1:
+                raise ValueError("用法：login <username>")
+            result = self.api.login(args[0], self.password("密码："))
+            self.output(f"登录成功：{result['account_id']}")
+        elif command == "whoami":
+            result = self.api.me()
+            self.output(
+                f"当前账号：{result['account_id']}｜角色："
+                f"{','.join(result.get('roles', []))}"
+            )
+        elif command == "logout":
+            self.api.logout()
+            self.session_id = None
+            self.state_version = None
+            self.output("已退出登录。")
         elif command == "new":
             if len(args) != 1:
                 raise ValueError("用法：new <origin_id>；先输入 origins 查看选项")

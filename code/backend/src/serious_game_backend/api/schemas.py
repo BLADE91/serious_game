@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from serious_game_backend.domain.action import ActionCommand
 from serious_game_backend.domain.enums import ActionInputMode
@@ -93,6 +93,22 @@ class LoginRequest(BaseModel):
 
     username: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=1, max_length=256)
+
+
+class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=12, max_length=256)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        if any(character.isspace() for character in value):
+            raise ValueError("用户名不能包含空白字符")
+        if any(ord(character) < 32 for character in value):
+            raise ValueError("用户名包含非法控制字符")
+        return value
 
 
 class ConsentSignRequest(BaseModel):

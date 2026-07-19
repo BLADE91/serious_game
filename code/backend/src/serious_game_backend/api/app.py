@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+import secrets
 
 from fastapi import FastAPI, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -11,6 +12,7 @@ from serious_game_backend.api.schemas import (
     ConsentWithdrawRequest,
     EndDayRequest,
     LoginRequest,
+    RegisterRequest,
     ExportRequestBody,
     GovernancePurposeBody,
     RetentionRunBody,
@@ -21,8 +23,11 @@ from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.bootstrap import Container, build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.errors import DomainError, NotFoundError
-from serious_game_backend.domain.errors import AuthenticationRequiredError
-from serious_game_backend.domain.identity import PERMISSION_PLAY, Principal
+from serious_game_backend.domain.errors import (
+    AuthenticationRequiredError,
+    RegistrationDisabledError,
+)
+from serious_game_backend.domain.identity import PERMISSION_PLAY, PLAYER, Principal
 from serious_game_backend.domain.identity import PERMISSION_OPERATE
 
 
@@ -40,6 +45,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         description="独立权威游戏运行时；不包含剧本生成器或游戏前端。",
     )
     app.state.container = runtime
+    authentication_enabled = (
+        effective_settings.environment == "production"
+        or effective_settings.auth_required
+    )
 
     def error_response(exc: DomainError) -> JSONResponse:
         return JSONResponse(
@@ -53,10 +62,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
 
     @app.middleware("http")
     async def production_authentication(request: Request, call_next):
-        if effective_settings.environment != "production":
+        if not authentication_enabled:
             return await call_next(request)
         public_paths = {
-            "/health/live", "/health/ready", "/api/auth/login",
+            "/health/live", "/health/ready", "/api/auth/login", "/api/auth/register",
             "/docs", "/openapi.json", "/redoc",
         }
         if request.url.path in public_paths:
@@ -80,7 +89,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             _principal_context.reset(context_token)
 
     def current_account_id(x_account_id: str | None = Header(default=None)) -> str:
-        if effective_settings.environment == "production":
+        if authentication_enabled:
             principal = _principal_context.get()
             if principal is None:
                 raise AuthenticationRequiredError("缺少可信登录身份")
@@ -135,6 +144,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "llm_provider": effective_settings.role_llm_provider,
             "llm_model": effective_settings.role_llm_model,
             "repository": effective_settings.repository,
+            "authentication_required": authentication_enabled,
+            "self_registration": effective_settings.allow_self_registration,
         }
 
     @app.post("/api/auth/login")
@@ -142,6 +153,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         raw_token, csrf_token, principal, expires_at = runtime.auth.login(
             body.username, body.password
         )
+        return set_login_cookie(
+            response, raw_token, csrf_token, principal, expires_at
+        )
+
+    def set_login_cookie(
+        response: Response, raw_token: str, csrf_token: str,
+        principal: Principal, expires_at: str,
+    ) -> dict:
         response.set_cookie(
             key=effective_settings.auth_cookie_name,
             value=raw_token,
@@ -157,6 +176,23 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "csrf_token": csrf_token,
             "expires_at": expires_at,
         }
+
+    @app.post("/api/auth/register", status_code=201)
+    async def register(body: RegisterRequest, response: Response) -> dict:
+        if not effective_settings.allow_self_registration:
+            raise RegistrationDisabledError("当前环境未开放自助注册")
+        account = runtime.auth.create_account(
+            account_id=f"acct_{secrets.token_hex(16)}",
+            username=body.username,
+            password=body.password,
+            roles=frozenset({PLAYER}),
+        )
+        raw_token, csrf_token, principal, expires_at = runtime.auth.login(
+            account.username, body.password
+        )
+        return set_login_cookie(
+            response, raw_token, csrf_token, principal, expires_at
+        )
 
     @app.post("/api/auth/logout", status_code=204)
     async def logout(request: Request, response: Response) -> Response:

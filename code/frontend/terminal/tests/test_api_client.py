@@ -23,6 +23,26 @@ class FakeResponse:
 
 
 class ApiClientTests(unittest.TestCase):
+    def test_register_sets_account_and_csrf_for_next_write(self) -> None:
+        requests = []
+
+        def opener(request, *, timeout):
+            requests.append(request)
+            if request.full_url.endswith("/api/auth/register"):
+                return FakeResponse({
+                    "account_id": "acct_local", "roles": ["player"],
+                    "csrf_token": "csrf-local", "expires_at": "later",
+                })
+            return FakeResponse({"session_id": "game_1", "state_version": 1})
+
+        client = ApiClient("http://example.test", "terminal-local", opener=opener)
+        registered = client.register("local-user", "correct horse battery")
+        client.new_session(origin_id="technical")
+
+        self.assertEqual("acct_local", registered["account_id"])
+        self.assertEqual("acct_local", client.account_id)
+        self.assertEqual("csrf-local", requests[1].get_header("X-csrf-token"))
+
     def test_new_session_sends_origin_and_idempotency_key(self) -> None:
         captured = {}
 

@@ -8,6 +8,7 @@ import secrets
 
 from serious_game_backend.application.ports import AccountRepository, AuthSessionRepository
 from serious_game_backend.domain.errors import (
+    AccountConflictError,
     AuthenticationRequiredError,
     CSRFValidationError,
     InvalidCredentialsError,
@@ -80,13 +81,19 @@ class AuthService:
     def create_account(
         self, *, account_id: str, username: str, password: str, roles: frozenset[str]
     ) -> Account:
+        normalized = username.strip().casefold()
+        if self._accounts.get_by_username(normalized) is not None:
+            raise AccountConflictError("用户名已被使用")
         account = Account(
             account_id=account_id,
-            username=username.strip().casefold(),
+            username=normalized,
             password_hash=self._hasher.hash(password),
             roles=roles,
         )
-        self._accounts.create(account)
+        try:
+            self._accounts.create(account)
+        except ValueError as exc:
+            raise AccountConflictError("用户名或账号标识已被使用") from exc
         return account
 
     def login(self, username: str, password: str) -> tuple[str, str, Principal, str]:

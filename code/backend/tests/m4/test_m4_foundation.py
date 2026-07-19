@@ -226,6 +226,45 @@ class M4FoundationTests(unittest.TestCase):
         )
         self.assertEqual(201, allowed.status_code, allowed.text)
 
+    def test_local_sqlite_registration_login_and_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            settings = Settings(
+                environment="test", content_root=BACKEND_ROOT / "content" / "packages",
+                repository="sqlite", database_path=Path(directory) / "auth.db",
+                auth_required=True, allow_self_registration=True,
+                auth_cookie_secure=False, role_llm_provider="fake",
+            )
+            client = TestClient(create_app(settings), base_url="http://testserver")
+            registered = client.post("/api/auth/register", json={
+                "username": "local-player", "password": "correct horse battery",
+            })
+            self.assertEqual(201, registered.status_code, registered.text)
+            self.assertEqual(["player"], registered.json()["roles"])
+            duplicate = TestClient(
+                create_app(settings), base_url="http://testserver"
+            ).post("/api/auth/register", json={
+                "username": "LOCAL-PLAYER", "password": "correct horse battery",
+            })
+            self.assertEqual(409, duplicate.status_code)
+            denied = client.post("/api/game/session", json={
+                "client_request_id": "local-auth-session", "origin_id": "technical",
+            })
+            self.assertEqual(403, denied.status_code)
+            allowed = client.post(
+                "/api/game/session",
+                headers={"X-CSRF-Token": registered.json()["csrf_token"]},
+                json={"client_request_id": "local-auth-session", "origin_id": "technical"},
+            )
+            self.assertEqual(201, allowed.status_code, allowed.text)
+
+            restarted = TestClient(create_app(settings), base_url="http://testserver")
+            login = restarted.post("/api/auth/login", json={
+                "username": "local-player", "password": "correct horse battery",
+            })
+            self.assertEqual(200, login.status_code, login.text)
+            latest = restarted.get("/api/game/session/latest-active")
+            self.assertEqual(allowed.json()["session_id"], latest.json()["session_id"])
+
 
 if __name__ == "__main__":
     unittest.main()

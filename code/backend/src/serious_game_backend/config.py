@@ -40,6 +40,8 @@ class Settings:
     auth_cookie_name: str = "serious_game_session"
     auth_cookie_secure: bool = True
     auth_session_ttl_seconds: int = 8 * 60 * 60
+    auth_required: bool = False
+    allow_self_registration: bool = False
     consent_version: str = "draft-consent-v1"
     consent_document_hash: str = "sha256:draft"
     consent_model_provider: str = "未配置"
@@ -100,6 +102,12 @@ class Settings:
             auth_session_ttl_seconds=int(os.getenv(
                 "AUTH_SESSION_TTL_SECONDS", str(8 * 60 * 60)
             )),
+            auth_required=os.getenv(
+                "AUTH_REQUIRED", "false"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            allow_self_registration=os.getenv(
+                "ALLOW_SELF_REGISTRATION", "false"
+            ).strip().lower() in {"1", "true", "yes", "on"},
             consent_version=os.getenv(
                 "CONSENT_VERSION", "draft-consent-v1"
             ).strip(),
@@ -193,6 +201,10 @@ class Settings:
             raise ValueError("production must not silently fall back to the fake role LLM")
         if self.environment == "production" and not self.auth_cookie_secure:
             raise ValueError("production auth cookie must be Secure")
+        if self.environment == "production" and not self.auth_required:
+            raise ValueError("production must require authenticated accounts")
+        if self.environment == "production" and self.allow_self_registration:
+            raise ValueError("production must not enable unrestricted self-registration")
         if self.environment == "production" and (
             self.consent_version.startswith("draft-")
             or self.consent_document_hash in {"", "sha256:draft"}

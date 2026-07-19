@@ -31,6 +31,8 @@ python run_server.py --reload
 
 当前默认使用 SQLite 持久化仓储和 `X-Account-ID` 沙盒身份头。数据库默认写入 `code/backend/data/serious_game.db`，后端重启后可用终端的 `continue` 或 `load` 继续已提交的存档。测试可设置 `GAME_REPOSITORY=memory` 使用内存仓储。正式环境必须使用已实现的 MySQL 仓储、服务端 Cookie 登录、CSRF 与 RBAC；`X-Account-ID` 在 production 中无效，所有游戏存取继续按 `session_id + account_id` 校验所有权。
 
+本地需要测试真实账号流程时设置 `AUTH_REQUIRED=true`、`ALLOW_SELF_REGISTRATION=true` 和 `AUTH_COOKIE_SECURE=false`。此时可调用 `POST /api/auth/register` 自助注册，注册成功即建立 Cookie 会话；后续使用 `/api/auth/login`、`/api/auth/logout` 和 `/api/auth/me`。正式环境强制关闭无限制自助注册，只允许通过受控账号或后续邀请码流程入场。
+
 ## 当前已落地的规则
 
 - 新局锁定 `package_id + package_version + package_content_hash`。

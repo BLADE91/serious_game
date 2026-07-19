@@ -117,6 +117,16 @@ class InvalidCredentialsError(DomainError):
     http_status = 401
 
 
+class AccountConflictError(DomainError):
+    code = "ACCOUNT_CONFLICT"
+    http_status = 409
+
+
+class RegistrationDisabledError(DomainError):
+    code = "REGISTRATION_DISABLED"
+    http_status = 403
+
+
 class PermissionDeniedError(DomainError):
     code = "PERMISSION_DENIED"
     http_status = 403

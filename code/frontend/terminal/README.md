@@ -23,6 +23,7 @@ python main.py
 进入后依次输入：
 
 ```text
+register local-player
 origins
 new technical
 choose A
@@ -37,6 +38,8 @@ review
 validate
 quit
 ```
+
+首次运行先输入 `register <用户名>`，随后按隐藏提示输入两次密码（至少 12 个字符）；注册成功后会自动登录。后续启动客户端使用 `login <用户名>`，再输入密码即可恢复该账号的存档。`whoami` 查看当前账号，`logout` 退出。密码不会显示在终端命令或命令历史中。
 
 即可走完 D1–D3 教程切片，并继续用 `choose`、`talk`、`act` 和 `end` 推进至 D90。`map` 查看当前地点入口，`review` 查看玩家可见复盘，`validate` 查看已发布剧本包的完整性报告。客户端会在新建时打印 `session_id`。
 
