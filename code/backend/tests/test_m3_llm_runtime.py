@@ -104,6 +104,28 @@ class M3LLMRuntimeTests(unittest.TestCase):
         self.assertEqual(120, saved[0].input_tokens)
         self.assertFalse(hasattr(saved[0], "raw_output"))
 
+    def test_prompt_includes_player_policy_and_forbids_invented_rates(self) -> None:
+        captured = []
+
+        def transport(_base_url, _api_key, body, _timeout):
+            captured.append(body)
+            return valid_response()
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(), "test-key", InMemoryLLMCallAuditRepository(), transport=transport
+        )
+        context = replace(self.context("act_policy_prompt"), player_reference_materials={
+            "compensation_policy": {
+                "status": "具体计价参数待正式细则补全",
+                "numeric_guardrail": "未配置项目不得报价",
+            }
+        })
+        gateway.run_turn(context)
+        system = captured[0]["messages"][0]["content"]
+        self.assertIn("具体计价参数待正式细则补全", system)
+        self.assertIn("不得自行编造、推算", system)
+        self.assertIn("补偿单价", system)
+
     def test_invalid_json_retries_then_falls_back_without_state_authority(self) -> None:
         calls = []
 

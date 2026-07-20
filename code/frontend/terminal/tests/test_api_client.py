@@ -153,6 +153,20 @@ class ApiClientTests(unittest.TestCase):
             "terminal_protocol_version": "text-conversation-v2"
         })
 
+    def test_mayor_desk_uses_owned_session_path(self) -> None:
+        captured = {}
+
+        def opener(request, *, timeout):
+            captured["url"] = request.full_url
+            return FakeResponse({"state_version": 1, "dossiers": []})
+
+        client = ApiClient("http://example.test", "acct_terminal", opener=opener)
+        client.get_desk("game/unsafe")
+        self.assertEqual(
+            "http://example.test/api/game/session/game%2Funsafe/desk",
+            captured["url"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

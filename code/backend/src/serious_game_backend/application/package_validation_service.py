@@ -25,6 +25,13 @@ class PackageValidationService:
                     bool(item.role_setting) for item in package.npc_profiles
                 ),
                 "facts_and_clues": len(package.facts),
+                "public_dossiers": len(package.public_briefing.get("dossiers", [])),
+                "public_tool_guidance": len(package.public_briefing.get("tool_guidance", {})),
+                "unresolved_policy_numbers": len(
+                    package.public_briefing.get("compensation_policy", {}).get(
+                        "unresolved_numeric_fields", []
+                    )
+                ),
                 "interaction_opportunities": len(package.interaction_opportunities),
                 "decision_catalog": len(package.decision_catalog),
                 "event_catalog": len(package.event_catalog),

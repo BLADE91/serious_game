@@ -136,6 +136,9 @@ class ApiClient:
     def get_knowledge(self, session_id: str) -> dict:
         return self._request("GET", f"{self._session_path(session_id)}/knowledge")
 
+    def get_desk(self, session_id: str) -> dict:
+        return self._request("GET", f"{self._session_path(session_id)}/desk")
+
     def get_map(self, session_id: str) -> dict:
         return self._request("GET", f"{self._session_path(session_id)}/map")
 

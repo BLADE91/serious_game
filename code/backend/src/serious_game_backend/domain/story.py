@@ -37,6 +37,9 @@ class FactDefinition:
     text: str
     category: str = "fact"
     source_line: int = 0
+    source_label: str = "剧情中已确认"
+    related_npc_ids: tuple[str, ...] = ()
+    use_hint: str = "可在后续会谈、调查和决策中作为已掌握材料引用。"
 
 
 @dataclass(frozen=True, slots=True)

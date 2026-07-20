@@ -27,6 +27,7 @@ class RoleTurnContext:
     conversation_opening: str = ""
     conversation_goal: str = ""
     visible_world_context: dict = field(default_factory=dict)
+    player_reference_materials: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

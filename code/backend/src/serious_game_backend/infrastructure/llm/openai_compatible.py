@@ -236,6 +236,12 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             f"当前是本次会谈第 {context.conversation_turn_count + 1} 个角色回合。",
             "玩家可见世界状态：\n"
             + json.dumps(context.visible_world_context, ensure_ascii=False, sort_keys=True),
+            "玩家当前可查阅并可在会谈中引用的案头材料（它们是背景资料，不是要求角色承认的秘密；"
+            "角色应按自己的身份、经历与知识边界判断如何回应）：\n"
+            + json.dumps(context.player_reference_materials, ensure_ascii=False, sort_keys=True),
+            "政策数字边界：只可引用案头材料中已经明确列出的数字。凡补偿单价、每亩或每平方米标准、"
+            "安置面积、搬迁奖励、过渡费、迁坟费、救助额度或审批金额边界尚未配置时，必须明确表示"
+            "正式细则尚未确定，不得自行编造、推算或替县长作出具体金额承诺。",
             tier_contract,
             "输出契约（字段、类型和枚举必须逐项完全一致）：\n"
             "- npc_id: 字符串，必须等于当前 npc_id。\n"

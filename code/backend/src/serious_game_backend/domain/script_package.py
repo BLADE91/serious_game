@@ -121,6 +121,7 @@ class ScriptPackage:
     decisions: dict[str, DecisionDefinition]
     origins: dict[str, OriginDefinition]
     facts: dict[str, FactDefinition]
+    public_briefing: dict
     interaction_opportunities: tuple[InteractionOpportunity, ...] = ()
     registered_flags: frozenset[str] = frozenset()
     map_locations: tuple[MapLocationDefinition, ...] = ()

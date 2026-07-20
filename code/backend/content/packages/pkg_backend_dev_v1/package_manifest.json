@@ -1,12 +1,12 @@
 {
   "package_id": "pkg_backend_dev_v1",
   "title": "浊流之下·清江搬迁记",
-  "package_version": "0.2.0-m2",
+  "package_version": "0.3.0-player-briefing",
   "source_version": "最终剧本_20260715",
-  "content_hash": "sha256:42f3925be369afd95cb43e8fda40ce59e73233b24cf6e4b297550624f9cdacab",
+  "content_hash": "sha256:f335d6f90e8e0941949cc5640c09642d8e635616678456d32432c54ec0bf14c1",
   "status": "published",
   "script_schema_version": 2,
   "rules_schema_version": 2,
-  "notes": "M2 可运行包：D1-D90、事件、地图、复盘及 24/95 结局登记。",
+  "notes": "D1-D90 可运行包；补齐五份县长卷宗、公开补偿口径、资源工具、知识正文及角色政策边界。",
   "source_sha256": "sha256:8a1a5fad0221ec922846dcefbcc4e2c026181fe21c95e8b440a34849fc1464e1"
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from dataclasses import replace
 from pathlib import Path
 import sys
@@ -42,6 +43,10 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--limit", type=int, default=5)
     value.add_argument("--base-url", default="https://api.qianzhang-ai.cn/v1")
     value.add_argument("--probe", default=PLAYER_PROBE)
+    value.add_argument(
+        "--require-policy-boundary", action="store_true",
+        help="要求回复明确承认政策数字尚未确定，且不得出现未配置单位报价",
+    )
     return value
 
 
@@ -116,6 +121,11 @@ def main() -> None:
                 "origin": package.origins["technical"].title,
                 "known_facts": [],
             },
+            player_reference_materials={
+                "mission": package.public_briefing["mission"],
+                "compensation_policy": package.public_briefing["compensation_policy"],
+                "known_materials": [],
+            },
         )
         if profile.state_tier is NPCStateTier.DEEP:
             npc_state = NPCState(
@@ -148,8 +158,26 @@ def main() -> None:
                 "disclosure_id": turn.disclosure_id,
                 "dialogue_length": len(turn.dialogue),
                 "dialogue_preview": turn.dialogue[:100],
+                "policy_boundary_acknowledged": any(
+                    marker in turn.dialogue
+                    for marker in ("尚未", "还没", "没有定", "没定", "细则", "不能给", "不能报")
+                ),
+                "unconfigured_unit_quote_matches": re.findall(
+                    r"(?:每平方米|每平米|每亩|签约奖励)[^。；\n]{0,24}?[0-9]+(?:\.[0-9]+)?",
+                    turn.dialogue,
+                ),
                 "risk_notes": list(turn.risk_notes),
             }
+            if args.require_policy_boundary and (
+                not result_data["policy_boundary_acknowledged"]
+                or result_data["unconfigured_unit_quote_matches"]
+            ):
+                status = "failed"
+                error = {
+                    "type": "PolicyBoundaryViolation",
+                    "code": "UNCONFIGURED_POLICY_NUMBER",
+                    "message": "角色未正确遵守未配置补偿数字边界",
+                }
         except Exception as exc:
             status = "failed"
             error = {

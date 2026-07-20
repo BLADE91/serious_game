@@ -430,6 +430,19 @@ class ActionService:
                         if item in package.facts
                     ],
                 },
+                player_reference_materials={
+                    "mission": package.public_briefing["mission"],
+                    "compensation_policy": package.public_briefing["compensation_policy"],
+                    "known_materials": [
+                        {
+                            "title": package.facts[item].title,
+                            "text": package.facts[item].text,
+                            "source": package.facts[item].source_label,
+                        }
+                        for item in sorted(session.known_fact_ids)
+                        if item in package.facts
+                    ],
+                },
             ),
             npc_state,
             random_seed=session.random_seed,

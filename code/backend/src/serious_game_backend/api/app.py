@@ -188,6 +188,91 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "action_blocked_reason": action_blocked_reason,
         }
 
+    def action_entries(session, package) -> tuple[str, list[dict]]:
+        state = session.game_state
+        tier = package.action_cost_tier(state.story_day)
+        gate = command_gate(session, package)
+        available_opportunities = (
+            runtime.opportunities.list_available(session, package)
+            if gate["can_act"] else ()
+        )
+        npc_names = {item.npc_id: item.name for item in package.npc_profiles}
+        result = []
+        for rule in package.action_rules.values():
+            cost = rule.cost_for(tier)
+            opportunity_ids = [
+                item.opportunity_id for item in available_opportunities
+                if item.action_id == rule.action_id
+            ]
+            available = (
+                gate["can_act"]
+                and bool(opportunity_ids)
+                and state.action_points >= cost
+            )
+            reason = gate["action_blocked_reason"]
+            if reason is None and not opportunity_ids:
+                reason = "当前剧情尚未出现可用入口"
+            elif (
+                reason is None
+                and rule.daily_cap is not None
+                and state.daily_action_counts.get(rule.action_id, 0) >= rule.daily_cap
+            ):
+                available, reason = False, "今日次数已用尽"
+            elif reason is None and rule.half_day and state.half_day_action_used:
+                available, reason = False, "今日半日行程已占用"
+            elif reason is None and rule.hard_force and state.fatigue >= 75:
+                available, reason = False, "当前状态不能执行"
+            elif reason is None and rule.precondition_flags_any and not any(
+                flag in session.flags for flag in rule.precondition_flags_any
+            ):
+                available, reason = False, "前置条件尚未满足"
+            elif reason is None and state.action_points < cost:
+                reason = "行动点不足"
+            result.append({
+                "action_id": rule.action_id,
+                "name": rule.name,
+                "category": rule.category,
+                "cost_action_points": cost,
+                "available": available,
+                "unavailable_reason": reason,
+                "opportunity_ids": opportunity_ids,
+                "opportunity_labels": {
+                    item.opportunity_id: npc_names.get(item.npc_id, item.npc_id)
+                    for item in available_opportunities
+                    if item.opportunity_id in opportunity_ids
+                },
+            })
+        return tier.value, result
+
+    def public_fact(item) -> dict:
+        return {
+            "fact_id": item.fact_id,
+            "title": item.title,
+            "text": item.text,
+            "category": item.category,
+            "source_label": item.source_label,
+            "related_npc_ids": list(item.related_npc_ids),
+            "use_hint": item.use_hint,
+        }
+
+    def related_materials(session, package, npc_id: str) -> list[dict]:
+        values = [
+            public_fact(package.facts[fact_id])
+            for fact_id in sorted(session.known_fact_ids)
+            if fact_id in package.facts
+            and npc_id in package.facts[fact_id].related_npc_ids
+        ]
+        policy = package.public_briefing["compensation_policy"]
+        values.append({
+            "material_id": "public_compensation_policy",
+            "title": policy["title"],
+            "text": "统一按依法登记的房屋、土地、人口和政策项目核算；具体计价参数尚待正式细则补全。",
+            "category": "policy",
+            "source_label": "县长案头公开政策底册",
+            "use_hint": "可向任何相关方说明已确定原则；未配置的单价和额度不得口头承诺。",
+        })
+        return values
+
     @app.get("/health/live")
     async def live() -> dict:
         return {
@@ -500,20 +585,64 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             for fact_id in sorted(session.known_fact_ids)
             if fact_id in package.facts
         ]
+        grouped = {"facts": [], "clues": [], "evidence": []}
+        category_keys = {"fact": "facts", "clue": "clues", "evidence": "evidence"}
+        for item in facts:
+            grouped[category_keys.get(item.category, "facts")].append(public_fact(item))
         return {
             "state_version": session.state_version,
             "known_fact_ids": sorted(session.known_fact_ids),
-            "facts": [
-                {
-                    "fact_id": item.fact_id,
-                    "title": item.title,
-                    "text": item.text,
-                    "category": item.category,
-                }
-                for item in facts
-            ],
-            "clues": [],
-            "evidence": [],
+            **grouped,
+        }
+
+    @app.get("/api/game/session/{session_id}/desk")
+    async def get_mayor_desk(
+        session_id: str,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        session = runtime.game_sessions.get_owned(session_id, account_id)
+        package = require_locked_package(runtime.packages, session)
+        briefing = package.public_briefing
+        tier, actions = action_entries(session, package)
+        guidance = briefing["tool_guidance"]
+        tools = [
+            {
+                **item,
+                "description": guidance[item["action_id"]]["description"],
+                "availability_note": guidance[item["action_id"]]["availability_note"],
+            }
+            for item in actions
+        ]
+        state = session.game_state
+        known = [
+            package.facts[item]
+            for item in sorted(session.known_fact_ids)
+            if item in package.facts
+        ]
+        return {
+            "state_version": session.state_version,
+            "mission": briefing["mission"],
+            "dossiers": briefing["dossiers"],
+            "compensation_policy": {
+                **briefing["compensation_policy"],
+                "current_budget": {
+                    "initial": 8000,
+                    "remaining": state.budget_remaining,
+                    "deducted": 8000 - state.budget_remaining,
+                    "unit": state.budget_unit,
+                },
+            },
+            "authorities": briefing["authorities"],
+            "tool_categories": briefing["tool_categories"],
+            "cost_tier": tier,
+            "tools": tools,
+            "knowledge_summary": {
+                "total": len(known),
+                "facts": sum(item.category == "fact" for item in known),
+                "clues": sum(item.category == "clue" for item in known),
+                "evidence": sum(item.category == "evidence" for item in known),
+            },
         }
 
     @app.get("/api/game/session/{session_id}/map")
@@ -544,66 +673,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         account_id = current_account_id(x_account_id)
         session = runtime.game_sessions.get_owned(session_id, account_id)
         package = require_locked_package(runtime.packages, session)
-        state = session.game_state
-        tier = package.action_cost_tier(state.story_day)
-        gate = command_gate(session, package)
-        available_opportunities = (
-            runtime.opportunities.list_available(session, package)
-            if gate["can_act"]
-            else ()
-        )
-        npc_names = {item.npc_id: item.name for item in package.npc_profiles}
-        result = []
-        for rule in package.action_rules.values():
-            cost = rule.cost_for(tier)
-            opportunity_ids = [
-                item.opportunity_id
-                for item in available_opportunities
-                if item.action_id == rule.action_id
-            ]
-            available = (
-                gate["can_act"]
-                and bool(opportunity_ids)
-                and state.action_points >= cost
-            )
-            reason = gate["action_blocked_reason"]
-            if reason is None and not opportunity_ids:
-                reason = "当前没有可用行动入口"
-            elif (
-                reason is None
-                and rule.daily_cap is not None
-                and state.daily_action_counts.get(rule.action_id, 0) >= rule.daily_cap
-            ):
-                available, reason = False, "今日次数已用尽"
-            elif reason is None and rule.half_day and state.half_day_action_used:
-                available, reason = False, "今日半日行程已占用"
-            elif reason is None and rule.hard_force and state.fatigue >= 75:
-                available, reason = False, "当前状态不能执行"
-            elif (
-                reason is None
-                and rule.precondition_flags_any
-                and not any(
-                    flag in session.flags for flag in rule.precondition_flags_any
-                )
-            ):
-                available, reason = False, "前置条件尚未满足"
-            elif reason is None and state.action_points < cost:
-                reason = "行动点不足"
-            result.append({
-                "action_id": rule.action_id,
-                "name": rule.name,
-                "category": rule.category,
-                "cost_action_points": cost,
-                "available": available,
-                "unavailable_reason": reason,
-                "opportunity_ids": opportunity_ids,
-                "opportunity_labels": {
-                    item.opportunity_id: npc_names.get(item.npc_id, item.npc_id)
-                    for item in available_opportunities
-                    if item.opportunity_id in opportunity_ids
-                },
-            })
-        return {"state_version": session.state_version, "cost_tier": tier.value, "actions": result}
+        tier, result = action_entries(session, package)
+        return {"state_version": session.state_version, "cost_tier": tier, "actions": result}
 
     @app.get("/api/game/session/{session_id}/opportunities")
     async def list_opportunities(
@@ -663,6 +734,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     ),
                     "opening_narrative": item.opening_narrative,
                     "conversation_goal": item.conversation_goal,
+                    "related_materials": related_materials(
+                        session, package, item.npc_id
+                    ),
                     "conversation_active": (
                         session.active_conversation is not None
                         and session.active_conversation.opportunity_id == item.opportunity_id

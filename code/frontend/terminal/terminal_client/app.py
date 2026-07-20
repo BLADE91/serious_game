@@ -504,12 +504,85 @@ class TerminalApp:
             items = document.get(key, [])
             values.append(f"{title}：{len(items)} 项")
             for item in items:
-                values.append(f"  - {item.get('title') or item.get('fact_id') or item}")
+                values.extend((
+                    f"  【{item.get('title') or item.get('fact_id') or item}】",
+                    f"    内容：{item.get('text') or '暂无正文。'}",
+                    f"    来源：{item.get('source_label') or '剧情中已确认'}",
+                    f"    可用于：{item.get('use_hint') or '可在后续会谈、调查和决策中引用。'}",
+                ))
         self._write_lines(values)
         self.output(
             "查看完毕，返回游戏菜单。" if self.menu_mode else
             "下一步：输入 scene 返回当前剧情；输入 map、actions 或 opportunities 查看其他入口。"
         )
+
+    def _write_related_materials(self, materials: list[dict]) -> None:
+        if not materials:
+            self.output("当前没有与此人直接关联的已知材料。")
+            return
+        self.output("本次会谈可参考的材料：")
+        for item in materials:
+            self._write_lines((
+                f"  【{item.get('title') or item.get('material_id') or '材料'}】",
+                f"    内容：{item.get('text') or '暂无正文。'}",
+                f"    来源：{item.get('source_label') or '县长案头'}",
+                f"    可用于：{item.get('use_hint') or '可在会谈中引用。'}",
+            ))
+
+    def _menu_desk(self) -> None:
+        document = self.api.get_desk(self._require_session())
+        self.state_version = int(document["state_version"])
+        options = [
+            "任务与硬约束", "五份背景卷宗", "补偿政策与财政盘子",
+            "当前可调资源", "全部行动工具", "事实、线索与证据",
+        ]
+        while True:
+            selected = self._select("县长案头", options, back_label="返回游戏菜单")
+            if selected is None:
+                return
+            if selected == 0:
+                mission = document["mission"]
+                self.output(f"【{mission['title']}】\n{mission['summary']}")
+                for item in mission.get("hard_constraints", []):
+                    self.output(f"  - {item['label']}：{item['value']}｜{item['detail']}")
+            elif selected == 1:
+                for item in document.get("dossiers", []):
+                    self.output(f"【{item['title']}】\n  {item['summary']}")
+                    for point in item.get("known_points", []):
+                        self.output(f"  - {point}")
+            elif selected == 2:
+                policy = document["compensation_policy"]
+                budget = policy["current_budget"]
+                self.output(f"【{policy['title']}】{policy['status']}")
+                self.output(
+                    f"当前财政盘：初始 {budget['initial']}、剩余 {budget['remaining']}、"
+                    f"已扣减 {budget['deducted']} {budget['unit']}"
+                )
+                self.output("已确定资金口径：")
+                for item in policy.get("funding", []):
+                    self.output(f"  - {item['label']}：{item['value']}")
+                self.output("公开执行原则：")
+                for item in policy.get("principles", []):
+                    self.output(f"  - {item}")
+                self.output(f"数字边界：{policy['numeric_guardrail']}")
+            elif selected == 3:
+                for item in document.get("authorities", []):
+                    self.output(f"【{item['name']}】{item['description']}\n  边界：{item['limitation']}")
+            elif selected == 4:
+                categories = {item["name"]: item["description"] for item in document.get("tool_categories", [])}
+                current_category = None
+                for item in document.get("tools", []):
+                    if item["category"] != current_category:
+                        current_category = item["category"]
+                        self.output(f"\n【{current_category}】{categories.get(current_category, '')}")
+                    state = "现在可用" if item.get("available") else f"当前不可用：{item.get('unavailable_reason')}"
+                    self.output(
+                        f"  - {item['name']}｜消耗 {item['cost_action_points']} 行动点｜{state}\n"
+                        f"    作用：{item['description']}\n"
+                        f"    条件：{item['availability_note']}"
+                    )
+            else:
+                self._knowledge()
 
     def _map(self) -> None:
         document = self.api.get_map(self._require_session())
@@ -712,6 +785,7 @@ class TerminalApp:
         if self.commands.get("can_end_day"):
             options.append(("end", "结束当天并执行夜间推进"))
         options.extend((
+            ("desk", "打开县长案头（任务、政策、资源和材料）"),
             ("knowledge", "查看已掌握的事实、线索和证据"),
             ("map", "查看地图与当前入口"),
             ("review", "查看本局复盘"),
@@ -733,6 +807,8 @@ class TerminalApp:
         elif action == "end":
             if self._select("确认结束当天？", ["确认结束当天"], back_label="取消") is not None:
                 self._end_day()
+        elif action == "desk":
+            self._menu_desk()
         elif action == "knowledge":
             self._knowledge()
         elif action == "map":
@@ -829,7 +905,8 @@ class TerminalApp:
                     f"     人物简介：{item.get('npc_introduction') or '暂无公开介绍。'}\n"
                     f"     本次接触：{item.get('conversation_context') or item.get('action_name') or '自由交谈'}\n"
                     f"     前情提要：{item.get('opening_narrative') or '你在当前剧情中获得了与此人交谈的机会。'}\n"
-                    f"     会谈方向：{item.get('conversation_goal') or '了解对方当前的真实想法。'}"
+                    f"     会谈方向：{item.get('conversation_goal') or '了解对方当前的真实想法。'}\n"
+                    f"     可参考材料：{'; '.join(material.get('title', '材料') for material in item.get('related_materials', [])) or '暂无'}"
                 )
                 for item in opportunities
             ],
@@ -855,12 +932,15 @@ class TerminalApp:
         while True:
             selected_action = self._select(
                 f"与{npc_name}的会谈",
-                ["继续交谈", "结束本次会谈"],
+                ["继续交谈", "查看本次会谈相关材料", "结束本次会谈"],
                 back_label="暂时离开终端（会谈仍保持）",
             )
             if selected_action is None:
                 return
             if selected_action == 1:
+                self._write_related_materials(list(opportunity.get("related_materials", [])))
+                continue
+            if selected_action == 2:
                 self._end_conversation(conversation_id)
                 return
             text = self.input("你想说什么（直接回车返回会谈菜单）：").strip()

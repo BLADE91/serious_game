@@ -46,6 +46,7 @@ REQUIRED_FILES = (
     "decisions.json",
     "origins.json",
     "facts.json",
+    "public_briefing.json",
     "map_locations.json",
     "ending_rules.json",
     "content_catalog.json",
@@ -127,6 +128,9 @@ class FileScriptPackageLoader:
         decisions = self._load_decisions(self._json(package_dir / "decisions.json"))
         origins = self._load_origins(self._json(package_dir / "origins.json"))
         facts = self._load_facts(self._json(package_dir / "facts.json"))
+        public_briefing = self._load_public_briefing(
+            self._json(package_dir / "public_briefing.json"), actions
+        )
         map_locations = self._load_map_locations(
             self._json(package_dir / "map_locations.json")
         )
@@ -180,6 +184,7 @@ class FileScriptPackageLoader:
             decisions=decisions,
             origins=origins,
             facts=facts,
+            public_briefing=public_briefing,
             interaction_opportunities=opportunities,
             registered_flags=registered_flags,
             map_locations=map_locations,
@@ -400,8 +405,37 @@ class FileScriptPackageLoader:
                 text=str(item["text"]),
                 category=str(item.get("category", "fact")),
                 source_line=int(item.get("source_line", 0)),
+                source_label=str(item.get("source_label", "剧情中已确认")),
+                related_npc_ids=tuple(str(value) for value in item.get("related_npc_ids", [])),
+                use_hint=str(item.get(
+                    "use_hint",
+                    "可在后续会谈、调查和决策中作为已掌握材料引用。",
+                )),
             )
         return result
+
+    @staticmethod
+    def _load_public_briefing(document: dict, actions: dict[str, ActionRule]) -> dict:
+        required = {"mission", "dossiers", "compensation_policy", "authorities", "tool_guidance"}
+        missing = sorted(required - document.keys())
+        if missing:
+            raise ContentValidationError(
+                "public_briefing.json 缺少公开资料模块",
+                details={"missing": missing},
+            )
+        dossiers = document.get("dossiers", [])
+        if len(dossiers) != 5:
+            raise ContentValidationError("县长案头必须正好包含五份背景卷宗")
+        guidance = document.get("tool_guidance", {})
+        if set(guidance) != set(actions):
+            raise ContentValidationError(
+                "公开工具说明必须覆盖全部行动规则",
+                details={
+                    "missing": sorted(set(actions) - set(guidance)),
+                    "unknown": sorted(set(guidance) - set(actions)),
+                },
+            )
+        return document
 
     @classmethod
     def _load_story_days(cls, document: dict) -> dict[int, StoryDayDefinition]:

@@ -212,6 +212,30 @@ class FakeApi:
                            "event_catalog": 14, "main_endings": 24,
                            "sub_endings": 95, "runtime_decisions": 76}}
 
+    def get_knowledge(self, session_id: str) -> dict:
+        return {
+            "state_version": 4,
+            "facts": [{
+                "fact_id": "fact_map", "title": "柳林村宗族权力图",
+                "text": "周姓11户集中住在村中心。", "source_label": "吴秀英交谈",
+                "use_hint": "可用于判断宗族与散姓关系。",
+            }],
+            "clues": [], "evidence": [],
+        }
+
+    def get_desk(self, session_id: str) -> dict:
+        return {
+            "state_version": 4,
+            "mission": {"title": "任务书", "summary": "推进搬迁。", "hard_constraints": []},
+            "dossiers": [],
+            "compensation_policy": {
+                "title": "补偿政策底册", "status": "参数待补全", "funding": [],
+                "principles": [], "numeric_guardrail": "未配置数字不得编造。",
+                "current_budget": {"initial": 8000, "remaining": 8000, "deducted": 0, "unit": "万元"},
+            },
+            "authorities": [], "tool_categories": [], "tools": [],
+        }
+
 
 class TerminalAppTests(unittest.TestCase):
     def test_default_menu_can_register_choose_origin_and_resolve_decision(self) -> None:
@@ -303,7 +327,7 @@ class TerminalAppTests(unittest.TestCase):
                 }]}
 
         api = SelectionApi()
-        talk_inputs = iter(["1", "1", "1", "请告诉我情况", "2"])
+        talk_inputs = iter(["1", "1", "1", "请告诉我情况", "3"])
         output: list[str] = []
         app = TerminalApp(
             api, input_fn=lambda _prompt: next(talk_inputs), output_fn=output.append
@@ -336,6 +360,16 @@ class TerminalAppTests(unittest.TestCase):
         app._do = lambda action_id, opportunity_id: captured_action.extend((action_id, opportunity_id))
         app._menu_action()
         self.assertEqual(["visit", "opp_1"], captured_action)
+
+    def test_knowledge_displays_body_source_and_use(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+        app.session_id = "game_m1_test"
+        app._knowledge()
+        text = "\n".join(output)
+        self.assertIn("内容：周姓11户集中住在村中心", text)
+        self.assertIn("来源：吴秀英交谈", text)
+        self.assertIn("可用于：可用于判断宗族与散姓关系", text)
 
     def test_registration_reprompts_until_password_is_valid_and_confirmed(self) -> None:
         class AuthApi:

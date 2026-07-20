@@ -59,6 +59,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(200, origins.status_code, origins.text)
         self.assertEqual(5, len(origins.json()["origins"]))
 
+        desk = self.client.get(
+            f"/api/game/session/{result['session_id']}/desk", headers=self.headers
+        )
+        self.assertEqual(200, desk.status_code, desk.text)
+        desk_body = desk.json()
+        self.assertEqual(5, len(desk_body["dossiers"]))
+        self.assertEqual(31, len(desk_body["tools"]))
+        self.assertEqual(8000, desk_body["compensation_policy"]["current_budget"]["remaining"])
+        self.assertIn("具体计价参数待正式细则补全", desk_body["compensation_policy"]["status"])
+        self.assertTrue(all("description" in item for item in desk_body["tools"]))
+
     def test_llm_action_endpoint_runs_outside_event_loop(self) -> None:
         route = next(
             item for item in self.client.app.routes
@@ -292,6 +303,10 @@ class ApiTests(unittest.TestCase):
         self.assertIn("退休教师", first_opportunity["npc_introduction"])
         self.assertEqual("入户走访", first_opportunity["action_name"])
         self.assertIn("剧情后续交谈", first_opportunity["conversation_context"])
+        self.assertEqual(
+            ["清江搬迁补偿政策底册"],
+            [item["title"] for item in first_opportunity["related_materials"]],
+        )
 
         started = self.client.post(
             f"/api/game/session/{session_id}/action",
@@ -334,6 +349,13 @@ class ApiTests(unittest.TestCase):
             7,
             talk.json()["visible_state"]["ledger"]["action_points"]["remaining"],
         )
+        active_opportunity = self.client.get(
+            f"/api/game/session/{session_id}/opportunities", headers=self.headers
+        ).json()["opportunities"][0]
+        self.assertEqual(
+            ["柳林村宗族权力图", "清江搬迁补偿政策底册"],
+            [item["title"] for item in active_opportunity["related_materials"]],
+        )
 
         second_talk = self.client.post(
             f"/api/game/session/{session_id}/action",
@@ -368,6 +390,10 @@ class ApiTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(2, len(knowledge.json()["facts"]))
+        self.assertEqual([], knowledge.json()["clues"])
+        self.assertEqual([], knowledge.json()["evidence"])
+        self.assertIn("周姓11户", knowledge.json()["facts"][0]["text"])
+        self.assertIn("可用于", knowledge.json()["facts"][0]["use_hint"])
 
         ended_d2 = self.client.post(
             f"/api/game/session/{session_id}/end-day",

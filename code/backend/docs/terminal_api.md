@@ -266,3 +266,9 @@ LLM 也可返回 `conversation_state=end` 和符合人物、场景的 `exit_narr
 5. `/review` 只包含已经发生的决策、行动、夜间痕迹、事件、事实和终局，不暴露未触发分支的内部条件或精确隐藏值。
 6. D90 固定结转后状态变为终局，返回一个主结局、一个亚结局及适用附加位；结局按 14 条轴顺序首命中，不返回综合评分。
 7. `/api/game/package/validation` 必须报告 90 个故事日、76 个运行时决策、14 个事件规则、24 个主结局、95 个亚结局、3 个附加位及 8 个地图地点，并验证母稿 SHA-256 与发布包内容哈希。
+# 县长案头与玩家知识
+
+- `GET /api/game/session/{session_id}/desk` 返回任务硬约束、五份背景卷宗、公开补偿政策、当前预算、县长可调资源和31项行动工具的公开说明与当前可用状态。
+- `GET /api/game/session/{session_id}/knowledge` 按 `facts`、`clues`、`evidence` 分类返回已掌握材料；每项包含正文、来源、关联人物和公开用途。
+- `GET /api/game/session/{session_id}/opportunities` 的每个会谈入口包含 `related_materials`，供终端在会谈前和会谈中查阅。
+- 公开政策中的未决计价参数统一由 `content/packages/pkg_backend_dev_v1/public_briefing.json` 管理；角色 LLM 不得编造未配置单价或额度。
