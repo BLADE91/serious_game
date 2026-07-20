@@ -181,6 +181,108 @@ class FakeApi:
 
 
 class TerminalAppTests(unittest.TestCase):
+    def test_default_menu_can_register_choose_origin_and_resolve_decision(self) -> None:
+        class MenuApi(FakeApi):
+            def readiness(self):
+                return {"authentication_required": True}
+
+            def me(self):
+                raise ApiError("未登录", code="AUTHENTICATION_REQUIRED", status=401)
+
+            def register(self, username, password):
+                assert username == "player"
+                assert password == "pass1234"
+                return {"account_id": "acct_player"}
+
+            def get_latest_active(self):
+                raise ApiError("没有存档", code="NOT_FOUND", status=404)
+
+            def get_origins(self):
+                return {"origins": [{
+                    "origin_id": "technical", "title": "技术派", "description": "测试出身",
+                }]}
+
+        menu_inputs = iter(["2", "player", "1", "1", "1", "0"])
+        passwords = iter(["pass1234", "pass1234"])
+        output: list[str] = []
+        prompts: list[str] = []
+        api = MenuApi()
+        app = TerminalApp(
+            api, menu_mode=True,
+            input_fn=lambda prompt: (prompts.append(prompt), next(menu_inputs))[1],
+            password_fn=lambda _prompt: next(passwords),
+            output_fn=output.append, sleep_fn=lambda _seconds: None,
+        )
+
+        self.assertEqual(0, app.run())
+        self.assertEqual(["a_reject_on_site"], api.selected_options)
+        text = "\n".join(output)
+        self.assertIn("账号入口", text)
+        self.assertIn("请选择开局出身", text)
+        self.assertTrue(any("请选择序号" in prompt for prompt in prompts))
+        self.assertNotIn("输入 choose", text)
+
+    def test_menu_handles_sorting_and_allocation_without_commands(self) -> None:
+        sorting = {
+            "input_kind": "sorting", "title": "排序",
+            "options": [
+                {"option_id": "a", "text": "甲", "available": True},
+                {"option_id": "b", "text": "乙", "available": True},
+                {"option_id": "c", "text": "丙", "available": True},
+            ],
+        }
+        order_inputs = iter(["2", "1", "1"])
+        app = TerminalApp(FakeApi(), input_fn=lambda _prompt: next(order_inputs))
+        captured_order = []
+        app._order = lambda values: captured_order.extend(values)
+        app._menu_decision(sorting)
+        self.assertEqual(["b", "a", "c"], captured_order)
+
+        allocation = {
+            "input_kind": "allocation", "title": "分配",
+            "input_schema": {
+                "total": 10, "unit": "万元", "fields": ["a", "b", "c", "d"],
+                "labels": {"a": "甲", "b": "乙", "c": "丙", "d": "丁"},
+            },
+        }
+        allocation_inputs = iter(["1", "1", "2", "3", "1", "1", "2", "3", "4"])
+        app = TerminalApp(FakeApi(), input_fn=lambda _prompt: next(allocation_inputs))
+        captured_allocation = []
+        app._allocate = lambda values: captured_allocation.extend(values)
+        app._menu_decision(allocation)
+        self.assertEqual(["1", "2", "3", "4"], captured_allocation)
+
+    def test_menu_selects_talk_and_action_by_number(self) -> None:
+        class SelectionApi(FakeApi):
+            def get_opportunities(self, session_id):
+                return {"opportunities": [{
+                    "opportunity_id": "opp_1", "npc_id": "npc_1",
+                    "cost_action_points": 1,
+                }]}
+
+            def get_actions(self, session_id):
+                return {"actions": [{
+                    "action_id": "visit", "name": "走访", "available": True,
+                    "cost_action_points": 1, "opportunity_ids": ["opp_1"],
+                }]}
+
+        api = SelectionApi()
+        talk_inputs = iter(["1", "请告诉我情况"])
+        app = TerminalApp(api, input_fn=lambda _prompt: next(talk_inputs))
+        app.session_id = "game_m1_test"
+        captured_talk = []
+        app._talk = lambda opportunity_id, text: captured_talk.extend((opportunity_id, text))
+        app._menu_talk()
+        self.assertEqual(["opp_1", "请告诉我情况"], captured_talk)
+
+        action_inputs = iter(["1"])
+        app = TerminalApp(api, input_fn=lambda _prompt: next(action_inputs))
+        app.session_id = "game_m1_test"
+        captured_action = []
+        app._do = lambda action_id, opportunity_id: captured_action.extend((action_id, opportunity_id))
+        app._menu_action()
+        self.assertEqual(["visit", "opp_1"], captured_action)
+
     def test_registration_reprompts_until_password_is_valid_and_confirmed(self) -> None:
         class AuthApi:
             def __init__(self) -> None:

@@ -20,29 +20,32 @@ Set-Location E:\严肃游戏\serious_game_code\code\frontend\terminal
 python main.py
 ```
 
-进入后依次输入：
+默认启动后进入编号菜单，普通玩家只需输入菜单前的数字：
 
 ```text
-register local-player
-origins
-new technical
-choose A
-end
-choose C
-talk opp_d02_wu_xiuying_first_talk 我想先听您说真话
-knowledge
-end
-opportunities
-map
-review
-validate
-quit
+【账号入口】
+  1. 登录已有账号
+  2. 注册新账号
+  0. 退出程序
+请选择序号：2
+
+【游戏入口】
+  1. 开始新游戏并选择出身
+  2. 退出当前账号
+  0. 退出程序
+请选择序号：1
 ```
 
-首次运行先输入 `register <用户名>`，随后按隐藏提示输入两次密码（至少 8 个字符）；长度不足或两次不一致时客户端会说明原因并要求重新输入。注册成功后会自动登录。后续启动客户端使用 `login <用户名>`，再输入密码即可恢复该账号的存档。`whoami` 查看当前账号，`logout` 退出。密码不会显示在终端命令或命令历史中。
+之后客户端会依次显示出身、决策、NPC、行动、日终、地图、知识和复盘菜单。普通选择只输入序号；排序题逐项选择优先级；分配题逐项填写额度。只有用户名、隐藏密码、NPC 对话原文和确实需要填写的数值需要键入。与 NPC 交谈会调用当前配置的真实 LLM。
 
-即可走完 D1–D3 教程切片，并继续用 `choose`、`talk`、`act` 和 `end` 推进至 D90。`map` 查看当前地点入口，`review` 查看玩家可见复盘，`validate` 查看已发布剧本包的完整性报告。客户端会在新建时打印 `session_id`。
+首次注册时密码至少 8 个字符；长度不足或两次不一致会说明原因并原地重新输入。后端重启后，菜单会自动检查活动存档并提供“继续活动存档”，不要求玩家输入 `session_id`。
 
-后端默认使用 SQLite 存档。停止并重新启动后端后，输入 `continue` 可继续当前账号最近的活动存档；也可用 `load <session_id>` 指定存档。若显式设置 `GAME_REPOSITORY=memory`，进程退出后存档才会消失。
+原始命令模式只保留给开发人员检查协议：
+
+```powershell
+python main.py --command-mode
+```
+
+普通玩家直接运行 `python main.py`，无需记忆 `register`、`new`、`choose`、`talk`、`end` 等命令。
 
 完整协议见 [M2 终端文字协议](../../backend/docs/terminal_api.md)。

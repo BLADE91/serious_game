@@ -490,6 +490,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             if gate["can_act"]
             else ()
         )
+        npc_names = {item.npc_id: item.name for item in package.npc_profiles}
         result = []
         for rule in package.action_rules.values():
             cost = rule.cost_for(tier)
@@ -534,6 +535,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "available": available,
                 "unavailable_reason": reason,
                 "opportunity_ids": opportunity_ids,
+                "opportunity_labels": {
+                    item.opportunity_id: npc_names.get(item.npc_id, item.npc_id)
+                    for item in available_opportunities
+                    if item.opportunity_id in opportunity_ids
+                },
             })
         return {"state_version": session.state_version, "cost_tier": tier.value, "actions": result}
 
@@ -552,6 +558,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             else ()
         )
         tier = package.action_cost_tier(session.game_state.story_day)
+        npc_names = {item.npc_id: item.name for item in package.npc_profiles}
         return {
             "state_version": session.state_version,
             "blocked_reason": gate["action_blocked_reason"],
@@ -559,6 +566,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 {
                     "opportunity_id": item.opportunity_id,
                     "npc_id": item.npc_id,
+                    "npc_name": npc_names.get(item.npc_id, item.npc_id),
                     "entry_type": item.entry_type,
                     "action_id": item.action_id,
                     "cost_action_points": package.action_rules[item.action_id].cost_for(tier),

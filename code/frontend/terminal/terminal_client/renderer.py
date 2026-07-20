@@ -53,13 +53,21 @@ def render_state(state: dict) -> list[str]:
     return lines
 
 
-def render_decision(pending: dict | None) -> tuple[list[str], dict[str, str]]:
+def render_decision(
+    pending: dict | None, *, show_options: bool = True
+) -> tuple[list[str], dict[str, str]]:
     if not pending:
         return [], {}
     lines = [f"【{pending.get('title', '必须决策')}】", str(pending.get("text", ""))]
     labels: dict[str, str] = {}
     input_kind = pending.get("input_kind", "choice")
     schema = pending.get("input_schema") or {}
+    if not show_options:
+        if input_kind == "allocation":
+            lines.append(
+                f"总额：{schema.get('total')} {schema.get('unit', '')}；各项必须全部分完。"
+            )
+        return lines, labels
     if input_kind == "allocation":
         labels_by_id = schema.get("labels", {})
         fields = schema.get("fields", [])
@@ -68,7 +76,6 @@ def render_decision(pending: dict | None) -> tuple[list[str], dict[str, str]]:
         )
         for index, field in enumerate(fields):
             lines.append(f"  {OPTION_LABELS[index]}. {labels_by_id.get(field, field)}")
-        lines.append("输入 allocate <A额度> <B额度> <C额度> <D额度> 提交。")
         return lines, labels
     for index, option in enumerate(pending.get("options", [])):
         if index >= len(OPTION_LABELS):
@@ -83,10 +90,6 @@ def render_decision(pending: dict | None) -> tuple[list[str], dict[str, str]]:
                 f"  {label}. {option.get('text', '')}［不可选："
                 f"{option.get('unavailable_reason') or '条件不足'}］"
             )
-    if input_kind == "sorting":
-        lines.append("输入 order A B C D [E] 提交完整顺序。")
-    else:
-        lines.append("输入 choose A（也可直接输入 option_id）提交选择。")
     return lines, labels
 
 

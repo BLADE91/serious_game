@@ -7,6 +7,7 @@
 
 - 后端是游戏状态、剧本结算、时间推进和幂等性的唯一权威来源。
 - 客户端只展示玩家可见 DTO，不读取数据库、剧本包或内部领域对象。
+- 文字客户端默认采用编号菜单，把服务端门禁转换为当前可选项；本节中的原始命令/API 示例仅用于开发调试和协议验收。
 - 默认本地配置使用 SQLite Cookie 账号；只有显式设置 `AUTH_REQUIRED=false` 时才使用 `X-Account-ID` 兼容沙盒身份。生产环境禁止沙盒身份和开放式自助注册。
 - 所有 session 接口都校验 `session.account_id == 当前账号`。无权访问时统一返回 `404`，不泄露 session 是否存在。
 - 玩家响应不得出现精确信任度、`integrity`、`env_clue`、`corruption_evidence`、内部 flags、LLM 评估或精确暗档 delta。

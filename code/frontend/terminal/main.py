@@ -13,6 +13,10 @@ def main() -> int:
         default="terminal-local",
         help="开发沙盒账号；生产环境不会使用该参数",
     )
+    parser.add_argument(
+        "--command-mode", action="store_true",
+        help="启用开发用原始命令模式；默认使用玩家菜单模式",
+    )
     args = parser.parse_args()
 
     api = ApiClient(args.url, args.account_id)
@@ -22,7 +26,7 @@ def main() -> int:
         print(f"无法连接游戏后端：{exc.message}")
         print("请先在 code/backend 下运行：python run_server.py")
         return 1
-    return TerminalApp(api).run()
+    return TerminalApp(api, menu_mode=not args.command_mode).run()
 
 
 if __name__ == "__main__":
