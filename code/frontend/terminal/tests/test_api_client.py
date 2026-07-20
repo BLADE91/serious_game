@@ -142,6 +142,17 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual(409, raised.exception.status)
         self.assertEqual("必须先处理当前决策", raised.exception.message)
 
+    def test_old_backend_process_requires_explicit_restart(self) -> None:
+        client = ApiClient("http://example.test", "acct_terminal")
+
+        with self.assertRaises(ApiError) as raised:
+            client.require_compatible_backend({"status": "ok"})
+
+        self.assertEqual("BACKEND_RESTART_REQUIRED", raised.exception.code)
+        client.require_compatible_backend({
+            "terminal_protocol_version": "text-conversation-v2"
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

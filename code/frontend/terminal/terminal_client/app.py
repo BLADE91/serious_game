@@ -68,6 +68,7 @@ class TerminalApp:
         self.commands: dict = {}
         self.authentication_required = False
         self.authenticated = False
+        self.pending_operation_id: str | None = None
 
     def run(self) -> int:
         self.output("《浊流之下·清江搬迁记》文字测试客户端")
@@ -114,7 +115,7 @@ class TerminalApp:
                 if exc.code in {"AUTHENTICATION_REQUIRED", "INVALID_CREDENTIALS"}:
                     self.authenticated = False
                     self.output("下一步：输入 login <用户名> 重试；没有账号则输入 register <用户名>。")
-                if exc.code in {"STATE_VERSION_CONFLICT", "DECISION_REQUIRED"}:
+                elif self.session_id:
                     self._safe_refresh()
             except ValueError as exc:
                 self.output(f"[输入错误] {exc}")
@@ -128,6 +129,11 @@ class TerminalApp:
             return True
         command = parts[0].lower()
         args = parts[1:]
+
+        if self.pending_operation_id and command not in {"quit", "exit", "help", "?"}:
+            self._resume_pending_operation()
+            self.output("上一轮会谈结果已经恢复，请确认回复后再决定下一步。")
+            return True
 
         if command in {"quit", "exit"}:
             return False
@@ -159,6 +165,7 @@ class TerminalApp:
             self.api.logout()
             self.authenticated = False
             self.session_id = None
+            self.pending_operation_id = None
             self.state_version = None
             self.output("已退出登录。")
             self.output("下一步：输入 login <用户名>，或 register <用户名> 注册新账号。")
@@ -226,6 +233,7 @@ class TerminalApp:
     def _new(self, origin_id: str) -> None:
         state = self.api.new_session(origin_id=origin_id)
         self.session_id = str(state["session_id"])
+        self.pending_operation_id = None
         self.state_version = int(state["state_version"])
         self.feed_cursor = 0
         self.state = state
@@ -250,6 +258,7 @@ class TerminalApp:
 
     def _load(self, session_id: str) -> None:
         self.session_id = session_id
+        self.pending_operation_id = None
         self.state_version = None
         self.feed_cursor = 0
         self.state = {}
@@ -408,16 +417,36 @@ class TerminalApp:
             reason = document.get("blocked_reason")
             raise ValueError(str(reason or "当前没有这个互动机会"))
         client_action_id = self.api.new_key("talk")
-        result = self.api.submit_free_text(
-            session_id,
-            state_version=int(document["state_version"]),
-            opportunity_id=opportunity_id,
-            target_npc_id=str(opportunity["npc_id"]),
-            conversation_id=conversation_id,
-            player_text=player_text,
-            client_action_id=client_action_id,
-        )
-        result = self._await_operation(client_action_id, result)
+        self.pending_operation_id = client_action_id
+        npc_name = str(opportunity.get("npc_name") or opportunity.get("npc_id") or "角色")
+        self.output(f"{npc_name}正在思考，请稍候……")
+        try:
+            try:
+                result = self.api.submit_free_text(
+                    session_id,
+                    state_version=int(document["state_version"]),
+                    opportunity_id=opportunity_id,
+                    target_npc_id=str(opportunity["npc_id"]),
+                    conversation_id=conversation_id,
+                    player_text=player_text,
+                    client_action_id=client_action_id,
+                )
+            except ApiError as exc:
+                if exc.code != "CLIENT_TIMEOUT":
+                    raise
+                self.output(
+                    "模型响应时间较长，但本回合已经取得唯一操作编号。"
+                    "正在查询原操作结果，请勿重复输入。"
+                )
+                result = {"status": "processing", "poll_after_ms": 750}
+            result = self._await_operation(client_action_id, result)
+        except ApiError as exc:
+            if exc.code not in {
+                "CLIENT_POLL_TIMEOUT", "CLIENT_TIMEOUT", "CLIENT_CONNECTION_ERROR"
+            }:
+                self.pending_operation_id = None
+            raise
+        self.pending_operation_id = None
         self.state_version = int(result["state_version"])
         self._refresh()
         return result
@@ -562,10 +591,15 @@ class TerminalApp:
                     self.authenticated = False
                     self.session_id = None
                     self.output("登录状态无效，请在下一页重新登录或注册。")
-                elif exc.code in {"STATE_VERSION_CONFLICT", "DECISION_REQUIRED"}:
-                    self._safe_refresh()
                 else:
-                    self.output("本次操作没有提交。请从下一页菜单重新选择，或选择退出后稍后再试。")
+                    self._safe_refresh()
+                    if exc.code == "CLIENT_POLL_TIMEOUT":
+                        self.output(
+                            "原回合仍在服务端处理中；客户端会继续查询同一操作，"
+                            "不会重复提交你的发言。"
+                        )
+                    else:
+                        self.output("已刷新服务端权威状态，请按下一页菜单继续。")
             except ValueError as exc:
                 self.output(f"[输入错误] {exc}。请按下方菜单重新选择。")
 
@@ -635,6 +669,10 @@ class TerminalApp:
             self._new(str(origins[selected]["origin_id"]))
 
     def _menu_game_step(self) -> bool:
+        if self.pending_operation_id:
+            self.output("正在确认上一轮会谈结果，请勿再次提交相同发言……")
+            self._resume_pending_operation()
+
         pending = self.state.get("pending_decision")
         if pending:
             self._menu_decision(pending)
@@ -865,6 +903,7 @@ class TerminalApp:
         self.api.logout()
         self.authenticated = False
         self.session_id = None
+        self.pending_operation_id = None
         self.state_version = None
         self.state = {}
         self.commands = {}
@@ -989,13 +1028,30 @@ class TerminalApp:
             except ApiError:
                 pass
 
+    def _resume_pending_operation(self) -> dict:
+        client_action_id = self.pending_operation_id
+        if not client_action_id:
+            raise ValueError("当前没有待确认的服务端操作")
+        result = self._await_operation(
+            client_action_id,
+            {"status": "processing", "poll_after_ms": 1000},
+        )
+        self.pending_operation_id = None
+        self.state_version = int(result["state_version"])
+        self._refresh()
+        return result
+
     def _await_operation(self, client_action_id: str, result: dict) -> dict:
         if result.get("status") != "processing":
             return result
         session_id = self._require_session()
         wait_seconds = min(2.0, max(0.05, result.get("poll_after_ms", 500) / 1000))
         self.output("操作处理中，正在等待服务端提交……")
-        for _ in range(60):
+        # The backend can spend up to roughly 90 seconds on three 30-second
+        # provider attempts.  Polling for two minutes keeps the same idempotency
+        # key alive instead of inviting the player to submit the turn again.
+        max_polls = max(1, int(120 / wait_seconds))
+        for _ in range(max_polls):
             self.sleep(wait_seconds)
             operation = self.api.get_operation(session_id, client_action_id)
             status = operation.get("status")

@@ -28,6 +28,8 @@ class ApiError(RuntimeError):
 class ApiClient:
     """只通过玩家 API 操作游戏；不导入或读取后端内部对象。"""
 
+    TERMINAL_PROTOCOL_VERSION = "text-conversation-v2"
+
     def __init__(
         self,
         base_url: str,
@@ -53,6 +55,18 @@ class ApiClient:
 
     def health(self) -> dict:
         return self._request("GET", "/health/live")
+
+    def require_compatible_backend(self, health: dict) -> None:
+        actual = str(health.get("terminal_protocol_version") or "")
+        if actual != self.TERMINAL_PROTOCOL_VERSION:
+            raise ApiError(
+                "当前后端进程仍是旧版本，请先停止并重新运行 python run_server.py",
+                code="BACKEND_RESTART_REQUIRED",
+                details={
+                    "expected": self.TERMINAL_PROTOCOL_VERSION,
+                    "actual": actual or "missing",
+                },
+            )
 
     def readiness(self) -> dict:
         return self._request("GET", "/health/ready")

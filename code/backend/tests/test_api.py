@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 import unittest
 
@@ -37,7 +38,12 @@ class ApiTests(unittest.TestCase):
         return response.json()
 
     def test_health_and_new_game(self) -> None:
-        self.assertEqual(200, self.client.get("/health/live").status_code)
+        health = self.client.get("/health/live")
+        self.assertEqual(200, health.status_code)
+        self.assertEqual(
+            "text-conversation-v2",
+            health.json()["terminal_protocol_version"],
+        )
         result = self._new_session()
         self.assertEqual(1, result["state_version"])
         self.assertEqual(8, result["ledger"]["action_points"]["remaining"])
@@ -52,6 +58,13 @@ class ApiTests(unittest.TestCase):
         origins = self.client.get("/api/game/origins", headers=self.headers)
         self.assertEqual(200, origins.status_code, origins.text)
         self.assertEqual(5, len(origins.json()["origins"]))
+
+    def test_llm_action_endpoint_runs_outside_event_loop(self) -> None:
+        route = next(
+            item for item in self.client.app.routes
+            if getattr(item, "path", None) == "/api/game/session/{session_id}/action"
+        )
+        self.assertFalse(inspect.iscoroutinefunction(route.endpoint))
 
     def test_action_contract_and_ownership(self) -> None:
         session = self._new_session()

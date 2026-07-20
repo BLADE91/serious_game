@@ -382,6 +382,95 @@ class TerminalAppTests(unittest.TestCase):
         app.state = visible_state(version=1, day=2, pending=None)
         self.assertIn("D2", app._command_prompt())
 
+    def test_talk_timeout_recovers_same_operation_without_duplicate_render(self) -> None:
+        class TimeoutRecoveryApi:
+            def __init__(self) -> None:
+                self.submit_count = 0
+                self.operation_count = 0
+
+            @staticmethod
+            def new_key(prefix):
+                return f"timeout-{prefix}-key"
+
+            def get_opportunities(self, session_id):
+                return {
+                    "state_version": 5,
+                    "opportunities": [{
+                        "opportunity_id": "opp_wu",
+                        "npc_id": "npc_wu",
+                        "npc_name": "吴秀英",
+                        "conversation_active": True,
+                        "conversation_id": "conv_wu",
+                    }],
+                }
+
+            def submit_free_text(self, session_id, **payload):
+                self.submit_count += 1
+                self.client_action_id = payload["client_action_id"]
+                raise ApiError("请求后端超时", code="CLIENT_TIMEOUT")
+
+            def get_operation(self, session_id, client_action_id):
+                self.operation_count += 1
+                assert client_action_id == self.client_action_id
+                return {
+                    "status": "succeeded",
+                    "response": {
+                        "status": "succeeded",
+                        "state_version": 6,
+                        "conversation": {
+                            "conversation_id": "conv_wu",
+                            "status": "ended",
+                            "ended_by": "npc",
+                        },
+                    },
+                }
+
+            def get_view(self, session_id, *, after):
+                state = visible_state(version=6, day=2, pending=None)
+                state["active_conversation"] = None
+                items = [] if after >= 2 else [
+                    {
+                        "cursor": 1,
+                        "kind": "player_dialogue",
+                        "speaker": "李致远",
+                        "text": "请给我交个底。",
+                    },
+                    {
+                        "cursor": 2,
+                        "kind": "dialogue",
+                        "speaker": "吴秀英",
+                        "text": "我只认公道二字。",
+                    },
+                ]
+                return {
+                    "state": state,
+                    "feed": {"cursor": 2, "items": items},
+                    "commands": {"can_talk": False, "can_act": True},
+                }
+
+        api = TimeoutRecoveryApi()
+        output: list[str] = []
+        app = TerminalApp(
+            api,
+            output_fn=output.append,
+            sleep_fn=lambda _seconds: None,
+        )
+        app.session_id = "game_timeout"
+        app.state_version = 5
+
+        result = app._talk("opp_wu", "conv_wu", "请给我交个底。")
+        app._safe_refresh()
+
+        self.assertEqual("ended", result["conversation"]["status"])
+        self.assertEqual(1, api.submit_count)
+        self.assertEqual(1, api.operation_count)
+        self.assertIsNone(app.pending_operation_id)
+        self.assertIsNone(app.state.get("active_conversation"))
+        rendered = "\n".join(output)
+        self.assertIn("请勿重复输入", rendered)
+        self.assertEqual(1, rendered.count("李致远：请给我交个底。"))
+        self.assertEqual(1, rendered.count("吴秀英：我只认公道二字。"))
+
     def test_scripted_m1_flow_reaches_d3_and_next_opportunity(self) -> None:
         commands = iter([
             "new technical",

@@ -158,6 +158,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     def command_gate(session, package) -> dict:
         pending = session.pending_decision is not None
         conversing = session.active_conversation is not None
+        busy = session.processing_action_id is not None
         beat = package.story_day(session.game_state.story_day)
         active = session.status.value == "active"
         allow_actions = beat is None or beat.allow_actions
@@ -171,6 +172,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         action_blocked_reason = None
         if not active:
             action_blocked_reason = "本局已经结束"
+        elif busy:
+            action_blocked_reason = "上一操作仍在处理中，请等待原操作完成"
         elif pending:
             action_blocked_reason = "必须先处理当前决策"
         elif conversing:
@@ -178,16 +181,20 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         elif not allow_actions:
             action_blocked_reason = "当前剧情节点不开放自主行动"
         return {
-            "can_choose": active and pending and not conversing,
-            "can_act": active and not pending and not conversing and allow_actions,
-            "can_talk": active and not pending and (conversing or allow_actions),
-            "can_end_day": active and not pending and not conversing and allow_end_day,
+            "can_choose": active and not busy and pending and not conversing,
+            "can_act": active and not busy and not pending and not conversing and allow_actions,
+            "can_talk": active and not busy and not pending and (conversing or allow_actions),
+            "can_end_day": active and not busy and not pending and not conversing and allow_end_day,
             "action_blocked_reason": action_blocked_reason,
         }
 
     @app.get("/health/live")
     async def live() -> dict:
-        return {"status": "ok", "service": "serious-game-backend"}
+        return {
+            "status": "ok",
+            "service": "serious-game-backend",
+            "terminal_protocol_version": "text-conversation-v2",
+        }
 
     @app.get("/health/ready")
     async def ready() -> dict:
@@ -607,7 +614,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         session = runtime.game_sessions.get_owned(session_id, account_id)
         package = require_locked_package(runtime.packages, session)
         gate = command_gate(session, package)
-        if session.active_conversation is not None:
+        if session.processing_action_id is not None:
+            values = ()
+        elif session.active_conversation is not None:
             values = tuple(
                 item for item in package.interaction_opportunities
                 if item.opportunity_id == session.active_conversation.opportunity_id
@@ -671,11 +680,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         }
 
     @app.post("/api/game/session/{session_id}/action")
-    async def execute_action(
+    def execute_action(
         session_id: str,
         body: ActionRequest,
         x_account_id: str | None = Header(default=None),
     ):
+        # This path can wait on a remote role LLM.  Keeping it synchronous lets
+        # Starlette run it in a worker thread, so health checks and idempotency
+        # polling remain responsive while one NPC turn is being generated.
         account_id = current_account_id(x_account_id)
         result = runtime.actions.execute(
             account_id=account_id,

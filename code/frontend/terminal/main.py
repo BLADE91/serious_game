@@ -21,10 +21,14 @@ def main() -> int:
 
     api = ApiClient(args.url, args.account_id)
     try:
-        api.health()
+        health = api.health()
+        api.require_compatible_backend(health)
     except ApiError as exc:
-        print(f"无法连接游戏后端：{exc.message}")
-        print("请先在 code/backend 下运行：python run_server.py")
+        print(f"无法使用游戏后端 [{exc.code}]：{exc.message}")
+        if exc.code == "BACKEND_RESTART_REQUIRED":
+            print("请在原后端窗口按 Ctrl+C，再从 code/backend 重新运行：python run_server.py")
+        else:
+            print("请先在 code/backend 下运行：python run_server.py")
         return 1
     return TerminalApp(api, menu_mode=not args.command_mode).run()
 
