@@ -33,6 +33,7 @@ HELP_TEXT = """可用命令：
   opportunities               查看当前 NPC 互动机会
   do <action_id> <机会ID>     从服务端开放的入口执行自主行动
   talk <opportunity_id> <话>  在服务端开放的机会中与 NPC 交谈
+  leave                       结束当前进行中的 NPC 会谈
   knowledge                   查看已掌握的事实、线索与证据
   map                         查看当前地图入口和可用状态
   review                      查看本局只读复盘
@@ -202,7 +203,12 @@ class TerminalApp:
         elif command == "talk":
             if len(args) < 2:
                 raise ValueError("用法：talk <opportunity_id> <你要说的话>")
-            self._talk(args[0], " ".join(args[1:]))
+            self._command_talk(args[0], " ".join(args[1:]))
+        elif command == "leave":
+            active = self.state.get("active_conversation") or {}
+            if not active.get("conversation_id"):
+                raise ValueError("当前没有进行中的会谈")
+            self._end_conversation(str(active["conversation_id"]))
         elif command == "knowledge":
             self._knowledge()
         elif command == "map":
@@ -388,7 +394,9 @@ class TerminalApp:
         self.output(str(result.get("narrative", "行动已完成。")))
         self._refresh()
 
-    def _talk(self, opportunity_id: str, player_text: str) -> None:
+    def _talk(
+        self, opportunity_id: str, conversation_id: str, player_text: str
+    ) -> dict:
         session_id = self._require_session()
         document = self.api.get_opportunities(session_id)
         opportunities = {
@@ -405,13 +413,59 @@ class TerminalApp:
             state_version=int(document["state_version"]),
             opportunity_id=opportunity_id,
             target_npc_id=str(opportunity["npc_id"]),
+            conversation_id=conversation_id,
             player_text=player_text,
             client_action_id=client_action_id,
         )
         result = self._await_operation(client_action_id, result)
         self.state_version = int(result["state_version"])
-        self.output("互动已完成。")
         self._refresh()
+        return result
+
+    def _command_talk(self, opportunity_id: str, player_text: str) -> None:
+        document = self.api.get_opportunities(self._require_session())
+        opportunity = next(
+            (
+                item for item in document.get("opportunities", [])
+                if str(item["opportunity_id"]) == opportunity_id
+            ),
+            None,
+        )
+        if opportunity is None:
+            raise ValueError("当前没有这个互动机会")
+        if opportunity.get("conversation_active"):
+            conversation_id = str(opportunity["conversation_id"])
+        else:
+            started = self._start_conversation(opportunity)
+            conversation_id = str(started["conversation"]["conversation_id"])
+        self._talk(opportunity_id, conversation_id, player_text)
+
+    def _start_conversation(self, opportunity: dict) -> dict:
+        client_action_id = self.api.new_key("conversation-start")
+        result = self.api.start_conversation(
+            self._require_session(),
+            state_version=int(self.state_version or 0),
+            opportunity_id=str(opportunity["opportunity_id"]),
+            target_npc_id=str(opportunity["npc_id"]),
+            client_action_id=client_action_id,
+        )
+        result = self._await_operation(client_action_id, result)
+        self.state_version = int(result["state_version"])
+        self._refresh()
+        return result
+
+    def _end_conversation(self, conversation_id: str) -> dict:
+        client_action_id = self.api.new_key("conversation-end")
+        result = self.api.end_conversation(
+            self._require_session(),
+            state_version=int(self.state_version or 0),
+            conversation_id=conversation_id,
+            client_action_id=client_action_id,
+        )
+        result = self._await_operation(client_action_id, result)
+        self.state_version = int(result["state_version"])
+        self._refresh()
+        return result
 
     def _knowledge(self) -> None:
         document = self.api.get_knowledge(self._require_session())
@@ -609,7 +663,12 @@ class TerminalApp:
 
         options: list[tuple[str, str]] = []
         if self.commands.get("can_talk"):
-            options.append(("talk", "与当前可互动的 NPC 交谈（调用真实 LLM）"))
+            active = self.state.get("active_conversation")
+            options.append((
+                "talk",
+                "继续当前 NPC 会谈（调用真实 LLM）"
+                if active else "与当前可互动的 NPC 交谈（调用真实 LLM）",
+            ))
         if self.commands.get("can_act"):
             options.append(("action", "执行自主行动"))
         if self.commands.get("can_end_day"):
@@ -723,9 +782,16 @@ class TerminalApp:
                 (
                     f"{item.get('npc_name') or item.get('npc_id')}｜"
                     f"{item.get('npc_title') or '剧情人物'}｜"
-                    f"消耗 {item.get('cost_action_points')} 行动点\n"
+                    + (
+                        "会谈进行中，本次继续不再扣行动点\n"
+                        if item.get("conversation_active")
+                        else f"消耗 {item.get('cost_action_points')} 行动点（进入后不限轮次）\n"
+                    )
+                    +
                     f"     人物简介：{item.get('npc_introduction') or '暂无公开介绍。'}\n"
-                    f"     本次接触：{item.get('conversation_context') or item.get('action_name') or '自由交谈'}"
+                    f"     本次接触：{item.get('conversation_context') or item.get('action_name') or '自由交谈'}\n"
+                    f"     前情提要：{item.get('opening_narrative') or '你在当前剧情中获得了与此人交谈的机会。'}\n"
+                    f"     会谈方向：{item.get('conversation_goal') or '了解对方当前的真实想法。'}"
                 )
                 for item in opportunities
             ],
@@ -733,11 +799,42 @@ class TerminalApp:
         )
         if selected is None:
             return
-        text = self.input("请输入你想对该角色说的话（直接回车取消）：").strip()
-        if not text:
-            self.output("已取消交谈。")
-            return
-        self._talk(str(opportunities[selected]["opportunity_id"]), text)
+        opportunity = opportunities[selected]
+        if opportunity.get("conversation_active"):
+            conversation_id = str(opportunity["conversation_id"])
+        else:
+            confirmed = self._select(
+                "确认进入会谈",
+                ["进入会谈（只在此时扣除行动点，后续交谈不限轮次）"],
+                back_label="暂不进入",
+            )
+            if confirmed is None:
+                return
+            started = self._start_conversation(opportunity)
+            conversation_id = str(started["conversation"]["conversation_id"])
+
+        npc_name = str(opportunity.get("npc_name") or opportunity.get("npc_id"))
+        while True:
+            selected_action = self._select(
+                f"与{npc_name}的会谈",
+                ["继续交谈", "结束本次会谈"],
+                back_label="暂时离开终端（会谈仍保持）",
+            )
+            if selected_action is None:
+                return
+            if selected_action == 1:
+                self._end_conversation(conversation_id)
+                return
+            text = self.input("你想说什么（直接回车返回会谈菜单）：").strip()
+            if not text:
+                self.output("没有提交内容，会谈仍在继续。")
+                continue
+            result = self._talk(
+                str(opportunity["opportunity_id"]), conversation_id, text
+            )
+            if result.get("conversation", {}).get("status") == "ended":
+                self.output(f"{npc_name}已经结束了这次会谈。")
+                return
 
     def _menu_action(self) -> None:
         document = self.api.get_actions(self._require_session())

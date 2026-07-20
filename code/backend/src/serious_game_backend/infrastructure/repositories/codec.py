@@ -16,6 +16,7 @@ from serious_game_backend.domain.events import (
     VisibleEvent,
 )
 from serious_game_backend.domain.game_session import GameSession
+from serious_game_backend.domain.conversation import ActiveConversation
 from serious_game_backend.domain.game_state import GameState
 from serious_game_backend.domain.npc_state import NPCState
 from serious_game_backend.domain.operation import OperationRecord
@@ -50,7 +51,7 @@ def encode_session(session: GameSession) -> dict:
             "context": session.pending_decision.context,
         }
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "session_id": session.session_id,
         "account_id": session.account_id,
         "package_id": session.package_id,
@@ -99,6 +100,10 @@ def encode_session(session: GameSession) -> dict:
         "night_logs": session.night_logs,
         "ending_result": session.ending_result,
         "decision_parameters": session.decision_parameters,
+        "active_conversation": (
+            asdict(session.active_conversation)
+            if session.active_conversation is not None else None
+        ),
         "logs": session.logs,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
@@ -189,6 +194,10 @@ def decode_session(value: dict) -> GameSession:
         night_logs=list(value.get("night_logs", [])),
         ending_result=value.get("ending_result"),
         decision_parameters=dict(value.get("decision_parameters", {})),
+        active_conversation=(
+            ActiveConversation(**value["active_conversation"])
+            if value.get("active_conversation") is not None else None
+        ),
         logs=list(value.get("logs", [])),
         created_at=str(value["created_at"]),
         updated_at=str(value["updated_at"]),

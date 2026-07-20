@@ -17,11 +17,15 @@ class RoleTurnContext:
     npc_state_tier: str = "deep"
     role_setting: str = ""
     prompt_template: str = ""
-    prompt_version: str = "role-turn-v1"
+    prompt_version: str = "role-turn-v2"
     allowed_fact_texts: dict[str, str] = field(default_factory=dict)
     allowed_fact_markers: dict[str, tuple[str, ...]] = field(default_factory=dict)
     forbidden_fact_markers: tuple[str, ...] = ()
     memory_items: tuple[str, ...] = ()
+    conversation_turn_count: int = 0
+    conversation_history: tuple[dict[str, str], ...] = ()
+    conversation_opening: str = ""
+    conversation_goal: str = ""
     visible_world_context: dict = field(default_factory=dict)
 
 
@@ -39,6 +43,8 @@ class RoleTurnResult:
     will_share_with: tuple[str, ...] = ()
     memory_candidate: str | None = None
     risk_notes: tuple[str, ...] = ()
+    conversation_state: str = "continue"
+    exit_narrative: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,3 +58,5 @@ class ValidatedRoleTurn:
     memory_candidate: str | None = None
     will_share_with: tuple[str, ...] = ()
     risk_notes: tuple[str, ...] = ()
+    conversation_state: str = "continue"
+    exit_narrative: str | None = None

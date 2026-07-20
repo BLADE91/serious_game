@@ -44,6 +44,7 @@ from serious_game_backend.domain.operation import OperationRecord, utc_now_iso
 from serious_game_backend.domain.llm import RoleTurnContext
 from serious_game_backend.domain.fact_markers import disclosure_markers_for
 from serious_game_backend.domain.story import ScriptedEffects
+from serious_game_backend.domain.conversation import ActiveConversation
 
 
 class ActionService:
@@ -169,6 +170,12 @@ class ActionService:
             }
             if draft.get("npc_reply") is not None:
                 response["npc_reply"] = draft["npc_reply"]
+            if draft["kind"] in {
+                "conversation_start", "free_text", "conversation_end"
+            }:
+                response["conversation"] = self._conversation_response(
+                    current, draft
+                )
             completed_operation = replace(
                 operation,
                 status=OperationStatus.SUCCEEDED,
@@ -231,6 +238,49 @@ class ActionService:
         account_id: str = "",
         operation_id: str = "",
     ) -> dict:
+        if command.input_mode is ActionInputMode.CONVERSATION_START:
+            if session.active_conversation is not None:
+                raise ActionUnavailableError("已有进行中的会谈，请先继续或结束当前会谈")
+            if not command.opportunity_id or not command.target_npc_id:
+                raise ActionUnavailableError("开始会谈缺少互动机会或目标人物")
+            opportunity = self._opportunities.require_available(
+                command.opportunity_id, session, package
+            )
+            if opportunity.npc_id != command.target_npc_id:
+                raise ActionUnavailableError("目标 NPC 与互动机会不匹配")
+            rule = package.action_rules[opportunity.action_id]
+            cost = self._validate_tool(session, package, rule)
+            return {
+                "kind": "conversation_start",
+                "rule": rule,
+                "opportunity": opportunity,
+                "npc_id": opportunity.npc_id,
+                "conversation_id": f"conv_{secrets.token_hex(12)}",
+                "cost": cost,
+                "narrative": opportunity.opening_narrative,
+            }
+        if command.input_mode is ActionInputMode.CONVERSATION_END:
+            conversation = session.active_conversation
+            if conversation is None or conversation.conversation_id != command.conversation_id:
+                raise ActionUnavailableError("当前没有这场进行中的会谈")
+            opportunity = next(
+                item for item in package.interaction_opportunities
+                if item.opportunity_id == conversation.opportunity_id
+            )
+            profile = next(
+                item for item in package.npc_profiles
+                if item.npc_id == conversation.npc_id
+            )
+            narrative = f"你收住话头，向{profile.name}告辞。本次会谈到此结束。"
+            return {
+                "kind": "conversation_end",
+                "opportunity": opportunity,
+                "npc_id": conversation.npc_id,
+                "conversation_id": conversation.conversation_id,
+                "cost": 0,
+                "narrative": narrative,
+                "ended_by": "player",
+            }
         if command.input_mode is ActionInputMode.TOOL:
             if not command.action_id or not command.opportunity_id:
                 raise ActionUnavailableError("tool 模式缺少 opportunity_id 或 action_id")
@@ -289,15 +339,33 @@ class ActionService:
                 "parameters": parameters,
                 "narrative": option.consequence,
             }
-        if not command.opportunity_id or not command.target_npc_id or not command.player_text:
+        if (
+            not command.conversation_id
+            or not command.opportunity_id
+            or not command.target_npc_id
+            or not command.player_text
+        ):
             raise ActionUnavailableError("自由文字请求字段不完整")
-        opportunity = self._opportunities.require_available(
-            command.opportunity_id, session, package
+        conversation = session.active_conversation
+        if conversation is None or conversation.conversation_id != command.conversation_id:
+            raise ActionUnavailableError("当前没有这场进行中的会谈")
+        if (
+            conversation.opportunity_id != command.opportunity_id
+            or conversation.npc_id != command.target_npc_id
+        ):
+            raise ActionUnavailableError("自由文字请求与当前会谈不匹配")
+        opportunity = next(
+            (
+                item for item in package.interaction_opportunities
+                if item.opportunity_id == conversation.opportunity_id
+            ),
+            None,
         )
+        if opportunity is None:
+            raise ActionUnavailableError("当前会谈引用的互动机会不存在")
         if opportunity.npc_id != command.target_npc_id:
             raise ActionUnavailableError("目标 NPC 与互动机会不匹配")
         rule = package.action_rules[opportunity.action_id]
-        cost = self._validate_tool(session, package, rule)
         npc_state = session.npc_states[opportunity.npc_id]
         profile = next(
             item for item in package.npc_profiles
@@ -347,6 +415,10 @@ class ActionService:
                 ),
                 forbidden_fact_markers=forbidden_fact_markers,
                 memory_items=memory_items,
+                conversation_turn_count=conversation.turn_count,
+                conversation_history=tuple(conversation.transcript),
+                conversation_opening=opportunity.opening_narrative,
+                conversation_goal=opportunity.conversation_goal,
                 visible_world_context={
                     "player_identity": "李致远，云溪县县长",
                     "story_day": session.game_state.story_day,
@@ -365,7 +437,9 @@ class ActionService:
         return {
             "kind": "free_text",
             "rule": rule,
-            "cost": cost,
+            "cost": 0,
+            "conversation_id": conversation.conversation_id,
+            "player_text": command.player_text,
             "opportunity": opportunity,
             "npc_id": opportunity.npc_id,
             "turn": turn,
@@ -375,6 +449,9 @@ class ActionService:
                 "text": turn.dialogue,
                 "portrait_state": turn.portrait_state,
             },
+            "ended_by": (
+                "npc" if turn.conversation_state == "end" else None
+            ),
             "privacy": ({
                 "consent_record_id": prepared_input.consent_record_id,
                 "pii_types": prepared_input.pii_types,
@@ -405,46 +482,46 @@ class ActionService:
         return cost
 
     def _apply_draft(self, session, package, draft: dict) -> None:
-        if draft["kind"] in {"tool", "free_text"}:
-            rule: ActionRule = draft["rule"]
-            session.game_state = session.game_state.spend_action_points(
-                rule.action_id,
-                draft["cost"],
-                half_day=rule.half_day,
-            )
+        if draft["kind"] in {
+            "tool", "conversation_start", "free_text", "conversation_end"
+        }:
+            rule: ActionRule | None = draft.get("rule")
+            if draft["kind"] in {"tool", "conversation_start"}:
+                assert rule is not None
+                session.game_state = session.game_state.spend_action_points(
+                    rule.action_id,
+                    draft["cost"],
+                    half_day=rule.half_day,
+                )
             log = {
-                "type": "tool_action",
+                "type": draft["kind"],
                 "story_day": session.game_state.story_day,
-                "action_id": rule.action_id,
+                "action_id": rule.action_id if rule is not None else None,
                 "cost_action_points": draft["cost"],
                 "visible_to_player": True,
             }
             opportunity = draft.get("opportunity")
-            if opportunity is not None and (
-                opportunity.completion_effects.metric_deltas
-                or opportunity.completion_effects.ledger_deltas
-                or opportunity.completion_effects.open_flags
-                or opportunity.completion_effects.close_flags
-                or opportunity.completion_effects.state_assignments
-            ):
-                self._scripted_effects.apply(
-                    session,
-                    package,
-                    opportunity.completion_effects,
-                    source_id=f"opportunity:{opportunity.opportunity_id}",
+            if draft["kind"] == "tool":
+                self._apply_opportunity_completion(session, package, opportunity)
+            elif draft["kind"] == "conversation_start":
+                session.active_conversation = ActiveConversation(
+                    conversation_id=draft["conversation_id"],
+                    opportunity_id=opportunity.opportunity_id,
+                    npc_id=draft["npc_id"],
+                    story_day=session.game_state.story_day,
                 )
-            if opportunity is not None and opportunity.completion_decision_id:
-                if opportunity.completion_decision_id not in session.pending_decision_queue:
-                    session.pending_decision_queue.insert(
-                        0, opportunity.completion_decision_id
-                    )
-            if opportunity is not None and draft["kind"] == "tool":
-                session.known_fact_ids.update(opportunity.completion_fact_ids)
-                session.flags.update(opportunity.completion_flags)
-                self._story_flow.append_blocks(session, opportunity.completion_blocks)
-            if draft["kind"] == "free_text":
+                session.append_narrative(
+                    story_day=session.game_state.story_day,
+                    kind="conversation_opening",
+                    text=opportunity.opening_narrative,
+                )
+                log["npc_id"] = draft["npc_id"]
+                log["conversation_id"] = draft["conversation_id"]
+            elif draft["kind"] == "free_text":
                 turn = draft["turn"]
-                opportunity = draft["opportunity"]
+                conversation = session.active_conversation
+                if conversation is None:
+                    raise ActionUnavailableError("进行中的会谈已丢失")
                 npc_state = session.npc_states[draft["npc_id"]]
                 session.npc_states[draft["npc_id"]] = replace(
                     npc_state,
@@ -461,6 +538,7 @@ class ActionService:
                 )
                 log["type"] = "free_text_turn"
                 log["npc_id"] = draft["npc_id"]
+                log["conversation_id"] = conversation.conversation_id
                 privacy = draft.get("privacy")
                 if privacy is not None:
                     log["model_input_minimization"] = {
@@ -470,8 +548,6 @@ class ActionService:
                     }
                 if turn.disclosure_id is not None:
                     session.known_fact_ids.add(turn.disclosure_id)
-                session.known_fact_ids.update(opportunity.completion_fact_ids)
-                session.flags.update(opportunity.completion_flags)
                 npc_name = next(
                     (
                         item.name
@@ -482,16 +558,45 @@ class ActionService:
                 )
                 session.append_narrative(
                     story_day=session.game_state.story_day,
+                    kind="player_dialogue",
+                    speaker="李致远",
+                    text=draft["player_text"],
+                )
+                session.append_narrative(
+                    story_day=session.game_state.story_day,
                     kind="dialogue",
                     speaker=npc_name,
                     text=turn.dialogue,
                 )
-                self._story_flow.append_blocks(
-                    session, opportunity.completion_blocks
-                )
+                conversation.add_turn(draft["player_text"], turn.dialogue)
+                if turn.conversation_state == "end":
+                    session.append_narrative(
+                        story_day=session.game_state.story_day,
+                        kind="conversation_exit",
+                        text=turn.exit_narrative or "对方结束了这次会谈。",
+                    )
+                    self._apply_opportunity_completion(
+                        session, package, opportunity, append_blocks=False
+                    )
+                    session.active_conversation = None
                 # 玩家日志不记录内部 delta；权威审计适配器另行保存来源字段。
+            elif draft["kind"] == "conversation_end":
+                session.append_narrative(
+                    story_day=session.game_state.story_day,
+                    kind="conversation_exit",
+                    text=draft["narrative"],
+                )
+                self._apply_opportunity_completion(session, package, opportunity)
+                session.active_conversation = None
+                log["npc_id"] = draft["npc_id"]
+                log["conversation_id"] = draft["conversation_id"]
+                log["ended_by"] = "player"
             session.logs.append(log)
-            if opportunity is not None and opportunity.completion_decision_id:
+            if (
+                opportunity is not None
+                and opportunity.completion_decision_id
+                and session.active_conversation is None
+            ):
                 self._story_flow.present_next_decision(session, package)
         else:
             repeat_decision = False
@@ -557,6 +662,58 @@ class ActionService:
                 )
             else:
                 self._story_flow.present_next_decision(session, package)
+
+    def _apply_opportunity_completion(
+        self, session, package, opportunity, *, append_blocks: bool = True
+    ) -> None:
+        if opportunity is None:
+            return
+        effects = opportunity.completion_effects
+        if (
+            effects.metric_deltas or effects.ledger_deltas or effects.open_flags
+            or effects.close_flags or effects.state_assignments
+        ):
+            self._scripted_effects.apply(
+                session,
+                package,
+                effects,
+                source_id=f"opportunity:{opportunity.opportunity_id}",
+            )
+        if (
+            opportunity.completion_decision_id
+            and opportunity.completion_decision_id not in session.pending_decision_queue
+        ):
+            session.pending_decision_queue.insert(0, opportunity.completion_decision_id)
+        session.known_fact_ids.update(opportunity.completion_fact_ids)
+        session.flags.update(opportunity.completion_flags)
+        if append_blocks:
+            self._story_flow.append_blocks(session, opportunity.completion_blocks)
+
+    @staticmethod
+    def _conversation_response(session, draft: dict) -> dict:
+        active = session.active_conversation
+        if active is not None:
+            return {
+                "conversation_id": active.conversation_id,
+                "opportunity_id": active.opportunity_id,
+                "npc_id": active.npc_id,
+                "status": "active",
+                "turn_count": active.turn_count,
+            }
+        return {
+            "conversation_id": draft.get("conversation_id"),
+            "opportunity_id": (
+                draft["opportunity"].opportunity_id
+                if draft.get("opportunity") is not None else None
+            ),
+            "npc_id": draft.get("npc_id"),
+            "status": "ended",
+            "ended_by": draft.get("ended_by", "player"),
+            "exit_narrative": (
+                draft.get("turn").exit_narrative
+                if draft.get("turn") is not None else draft.get("narrative")
+            ),
+        }
 
     def _owned_session(self, session_id: str, account_id: str):
         session = self._sessions.get_owned(session_id, account_id)
@@ -727,6 +884,20 @@ class ActionService:
             raise SessionEndedError("当前游戏不可继续写入")
         if session.processing_action_id is not None:
             raise SessionBusyError("当前游戏正在处理另一个动作")
+        if (
+            session.active_conversation is not None
+            and command.input_mode not in {
+                ActionInputMode.FREE_TEXT, ActionInputMode.CONVERSATION_END
+            }
+        ):
+            raise ActionUnavailableError("会谈正在进行，请先继续或结束当前会谈")
+        if (
+            session.active_conversation is None
+            and command.input_mode in {
+                ActionInputMode.FREE_TEXT, ActionInputMode.CONVERSATION_END
+            }
+        ):
+            raise ActionUnavailableError("当前没有进行中的会谈")
         if (
             session.pending_decision is not None
             and command.input_mode is not ActionInputMode.DECISION

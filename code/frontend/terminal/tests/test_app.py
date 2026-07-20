@@ -61,6 +61,7 @@ class FakeApi:
     def __init__(self) -> None:
         self.phase = 0
         self.selected_options: list[str] = []
+        self.conversation_active = False
 
     @staticmethod
     def new_key(prefix: str) -> str:
@@ -88,8 +89,18 @@ class FakeApi:
             "can_end_day": self.phase in {1, 4},
         }
         cursor = self.phase + 1
+        state = visible_state(version=version, day=day, pending=pending)
+        state["active_conversation"] = (
+            {
+                "conversation_id": "conv_test_001",
+                "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                "npc_id": "npc_wu_xiuying",
+                "turn_count": 0,
+            }
+            if self.conversation_active else None
+        )
         return {
-            "state": visible_state(version=version, day=day, pending=pending),
+            "state": state,
             "feed": {
                 "cursor": cursor,
                 "items": (
@@ -141,6 +152,8 @@ class FakeApi:
                 "npc_id": "npc_wu_xiuying",
                 "action_id": "home_visit",
                 "cost_action_points": 1,
+                "conversation_active": self.conversation_active,
+                "conversation_id": "conv_test_001" if self.conversation_active else None,
             }]
         elif self.phase == 5:
             items = [{
@@ -156,12 +169,32 @@ class FakeApi:
             "opportunities": items,
         }
 
+    def start_conversation(self, session_id: str, **payload) -> dict:
+        assert self.phase == 3
+        self.conversation_active = True
+        return {
+            "state_version": 4,
+            "status": "succeeded",
+            "conversation": {
+                "conversation_id": "conv_test_001", "status": "active",
+            },
+        }
+
     def submit_free_text(self, session_id: str, **payload) -> dict:
         assert session_id == "game_m1_test"
         assert self.phase == 3
         assert payload["target_npc_id"] == "npc_wu_xiuying"
+        assert payload["conversation_id"] == "conv_test_001"
         self.phase = 4
         return {"state_version": 5, "status": "succeeded"}
+
+    def end_conversation(self, session_id: str, **payload) -> dict:
+        assert payload["conversation_id"] == "conv_test_001"
+        self.conversation_active = False
+        return {
+            "state_version": 5, "status": "succeeded",
+            "conversation": {"conversation_id": "conv_test_001", "status": "ended"},
+        }
 
     def get_map(self, session_id: str) -> dict:
         return {"story_day": 1, "locations": [{
@@ -270,16 +303,27 @@ class TerminalAppTests(unittest.TestCase):
                 }]}
 
         api = SelectionApi()
-        talk_inputs = iter(["1", "请告诉我情况"])
+        talk_inputs = iter(["1", "1", "1", "请告诉我情况", "2"])
         output: list[str] = []
         app = TerminalApp(
             api, input_fn=lambda _prompt: next(talk_inputs), output_fn=output.append
         )
         app.session_id = "game_m1_test"
         captured_talk = []
-        app._talk = lambda opportunity_id, text: captured_talk.extend((opportunity_id, text))
+        captured_end = []
+        app._start_conversation = lambda _opportunity: {
+            "conversation": {"conversation_id": "conv_test_001", "status": "active"}
+        }
+        def capture_talk(opportunity_id, conversation_id, text):
+            captured_talk.extend((opportunity_id, conversation_id, text))
+            return {"conversation": {"status": "active"}}
+        app._talk = capture_talk
+        app._end_conversation = lambda conversation_id: captured_end.append(conversation_id)
         app._menu_talk()
-        self.assertEqual(["opp_1", "请告诉我情况"], captured_talk)
+        self.assertEqual(
+            ["opp_1", "conv_test_001", "请告诉我情况"], captured_talk
+        )
+        self.assertEqual(["conv_test_001"], captured_end)
         menu_text = "\n".join(output)
         self.assertIn("吴秀英｜村民代表，退休教师", menu_text)
         self.assertIn("人物简介：吴秀英是柳林村有威望的退休教师。", menu_text)
@@ -345,6 +389,7 @@ class TerminalAppTests(unittest.TestCase):
             "end",
             "choose C",
             "talk opp_d02_wu_xiuying_first_talk 我想先听您说真话",
+            "leave",
             "end",
             "opportunities",
             "quit",

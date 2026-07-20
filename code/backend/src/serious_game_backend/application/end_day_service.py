@@ -98,6 +98,8 @@ class EndDayService:
             raise SessionBusyError("当前游戏正在处理另一个动作")
         if session.pending_decision is not None:
             raise DecisionRequiredError("必须先处理当前决策")
+        if session.active_conversation is not None:
+            raise ActionUnavailableError("会谈正在进行，请先结束当前会谈")
         if session.state_version != state_version:
             raise StateVersionConflictError(
                 "状态版本已变化，请刷新后重试",

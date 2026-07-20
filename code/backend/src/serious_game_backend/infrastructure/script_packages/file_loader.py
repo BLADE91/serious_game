@@ -190,7 +190,7 @@ class FileScriptPackageLoader:
             event_catalog=event_catalog,
             source_sha256=str(catalog_doc.get("source_sha256", "")),
             role_turn_prompt=role_turn_prompt,
-            role_turn_prompt_version="role-turn-v1",
+            role_turn_prompt_version="role-turn-v2",
         )
 
     @staticmethod
@@ -334,6 +334,7 @@ class FileScriptPackageLoader:
     def _load_opportunities(
         cls, document: dict
     ) -> tuple[InteractionOpportunity, ...]:
+        contexts = document.get("conversation_contexts", {})
         return tuple(InteractionOpportunity(
             opportunity_id=str(item["opportunity_id"]),
             npc_id=str(item["npc_id"]),
@@ -351,6 +352,12 @@ class FileScriptPackageLoader:
             completion_blocks=cls._load_blocks(item.get("completion_blocks", [])),
             completion_effects=cls._load_effects(item.get("completion_effects", {})),
             completion_decision_id=item.get("completion_decision_id"),
+            opening_narrative=str(
+                contexts.get(item["opportunity_id"], {}).get("opening_narrative", "")
+            ),
+            conversation_goal=str(
+                contexts.get(item["opportunity_id"], {}).get("conversation_goal", "")
+            ),
         ) for item in document.get("opportunities", []))
 
     @staticmethod
@@ -725,6 +732,10 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(f"互动机会引用未知 NPC：{item.npc_id}")
             if item.action_id not in actions:
                 raise ContentValidationError(f"互动机会引用未知行动：{item.action_id}")
+            if not item.opening_narrative.strip() or not item.conversation_goal.strip():
+                raise ContentValidationError(
+                    f"互动机会缺少玩家可见的前情提要或会谈方向：{item.opportunity_id}"
+                )
         if status == "published":
             covered_npcs = {item.npc_id for item in opportunities}
             if covered_npcs != npc_ids:

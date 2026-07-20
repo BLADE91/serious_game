@@ -25,6 +25,8 @@ class FakeRoleLLMGateway:
                     anxiety_direction="increase",
                     anxiety_band="light",
                     memory_candidate="新县长第一次交谈时更看重服从。",
+                    conversation_state="end",
+                    exit_narrative="吴秀英收起脸上的客气，提起菜篮转身下坡，没有再给你追问的机会。",
                 )
             return RoleTurnResult(
                 npc_id=context.npc_id,

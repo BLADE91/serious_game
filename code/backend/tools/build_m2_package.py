@@ -398,6 +398,7 @@ def build_facts_and_opportunities(lines: list[str]) -> None:
     existing = json.loads(
         (PACKAGE / "interaction_opportunities.json").read_text(encoding="utf-8")
     )
+    conversation_contexts = existing.get("conversation_contexts", {})
     preserved = {
         item["npc_id"]: item
         for item in existing["opportunities"]
@@ -500,6 +501,7 @@ def build_facts_and_opportunities(lines: list[str]) -> None:
     ])
     dump("interaction_opportunities.json", {
         "schema_version": 2,
+        "conversation_contexts": conversation_contexts,
         "opportunities": opportunities,
         "notes": "M2 为 29 名 NPC 登记故事窗口，并增加谭老六、袁桂兰、周满仓三条母稿指定的付费恢复入口；王芳为环境人物，不开放直接对话。",
     })

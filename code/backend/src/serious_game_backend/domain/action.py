@@ -31,6 +31,7 @@ class ActionCommand:
     opportunity_id: str | None = None
     player_text: str | None = None
     target_npc_id: str | None = None
+    conversation_id: str | None = None
     decision_id: str | None = None
     option_id: str | None = None
     ordered_option_ids: tuple[str, ...] = ()
@@ -47,6 +48,7 @@ class ActionCommand:
             "opportunity_id": self.opportunity_id,
             "player_text": self.player_text,
             "target_npc_id": self.target_npc_id,
+            "conversation_id": self.conversation_id,
             "decision_id": self.decision_id,
             "option_id": self.option_id,
             "ordered_option_ids": list(self.ordered_option_ids),

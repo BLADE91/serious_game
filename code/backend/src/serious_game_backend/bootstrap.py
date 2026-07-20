@@ -286,7 +286,7 @@ def build_container(settings: Settings) -> Container:
             research_identities=research_identities,
             experiment_assignments=experiment_service,
             model_id=settings.role_llm_model,
-            prompt_version="role-turn-v1",
+            prompt_version="role-turn-v2",
         ),
         actions=ActionService(
             sessions,

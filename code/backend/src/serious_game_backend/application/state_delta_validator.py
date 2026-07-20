@@ -45,6 +45,8 @@ class StateDeltaValidator:
             memory_candidate=result.memory_candidate,
             will_share_with=result.will_share_with,
             risk_notes=result.risk_notes,
+            conversation_state=result.conversation_state,
+            exit_narrative=result.exit_narrative,
         )
 
     @staticmethod

@@ -60,6 +60,15 @@ class NPCTurnService:
             raise RoleLLMResponseError("角色模型在对白中泄露了知识边界外的事实")
         if result.memory_candidate and len(result.memory_candidate.strip()) > 500:
             raise RoleLLMResponseError("角色模型记忆候选过长")
+        if result.conversation_state not in {"continue", "end"}:
+            raise RoleLLMResponseError("角色模型返回了非法的会谈状态")
+        if (result.conversation_state == "end") != bool(result.exit_narrative):
+            raise RoleLLMResponseError("角色模型会谈状态与离场叙事不一致")
+        if result.conversation_state == "continue" and any(
+            marker in result.dialogue
+            for marker in ("请回吧", "不必再谈", "谈话到此", "不谈了", "出去")
+        ):
+            raise RoleLLMResponseError("角色对白已经送客，但会谈状态仍为 continue")
         return self._validator.validate_role_turn(
             result,
             npc_state,

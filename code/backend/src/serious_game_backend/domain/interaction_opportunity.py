@@ -24,6 +24,8 @@ class InteractionOpportunity:
     completion_blocks: tuple[NarrativeBlock, ...] = ()
     completion_effects: ScriptedEffects = field(default_factory=ScriptedEffects)
     completion_decision_id: str | None = None
+    opening_narrative: str = ""
+    conversation_goal: str = ""
 
     def __post_init__(self) -> None:
         if not self.opportunity_id or not self.npc_id or not self.action_id:

@@ -6,6 +6,7 @@ from serious_game_backend.application.action_service import ActionService
 from serious_game_backend.application.ending_service import EndingAxisProjector, EndingService
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.game_state import GameState
+from serious_game_backend.domain.conversation import ActiveConversation
 from serious_game_backend.infrastructure.repositories.codec import decode_session, encode_session
 from serious_game_backend.infrastructure.script_packages.file_loader import FileScriptPackageLoader
 
@@ -77,6 +78,23 @@ class M2SemanticClosureTests(unittest.TestCase):
         restored = decode_session(encode_session(session))
         self.assertEqual(session.pending_decision.context, restored.pending_decision.context)
 
+        session.active_conversation = ActiveConversation(
+            conversation_id="conv_persisted",
+            opportunity_id="opp_d02_wu_xiuying_first_talk",
+            npc_id="npc_wu_xiuying",
+            story_day=2,
+            turn_count=1,
+            transcript=[
+                {"speaker": "player", "text": "我想先听真话。"},
+                {"speaker": "npc", "text": "那就先把账摊开。"},
+            ],
+        )
+        restored = decode_session(encode_session(session))
+        self.assertEqual("conv_persisted", restored.active_conversation.conversation_id)
+        self.assertEqual(1, restored.active_conversation.turn_count)
+        self.assertEqual(session.active_conversation.transcript,
+                         restored.active_conversation.transcript)
+
     def test_option_guards_and_early_routes_follow_script(self) -> None:
         medical = self.package.decisions["dp4_08"].option("a")
         cleanup = self.package.decisions["ev4_04"].option("b")
@@ -91,6 +109,9 @@ class M2SemanticClosureTests(unittest.TestCase):
         self.assertEqual(("a", "b", "c"), tuple(item.option_id for item in followup.options))
         self.assertEqual(frozenset({"上交矛盾"}), followup.required_flags)
         by_id = {item.opportunity_id: item for item in self.package.interaction_opportunities}
+        self.assertEqual(32, len(by_id))
+        self.assertTrue(all(item.opening_narrative for item in by_id.values()))
+        self.assertTrue(all(item.conversation_goal for item in by_id.values()))
         self.assertEqual(
             {"opp_d53_tan_laoliu_paid_recovery", "opp_d55_yuan_guilan_paid_recovery", "opp_d69_zhou_mancang_restart"},
             set(by_id) & {

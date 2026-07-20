@@ -85,12 +85,11 @@ class ApiTests(unittest.TestCase):
         response = self.client.post(
             f"/api/game/session/{session['session_id']}/action",
             json={
-                "input_mode": "free_text",
+                "input_mode": "conversation_start",
                 "client_action_id": "api-free-text-1",
                 "state_version": 1,
                 "opportunity_id": "opp_missing",
                 "target_npc_id": "npc_zhou_dashan",
-                "player_text": "我想听听你的顾虑。"
             },
             headers=self.headers,
         )
@@ -108,6 +107,22 @@ class ApiTests(unittest.TestCase):
                 "action_id": "home_visit",
                 "opportunity_id": "opp_missing",
                 "unexpected_hidden_delta": 99,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(422, response.status_code)
+
+    def test_conversation_contract_rejects_mixed_mode_fields(self) -> None:
+        session = self._new_session()
+        response = self.client.post(
+            f"/api/game/session/{session['session_id']}/action",
+            json={
+                "input_mode": "conversation_start",
+                "client_action_id": "api-conversation-mixed-1",
+                "state_version": 1,
+                "opportunity_id": "opp_missing",
+                "target_npc_id": "npc_wu_xiuying",
+                "player_text": "不应在开始请求中出现",
             },
             headers=self.headers,
         )
@@ -265,12 +280,33 @@ class ApiTests(unittest.TestCase):
         self.assertEqual("入户走访", first_opportunity["action_name"])
         self.assertIn("剧情后续交谈", first_opportunity["conversation_context"])
 
+        started = self.client.post(
+            f"/api/game/session/{session_id}/action",
+            json={
+                "input_mode": "conversation_start",
+                "client_action_id": "api-d2-wu-start-1",
+                "state_version": 4,
+                "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                "target_npc_id": "npc_wu_xiuying",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, started.status_code, started.text)
+        self.assertEqual("active", started.json()["conversation"]["status"])
+        self.assertIn("菜", started.json()["narrative"])
+        conversation_id = started.json()["conversation"]["conversation_id"]
+        self.assertEqual(
+            7,
+            started.json()["visible_state"]["ledger"]["action_points"]["remaining"],
+        )
+
         talk = self.client.post(
             f"/api/game/session/{session_id}/action",
             json={
                 "input_mode": "free_text",
                 "client_action_id": "api-d2-wu-talk-1",
-                "state_version": 4,
+                "state_version": 5,
+                "conversation_id": conversation_id,
                 "opportunity_id": "opp_d02_wu_xiuying_first_talk",
                 "target_npc_id": "npc_wu_xiuying",
                 "player_text": "吴老师，我想先听听村里人真正担心什么。",
@@ -278,8 +314,41 @@ class ApiTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(200, talk.status_code, talk.text)
-        self.assertEqual(5, talk.json()["state_version"])
+        self.assertEqual(6, talk.json()["state_version"])
         self.assertIn("谁的话在谁面前好使", talk.json()["npc_reply"]["text"])
+        self.assertEqual("active", talk.json()["conversation"]["status"])
+        self.assertEqual(
+            7,
+            talk.json()["visible_state"]["ledger"]["action_points"]["remaining"],
+        )
+
+        second_talk = self.client.post(
+            f"/api/game/session/{session_id}/action",
+            json={
+                "input_mode": "free_text",
+                "client_action_id": "api-d2-wu-talk-2",
+                "state_version": 6,
+                "conversation_id": conversation_id,
+                "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                "target_npc_id": "npc_wu_xiuying",
+                "player_text": "你必须配合，马上签。",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, second_talk.status_code, second_talk.text)
+        self.assertEqual("ended", second_talk.json()["conversation"]["status"])
+        self.assertEqual("npc", second_talk.json()["conversation"]["ended_by"])
+        self.assertIn("提起菜篮", second_talk.json()["conversation"]["exit_narrative"])
+        self.assertEqual(
+            7,
+            second_talk.json()["visible_state"]["ledger"]["action_points"]["remaining"],
+        )
+        ended_feed = self.client.get(
+            f"/api/game/session/{session_id}/feed?after=0", headers=self.headers
+        ).json()["items"]
+        ended_text = "\n".join(item["text"] for item in ended_feed)
+        self.assertIn("提起菜篮转身下坡", ended_text)
+        self.assertNotIn("拎着菜篮子径自走了", ended_text)
 
         knowledge = self.client.get(
             f"/api/game/session/{session_id}/knowledge",
@@ -291,7 +360,7 @@ class ApiTests(unittest.TestCase):
             f"/api/game/session/{session_id}/end-day",
             json={
                 "client_action_id": "api-d2-end-day-1",
-                "state_version": 5,
+                "state_version": 7,
                 "active_rest": False,
             },
             headers=self.headers,

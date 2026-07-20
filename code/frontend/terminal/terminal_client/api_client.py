@@ -188,6 +188,7 @@ class ApiClient:
         state_version: int,
         opportunity_id: str,
         target_npc_id: str,
+        conversation_id: str,
         player_text: str,
         client_action_id: str | None = None,
     ) -> dict:
@@ -200,7 +201,48 @@ class ApiClient:
                 "state_version": state_version,
                 "opportunity_id": opportunity_id,
                 "target_npc_id": target_npc_id,
+                "conversation_id": conversation_id,
                 "player_text": player_text,
+            },
+        )
+
+    def start_conversation(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+        opportunity_id: str,
+        target_npc_id: str,
+        client_action_id: str | None = None,
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/action",
+            {
+                "input_mode": "conversation_start",
+                "client_action_id": client_action_id or self.new_key("conversation-start"),
+                "state_version": state_version,
+                "opportunity_id": opportunity_id,
+                "target_npc_id": target_npc_id,
+            },
+        )
+
+    def end_conversation(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+        conversation_id: str,
+        client_action_id: str | None = None,
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/action",
+            {
+                "input_mode": "conversation_end",
+                "client_action_id": client_action_id or self.new_key("conversation-end"),
+                "state_version": state_version,
+                "conversation_id": conversation_id,
             },
         )
 

@@ -93,6 +93,36 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual("a_reject_on_site", payload["option_id"])
         self.assertNotIn("integrity", payload)
 
+    def test_conversation_requests_preserve_one_session_across_multiple_turns(self) -> None:
+        payloads = []
+
+        def opener(request, *, timeout):
+            payloads.append(json.loads(request.data.decode("utf-8")))
+            return FakeResponse({"state_version": len(payloads) + 4, "status": "succeeded"})
+
+        client = ApiClient("http://example.test", "acct_terminal", opener=opener)
+        client.start_conversation(
+            "game_1", state_version=4, opportunity_id="opp_1",
+            target_npc_id="npc_1", client_action_id="start-conversation-1",
+        )
+        client.submit_free_text(
+            "game_1", state_version=5, conversation_id="conv_1",
+            opportunity_id="opp_1", target_npc_id="npc_1",
+            player_text="先听听你的想法。", client_action_id="talk-conversation-1",
+        )
+        client.end_conversation(
+            "game_1", state_version=6, conversation_id="conv_1",
+            client_action_id="end-conversation-1",
+        )
+
+        self.assertEqual(
+            ["conversation_start", "free_text", "conversation_end"],
+            [item["input_mode"] for item in payloads],
+        )
+        self.assertEqual("conv_1", payloads[1]["conversation_id"])
+        self.assertEqual("conv_1", payloads[2]["conversation_id"])
+        self.assertNotIn("player_text", payloads[2])
+
     def test_structured_backend_error_is_preserved(self) -> None:
         body = json.dumps({
             "error": {

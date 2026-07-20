@@ -26,6 +26,7 @@ class ActionRequest(BaseModel):
     opportunity_id: str | None = None
     player_text: str | None = Field(default=None, max_length=4000)
     target_npc_id: str | None = None
+    conversation_id: str | None = Field(default=None, min_length=8, max_length=128)
     decision_id: str | None = None
     option_id: str | None = None
     ordered_option_ids: list[str] = Field(default_factory=list)
@@ -37,19 +38,39 @@ class ActionRequest(BaseModel):
         if self.input_mode is ActionInputMode.TOOL:
             if not self.action_id or not self.opportunity_id:
                 raise ValueError("tool 模式必须提供 opportunity_id 和 action_id")
-            if self.decision_id or self.option_id:
-                raise ValueError("tool 模式不能提供 decision_id/option_id")
+            if any((self.decision_id, self.option_id, self.player_text,
+                    self.target_npc_id, self.conversation_id,
+                    self.ordered_option_ids, self.parameters)):
+                raise ValueError("tool 模式包含了不允许的字段")
+        elif self.input_mode is ActionInputMode.CONVERSATION_START:
+            if not self.opportunity_id or not self.target_npc_id:
+                raise ValueError(
+                    "conversation_start 模式必须提供 opportunity_id 和 target_npc_id"
+                )
+            if any((self.player_text, self.conversation_id, self.action_id,
+                    self.decision_id, self.option_id, self.ordered_option_ids,
+                    self.parameters)):
+                raise ValueError("conversation_start 模式包含了不允许的字段")
         elif self.input_mode is ActionInputMode.FREE_TEXT:
             if (
                 not self.opportunity_id
                 or not self.target_npc_id
+                or not self.conversation_id
                 or not (self.player_text or "").strip()
             ):
-                raise ValueError("free_text 模式必须提供 opportunity_id、target_npc_id 和 player_text")
-            if self.decision_id or self.option_id:
-                raise ValueError("free_text 模式不能提供 decision_id/option_id")
-            if self.action_id:
-                raise ValueError("free_text 模式不能提供 action_id")
+                raise ValueError(
+                    "free_text 模式必须提供 conversation_id、opportunity_id、target_npc_id 和 player_text"
+                )
+            if any((self.decision_id, self.option_id, self.action_id,
+                    self.ordered_option_ids, self.parameters)):
+                raise ValueError("free_text 模式包含了不允许的字段")
+        elif self.input_mode is ActionInputMode.CONVERSATION_END:
+            if not self.conversation_id:
+                raise ValueError("conversation_end 模式必须提供 conversation_id")
+            if any((self.action_id, self.opportunity_id, self.player_text,
+                    self.target_npc_id, self.decision_id, self.option_id,
+                    self.ordered_option_ids, self.parameters)):
+                raise ValueError("conversation_end 模式包含了不允许的字段")
         elif self.input_mode is ActionInputMode.DECISION:
             if not self.decision_id or not (
                 self.option_id or self.ordered_option_ids or self.parameters
@@ -57,8 +78,9 @@ class ActionRequest(BaseModel):
                 raise ValueError(
                     "decision 模式必须提供 decision_id，以及 option_id、ordered_option_ids 或 parameters"
                 )
-            if self.action_id or self.opportunity_id or self.player_text or self.target_npc_id:
-                raise ValueError("decision 模式不能提供工具或自由文本字段")
+            if (self.action_id or self.opportunity_id or self.player_text
+                    or self.target_npc_id or self.conversation_id):
+                raise ValueError("decision 模式不能提供工具、会谈或自由文本字段")
             if len(self.ordered_option_ids) != len(set(self.ordered_option_ids)):
                 raise ValueError("ordered_option_ids 不能包含重复项")
         return self
@@ -72,6 +94,7 @@ class ActionRequest(BaseModel):
             opportunity_id=self.opportunity_id,
             player_text=self.player_text,
             target_npc_id=self.target_npc_id,
+            conversation_id=self.conversation_id,
             decision_id=self.decision_id,
             option_id=self.option_id,
             ordered_option_ids=tuple(self.ordered_option_ids),

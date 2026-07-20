@@ -157,6 +157,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
 
     def command_gate(session, package) -> dict:
         pending = session.pending_decision is not None
+        conversing = session.active_conversation is not None
         beat = package.story_day(session.game_state.story_day)
         active = session.status.value == "active"
         allow_actions = beat is None or beat.allow_actions
@@ -172,12 +173,15 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             action_blocked_reason = "本局已经结束"
         elif pending:
             action_blocked_reason = "必须先处理当前决策"
+        elif conversing:
+            action_blocked_reason = "会谈正在进行，请先继续或结束当前会谈"
         elif not allow_actions:
             action_blocked_reason = "当前剧情节点不开放自主行动"
         return {
-            "can_choose": active and pending,
-            "can_act": active and not pending and allow_actions,
-            "can_end_day": active and not pending and allow_end_day,
+            "can_choose": active and pending and not conversing,
+            "can_act": active and not pending and not conversing and allow_actions,
+            "can_talk": active and not pending and (conversing or allow_actions),
+            "can_end_day": active and not pending and not conversing and allow_end_day,
             "action_blocked_reason": action_blocked_reason,
         }
 
@@ -455,8 +459,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "can_choose": gate["can_choose"],
                 "can_act": gate["can_act"],
                 "can_end_day": gate["can_end_day"],
-                "can_talk": gate["can_act"] and bool(
-                    runtime.opportunities.list_available(session, package)
+                "can_talk": gate["can_talk"] and (
+                    session.active_conversation is not None
+                    or bool(runtime.opportunities.list_available(session, package))
                 ),
             },
         }
@@ -602,11 +607,16 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         session = runtime.game_sessions.get_owned(session_id, account_id)
         package = require_locked_package(runtime.packages, session)
         gate = command_gate(session, package)
-        values = (
-            runtime.opportunities.list_available(session, package)
-            if gate["can_act"]
-            else ()
-        )
+        if session.active_conversation is not None:
+            values = tuple(
+                item for item in package.interaction_opportunities
+                if item.opportunity_id == session.active_conversation.opportunity_id
+            )
+        else:
+            values = (
+                runtime.opportunities.list_available(session, package)
+                if gate["can_act"] else ()
+            )
         tier = package.action_cost_tier(session.game_state.story_day)
         npc_profiles = {item.npc_id: item for item in package.npc_profiles}
         return {
@@ -641,6 +651,18 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     "conversation_context": _opportunity_context(
                         item.entry_type,
                         package.action_rules[item.action_id].name,
+                    ),
+                    "opening_narrative": item.opening_narrative,
+                    "conversation_goal": item.conversation_goal,
+                    "conversation_active": (
+                        session.active_conversation is not None
+                        and session.active_conversation.opportunity_id == item.opportunity_id
+                    ),
+                    "conversation_id": (
+                        session.active_conversation.conversation_id
+                        if session.active_conversation is not None
+                        and session.active_conversation.opportunity_id == item.opportunity_id
+                        else None
                     ),
                     "cost_action_points": package.action_rules[item.action_id].cost_for(tier),
                 }

@@ -131,7 +131,7 @@ class ScriptPackage:
     event_catalog: tuple[ContentCatalogEntry, ...] = ()
     source_sha256: str = ""
     role_turn_prompt: str = ""
-    role_turn_prompt_version: str = "role-turn-v1"
+    role_turn_prompt_version: str = "role-turn-v2"
 
     def action_cost_tier(self, story_day: int) -> ActionCostTier:
         matches = [item for item in self.calendar_segments if item.contains(story_day)]

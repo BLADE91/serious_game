@@ -52,6 +52,8 @@ def valid_response(dialogue: str = "这事我记下了，先按规矩谈。") ->
             "will_share_with": [],
             "memory_candidate": "新县长愿意按规矩听取意见。",
             "risk_notes": [],
+            "conversation_state": "continue",
+            "exit_narrative": None,
         }, ensure_ascii=False)}}],
         "usage": {"prompt_tokens": 120, "completion_tokens": 60, "total_tokens": 180},
     }
@@ -176,6 +178,33 @@ class M3LLMRuntimeTests(unittest.TestCase):
         ))
         self.assertEqual(2, len(calls))
         self.assertNotIn("优盘", result.dialogue)
+
+    def test_explicit_sendoff_must_end_conversation_and_is_retried(self) -> None:
+        calls = []
+
+        def transport(*args):
+            calls.append(1)
+            response = valid_response("这话不必再谈了，请回吧。")
+            if len(calls) == 2:
+                document = __import__("json").loads(
+                    response["choices"][0]["message"]["content"]
+                )
+                document["conversation_state"] = "end"
+                document["exit_narrative"] = "吴秀英提起菜篮，转身沿坡道离开。"
+                response["choices"][0]["message"]["content"] = __import__("json").dumps(
+                    document, ensure_ascii=False
+                )
+            return response
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(), "test-key", InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        result = gateway.run_turn(self.context("act_sendoff_alignment"))
+
+        self.assertEqual(2, len(calls))
+        self.assertEqual("end", result.conversation_state)
+        self.assertIn("菜篮", result.exit_narrative)
 
     def test_call_and_token_budgets_stop_before_transport(self) -> None:
         calls = []

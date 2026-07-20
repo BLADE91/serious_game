@@ -99,15 +99,30 @@ class M2RuntimeTests(unittest.TestCase):
             "decision_id": "dp1_01_taskforce_faction_map",
             "option_id": "c_public_rules_covert_check",
         })
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "m2-d2-start",
+            "state_version": taskforce["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        conversation_id = started["conversation"]["conversation_id"]
         talk = self.action({
             "input_mode": "free_text",
             "client_action_id": "m2-d2-talk",
-            "state_version": taskforce["state_version"],
+            "state_version": started["state_version"],
+            "conversation_id": conversation_id,
             "opportunity_id": "opp_d02_wu_xiuying_first_talk",
             "target_npc_id": "npc_wu_xiuying",
             "player_text": "我想先听您说真话。",
         })
-        return self.end_day(talk["state_version"], "m2-end-d2")
+        closed = self.action({
+            "input_mode": "conversation_end",
+            "client_action_id": "m2-d2-close",
+            "state_version": talk["state_version"],
+            "conversation_id": conversation_id,
+        })
+        return self.end_day(closed["state_version"], "m2-end-d2")
 
     def test_full_story_clock_reaches_d90_and_builds_review(self) -> None:
         result = self.reach_d3()

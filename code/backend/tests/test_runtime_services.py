@@ -476,10 +476,27 @@ class RuntimeServiceTests(unittest.TestCase):
                 state_version=4,
             )
 
+        wu_start = ActionCommand(
+            input_mode=ActionInputMode.CONVERSATION_START,
+            client_action_id="d2-wu-start-1",
+            state_version=4,
+            opportunity_id="opp_d02_wu_xiuying_first_talk",
+            target_npc_id="npc_wu_xiuying",
+        )
+        started = self.actions.execute(
+            account_id="acct_a",
+            session_id=self.session.session_id,
+            command=wu_start,
+        )
+        conversation_id = started["conversation"]["conversation_id"]
+        self.assertIn("菜", started["narrative"])
+        self.assertEqual(7, started["visible_state"]["ledger"]["action_points"]["remaining"])
+
         wu_turn = ActionCommand(
             input_mode=ActionInputMode.FREE_TEXT,
             client_action_id="d2-wu-turn-1",
-            state_version=4,
+            state_version=5,
+            conversation_id=conversation_id,
             opportunity_id="opp_d02_wu_xiuying_first_talk",
             target_npc_id="npc_wu_xiuying",
             player_text="吴老师，我刚来，只想先听您说说村里真正的难处。",
@@ -489,22 +506,52 @@ class RuntimeServiceTests(unittest.TestCase):
             session_id=self.session.session_id,
             command=wu_turn,
         )
-        self.assertEqual(5, wu_result["state_version"])
+        self.assertEqual(6, wu_result["state_version"])
         self.assertIn("谁的话在谁面前好使", wu_result["npc_reply"]["text"])
+        current = self.sessions.get_owned(self.session.session_id, "acct_a")
+        self.assertNotIn("flag_wu_first_talk_completed", current.flags)
+        self.assertEqual({"fact_clan_power_map"}, current.known_fact_ids)
+        self.assertEqual(55, current.npc_states["npc_wu_xiuying"].attitude_score)
+        self.assertLess(current.npc_states["npc_wu_xiuying"].anxiety_score, 50)
+
+        second_turn = self.actions.execute(
+            account_id="acct_a",
+            session_id=self.session.session_id,
+            command=ActionCommand(
+                input_mode=ActionInputMode.FREE_TEXT,
+                client_action_id="d2-wu-turn-2",
+                state_version=6,
+                conversation_id=conversation_id,
+                opportunity_id="opp_d02_wu_xiuying_first_talk",
+                target_npc_id="npc_wu_xiuying",
+                player_text="您再说说，村里人最怕什么。",
+            ),
+        )
+        self.assertEqual(7, second_turn["state_version"])
+        self.assertEqual(7, second_turn["visible_state"]["ledger"]["action_points"]["remaining"])
+
+        closed = self.actions.execute(
+            account_id="acct_a",
+            session_id=self.session.session_id,
+            command=ActionCommand(
+                input_mode=ActionInputMode.CONVERSATION_END,
+                client_action_id="d2-wu-close-1",
+                state_version=7,
+                conversation_id=conversation_id,
+            ),
+        )
         current = self.sessions.get_owned(self.session.session_id, "acct_a")
         self.assertIn("flag_wu_first_talk_completed", current.flags)
         self.assertEqual(
             {"fact_clan_power_map", "fact_wu_independent_voice"},
             current.known_fact_ids,
         )
-        self.assertEqual(55, current.npc_states["npc_wu_xiuying"].attitude_score)
-        self.assertLess(current.npc_states["npc_wu_xiuying"].anxiety_score, 50)
 
         day_three = self.end_days.end_day(
             account_id="acct_a",
             session_id=self.session.session_id,
             client_action_id="d2-end-day-1",
-            state_version=5,
+            state_version=closed["state_version"],
         )
         self.assertEqual(3, day_three["visible_state"]["story"]["day"])
         internal = self.sessions.get_owned(self.session.session_id, "acct_a")

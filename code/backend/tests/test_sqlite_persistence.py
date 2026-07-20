@@ -58,21 +58,44 @@ class SqlitePersistenceTests(unittest.TestCase):
                 d2["state_version"], "m2-r-d2", "dp1_01_taskforce_faction_map",
                 "c_public_rules_covert_check",
             )
+            started = runtime.actions.execute(
+                account_id="acct_m2_restart",
+                session_id=session.session_id,
+                command=ActionCommand(
+                    input_mode=ActionInputMode.CONVERSATION_START,
+                    client_action_id="m2-r-start",
+                    state_version=taskforce["state_version"],
+                    opportunity_id="opp_d02_wu_xiuying_first_talk",
+                    target_npc_id="npc_wu_xiuying",
+                ),
+            )
+            conversation_id = started["conversation"]["conversation_id"]
             talk = runtime.actions.execute(
                 account_id="acct_m2_restart",
                 session_id=session.session_id,
                 command=ActionCommand(
                     input_mode=ActionInputMode.FREE_TEXT,
                     client_action_id="m2-r-talk",
-                    state_version=taskforce["state_version"],
+                    state_version=started["state_version"],
+                    conversation_id=conversation_id,
                     opportunity_id="opp_d02_wu_xiuying_first_talk",
                     target_npc_id="npc_wu_xiuying",
                     player_text="我先听您说。",
                 ),
             )
+            closed = runtime.actions.execute(
+                account_id="acct_m2_restart",
+                session_id=session.session_id,
+                command=ActionCommand(
+                    input_mode=ActionInputMode.CONVERSATION_END,
+                    client_action_id="m2-r-close",
+                    state_version=talk["state_version"],
+                    conversation_id=conversation_id,
+                ),
+            )
             d3 = runtime.end_days.end_day(
                 account_id="acct_m2_restart", session_id=session.session_id,
-                client_action_id="m2-r-end2", state_version=talk["state_version"],
+                client_action_id="m2-r-end2", state_version=closed["state_version"],
             )
             resolved = choose(
                 d3["state_version"], "m2-r-dp102", "dp1_02", "a"

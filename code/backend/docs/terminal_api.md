@@ -154,20 +154,48 @@ GET /api/game/session/{session_id}/view?after=0
 
 客户端必须先读取 `/actions`，使用服务端返回的 `available`、`unavailable_reason`、`opportunity_ids` 和实际行动点成本。`opportunity_id` 是必填的上下文入口；服务端会再次校验它仍然开放且与 `action_id` 匹配。客户端不能根据本地规则自行判断。
 
-### 5.3 自由文字互动
+### 5.3 多轮 NPC 会谈
+
+客户端先从机会 DTO 读取 `opening_narrative` 和 `conversation_goal`，在玩家确认进入前展示完整前情。进入会谈是独立动作，只在此时扣除一次行动点：
+
+```json
+{
+  "input_mode": "conversation_start",
+  "client_action_id": "cli-conversation-start-...",
+  "state_version": 12,
+  "opportunity_id": "opp_...",
+  "target_npc_id": "npc_..."
+}
+```
+
+成功后返回 `conversation_id`。同一会谈内每次自由文字必须携带该 ID，不再扣行动点，也不重复执行机会完成结算：
 
 ```json
 {
   "input_mode": "free_text",
   "client_action_id": "cli-talk-baa2a05b0e2a43a4aa3de7f4fdf13f06",
-  "state_version": 12,
+  "state_version": 13,
+  "conversation_id": "conv_...",
   "opportunity_id": "opp_...",
   "target_npc_id": "npc_...",
   "player_text": "我想先听听你的顾虑。"
 }
 ```
 
-`opportunity_id` 和 `target_npc_id` 必须来自同一次服务端机会列表。机会 DTO 同时返回玩家可见的 `npc_name`、`npc_title`、`npc_introduction`、`action_name` 和 `conversation_context`，供客户端在选择交谈对象前介绍其公开身份与本次接触背景；内部角色提示词、隐藏动机和未解锁事实不得进入该 DTO。首个真实机会为 D2 的 `opp_d02_wu_xiuying_first_talk`。本地默认配置调用 `qwen3.6-plus`，且关闭 Fake 降级；模型只能提出受限的态度/焦虑档位和允许披露的事实，不能直接写数值、旗标或任意事实。
+玩家主动结束时提交：
+
+```json
+{
+  "input_mode": "conversation_end",
+  "client_action_id": "cli-conversation-end-...",
+  "state_version": 16,
+  "conversation_id": "conv_..."
+}
+```
+
+LLM 也可返回 `conversation_state=end` 和符合人物、场景的 `exit_narrative`，由 NPC 自主送客、离开或终止会谈。只有玩家或 NPC 明确结束时，服务端才执行该机会的完成旗标、完成事实、硬结算和后续决策；玩家正常结束时追加剧本预设离场块，NPC 自主结束时使用模型已经通过场景连续性校验的离场叙事，避免同一人物重复离开或把冲突会谈接成友好固定结尾。会谈进行中禁止切换其他写操作或结束当天；存档会持久化 `active_conversation` 和本次会谈历史，重启后可以继续。
+
+`opportunity_id` 和 `target_npc_id` 必须来自同一次服务端机会列表。机会 DTO 同时返回玩家可见的 `npc_name`、`npc_title`、`npc_introduction`、`action_name`、`conversation_context`、`opening_narrative` 和 `conversation_goal`；内部角色提示词、隐藏动机和未解锁事实不得进入该 DTO。发布校验要求 32 个机会全部具有非空前情提要和会谈方向。首个真实机会为 D2 的 `opp_d02_wu_xiuying_first_talk`。本地默认配置调用 `qwen3.6-plus`，且关闭 Fake 降级；模型只能提出受限的态度/焦虑档位和允许披露的事实，不能直接写数值、旗标或任意事实。
 
 动作成功响应包含 `operation_id`、新 `state_version`、本回合可见叙述和 `visible_state`。客户端仍应调用 `/view?after=上次游标` 获取权威增量剧情流。
 

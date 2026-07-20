@@ -73,6 +73,15 @@ class VisibleStateProjector:
             },
             "indicators": indicators,
             "pending_decision": pending,
+            "active_conversation": (
+                {
+                    "conversation_id": session.active_conversation.conversation_id,
+                    "opportunity_id": session.active_conversation.opportunity_id,
+                    "npc_id": session.active_conversation.npc_id,
+                    "turn_count": session.active_conversation.turn_count,
+                }
+                if session.active_conversation is not None else None
+            ),
             "visible_events": [
                 {
                     "event_id": item.event_id,

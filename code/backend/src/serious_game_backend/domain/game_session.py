@@ -8,6 +8,7 @@ from serious_game_backend.domain.game_state import GameState
 from serious_game_backend.domain.npc_state import NPCState
 from serious_game_backend.domain.enums import SessionStatus
 from serious_game_backend.domain.story import VisibleNarrativeEntry
+from serious_game_backend.domain.conversation import ActiveConversation
 
 
 def now_iso() -> str:
@@ -48,6 +49,7 @@ class GameSession:
     night_logs: list[dict] = field(default_factory=list)
     ending_result: dict | None = None
     decision_parameters: dict[str, dict] = field(default_factory=dict)
+    active_conversation: ActiveConversation | None = None
     logs: list[dict] = field(default_factory=list)
     created_at: str = field(default_factory=now_iso)
     updated_at: str = field(default_factory=now_iso)
