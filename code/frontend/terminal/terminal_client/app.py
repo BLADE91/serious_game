@@ -62,6 +62,9 @@ class TerminalApp:
         self.feed_cursor = 0
         self.state: dict = {}
         self.option_labels: dict[str, str] = {}
+        self.commands: dict = {}
+        self.authentication_required = False
+        self.authenticated = False
 
     def run(self) -> int:
         self.output("《浊流之下·清江搬迁记》文字测试客户端")
@@ -70,13 +73,23 @@ class TerminalApp:
             readiness = readiness_call() if readiness_call else {}
         except ApiError:
             readiness = {}
-        if readiness.get("authentication_required"):
-            self.output("本地账号模式已启用：输入 register <用户名> 或 login <用户名>。")
+        self.authentication_required = bool(readiness.get("authentication_required"))
+        self.authenticated = not self.authentication_required
+        if self.authentication_required:
+            try:
+                self.api.me()
+                self.authenticated = True
+            except ApiError:
+                self.authenticated = False
+            if self.authenticated:
+                self._post_auth_guide()
+            else:
+                self.output("尚未登录。下一步：输入 register <用户名> 注册，或 login <用户名> 登录。")
         else:
             self.output("输入 origins 查看出身；输入 new <origin_id> 开始游戏。")
         while True:
             try:
-                raw = self.input("> ").strip()
+                raw = self.input(self._command_prompt()).strip()
             except (EOFError, KeyboardInterrupt):
                 self.output("")
                 return 0
@@ -87,6 +100,9 @@ class TerminalApp:
                     return 0
             except ApiError as exc:
                 self.output(f"[后端错误 {exc.code}] {exc.message}")
+                if exc.code in {"AUTHENTICATION_REQUIRED", "INVALID_CREDENTIALS"}:
+                    self.authenticated = False
+                    self.output("下一步：输入 login <用户名> 重试；没有账号则输入 register <用户名>。")
                 if exc.code in {"STATE_VERSION_CONFLICT", "DECISION_REQUIRED"}:
                     self._safe_refresh()
             except ValueError as exc:
@@ -109,27 +125,32 @@ class TerminalApp:
         elif command == "register":
             if len(args) != 1:
                 raise ValueError("用法：register <username>")
-            password = self.password("密码（至少 12 个字符）：")
-            if password != self.password("再次输入密码："):
-                raise ValueError("两次输入的密码不一致")
+            password = self._read_new_password()
             result = self.api.register(args[0], password)
+            self.authenticated = True
             self.output(f"注册并登录成功：{result['account_id']}")
+            self._post_auth_guide()
         elif command == "login":
             if len(args) != 1:
                 raise ValueError("用法：login <username>")
             result = self.api.login(args[0], self.password("密码："))
+            self.authenticated = True
             self.output(f"登录成功：{result['account_id']}")
+            self._post_auth_guide()
         elif command == "whoami":
             result = self.api.me()
+            self.authenticated = True
             self.output(
                 f"当前账号：{result['account_id']}｜角色："
                 f"{','.join(result.get('roles', []))}"
             )
         elif command == "logout":
             self.api.logout()
+            self.authenticated = False
             self.session_id = None
             self.state_version = None
             self.output("已退出登录。")
+            self.output("下一步：输入 login <用户名>，或 register <用户名> 注册新账号。")
         elif command == "new":
             if len(args) != 1:
                 raise ValueError("用法：new <origin_id>；先输入 origins 查看选项")
@@ -147,6 +168,7 @@ class TerminalApp:
         elif command == "status":
             self._require_session()
             self._write_lines(render_state(self.state))
+            self._guide_current(self.commands)
         elif command == "choose":
             if len(args) != 1:
                 raise ValueError("用法：choose <A|option_id>")
@@ -192,6 +214,7 @@ class TerminalApp:
         self.feed_cursor = 0
         self.state = state
         self.option_labels = {}
+        self.commands = {}
         self.output(f"已创建游戏：{self.session_id}")
         self._refresh()
 
@@ -203,6 +226,7 @@ class TerminalApp:
                 f"  {item.get('origin_id')}｜{item.get('title')}｜"
                 f"{item.get('description')}"
             )
+        self.output("下一步：输入 new <origin_id>，例如 new technical。")
 
     def _continue_latest(self) -> None:
         state = self.api.get_latest_active()
@@ -214,6 +238,7 @@ class TerminalApp:
         self.feed_cursor = 0
         self.state = {}
         self.option_labels = {}
+        self.commands = {}
         self._refresh()
 
     def _refresh(self) -> None:
@@ -230,10 +255,12 @@ class TerminalApp:
         )
         self._write_lines(decision_lines)
         commands = document.get("commands", {})
+        self.commands = commands
         if not commands.get("can_choose") and not any(
             commands.get(key) for key in ("can_act", "can_talk", "can_end_day")
         ):
             self.output("当前剧情节点暂无可提交命令。")
+        self._guide_current(commands)
 
     def _choose(self, value: str) -> None:
         session_id = self._require_session()
@@ -313,11 +340,19 @@ class TerminalApp:
         document = self.api.get_actions(self._require_session())
         self.state_version = int(document["state_version"])
         self._write_lines(render_actions(document))
+        if any(item.get("available") for item in document.get("actions", [])):
+            self.output("下一步：输入 do <action_id> <opportunity_id>；输入 scene 返回剧情。")
+        else:
+            self.output("当前没有可执行的自主行动。下一步：输入 scene 查看剧情，或 end 尝试日终。")
 
     def _opportunities(self) -> None:
         document = self.api.get_opportunities(self._require_session())
         self.state_version = int(document["state_version"])
         self._write_lines(render_opportunities(document))
+        if document.get("opportunities"):
+            self.output("下一步：输入 talk <opportunity_id> <你要说的话>；输入 scene 返回剧情。")
+        else:
+            self.output("当前没有可交谈对象。下一步：输入 scene 查看剧情，或 actions 查看行动。")
 
     def _do(self, action_id: str, opportunity_id: str) -> None:
         session_id = self._require_session()
@@ -378,6 +413,7 @@ class TerminalApp:
             for item in items:
                 values.append(f"  - {item.get('title') or item.get('fact_id') or item}")
         self._write_lines(values)
+        self.output("下一步：输入 scene 返回当前剧情；输入 map、actions 或 opportunities 查看其他入口。")
 
     def _map(self) -> None:
         document = self.api.get_map(self._require_session())
@@ -388,6 +424,7 @@ class TerminalApp:
                 f"  {item.get('location_id')}｜{item.get('name')}｜"
                 f"{item.get('visual_state')}｜机会：{opportunities}"
             )
+        self.output("下一步：输入 opportunities 查看可交谈对象，或 scene 返回当前剧情。")
 
     def _review(self) -> None:
         document = self.api.get_review(self._require_session())
@@ -402,6 +439,7 @@ class TerminalApp:
                 f"结局：{ending.get('main_ending_name')} · "
                 f"{ending.get('sub_ending_title')}"
             )
+        self.output("下一步：输入 scene 返回当前剧情；若本局已结束，可输入 new <origin_id> 新开一局。")
 
     def _validate_package(self) -> None:
         document = self.api.get_package_validation()
@@ -413,6 +451,7 @@ class TerminalApp:
             f"运行实例 {counts.get('runtime_decisions')}｜"
             f"结局 {counts.get('main_endings')}/{counts.get('sub_endings')}"
         )
+        self.output("下一步：输入 origins 开始新局，或 scene 返回当前游戏。")
 
     def _end_day(self) -> None:
         client_action_id = self.api.new_key("end")
@@ -425,6 +464,82 @@ class TerminalApp:
         self.state_version = int(result["state_version"])
         self.output("夜间模拟完成。")
         self._refresh()
+
+    def _read_new_password(self) -> str:
+        while True:
+            password = self.password("密码（至少 8 个字符）：")
+            if len(password) < 8:
+                self.output("密码少于 8 个字符，请重新输入。")
+                continue
+            if len(password) > 256:
+                self.output("密码不能超过 256 个字符，请重新输入。")
+                continue
+            confirmation = self.password("再次输入密码：")
+            if password != confirmation:
+                self.output("两次输入的密码不一致，请重新设置。")
+                continue
+            return password
+
+    def _post_auth_guide(self) -> None:
+        try:
+            state = self.api.get_latest_active()
+        except ApiError as exc:
+            if exc.status == 404 or exc.code == "NOT_FOUND":
+                self.output("当前账号没有活动存档，下面是可选出身：")
+                self._origins()
+                return
+            self.output("已登录，但暂时无法检查存档。下一步：输入 continue 重试，或 origins 新开一局。")
+            return
+        self.output(
+            f"检测到活动存档 {state.get('session_id')}。"
+            "下一步：输入 continue 继续；若要另开一局，先输入 origins。"
+        )
+
+    def _command_prompt(self) -> str:
+        if self.authentication_required and not self.authenticated:
+            return "[未登录｜register/login/help] > "
+        if not self.session_id:
+            return "[未开始｜origins/new/continue/help] > "
+        day = self.state.get("story", {}).get("day", "?")
+        pending = self.state.get("pending_decision")
+        if pending:
+            kind = pending.get("input_kind")
+            next_command = "order" if kind == "sorting" else (
+                "allocate" if kind == "allocation" else "choose"
+            )
+            return f"[D{day} 决策｜{next_command}/help] > "
+        available = []
+        if self.commands.get("can_talk"):
+            available.append("opportunities")
+        if self.commands.get("can_act"):
+            available.append("actions")
+        if self.commands.get("can_end_day"):
+            available.append("end")
+        available.extend(("scene", "help"))
+        return f"[D{day}｜{'/'.join(available)}] > "
+
+    def _guide_current(self, commands: dict) -> None:
+        pending = self.state.get("pending_decision")
+        if commands.get("can_choose") and pending:
+            input_kind = pending.get("input_kind")
+            if input_kind == "sorting":
+                self.output("下一步：这是排序决策，请输入 order <完整选项顺序>。")
+            elif input_kind == "allocation":
+                self.output("下一步：这是分配决策，请输入 allocate <四项整数额度>。")
+            else:
+                self.output("下一步：输入 choose <字母> 提交当前决策，例如 choose A。")
+            return
+        choices = []
+        if commands.get("can_talk"):
+            choices.append("opportunities 查看对象，再用 talk 交谈")
+        if commands.get("can_act"):
+            choices.append("actions 查看行动，再用 do 执行")
+        if commands.get("can_end_day"):
+            choices.append("end 结束当天")
+        if choices:
+            self.output("下一步可选：" + "；".join(choices) + "。")
+        else:
+            self.output("下一步：输入 scene 刷新剧情；输入 help 查看全部命令。")
 
     def _safe_refresh(self) -> None:
         if self.session_id:

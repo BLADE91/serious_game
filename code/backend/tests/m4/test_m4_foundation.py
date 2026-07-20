@@ -235,15 +235,19 @@ class M4FoundationTests(unittest.TestCase):
                 auth_cookie_secure=False, role_llm_provider="fake",
             )
             client = TestClient(create_app(settings), base_url="http://testserver")
+            too_short = client.post("/api/auth/register", json={
+                "username": "short-password", "password": "1234567",
+            })
+            self.assertEqual(422, too_short.status_code)
             registered = client.post("/api/auth/register", json={
-                "username": "local-player", "password": "correct horse battery",
+                "username": "local-player", "password": "pass1234",
             })
             self.assertEqual(201, registered.status_code, registered.text)
             self.assertEqual(["player"], registered.json()["roles"])
             duplicate = TestClient(
                 create_app(settings), base_url="http://testserver"
             ).post("/api/auth/register", json={
-                "username": "LOCAL-PLAYER", "password": "correct horse battery",
+                "username": "LOCAL-PLAYER", "password": "pass1234",
             })
             self.assertEqual(409, duplicate.status_code)
             denied = client.post("/api/game/session", json={
@@ -259,7 +263,7 @@ class M4FoundationTests(unittest.TestCase):
 
             restarted = TestClient(create_app(settings), base_url="http://testserver")
             login = restarted.post("/api/auth/login", json={
-                "username": "local-player", "password": "correct horse battery",
+                "username": "local-player", "password": "pass1234",
             })
             self.assertEqual(200, login.status_code, login.text)
             latest = restarted.get("/api/game/session/latest-active")

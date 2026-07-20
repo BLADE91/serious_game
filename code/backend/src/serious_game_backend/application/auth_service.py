@@ -37,8 +37,8 @@ class PasswordHasher:
     p = 1
 
     def hash(self, password: str) -> str:
-        if len(password) < 12:
-            raise ValueError("password must contain at least 12 characters")
+        if len(password) < 8:
+            raise ValueError("password must contain at least 8 characters")
         salt = secrets.token_bytes(16)
         digest = hashlib.scrypt(
             password.encode("utf-8"), salt=salt, n=self.n, r=self.r, p=self.p

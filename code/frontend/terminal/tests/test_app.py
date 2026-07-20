@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from terminal_client.app import TerminalApp
+from terminal_client.api_client import ApiError
 
 
 def visible_state(
@@ -180,6 +181,51 @@ class FakeApi:
 
 
 class TerminalAppTests(unittest.TestCase):
+    def test_registration_reprompts_until_password_is_valid_and_confirmed(self) -> None:
+        class AuthApi:
+            def __init__(self) -> None:
+                self.registered = None
+
+            def register(self, username, password):
+                self.registered = (username, password)
+                return {"account_id": "acct_local"}
+
+            def get_latest_active(self):
+                raise ApiError("没有存档", code="NOT_FOUND", status=404)
+
+            def get_origins(self):
+                return {"origins": [{
+                    "origin_id": "technical", "title": "技术派", "description": "测试",
+                }]}
+
+        passwords = iter([
+            "short", "validpass", "different", "validpass", "validpass",
+        ])
+        output: list[str] = []
+        api = AuthApi()
+        app = TerminalApp(
+            api, output_fn=output.append,
+            password_fn=lambda _prompt: next(passwords),
+        )
+
+        app.handle("register player")
+
+        self.assertEqual(("player", "validpass"), api.registered)
+        text = "\n".join(output)
+        self.assertIn("密码少于 8 个字符", text)
+        self.assertIn("两次输入的密码不一致", text)
+        self.assertIn("下一步：输入 new <origin_id>", text)
+
+    def test_command_prompt_always_contains_contextual_guidance(self) -> None:
+        app = TerminalApp(FakeApi())
+        app.authentication_required = True
+        self.assertIn("register/login/help", app._command_prompt())
+        app.authenticated = True
+        self.assertIn("origins/new/continue/help", app._command_prompt())
+        app.session_id = "game_m1_test"
+        app.state = visible_state(version=1, day=2, pending=None)
+        self.assertIn("D2", app._command_prompt())
+
     def test_scripted_m1_flow_reaches_d3_and_next_opportunity(self) -> None:
         commands = iter([
             "new technical",

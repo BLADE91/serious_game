@@ -30,7 +30,7 @@ X-Account-ID: terminal-local
 
 同一幂等键重复提交同一请求会返回第一次的结果；携带不同请求体会返回 `IDEMPOTENCY_KEY_REUSED`。处理中操作可通过操作查询接口轮询。可重试失败必须复用原请求并显式设置 `retry=true`。
 
-启用本地认证时先调用 `POST /api/auth/register` 或 `POST /api/auth/login`。服务端返回 HttpOnly Cookie 和响应体中的 CSRF Token；后续所有写请求携带 `X-CSRF-Token`，读取请求只需 Cookie。密码最少 12 个字符并以 scrypt 随机盐哈希保存。
+启用本地认证时先调用 `POST /api/auth/register` 或 `POST /api/auth/login`。服务端返回 HttpOnly Cookie 和响应体中的 CSRF Token；后续所有写请求携带 `X-CSRF-Token`，读取请求只需 Cookie。密码最少 8 个字符并以 scrypt 随机盐哈希保存。
 
 ## 3. 接口清单
 

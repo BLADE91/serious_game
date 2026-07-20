@@ -19,7 +19,7 @@ def main() -> int:
     )
     parser.add_argument("--account-id", default=None)
     args = parser.parse_args()
-    password = getpass("Password (at least 12 characters): ")
+    password = getpass("Password (at least 8 characters): ")
     confirmation = getpass("Confirm password: ")
     if password != confirmation:
         raise SystemExit("passwords do not match")
