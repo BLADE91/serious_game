@@ -35,6 +35,56 @@ _principal_context: ContextVar[Principal | None] = ContextVar(
     "serious_game_principal", default=None
 )
 
+_PUBLIC_NPC_TITLES = {
+    "老倔头": "柳林村独户",
+    "苗喜旺": "柳林村村民、水暖工",
+    "邓守本": "柳林村独居老人",
+    "蒋崇岳": "云溪县委书记",
+    "罗健": "县卫生院防疫科工作人员",
+    "崔广林": "县信访办卷宗室工作人员",
+}
+
+
+def _public_npc_description(name: str, role_setting: str) -> tuple[str, str]:
+    """Extract only the public heading and opening sentence from a role profile.
+
+    The rest of role_setting contains hidden motives and model-only knowledge and
+    must never be projected to a player-facing DTO.
+    """
+    lines = [line.strip() for line in role_setting.splitlines() if line.strip()]
+    title = ""
+    if lines and lines[0].startswith("#"):
+        heading = lines[0].lstrip("#").strip()
+        for separator in ("：", ":"):
+            prefix = f"{name}{separator}"
+            if heading.startswith(prefix):
+                title = heading[len(prefix):].strip()
+                break
+    content_lines = lines[1:] if lines and lines[0].startswith("#") else lines
+    opening = next((line for line in content_lines if not line.startswith("#")), "")
+    if "。" in opening:
+        opening = opening.split("。", 1)[0].strip() + "。"
+    # Keep the public introduction concise and stop before later clauses that
+    # may contain story-only knowledge or hidden motivations.
+    clauses = opening.rstrip("。").split("，")
+    if len(clauses) > 2:
+        opening = "，".join(clauses[:2]).strip() + "。"
+    if len(opening) > 120:
+        opening = opening[:119].rstrip("，、；： ") + "……"
+    title = title or _PUBLIC_NPC_TITLES.get(name, "剧情人物")
+    return title, opening or f"{name}，{title}。"
+
+
+def _opportunity_context(entry_type: str, action_name: str) -> str:
+    entry_labels = {
+        "story_followup": "剧情后续交谈",
+        "stage_handoff": "阶段衔接会面",
+        "story_window": "当前阶段可主动联系",
+        "conditional_recovery": "条件触发的再次接触",
+    }
+    prefix = entry_labels.get(entry_type, "当前可接触")
+    return f"{prefix}，接触方式：{action_name}"
+
 
 def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
     effective_settings = settings or Settings.from_env()
@@ -558,7 +608,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             else ()
         )
         tier = package.action_cost_tier(session.game_state.story_day)
-        npc_names = {item.npc_id: item.name for item in package.npc_profiles}
+        npc_profiles = {item.npc_id: item for item in package.npc_profiles}
         return {
             "state_version": session.state_version,
             "blocked_reason": gate["action_blocked_reason"],
@@ -566,9 +616,32 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 {
                     "opportunity_id": item.opportunity_id,
                     "npc_id": item.npc_id,
-                    "npc_name": npc_names.get(item.npc_id, item.npc_id),
+                    "npc_name": (
+                        npc_profiles[item.npc_id].name
+                        if item.npc_id in npc_profiles else item.npc_id
+                    ),
+                    "npc_title": (
+                        _public_npc_description(
+                            npc_profiles[item.npc_id].name,
+                            npc_profiles[item.npc_id].role_setting,
+                        )[0]
+                        if item.npc_id in npc_profiles else "剧情人物"
+                    ),
+                    "npc_introduction": (
+                        _public_npc_description(
+                            npc_profiles[item.npc_id].name,
+                            npc_profiles[item.npc_id].role_setting,
+                        )[1]
+                        if item.npc_id in npc_profiles
+                        else "当前剧情中的可接触人物。"
+                    ),
                     "entry_type": item.entry_type,
                     "action_id": item.action_id,
+                    "action_name": package.action_rules[item.action_id].name,
+                    "conversation_context": _opportunity_context(
+                        item.entry_type,
+                        package.action_rules[item.action_id].name,
+                    ),
                     "cost_action_points": package.action_rules[item.action_id].cost_for(tier),
                 }
                 for item in values

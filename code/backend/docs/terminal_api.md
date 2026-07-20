@@ -167,7 +167,7 @@ GET /api/game/session/{session_id}/view?after=0
 }
 ```
 
-`opportunity_id` 和 `target_npc_id` 必须来自同一次服务端机会列表。首个真实机会为 D2 的 `opp_d02_wu_xiuying_first_talk`。当前由确定性的 Fake LLM 扮演吴秀英；模型只能提出受限的态度/焦虑档位和允许披露的事实，不能直接写数值、旗标或任意事实。
+`opportunity_id` 和 `target_npc_id` 必须来自同一次服务端机会列表。机会 DTO 同时返回玩家可见的 `npc_name`、`npc_title`、`npc_introduction`、`action_name` 和 `conversation_context`，供客户端在选择交谈对象前介绍其公开身份与本次接触背景；内部角色提示词、隐藏动机和未解锁事实不得进入该 DTO。首个真实机会为 D2 的 `opp_d02_wu_xiuying_first_talk`。本地默认配置调用 `qwen3.6-plus`，且关闭 Fake 降级；模型只能提出受限的态度/焦虑档位和允许披露的事实，不能直接写数值、旗标或任意事实。
 
 动作成功响应包含 `operation_id`、新 `state_version`、本回合可见叙述和 `visible_state`。客户端仍应调用 `/view?after=上次游标` 获取权威增量剧情流。
 

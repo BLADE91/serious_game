@@ -257,6 +257,9 @@ class TerminalAppTests(unittest.TestCase):
             def get_opportunities(self, session_id):
                 return {"opportunities": [{
                     "opportunity_id": "opp_1", "npc_id": "npc_1",
+                    "npc_name": "吴秀英", "npc_title": "村民代表，退休教师",
+                    "npc_introduction": "吴秀英是柳林村有威望的退休教师。",
+                    "conversation_context": "剧情后续交谈，接触方式：入户走访",
                     "cost_action_points": 1,
                 }]}
 
@@ -268,12 +271,19 @@ class TerminalAppTests(unittest.TestCase):
 
         api = SelectionApi()
         talk_inputs = iter(["1", "请告诉我情况"])
-        app = TerminalApp(api, input_fn=lambda _prompt: next(talk_inputs))
+        output: list[str] = []
+        app = TerminalApp(
+            api, input_fn=lambda _prompt: next(talk_inputs), output_fn=output.append
+        )
         app.session_id = "game_m1_test"
         captured_talk = []
         app._talk = lambda opportunity_id, text: captured_talk.extend((opportunity_id, text))
         app._menu_talk()
         self.assertEqual(["opp_1", "请告诉我情况"], captured_talk)
+        menu_text = "\n".join(output)
+        self.assertIn("吴秀英｜村民代表，退休教师", menu_text)
+        self.assertIn("人物简介：吴秀英是柳林村有威望的退休教师。", menu_text)
+        self.assertIn("本次接触：剧情后续交谈，接触方式：入户走访", menu_text)
 
         action_inputs = iter(["1"])
         app = TerminalApp(api, input_fn=lambda _prompt: next(action_inputs))

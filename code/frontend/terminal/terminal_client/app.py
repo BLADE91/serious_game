@@ -720,8 +720,13 @@ class TerminalApp:
         selected = self._select(
             "请选择交谈对象",
             [
-                f"{item.get('npc_name') or item.get('npc_id')}｜"
-                f"消耗 {item.get('cost_action_points')} 行动点"
+                (
+                    f"{item.get('npc_name') or item.get('npc_id')}｜"
+                    f"{item.get('npc_title') or '剧情人物'}｜"
+                    f"消耗 {item.get('cost_action_points')} 行动点\n"
+                    f"     人物简介：{item.get('npc_introduction') or '暂无公开介绍。'}\n"
+                    f"     本次接触：{item.get('conversation_context') or item.get('action_name') or '自由交谈'}"
+                )
                 for item in opportunities
             ],
             back_label="返回上一级",
@@ -774,7 +779,10 @@ class TerminalApp:
         self.output("")
         self.output(f"【{title}】")
         for index, label in enumerate(options, start=1):
-            self.output(f"  {index}. {label}")
+            label_lines = label.splitlines() or [""]
+            self.output(f"  {index}. {label_lines[0]}")
+            for continuation in label_lines[1:]:
+                self.output(f"     {continuation.strip()}")
         self.output(f"  0. {back_label}")
         while True:
             raw = self.input("请选择序号：").strip()

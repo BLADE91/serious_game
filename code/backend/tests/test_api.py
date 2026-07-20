@@ -258,6 +258,12 @@ class ApiTests(unittest.TestCase):
                 for item in opportunities.json()["opportunities"]
             ],
         )
+        first_opportunity = opportunities.json()["opportunities"][0]
+        self.assertEqual("吴秀英", first_opportunity["npc_name"])
+        self.assertEqual("村民代表，退休教师", first_opportunity["npc_title"])
+        self.assertIn("退休教师", first_opportunity["npc_introduction"])
+        self.assertEqual("入户走访", first_opportunity["action_name"])
+        self.assertIn("剧情后续交谈", first_opportunity["conversation_context"])
 
         talk = self.client.post(
             f"/api/game/session/{session_id}/action",
