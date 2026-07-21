@@ -63,7 +63,6 @@ class Settings:
     role_llm_timeout_seconds: float = 30.0
     role_llm_max_retries: int = 2
     role_llm_max_output_tokens: int = 700
-    role_llm_max_calls_per_day: int = 12
     role_llm_max_calls_per_session: int = 120
     role_llm_max_tokens_per_session: int = 240_000
     role_llm_fallback_to_fake: bool = True
@@ -166,9 +165,6 @@ class Settings:
             role_llm_max_output_tokens=int(
                 os.getenv("ROLE_LLM_MAX_OUTPUT_TOKENS", "700")
             ),
-            role_llm_max_calls_per_day=int(
-                os.getenv("ROLE_LLM_MAX_CALLS_PER_DAY", "12")
-            ),
             role_llm_max_calls_per_session=int(
                 os.getenv("ROLE_LLM_MAX_CALLS_PER_SESSION", "120")
             ),
@@ -241,7 +237,6 @@ class Settings:
         if self.role_llm_timeout_seconds <= 0 or self.role_llm_max_retries not in range(0, 4):
             raise ValueError("invalid role LLM timeout or retry count")
         if min(
-            self.role_llm_max_calls_per_day,
             self.role_llm_max_calls_per_session,
             self.role_llm_max_tokens_per_session,
         ) <= 0:

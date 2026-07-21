@@ -247,6 +247,26 @@ class M3LLMRuntimeTests(unittest.TestCase):
             gateway.run_turn(self.context("act_two"))
         self.assertEqual(1, len(calls))
 
+    def test_same_story_day_has_no_conversation_turn_limit(self) -> None:
+        calls = []
+
+        def transport(*args):
+            calls.append(1)
+            return valid_response()
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(
+                role_llm_max_calls_per_session=100,
+                role_llm_max_tokens_per_session=2_000_000,
+            ),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        for index in range(20):
+            gateway.run_turn(self.context(f"act_same_day_{index:02d}"))
+        self.assertEqual(20, len(calls))
+
     def test_timeout_degrades_but_auth_failure_is_final(self) -> None:
         timeout_audits = InMemoryLLMCallAuditRepository()
 

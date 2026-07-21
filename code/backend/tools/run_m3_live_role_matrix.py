@@ -71,7 +71,6 @@ def main() -> None:
         role_llm_timeout_seconds=45,
         role_llm_max_retries=2,
         role_llm_fallback_to_fake=False,
-        role_llm_max_calls_per_day=100,
         role_llm_max_calls_per_session=1000,
         role_llm_max_tokens_per_session=2_000_000,
     )

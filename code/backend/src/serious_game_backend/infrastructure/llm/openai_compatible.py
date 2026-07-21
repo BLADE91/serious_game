@@ -197,8 +197,6 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         )
         if len(audits) >= self._settings.role_llm_max_calls_per_session:
             raise RoleLLMBudgetExceededError("本局角色模型调用次数已达上限")
-        if sum(item.story_day == context.story_day for item in audits) >= self._settings.role_llm_max_calls_per_day:
-            raise RoleLLMBudgetExceededError("今日角色模型调用次数已达上限")
         used_tokens = sum(item.input_tokens + item.output_tokens for item in audits)
         if (
             used_tokens + estimated_input + self._settings.role_llm_max_output_tokens
