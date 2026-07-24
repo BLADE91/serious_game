@@ -12,6 +12,11 @@ from serious_game_backend.domain.story import DecisionOptionDefinition, StoryDay
 class StoryFlowService:
     """把结构化 story beat 投影为可恢复的玩家叙事流和待决策实例。"""
 
+    INTERNAL_MARKERS = (
+        "开启旗标", "关闭旗标", "显示位", "本节点", "结局轴",
+        "状态量", "代码照此算", "行动点重置", "轴 T", "flag_",
+    )
+
     def initialize(self, session: GameSession, package: ScriptPackage) -> None:
         self._enter_day(session, package, session.game_state.story_day)
 
@@ -45,7 +50,7 @@ class StoryFlowService:
         session.append_narrative(
             story_day=session.game_state.story_day,
             kind="consequence",
-            text=option.consequence,
+            text=self.public_text(option.consequence),
         )
         self._append_blocks(session, decision.followup_blocks)
         if complete:
@@ -131,7 +136,7 @@ class StoryFlowService:
             session.append_narrative(
                 story_day=session.game_state.story_day,
                 kind=block.kind,
-                text=block.text,
+                text=StoryFlowService.public_text(block.text),
                 speaker=block.speaker,
             )
 
@@ -192,12 +197,12 @@ class StoryFlowService:
             decision_id=decision.decision_id,
             option_ids=available_ids,
             presented_state_version=session.state_version,
-            visible_title=decision.title,
-            visible_text=decision.prompt,
+            visible_title=StoryFlowService.public_text(decision.title),
+            visible_text=StoryFlowService.public_text(decision.prompt),
             options=tuple(
                 VisibleDecisionOption(
                     item.option_id,
-                    item.text,
+                    StoryFlowService.public_text(item.text),
                     available=availability[item.option_id],
                     unavailable_reason=(
                         None if availability[item.option_id] else item.unavailable_reason
@@ -216,3 +221,14 @@ class StoryFlowService:
             "decision_id": decision.decision_id,
             "visible_to_player": True,
         })
+
+    @classmethod
+    def public_text(cls, text: str) -> str:
+        if not any(marker in text for marker in cls.INTERNAL_MARKERS):
+            return text
+        parts = []
+        for sentence in text.replace("\n", "。").split("。"):
+            value = sentence.strip()
+            if value and not any(marker in value for marker in cls.INTERNAL_MARKERS):
+                parts.append(value)
+        return "。".join(parts) + ("。" if parts else "相关处置已经记录，后续影响将在剧情中体现。")

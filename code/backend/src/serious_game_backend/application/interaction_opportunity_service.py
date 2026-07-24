@@ -48,4 +48,11 @@ class InteractionOpportunityService:
             return False
         if item.closes_on_flags.intersection(session.flags):
             return False
+        if any(
+            log.get("type") == "conversation_ended"
+            and log.get("opportunity_id") == item.opportunity_id
+            and log.get("completion_status") == "completed"
+            for log in session.logs
+        ):
+            return False
         return item.npc_id in session.npc_states

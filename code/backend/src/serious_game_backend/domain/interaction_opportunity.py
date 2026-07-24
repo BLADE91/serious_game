@@ -26,9 +26,18 @@ class InteractionOpportunity:
     completion_decision_id: str | None = None
     opening_narrative: str = ""
     conversation_goal: str = ""
+    minimum_turns: int = 1
+    completion_mode: str = "minimum_turns"
+    required_disclosure_ids: frozenset[str] = frozenset()
+    complete_on_player_exit: bool = True
+    complete_on_npc_exit: bool = True
 
     def __post_init__(self) -> None:
         if not self.opportunity_id or not self.npc_id or not self.action_id:
             raise ValueError("opportunity_id, npc_id, and action_id are required")
         if self.day_min < 1 or self.day_max > 90 or self.day_min > self.day_max:
             raise ValueError("opportunity day range is invalid")
+        if self.minimum_turns < 0:
+            raise ValueError("minimum_turns must not be negative")
+        if self.completion_mode not in {"minimum_turns", "required_disclosures"}:
+            raise ValueError("unsupported conversation completion mode")

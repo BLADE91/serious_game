@@ -61,14 +61,32 @@ class VisibleStateProjector:
                 "action_points": {
                     "remaining": state.action_points,
                     "daily_cap": state.daily_action_point_cap,
+                    "overtime_available": (
+                        state.action_points == 0
+                        and not state.overtime_used_today
+                        and state.chapter_overtime_count < 3
+                        and state.fatigue < 75
+                    ),
+                    "chapter_overtime_remaining": max(
+                        0, 3 - state.chapter_overtime_count
+                    ),
                 },
                 "signed_households": {
                     "signed": state.signed_households,
                     "total": state.total_households,
+                    "batches": session.signing_batch_summary(),
                 },
                 "budget": {
                     "remaining": state.budget_remaining,
+                    "base_authorized": state.budget_base_authorized,
+                    "approved_adjustments": state.budget_approved_adjustments,
+                    "committed": state.budget_committed,
+                    "paid": state.budget_paid,
+                    "precoord_suspense": state.budget_precoord_suspense,
                     "unit": state.budget_unit,
+                },
+                "fatigue": {
+                    "label": self._fatigue_label(state.fatigue),
                 },
             },
             "indicators": indicators,
@@ -100,3 +118,13 @@ class VisibleStateProjector:
         if len(matches) != 1:
             raise ValueError(f"visible metric value {value} has no unique band")
         return matches[0]
+
+    @staticmethod
+    def _fatigue_label(value: int) -> str:
+        if value >= 75:
+            return "撑不住了"
+        if value >= 50:
+            return "有些吃力"
+        if value >= 25:
+            return "略显疲乏"
+        return "精神尚可"

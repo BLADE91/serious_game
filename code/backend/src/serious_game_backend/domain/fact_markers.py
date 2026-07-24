@@ -2,7 +2,12 @@ from __future__ import annotations
 
 
 FACT_DISCLOSURE_MARKERS: dict[str, tuple[str, ...]] = {
-    "fact_clan_power_map": ("三大家族", "周家、何家、杨家"),
+    "fact_clan_power_map": (
+        "三大家族",
+        "周家、何家、杨家",
+        "周氏宗族",
+        "散姓",
+    ),
     "fact_wu_independent_voice": ("按姓分肥", "不怕周大山"),
     "fact_connected_invoices": ("连号发票", "八十七万"),
     "fact_original_vouchers": ("四十一张原始凭证", "41张原始凭证"),

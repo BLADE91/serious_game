@@ -18,6 +18,10 @@ from serious_game_backend.domain.events import (
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.conversation import ActiveConversation
 from serious_game_backend.domain.game_state import GameState
+from serious_game_backend.domain.household_settlement import (
+    D75SettlementSnapshot,
+    HouseholdSettlementEntry,
+)
 from serious_game_backend.domain.npc_state import NPCState
 from serious_game_backend.domain.operation import OperationRecord
 from serious_game_backend.domain.story import VisibleNarrativeEntry
@@ -51,7 +55,7 @@ def encode_session(session: GameSession) -> dict:
             "context": session.pending_decision.context,
         }
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "session_id": session.session_id,
         "account_id": session.account_id,
         "package_id": session.package_id,
@@ -104,6 +108,13 @@ def encode_session(session: GameSession) -> dict:
             asdict(session.active_conversation)
             if session.active_conversation is not None else None
         ),
+        "d75_settlement_snapshot": (
+            asdict(session.d75_settlement_snapshot)
+            if session.d75_settlement_snapshot is not None else None
+        ),
+        "household_settlement_entries": [
+            asdict(item) for item in session.household_settlement_entries
+        ],
         "logs": session.logs,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
@@ -198,6 +209,15 @@ def decode_session(value: dict) -> GameSession:
             ActiveConversation(**value["active_conversation"])
             if value.get("active_conversation") is not None else None
         ),
+        d75_settlement_snapshot=(
+            D75SettlementSnapshot(**value["d75_settlement_snapshot"])
+            if value.get("d75_settlement_snapshot") is not None
+            else None
+        ),
+        household_settlement_entries=[
+            HouseholdSettlementEntry(**item)
+            for item in value.get("household_settlement_entries", [])
+        ],
         logs=list(value.get("logs", [])),
         created_at=str(value["created_at"]),
         updated_at=str(value["updated_at"]),

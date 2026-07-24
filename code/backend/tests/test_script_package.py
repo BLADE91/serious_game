@@ -403,6 +403,9 @@ class ScriptPackageTests(unittest.TestCase):
         )
 
     def test_d1_player_text_is_sourced_from_final_script(self) -> None:
+        current_package = FileScriptPackageLoader().load(
+            BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v2"
+        )
         script_text = (BACKEND_ROOT.parents[1] / "最终剧本.md").read_text(
             encoding="utf-8"
         )
@@ -411,19 +414,19 @@ class ScriptPackageTests(unittest.TestCase):
             normalized_script_text = normalized_script_text.replace(label, "")
         compact_script_text = "".join(normalized_script_text.split())
         for story_day in (1, 2, 3):
-            beat = self.package.story_day(story_day)
+            beat = current_package.story_day(story_day)
             for block in (*beat.opening_blocks, *beat.night_blocks):
                 if block.kind != "system":
                     self.assertIn(block.text, script_text, block.block_id)
 
-        decision = self.package.decisions["ev1_01_reception_bag"]
+        decision = current_package.decisions["ev1_01_reception_bag"]
         self.assertIn(decision.prompt, script_text)
         for option in decision.options:
             self.assertIn(
                 "".join(option.text.split()), compact_script_text, option.option_id
             )
             self.assertIn(option.consequence, script_text, option.option_id)
-        for decision in self.package.decisions.values():
+        for decision in current_package.decisions.values():
             self.assertIn(decision.prompt, script_text)
             for block in decision.followup_blocks:
                 self.assertIn(block.text, script_text, block.block_id)

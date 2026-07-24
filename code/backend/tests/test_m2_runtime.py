@@ -128,7 +128,7 @@ class M2RuntimeTests(unittest.TestCase):
         result = self.reach_d3()
         self.assertEqual(3, result["visible_state"]["story"]["day"])
         stops = []
-        for index in range(80):
+        for index in range(100):
             if result["visible_state"]["status"] == "ended":
                 break
             result = self.drain_decisions(result, f"m2-stop-{index:02d}")
@@ -136,16 +136,7 @@ class M2RuntimeTests(unittest.TestCase):
                 result["state_version"], f"m2-auto-end-{index:02d}"
             )
             stops.append(result["visible_state"]["story"]["day"])
-        self.assertEqual(
-            [
-                5, 7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 20, 21, 25,
-                26, 27, 28, 29, 31, 32, 34, 36, 38, 41, 42, 43, 44,
-                45, 46, 48, 49, 51, 53, 55, 56, 57, 58, 59, 60,
-                61, 63, 64, 71, 72, 73, 74, 75, 76, 77, 78,
-                79, 80, 81, 82, 83, 84, 85, 87, 89, 90,
-            ],
-            stops,
-        )
+        self.assertEqual(list(range(4, 91)), stops)
         self.assertEqual("ended", result["visible_state"]["status"])
         self.assertEqual(0, result["visible_state"]["ledger"]["days_left"])
         self.assertIsNotNone(result["ending"])
@@ -156,6 +147,10 @@ class M2RuntimeTests(unittest.TestCase):
         self.assertEqual(200, review.status_code)
         document = review.json()
         self.assertEqual(89, len(document["night_timeline"]))
+        self.assertTrue(all(
+            1 <= len(item.get("morning_card", [])) <= 3
+            for item in document["night_timeline"]
+        ))
         event_ids = {item["event_id"] for item in document["visible_events"]}
         self.assertTrue({
             "event_d31_municipal_inspection_arrival",
@@ -164,12 +159,22 @@ class M2RuntimeTests(unittest.TestCase):
             "event_d90_final_acceptance",
         }.issubset(event_ids))
         self.assertEqual(result["ending"], document["ending"])
-        self.assertEqual(75, len(document["decision_timeline"]))
+        self.assertEqual(76, len(document["decision_timeline"]))
         allocation = next(
             item for item in document["decision_timeline"]
             if item["decision_id"] == "dp2_10"
         )
         self.assertEqual(150, sum(allocation["parameters"].values()))
+        feed = self.client.get(
+            f"/api/game/session/{self.session_id}/feed?after=0",
+            headers=self.headers,
+        )
+        self.assertEqual(200, feed.status_code, feed.text)
+        for marker in (
+            "开启旗标", "关闭旗标", "本节点", "状态量", "结局轴",
+            "代码照此算", "行动点重置", "轴 T", "flag_",
+        ):
+            self.assertNotIn(marker, feed.text)
 
     def test_map_and_complete_package_validation_are_player_safe(self) -> None:
         result = self.reach_d3()
@@ -182,6 +187,7 @@ class M2RuntimeTests(unittest.TestCase):
         }
         self.assertEqual("available", locations["loc_liulin_village"]["visual_state"])
         self.assertNotIn("trust_score", map_response.text)
+        self.assertNotIn("opportunity_ids", map_response.text)
         for suffix in ("map", "review"):
             forbidden = self.client.get(
                 f"/api/game/session/{self.session_id}/{suffix}",
@@ -203,9 +209,14 @@ class M2RuntimeTests(unittest.TestCase):
         self.assertEqual(29, report["counts"]["npc_role_profiles"])
         self.assertEqual(18, report["counts"]["facts_and_clues"])
         self.assertEqual(32, report["counts"]["interaction_opportunities"])
+        self.assertEqual(3, report["gameplay_schema_version"])
+        self.assertEqual(31, report["counts"]["resource_action_definitions"])
+        self.assertEqual(36, report["counts"]["households"])
+        self.assertEqual(122, report["counts"]["household_registered_population"])
+        self.assertEqual(122, report["counts"]["household_resettlement_population"])
         self.assertEqual(5, report["counts"]["sorting_decisions"])
         self.assertEqual(1, report["counts"]["allocation_decisions"])
-        self.assertEqual(80, report["counts"]["runtime_decisions"])
+        self.assertEqual(81, report["counts"]["runtime_decisions"])
         self.assertEqual(29, report["counts"]["source_night_blocks"])
         self.assertEqual(9, report["counts"]["conditional_night_rules"])
         source_hash = hashlib.sha256((REPO_ROOT / "最终剧本.md").read_bytes()).hexdigest()

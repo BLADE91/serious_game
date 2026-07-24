@@ -33,7 +33,7 @@ def complete_default_replay(gateway) -> tuple[dict, dict]:
     session.random_seed = "m3-invariance-fixed-seed"
     runner.container.sessions.save(session, expected_version=session.state_version)
     result = runner.reach_d3()
-    for index in range(80):
+    for index in range(100):
         if result["visible_state"]["status"] == "ended":
             break
         result = runner.drain_decisions(result, f"m3-stop-{index:02d}")
@@ -65,7 +65,7 @@ class M3HardStateInvarianceTests(unittest.TestCase):
             (item["decision_id"], item["option_id"])
             for item in opposite_review["decision_timeline"]
         ]
-        self.assertEqual(75, len(baseline_choices))
+        self.assertEqual(76, len(baseline_choices))
         self.assertEqual(baseline_choices, opposite_choices)
 
 

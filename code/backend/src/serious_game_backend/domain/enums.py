@@ -11,10 +11,12 @@ class SessionStatus(StrEnum):
 
 class ActionInputMode(StrEnum):
     TOOL = "tool"
+    RESOURCE_ACTION = "resource_action"
     CONVERSATION_START = "conversation_start"
     FREE_TEXT = "free_text"
     CONVERSATION_END = "conversation_end"
     DECISION = "decision"
+    OVERTIME = "overtime"
 
 
 class OperationStatus(StrEnum):

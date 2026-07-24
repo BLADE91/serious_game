@@ -141,7 +141,7 @@ class EndDayService:
                 raise StateVersionConflictError("状态版本已变化，请刷新后重试")
 
             self._story_flow.append_night(current, package)
-            self._nights.run_night(current, package)
+            night_record = self._nights.run_night(current, package)
             triggered: list[str] = []
             simulated_days: list[int] = []
             while True:
@@ -156,17 +156,27 @@ class EndDayService:
                 if current.game_state.story_day == previous_day:
                     break
                 self._story_flow.enter_current_day(current, package)
+                for line in night_record.get("morning_card", ()):
+                    current.append_narrative(
+                        story_day=current.game_state.story_day,
+                        kind="morning_card",
+                        text=line,
+                    )
                 if current.game_state.story_day == 90:
                     self._endings.finalize(current, package)
                     break
                 if current.pending_decision is not None:
                     break
                 next_beat = package.story_day(current.game_state.story_day)
-                if next_beat is None or next_beat.day_mode != "simulated":
+                if (
+                    package.gameplay_schema_version >= 2
+                    or next_beat is None
+                    or next_beat.day_mode != "simulated"
+                ):
                     break
                 simulated_days.append(current.game_state.story_day)
                 self._story_flow.append_night(current, package)
-                self._nights.run_night(current, package)
+                night_record = self._nights.run_night(current, package)
             current.processing_action_id = None
             current.state_version += 1
             current.touch()

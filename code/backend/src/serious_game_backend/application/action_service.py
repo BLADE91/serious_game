@@ -23,6 +23,13 @@ from serious_game_backend.application.ports import (
 from serious_game_backend.application.scripted_effect_service import ScriptedEffectService
 from serious_game_backend.application.story_flow_service import StoryFlowService
 from serious_game_backend.application.visible_state import VisibleStateProjector
+from serious_game_backend.application.action_quote_service import ActionQuoteService
+from serious_game_backend.application.action_handler_registry import ActionHandlerRegistry
+from serious_game_backend.application.trust_derivation_service import TrustDerivationService
+from serious_game_backend.application.disclosure_gate_service import (
+    DisclosureGate,
+    DisclosureGateService,
+)
 from serious_game_backend.application.model_input_policy import ModelInputPolicy
 from serious_game_backend.application.research_projection_service import (
     ResearchProjectionService,
@@ -62,6 +69,10 @@ class ActionService:
         scripted_effects: ScriptedEffectService,
         story_flow: StoryFlowService,
         npc_memories: NPCMemoryService,
+        action_quotes: ActionQuoteService | None = None,
+        action_handlers: ActionHandlerRegistry | None = None,
+        trust_derivation: TrustDerivationService | None = None,
+        disclosure_gate: DisclosureGateService | None = None,
         model_input_policy: ModelInputPolicy | None = None,
         research_projection: ResearchProjectionService | None = None,
     ) -> None:
@@ -75,6 +86,10 @@ class ActionService:
         self._scripted_effects = scripted_effects
         self._story_flow = story_flow
         self._npc_memories = npc_memories
+        self._action_quotes = action_quotes or ActionQuoteService()
+        self._action_handlers = action_handlers or ActionHandlerRegistry(scripted_effects)
+        self._trust_derivation = trust_derivation or TrustDerivationService()
+        self._disclosure_gate = disclosure_gate or DisclosureGateService()
         self._model_input_policy = model_input_policy
         self._research_projection = research_projection
 
@@ -111,6 +126,10 @@ class ActionService:
             command.input_mode is not ActionInputMode.DECISION
             and beat is not None
             and not beat.allow_actions
+            and not (
+                package.gameplay_schema_version >= 2
+                and session.game_state.story_day < 90
+            )
         ):
             raise ActionUnavailableError("当前剧情节点不开放自主行动")
         operation_id = (
@@ -158,6 +177,7 @@ class ActionService:
             if current.state_version != command.state_version:
                 raise StateVersionConflictError("状态版本已变化，请刷新后重试")
             self._apply_draft(current, package, draft)
+            self._trust_derivation.apply(current, package)
             current.processing_action_id = None
             current.state_version += 1
             current.touch()
@@ -176,6 +196,8 @@ class ActionService:
                 response["conversation"] = self._conversation_response(
                     current, draft
                 )
+            if draft.get("completion_status") is not None:
+                response["completion_status"] = draft["completion_status"]
             completed_operation = replace(
                 operation,
                 status=OperationStatus.SUCCEEDED,
@@ -271,7 +293,23 @@ class ActionService:
                 item for item in package.npc_profiles
                 if item.npc_id == conversation.npc_id
             )
-            narrative = f"你收住话头，向{profile.name}告辞。本次会谈到此结束。"
+            disclosed = {
+                item.get("disclosure_id")
+                for item in session.logs
+                if item.get("type") == "conversation_turn"
+                and item.get("conversation_id") == conversation.conversation_id
+                and item.get("disclosure_id")
+            }
+            completed = (
+                opportunity.complete_on_player_exit
+                and conversation.turn_count >= opportunity.minimum_turns
+                and opportunity.required_disclosure_ids.issubset(disclosed)
+            )
+            narrative = (
+                f"你收住话头，向{profile.name}告辞。本次会谈已经完成既定接触目标。"
+                if completed else
+                f"你先向{profile.name}告辞。这次接触尚未达到既定目标，相关机会仍会保留。"
+            )
             return {
                 "kind": "conversation_end",
                 "opportunity": opportunity,
@@ -280,8 +318,14 @@ class ActionService:
                 "cost": 0,
                 "narrative": narrative,
                 "ended_by": "player",
+                "completed": completed,
+                "completion_status": "completed" if completed else "incomplete",
             }
         if command.input_mode is ActionInputMode.TOOL:
+            if package.gameplay_schema_version >= 2:
+                raise ActionUnavailableError(
+                    "旧 tool 入口已停用；人物接触请开始会谈，非会谈工具请先报价"
+                )
             if not command.action_id or not command.opportunity_id:
                 raise ActionUnavailableError("tool 模式缺少 opportunity_id 或 action_id")
             opportunity = self._opportunities.require_available(
@@ -289,8 +333,6 @@ class ActionService:
             )
             if opportunity.action_id != command.action_id:
                 raise ActionUnavailableError("行动与当前机会不匹配")
-            if command.target_npc_id and opportunity.npc_id != command.target_npc_id:
-                raise ActionUnavailableError("目标 NPC 与当前机会不匹配")
             rule = package.action_rules.get(command.action_id)
             if rule is None:
                 raise ActionUnavailableError("行动未在当前剧本包注册")
@@ -301,6 +343,26 @@ class ActionService:
                 "opportunity": opportunity,
                 "cost": cost,
                 "narrative": f"已执行：{rule.name}。具体后果将在剧情和后续状态中体现。",
+            }
+        if command.input_mode is ActionInputMode.RESOURCE_ACTION:
+            if not command.action_id:
+                raise ActionUnavailableError("资源动作缺少 action_id")
+            quote = self._action_quotes.require_matching(
+                session,
+                package,
+                action_id=command.action_id,
+                target_ids=command.target_ids,
+                parameters=command.parameters,
+                quote_id=command.quote_id,
+            )
+            definition = package.resource_actions[command.action_id]
+            return {
+                "kind": "resource_action",
+                "rule": package.action_rules[command.action_id],
+                "definition": definition,
+                "quote": quote,
+                "cost": quote.action_point_cost,
+                "narrative": definition.narrative,
             }
         if command.input_mode is ActionInputMode.DECISION:
             pending = session.pending_decision
@@ -337,7 +399,24 @@ class ActionService:
                     decision_id=decision.decision_id,
                 ),
                 "parameters": parameters,
-                "narrative": option.consequence,
+                "narrative": self._story_flow.public_text(option.consequence),
+            }
+        if command.input_mode is ActionInputMode.OVERTIME:
+            state = session.game_state
+            points = int(command.parameters["points"])
+            if state.action_points != 0:
+                raise ActionUnavailableError("只有当日可用行动点用尽后才能申请加班")
+            if state.overtime_used_today:
+                raise ActionUnavailableError("今天已经申请过加班")
+            if state.chapter_overtime_count >= 3:
+                raise ActionUnavailableError("本章加班次数已经用尽")
+            if state.fatigue >= 75:
+                raise ActionUnavailableError("当前已接近崩溃，不能继续加班")
+            return {
+                "kind": "overtime",
+                "points": points,
+                "cost": 0,
+                "narrative": f"你决定再加班处理 {points} 点工作。新增行动点已经到账，疲惫将在日终结算。",
             }
         if (
             not command.conversation_id
@@ -371,12 +450,26 @@ class ActionService:
             item for item in package.npc_profiles
             if item.npc_id == opportunity.npc_id
         )
+        normalized_text = "".join(command.player_text.split()).casefold()
+        repeat_count = sum(
+            "".join(item.get("player", "").split()).casefold() == normalized_text
+            for item in conversation.transcript
+        )
+        disclosure_gate = (
+            self._disclosure_gate.build(
+                session, package, opportunity, repeat_count=repeat_count
+            )
+            if package.gameplay_schema_version >= 2
+            else DisclosureGate(
+                4, "旧包机会白名单", tuple(opportunity.allowed_fact_ids)
+            )
+        )
         allowed_fact_texts = {
             fact_id: package.facts[fact_id].text
-            for fact_id in opportunity.allowed_fact_ids
+            for fact_id in disclosure_gate.allowed_fact_ids
             if fact_id in package.facts
         }
-        permitted_fact_ids = set(opportunity.allowed_fact_ids) | session.known_fact_ids
+        permitted_fact_ids = set(disclosure_gate.allowed_fact_ids) | session.known_fact_ids
         forbidden_fact_markers = tuple(
             fact.title
             for fact_id, fact in package.facts.items()
@@ -403,7 +496,12 @@ class ActionService:
                 player_text=(prepared_input.text if prepared_input else command.player_text),
                 story_day=session.game_state.story_day,
                 opportunity_id=opportunity.opportunity_id,
-                allowed_fact_ids=opportunity.allowed_fact_ids,
+                allowed_fact_ids=disclosure_gate.allowed_fact_ids,
+                required_disclosure_ids=tuple(sorted(
+                    opportunity.required_disclosure_ids.intersection(
+                        disclosure_gate.allowed_fact_ids
+                    )
+                )),
                 npc_name=profile.name,
                 npc_state_tier=profile.state_tier.value,
                 role_setting=profile.role_setting,
@@ -411,7 +509,7 @@ class ActionService:
                 prompt_version=package.role_turn_prompt_version,
                 allowed_fact_texts=allowed_fact_texts,
                 allowed_fact_markers=disclosure_markers_for(
-                    opportunity.allowed_fact_ids
+                    disclosure_gate.allowed_fact_ids
                 ),
                 forbidden_fact_markers=forbidden_fact_markers,
                 memory_items=memory_items,
@@ -429,6 +527,13 @@ class ActionService:
                         for item in sorted(session.known_fact_ids)
                         if item in package.facts
                     ],
+                    "npc_disclosure_posture": disclosure_gate.trust_label,
+                    "fatigue_posture": (
+                        "撑不住了" if session.game_state.fatigue >= 75 else
+                        "有些吃力" if session.game_state.fatigue >= 50 else
+                        "略显疲乏" if session.game_state.fatigue >= 25 else
+                        "精神尚可"
+                    ),
                 },
                 player_reference_materials={
                     "mission": package.public_briefing["mission"],
@@ -447,6 +552,11 @@ class ActionService:
             npc_state,
             random_seed=session.random_seed,
         )
+        if turn.attitude_delta > 0 and session.game_state.fatigue >= 25:
+            factor = 0.9 if session.game_state.fatigue < 50 else (
+                0.8 if session.game_state.fatigue < 75 else 0.7
+            )
+            turn = replace(turn, attitude_delta=int(turn.attitude_delta * factor))
         return {
             "kind": "free_text",
             "rule": rule,
@@ -456,6 +566,8 @@ class ActionService:
             "opportunity": opportunity,
             "npc_id": opportunity.npc_id,
             "turn": turn,
+            "trust_consumption": -15 if repeat_count >= 2 else -5 if repeat_count == 1 else 0,
+            "clear_disclosure_quota": repeat_count >= 2,
             "narrative": turn.dialogue,
             "npc_reply": {
                 "npc_id": turn.npc_id,
@@ -496,16 +608,27 @@ class ActionService:
 
     def _apply_draft(self, session, package, draft: dict) -> None:
         if draft["kind"] in {
-            "tool", "conversation_start", "free_text", "conversation_end"
+            "tool", "resource_action", "conversation_start", "free_text", "conversation_end",
+            "overtime",
         }:
             rule: ActionRule | None = draft.get("rule")
-            if draft["kind"] in {"tool", "conversation_start"}:
+            if draft["kind"] in {"tool", "resource_action", "conversation_start"}:
                 assert rule is not None
                 session.game_state = session.game_state.spend_action_points(
                     rule.action_id,
                     draft["cost"],
                     half_day=rule.half_day,
                 )
+                if (
+                    draft["kind"] == "resource_action"
+                    and rule.category in {"调查手段", "强制手段"}
+                ):
+                    counts = dict(session.game_state.daily_action_counts)
+                    key = f"category:{rule.category}"
+                    counts[key] = counts.get(key, 0) + 1
+                    session.game_state = replace(
+                        session.game_state, daily_action_counts=counts
+                    )
             log = {
                 "type": draft["kind"],
                 "story_day": session.game_state.story_day,
@@ -514,8 +637,27 @@ class ActionService:
                 "visible_to_player": True,
             }
             opportunity = draft.get("opportunity")
+            if opportunity is not None:
+                log["opportunity_id"] = opportunity.opportunity_id
             if draft["kind"] == "tool":
                 self._apply_opportunity_completion(session, package, opportunity)
+            elif draft["kind"] == "resource_action":
+                narrative = self._action_handlers.execute(
+                    session, package, draft["definition"], draft["quote"]
+                )
+                draft["narrative"] = narrative
+                log.update({
+                    "type": "action_completed",
+                    "target_ids": list(draft["quote"].target_ids),
+                    "parameters": dict(draft["quote"].parameters),
+                    "budget_cost": draft["quote"].budget_cost,
+                    "public_narrative": narrative,
+                })
+                session.append_narrative(
+                    story_day=session.game_state.story_day,
+                    kind="action_result",
+                    text=narrative,
+                )
             elif draft["kind"] == "conversation_start":
                 session.active_conversation = ActiveConversation(
                     conversation_id=draft["conversation_id"],
@@ -528,6 +670,7 @@ class ActionService:
                     kind="conversation_opening",
                     text=opportunity.opening_narrative,
                 )
+                log["type"] = "conversation_started"
                 log["npc_id"] = draft["npc_id"]
                 log["conversation_id"] = draft["conversation_id"]
             elif draft["kind"] == "free_text":
@@ -538,6 +681,10 @@ class ActionService:
                 npc_state = session.npc_states[draft["npc_id"]]
                 session.npc_states[draft["npc_id"]] = replace(
                     npc_state,
+                    trust_score=(
+                        max(0, npc_state.trust_score + draft["trust_consumption"])
+                        if npc_state.trust_score is not None else None
+                    ),
                     attitude_score=(
                         max(0, min(100, npc_state.attitude_score + turn.attitude_delta))
                         if npc_state.attitude_score is not None
@@ -548,8 +695,12 @@ class ActionService:
                         if npc_state.anxiety_score is not None
                         else None
                     ),
+                    chapter_disclosure_used=(
+                        npc_state.chapter_disclosure_used
+                        or draft["clear_disclosure_quota"]
+                    ),
                 )
-                log["type"] = "free_text_turn"
+                log["type"] = "conversation_turn"
                 log["npc_id"] = draft["npc_id"]
                 log["conversation_id"] = conversation.conversation_id
                 privacy = draft.get("privacy")
@@ -561,6 +712,30 @@ class ActionService:
                     }
                 if turn.disclosure_id is not None:
                     session.known_fact_ids.add(turn.disclosure_id)
+                    log["disclosure_id"] = turn.disclosure_id
+                    fact = package.facts.get(turn.disclosure_id)
+                    if fact is not None and fact.disclosure_tier == 4:
+                        session.npc_states[draft["npc_id"]] = replace(
+                            session.npc_states[draft["npc_id"]],
+                            chapter_disclosure_used=True,
+                        )
+                    session.logs.append({
+                        "type": "fact_learned",
+                        "story_day": session.game_state.story_day,
+                        "fact_id": turn.disclosure_id,
+                        "source_id": draft["npc_id"],
+                        "visible_to_player": True,
+                    })
+                log["will_share_with"] = list(turn.will_share_with)
+                if draft["trust_consumption"]:
+                    session.logs.append({
+                        "type": "trust_consumed",
+                        "story_day": session.game_state.story_day,
+                        "npc_id": draft["npc_id"],
+                        "reason": "repeated_question",
+                        "delta": draft["trust_consumption"],
+                        "visible_to_player": False,
+                    })
                 npc_name = next(
                     (
                         item.name
@@ -588,9 +763,38 @@ class ActionService:
                         kind="conversation_exit",
                         text=turn.exit_narrative or "对方结束了这次会谈。",
                     )
-                    self._apply_opportunity_completion(
-                        session, package, opportunity, append_blocks=False
+                    disclosed = {
+                        item.get("disclosure_id")
+                        for item in session.logs
+                        if item.get("type") == "conversation_turn"
+                        and item.get("conversation_id") == conversation.conversation_id
+                        and item.get("disclosure_id")
+                    }
+                    if turn.disclosure_id:
+                        disclosed.add(turn.disclosure_id)
+                    completed = (
+                        opportunity.complete_on_npc_exit
+                        and conversation.turn_count >= opportunity.minimum_turns
+                        and opportunity.required_disclosure_ids.issubset(disclosed)
                     )
+                    if completed:
+                        self._apply_opportunity_completion(
+                            session, package, opportunity, append_blocks=False
+                        )
+                    draft["completion_status"] = (
+                        "completed" if completed else "incomplete"
+                    )
+                    session.logs.append({
+                        "type": "conversation_ended",
+                        "story_day": session.game_state.story_day,
+                        "opportunity_id": opportunity.opportunity_id,
+                        "conversation_id": conversation.conversation_id,
+                        "npc_id": draft["npc_id"],
+                        "ended_by": "npc",
+                        "completion_status": draft["completion_status"],
+                        "cost_action_points": 0,
+                        "visible_to_player": True,
+                    })
                     session.active_conversation = None
                 # 玩家日志不记录内部 delta；权威审计适配器另行保存来源字段。
             elif draft["kind"] == "conversation_end":
@@ -599,11 +803,27 @@ class ActionService:
                     kind="conversation_exit",
                     text=draft["narrative"],
                 )
-                self._apply_opportunity_completion(session, package, opportunity)
+                if draft["completed"]:
+                    self._apply_opportunity_completion(session, package, opportunity)
                 session.active_conversation = None
+                log["type"] = "conversation_ended"
                 log["npc_id"] = draft["npc_id"]
                 log["conversation_id"] = draft["conversation_id"]
                 log["ended_by"] = "player"
+                log["completion_status"] = draft["completion_status"]
+            elif draft["kind"] == "overtime":
+                state = session.game_state
+                session.game_state = replace(
+                    state,
+                    action_points=state.action_points + draft["points"],
+                    overtime_points_today=draft["points"],
+                    overtime_used_today=True,
+                    chapter_overtime_count=state.chapter_overtime_count + 1,
+                )
+                log.update({
+                    "type": "overtime_requested",
+                    "points": draft["points"],
+                })
             session.logs.append(log)
             if (
                 opportunity is not None

@@ -26,6 +26,11 @@ class GameState:
     daily_action_point_cap: int = 8
     budget_remaining: int = 8000
     budget_unit: str = "万元"
+    budget_base_authorized: int = 8000
+    budget_approved_adjustments: int = 0
+    budget_precoord_suspense: int = 0
+    budget_committed: int = 0
+    budget_paid: int = 0
     signed_households: int = 0
     reported_signed_households: int = 0
     total_households: int = 36
@@ -60,6 +65,13 @@ class GameState:
             raise ValueError("daily_action_point_cap must be between 5 and 8")
         if self.budget_remaining < 0:
             raise ValueError("budget_remaining must not be negative")
+        if any(value < 0 for value in (
+            self.budget_base_authorized,
+            self.budget_precoord_suspense,
+            self.budget_committed,
+            self.budget_paid,
+        )):
+            raise ValueError("budget ledger values must not be negative")
         if not 0 <= self.signed_households <= self.total_households:
             raise ValueError("signed_households is outside the household range")
         if not 0 <= self.reported_signed_households <= self.total_households:
@@ -74,8 +86,10 @@ class GameState:
             raise ValueError("invalid lead_roster_disposition")
 
     @classmethod
-    def new_game(cls) -> "GameState":
-        return cls()
+    def new_game(cls, initial_state: dict | None = None) -> "GameState":
+        values = dict(initial_state or {})
+        allowed = set(cls.__dataclass_fields__)
+        return cls(**{key: value for key, value in values.items() if key in allowed})
 
     def spend_action_points(
         self,

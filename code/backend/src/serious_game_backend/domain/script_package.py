@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from serious_game_backend.domain.action import ActionRule
+from serious_game_backend.domain.action import ActionRule, ResourceActionDefinition
 from serious_game_backend.domain.enums import ActionCostTier, NPCStateTier
 from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
 from serious_game_backend.domain.story import (
@@ -45,6 +45,7 @@ class MapLocationDefinition:
     unlock_day: int
     linked_opportunity_ids: tuple[str, ...] = ()
     linked_event_ids: tuple[str, ...] = ()
+    linked_action_ids: tuple[str, ...] = ()
     required_flags: frozenset[str] = frozenset()
 
 
@@ -106,6 +107,36 @@ class NPCProfileStub:
 
 
 @dataclass(frozen=True, slots=True)
+class HouseholdDefinition:
+    """逐户测算底表；隐藏户群字段不得直接进入普通玩家 DTO。"""
+
+    household_id: str
+    representative_group: str
+    representative_npc: str
+    group_index: int
+    is_shadow_household: bool
+    registered_population: int
+    actual_residents: int
+    resettlement_population: int
+    residential_structure: str
+    legal_residential_area_m2: float
+    homestead_recognized_m2: float
+    homestead_over_m2: float
+    contracted_land_mu: float
+    other_land_mu: float
+    other_land_note: str | None
+    business_area_m2: float
+    attachments_profile: str
+    grave_or_shrine_profile: str
+    hardship_tags: tuple[str, ...]
+    medical_tags: tuple[str, ...]
+    employment_startup_tags: tuple[str, ...]
+    resettlement_preference: str
+    ownership_status: str
+    signing_lock_flag: str
+
+
+@dataclass(frozen=True, slots=True)
 class ScriptPackage:
     package_id: str
     package_version: str
@@ -122,6 +153,13 @@ class ScriptPackage:
     origins: dict[str, OriginDefinition]
     facts: dict[str, FactDefinition]
     public_briefing: dict
+    resource_actions: dict[str, ResourceActionDefinition]
+    households: tuple[HouseholdDefinition, ...]
+    initial_state: dict
+    gameplay_schema_version: int = 1
+    origin_npc_attitude_modifiers: dict[str, dict[str, int]] | None = None
+    trust_rules: dict | None = None
+    npc_relationships: tuple[dict, ...] = ()
     interaction_opportunities: tuple[InteractionOpportunity, ...] = ()
     registered_flags: frozenset[str] = frozenset()
     map_locations: tuple[MapLocationDefinition, ...] = ()

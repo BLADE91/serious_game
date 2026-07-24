@@ -40,6 +40,8 @@ class FactDefinition:
     source_label: str = "剧情中已确认"
     related_npc_ids: tuple[str, ...] = ()
     use_hint: str = "可在后续会谈、调查和决策中作为已掌握材料引用。"
+    disclosure_tier: int = 2
+    owner_npc_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -13,6 +13,7 @@ class RoleTurnContext:
     account_id: str = ""
     operation_id: str = ""
     allowed_fact_ids: tuple[str, ...] = ()
+    required_disclosure_ids: tuple[str, ...] = ()
     npc_name: str = ""
     npc_state_tier: str = "deep"
     role_setting: str = ""

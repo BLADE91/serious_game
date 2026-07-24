@@ -14,7 +14,12 @@ class ReviewService:
             {
                 "story_day": item["story_day"],
                 "decision_id": item["decision_id"],
+                "title": (
+                    package.decisions[item["decision_id"]].title
+                    if item["decision_id"] in package.decisions else "剧情决策"
+                ),
                 "option_id": item["option_id"],
+                "choice": self._decision_choice(package, item),
                 "cost_action_points": 0,
                 **(
                     {"parameters": item["parameters"]}
@@ -29,10 +34,32 @@ class ReviewService:
             {
                 "story_day": item["story_day"],
                 "action_id": item["action_id"],
+                "name": (
+                    package.action_rules[item["action_id"]].name
+                    if item.get("action_id") in package.action_rules else "自主行动"
+                ),
                 "cost_action_points": item["cost_action_points"],
+                "budget_cost": item.get("budget_cost", 0),
+                "public_result": item.get("public_narrative"),
+                "target_ids": list(item.get("target_ids", ())),
             }
             for item in session.logs
-            if item.get("type") in {"tool_action", "free_text_turn"}
+            if item.get("type") == "action_completed"
+        ]
+        conversations = [
+            {
+                "story_day": item["story_day"],
+                "event": item["type"],
+                "npc_id": item.get("npc_id"),
+                "npc_name": self._npc_name(package, item.get("npc_id")),
+                "cost_action_points": item.get("cost_action_points", 0),
+                "ended_by": item.get("ended_by"),
+                "completion_status": item.get("completion_status"),
+            }
+            for item in session.logs
+            if item.get("type") in {
+                "conversation_started", "conversation_turn", "conversation_ended"
+            }
         ]
         selected = {item["decision_id"] for item in decisions}
         triggered = session.triggered_events
@@ -42,12 +69,16 @@ class ReviewService:
             "status": session.status.value,
             "decision_timeline": decisions,
             "action_timeline": actions,
+            "conversation_timeline": conversations,
             "night_timeline": list(session.night_logs),
             "visible_events": state["visible_events"],
             "known_facts": [
                 {
                     "fact_id": fact_id,
                     "title": package.facts[fact_id].title,
+                    "text": package.facts[fact_id].text,
+                    "source_label": package.facts[fact_id].source_label,
+                    "use_hint": package.facts[fact_id].use_hint,
                 }
                 for fact_id in sorted(session.known_fact_ids)
                 if fact_id in package.facts
@@ -67,3 +98,18 @@ class ReviewService:
                 ],
             },
         }
+
+    @staticmethod
+    def _decision_choice(package: ScriptPackage, log: dict) -> str:
+        decision = package.decisions.get(log.get("decision_id"))
+        option = decision.option(log.get("option_id")) if decision else None
+        return option.text if option is not None else str(log.get("option_id", ""))
+
+    @staticmethod
+    def _npc_name(package: ScriptPackage, npc_id: str | None) -> str | None:
+        if npc_id is None:
+            return None
+        return next(
+            (item.name for item in package.npc_profiles if item.npc_id == npc_id),
+            "剧情人物",
+        )

@@ -26,6 +26,8 @@ class ActionRequest(BaseModel):
     opportunity_id: str | None = None
     player_text: str | None = Field(default=None, max_length=4000)
     target_npc_id: str | None = None
+    target_ids: list[str] = Field(default_factory=list, max_length=64)
+    quote_id: str | None = Field(default=None, min_length=8, max_length=128)
     conversation_id: str | None = Field(default=None, min_length=8, max_length=128)
     decision_id: str | None = None
     option_id: str | None = None
@@ -40,8 +42,18 @@ class ActionRequest(BaseModel):
                 raise ValueError("tool 模式必须提供 opportunity_id 和 action_id")
             if any((self.decision_id, self.option_id, self.player_text,
                     self.target_npc_id, self.conversation_id,
-                    self.ordered_option_ids, self.parameters)):
+                    self.ordered_option_ids, self.parameters, self.target_ids,
+                    self.quote_id)):
                 raise ValueError("tool 模式包含了不允许的字段")
+        elif self.input_mode is ActionInputMode.RESOURCE_ACTION:
+            if not self.action_id or not self.quote_id:
+                raise ValueError("resource_action 模式必须提供 action_id 和 quote_id")
+            if any((self.opportunity_id, self.player_text, self.target_npc_id,
+                    self.conversation_id, self.decision_id, self.option_id,
+                    self.ordered_option_ids)):
+                raise ValueError("resource_action 模式包含了不允许的字段")
+            if len(self.target_ids) != len(set(self.target_ids)):
+                raise ValueError("target_ids 不能包含重复项")
         elif self.input_mode is ActionInputMode.CONVERSATION_START:
             if not self.opportunity_id or not self.target_npc_id:
                 raise ValueError(
@@ -49,7 +61,7 @@ class ActionRequest(BaseModel):
                 )
             if any((self.player_text, self.conversation_id, self.action_id,
                     self.decision_id, self.option_id, self.ordered_option_ids,
-                    self.parameters)):
+                    self.parameters, self.target_ids, self.quote_id)):
                 raise ValueError("conversation_start 模式包含了不允许的字段")
         elif self.input_mode is ActionInputMode.FREE_TEXT:
             if (
@@ -62,14 +74,16 @@ class ActionRequest(BaseModel):
                     "free_text 模式必须提供 conversation_id、opportunity_id、target_npc_id 和 player_text"
                 )
             if any((self.decision_id, self.option_id, self.action_id,
-                    self.ordered_option_ids, self.parameters)):
+                    self.ordered_option_ids, self.parameters, self.target_ids,
+                    self.quote_id)):
                 raise ValueError("free_text 模式包含了不允许的字段")
         elif self.input_mode is ActionInputMode.CONVERSATION_END:
             if not self.conversation_id:
                 raise ValueError("conversation_end 模式必须提供 conversation_id")
             if any((self.action_id, self.opportunity_id, self.player_text,
                     self.target_npc_id, self.decision_id, self.option_id,
-                    self.ordered_option_ids, self.parameters)):
+                    self.ordered_option_ids, self.parameters, self.target_ids,
+                    self.quote_id)):
                 raise ValueError("conversation_end 模式包含了不允许的字段")
         elif self.input_mode is ActionInputMode.DECISION:
             if not self.decision_id or not (
@@ -79,10 +93,21 @@ class ActionRequest(BaseModel):
                     "decision 模式必须提供 decision_id，以及 option_id、ordered_option_ids 或 parameters"
                 )
             if (self.action_id or self.opportunity_id or self.player_text
-                    or self.target_npc_id or self.conversation_id):
+                    or self.target_npc_id or self.conversation_id or self.target_ids
+                    or self.quote_id):
                 raise ValueError("decision 模式不能提供工具、会谈或自由文本字段")
             if len(self.ordered_option_ids) != len(set(self.ordered_option_ids)):
                 raise ValueError("ordered_option_ids 不能包含重复项")
+        elif self.input_mode is ActionInputMode.OVERTIME:
+            if set(self.parameters) != {"points"}:
+                raise ValueError("overtime 模式只接受 points 参数")
+            if self.parameters.get("points") not in {1, 2, 3}:
+                raise ValueError("加班点数只能为 1、2 或 3")
+            if any((self.action_id, self.opportunity_id, self.player_text,
+                    self.target_npc_id, self.conversation_id, self.decision_id,
+                    self.option_id, self.ordered_option_ids, self.target_ids,
+                    self.quote_id)):
+                raise ValueError("overtime 模式包含了不允许的字段")
         return self
 
     def to_command(self) -> ActionCommand:
@@ -94,6 +119,8 @@ class ActionRequest(BaseModel):
             opportunity_id=self.opportunity_id,
             player_text=self.player_text,
             target_npc_id=self.target_npc_id,
+            target_ids=tuple(self.target_ids),
+            quote_id=self.quote_id,
             conversation_id=self.conversation_id,
             decision_id=self.decision_id,
             option_id=self.option_id,
@@ -101,6 +128,22 @@ class ActionRequest(BaseModel):
             parameters=self.parameters,
             retry=self.retry,
         )
+
+
+class ActionQuoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    action_id: str = Field(min_length=1, max_length=128)
+    state_version: int = Field(ge=1)
+    target_ids: list[str] = Field(default_factory=list, max_length=64)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("target_ids")
+    @classmethod
+    def unique_targets(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)):
+            raise ValueError("target_ids 不能包含重复项")
+        return values
 
 
 class EndDayRequest(BaseModel):

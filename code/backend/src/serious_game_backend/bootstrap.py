@@ -4,6 +4,10 @@ from dataclasses import dataclass
 import os
 
 from serious_game_backend.application.action_service import ActionService
+from serious_game_backend.application.action_quote_service import ActionQuoteService
+from serious_game_backend.application.action_handler_registry import ActionHandlerRegistry
+from serious_game_backend.application.trust_derivation_service import TrustDerivationService
+from serious_game_backend.application.disclosure_gate_service import DisclosureGateService
 from serious_game_backend.application.end_day_service import EndDayService
 from serious_game_backend.application.ending_service import EndingAxisProjector, EndingService
 from serious_game_backend.application.event_service import EventService
@@ -114,6 +118,7 @@ class Container:
     projector: VisibleStateProjector
     game_sessions: GameSessionService
     actions: ActionService
+    action_quotes: ActionQuoteService
     end_days: EndDayService
     npc_turns: NPCTurnService
     opportunities: InteractionOpportunityService
@@ -226,7 +231,11 @@ def build_container(settings: Settings) -> Container:
     delta_resolver = ScriptedDeltaResolver()
     validator = StateDeltaValidator(delta_resolver)
     scripted_effects = ScriptedEffectService(delta_resolver)
-    nights = NightSimulationService(scripted_effects)
+    trust_derivation = TrustDerivationService()
+    disclosure_gate = DisclosureGateService()
+    action_quotes = ActionQuoteService()
+    action_handlers = ActionHandlerRegistry(scripted_effects)
+    nights = NightSimulationService(scripted_effects, trust_derivation)
     endings = EndingService(EndingAxisProjector())
     npc_turns = NPCTurnService(role_llm, validator)
     npc_memories = NPCMemoryService(memory_repository)
@@ -299,9 +308,14 @@ def build_container(settings: Settings) -> Container:
             scripted_effects,
             story_flow,
             npc_memories,
+            action_quotes,
+            action_handlers,
+            trust_derivation,
+            disclosure_gate,
             model_input_policy,
             research_projection,
         ),
+        action_quotes=action_quotes,
         end_days=EndDayService(
             sessions,
             operations,

@@ -16,10 +16,27 @@ class PackageValidationService:
             "package_version": package.package_version,
             "content_hash": package.content_hash,
             "status": package.status,
+            "gameplay_schema_version": package.gameplay_schema_version,
             "valid": True,
             "counts": {
                 "story_days": len(package.story_days),
                 "actions": len(package.action_rules),
+                "resource_action_definitions": len(package.resource_actions),
+                "households": len(package.households),
+                "household_registered_population": sum(
+                    item.registered_population for item in package.households
+                ),
+                "household_resettlement_population": sum(
+                    item.resettlement_population for item in package.households
+                ),
+                "registered_resource_handlers": sum(
+                    item.executor_kind != "conversation"
+                    for item in package.resource_actions.values()
+                ),
+                "conversation_action_definitions": sum(
+                    item.executor_kind == "conversation"
+                    for item in package.resource_actions.values()
+                ),
                 "npcs": len(package.npc_profiles),
                 "npc_role_profiles": sum(
                     bool(item.role_setting) for item in package.npc_profiles

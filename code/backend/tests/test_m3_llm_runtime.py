@@ -126,6 +126,27 @@ class M3LLMRuntimeTests(unittest.TestCase):
         self.assertIn("不得自行编造、推算", system)
         self.assertIn("补偿单价", system)
 
+    def test_prompt_identifies_required_disclosure_without_relaxing_allowlist(self) -> None:
+        captured = []
+
+        def transport(_base_url, _api_key, body, _timeout):
+            captured.append(body)
+            return valid_response()
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(), "test-key", InMemoryLLMCallAuditRepository(), transport=transport
+        )
+        gateway.run_turn(replace(
+            self.context("act_required_disclosure"),
+            allowed_fact_ids=("fact_clan_power_map",),
+            required_disclosure_ids=("fact_clan_power_map",),
+            allowed_fact_texts={"fact_clan_power_map": "柳林村宗族权力关系。"},
+        ))
+        system = captured[0]["messages"][0]["content"]
+        self.assertIn("尚需自然触及的目标事实 ID", system)
+        self.assertIn("fact_clan_power_map", system)
+        self.assertIn("不得在对白中念出", system)
+
     def test_invalid_json_retries_then_falls_back_without_state_authority(self) -> None:
         calls = []
 
@@ -169,14 +190,12 @@ class M3LLMRuntimeTests(unittest.TestCase):
         self.assertEqual("none", result.anxiety_band)
         self.assertTrue(any("保守归零" in item for item in result.risk_notes))
 
-    def test_fact_mentioned_without_matching_disclosure_is_retried(self) -> None:
+    def test_single_allowed_fact_marker_repairs_missing_disclosure_id(self) -> None:
         calls = []
 
         def transport(*args):
             calls.append(1)
-            if len(calls) == 1:
-                return valid_response("我上衣里面藏着那个优盘。")
-            response = valid_response("证据的事，现在还不能跟你说。")
+            response = valid_response("我上衣里面藏着那个优盘。")
             document = __import__("json").loads(
                 response["choices"][0]["message"]["content"]
             )
@@ -198,8 +217,28 @@ class M3LLMRuntimeTests(unittest.TestCase):
             allowed_fact_ids=("fact_shi_usb",),
             allowed_fact_markers={"fact_shi_usb": ("优盘", "u盘")},
         ))
-        self.assertEqual(2, len(calls))
-        self.assertNotIn("优盘", result.dialogue)
+        self.assertEqual(1, len(calls))
+        self.assertEqual("fact_shi_usb", result.disclosure_id)
+        self.assertTrue(any("唯一可确定的主要事实标记" in item for item in result.risk_notes))
+
+    def test_multiple_allowed_markers_prioritize_required_disclosure(self) -> None:
+        response = valid_response("周氏宗族掌握主要话语权，吴老师也不怕周大山。")
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=lambda *args: response,
+        )
+        result = gateway.run_turn(replace(
+            self.context("act_multi_fact"),
+            allowed_fact_ids=("fact_clan_power_map", "fact_wu_independent_voice"),
+            required_disclosure_ids=("fact_clan_power_map",),
+            allowed_fact_markers={
+                "fact_clan_power_map": ("周氏宗族",),
+                "fact_wu_independent_voice": ("不怕周大山",),
+            },
+        ))
+        self.assertEqual("fact_clan_power_map", result.disclosure_id)
 
     def test_explicit_sendoff_must_end_conversation_and_is_retried(self) -> None:
         calls = []

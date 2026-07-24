@@ -25,7 +25,9 @@ def render_state(state: dict) -> list[str]:
     ledger = state.get("ledger", {})
     points = ledger.get("action_points", {})
     signed = ledger.get("signed_households", {})
+    signing_batches = signed.get("batches", {})
     budget = ledger.get("budget", {})
+    fatigue = ledger.get("fatigue", {})
     indicators = state.get("indicators", {})
     lines = [
         (
@@ -35,9 +37,17 @@ def render_state(state: dict) -> list[str]:
         ),
         (
             f"签约 {signed.get('signed', '?')}/{signed.get('total', '?')} 户｜"
-            f"预算 {budget.get('remaining', '?')} {budget.get('unit', '')}"
+            f"可安排预算 {budget.get('remaining', '?')} {budget.get('unit', '')}｜"
+            f"状态：{fatigue.get('label', '精神尚可')}"
         ),
     ]
+    if signing_batches.get("roster_locked"):
+        lines.append(
+            "签约分批："
+            f"D75 首批 {signing_batches.get('first_batch', '?')} 户｜"
+            f"验收期确认 {signing_batches.get('acceptance_confirmed', '?')} 户｜"
+            f"尚未签署 {signing_batches.get('unsigned', '?')} 户"
+        )
     if indicators:
         names = {
             "public_trust": "公众信任",
@@ -97,10 +107,13 @@ def render_actions(document: dict) -> list[str]:
     lines = [f"行动目录（当前成本档：{document.get('cost_tier', '?')}）"]
     for item in document.get("actions", []):
         state = "可用" if item.get("available") else f"不可用：{item.get('unavailable_reason')}"
-        opportunities = ", ".join(item.get("opportunity_ids", [])) or "无"
+        entry = (
+            "人物会谈" if item.get("execution_mode") == "conversation"
+            else "配置后报价执行"
+        )
         lines.append(
-            f"  {item.get('action_id')}｜{item.get('name')}｜"
-            f"{item.get('cost_action_points')} 点｜{state}｜入口：{opportunities}"
+            f"  {item.get('name')}｜{item.get('cost_action_points')} 点｜"
+            f"{state}｜入口：{entry}"
         )
     return lines
 
@@ -113,7 +126,7 @@ def render_opportunities(document: dict) -> list[str]:
     lines = ["NPC 互动机会："]
     for item in items:
         lines.append(
-            f"  {item.get('opportunity_id')}｜NPC {item.get('npc_id')}｜"
-            f"行动 {item.get('action_id')}｜{item.get('cost_action_points')} 点"
+            f"  {item.get('npc_name') or item.get('npc_id') or '剧情人物'}｜{item.get('npc_title') or ''}｜"
+            f"{item.get('action_name')}｜{item.get('cost_action_points')} 点"
         )
     return lines

@@ -31,7 +31,7 @@ class Settings:
     environment: str = "sandbox"
     host: str = "0.0.0.0"
     port: int = 8100
-    default_package_id: str = "pkg_backend_dev_v1"
+    default_package_id: str = "pkg_gameplay_v2"
     content_root: Path = BACKEND_ROOT / "content" / "packages"
     repository: str = "sqlite"
     database_path: Path = BACKEND_ROOT / "data" / "serious_game.db"
@@ -85,7 +85,7 @@ class Settings:
             host=os.getenv("GAME_HOST", "0.0.0.0").strip(),
             port=int(os.getenv("GAME_PORT", "8100")),
             default_package_id=os.getenv(
-                "GAME_DEFAULT_PACKAGE_ID", "pkg_backend_dev_v1"
+                "GAME_DEFAULT_PACKAGE_ID", "pkg_gameplay_v2"
             ).strip(),
             content_root=content_root.resolve(),
             repository=os.getenv("GAME_REPOSITORY", "sqlite").strip().lower(),

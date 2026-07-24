@@ -147,7 +147,7 @@ class GameSessionService:
             package_version=package.package_version,
             package_content_hash=package.content_hash,
             random_seed=secrets.token_hex(32),
-            game_state=GameState.new_game(),
+            game_state=GameState.new_game(package.initial_state),
             origin_id=origin_id,
             environment=self._environment,
             consent_record_id=(consent.consent_record_id if consent else None),
@@ -158,7 +158,10 @@ class GameSessionService:
             experiment_group_id=(
                 assignment.experiment_group_id if assignment else None
             ),
-            npc_states=self._initial_npc_states(package.npc_profiles),
+            npc_states=self._initial_npc_states(
+                package.npc_profiles,
+                (package.origin_npc_attitude_modifiers or {}).get(origin_id, {}),
+            ),
         )
         self._events.trigger_fixed_events(session, package)
         self._story_flow.initialize(session, package)
@@ -187,7 +190,10 @@ class GameSessionService:
         return session
 
     @staticmethod
-    def _initial_npc_states(profiles) -> dict[str, NPCState]:
+    def _initial_npc_states(
+        profiles, attitude_modifiers: dict[str, int] | None = None
+    ) -> dict[str, NPCState]:
+        attitude_modifiers = attitude_modifiers or {}
         states: dict[str, NPCState] = {}
         for profile in profiles:
             if profile.state_tier is NPCStateTier.AMBIENT:
@@ -199,7 +205,11 @@ class GameSessionService:
                     availability_mode=AvailabilityMode.CLOSED,
                     profile_id=profile.profile_id or profile.npc_id,
                     trust_score=40,
-                    attitude_score=profile.initial_attitude,
+                    attitude_score=max(0, min(
+                        100,
+                        profile.initial_attitude
+                        + int(attitude_modifiers.get(profile.npc_id, 0)),
+                    )),
                     anxiety_score=profile.initial_anxiety,
                 )
             else:

@@ -31,7 +31,7 @@ HELP_TEXT = """可用命令：
   allocate <A B C D额度>      提交分配题四项整数额度
   actions                     查看自主行动目录
   opportunities               查看当前 NPC 互动机会
-  do <action_id> <机会ID>     从服务端开放的入口执行自主行动
+  do <action_id>              按服务端提示配置、报价并执行资源行动
   talk <opportunity_id> <话>  在服务端开放的机会中与 NPC 交谈
   leave                       结束当前进行中的 NPC 会谈
   knowledge                   查看已掌握的事实、线索与证据
@@ -39,6 +39,7 @@ HELP_TEXT = """可用命令：
   review                      查看本局只读复盘
   validate                    查看完整剧本包校验报告
   end                         结束当天并执行夜间推进
+  overtime <1|2|3>            行动点用尽后申请本章加班额度
   help                        显示帮助
   quit                        退出客户端（不会删除存档）"""
 
@@ -204,9 +205,9 @@ class TerminalApp:
         elif command == "opportunities":
             self._opportunities()
         elif command == "do":
-            if len(args) != 2:
-                raise ValueError("用法：do <action_id> <opportunity_id>")
-            self._do(args[0], args[1])
+            if len(args) != 1:
+                raise ValueError("用法：do <action_id>")
+            self._do(args[0])
         elif command == "talk":
             if len(args) < 2:
                 raise ValueError("用法：talk <opportunity_id> <你要说的话>")
@@ -226,6 +227,10 @@ class TerminalApp:
             self._validate_package()
         elif command == "end":
             self._end_day()
+        elif command == "overtime":
+            if len(args) != 1 or args[0] not in {"1", "2", "3"}:
+                raise ValueError("用法：overtime <1|2|3>")
+            self._request_overtime(int(args[0]))
         else:
             raise ValueError(f"未知命令：{parts[0]}；输入 help 查看命令")
         return True
@@ -366,7 +371,7 @@ class TerminalApp:
         self.state_version = int(document["state_version"])
         self._write_lines(render_actions(document))
         if any(item.get("available") for item in document.get("actions", [])):
-            self.output("下一步：输入 do <action_id> <opportunity_id>；输入 scene 返回剧情。")
+            self.output("下一步：输入 do <action_id>，再按提示选择对象和参数；输入 scene 返回剧情。")
         else:
             self.output("当前没有可执行的自主行动。下一步：输入 scene 查看剧情，或 end 尝试日终。")
 
@@ -379,7 +384,7 @@ class TerminalApp:
         else:
             self.output("当前没有可交谈对象。下一步：输入 scene 查看剧情，或 actions 查看行动。")
 
-    def _do(self, action_id: str, opportunity_id: str) -> None:
+    def _do(self, action_id: str) -> None:
         session_id = self._require_session()
         document = self.api.get_actions(session_id)
         actions = {str(item["action_id"]): item for item in document.get("actions", [])}
@@ -388,19 +393,89 @@ class TerminalApp:
             raise ValueError("行动 ID 不存在；先输入 actions 查看目录")
         if not item.get("available"):
             raise ValueError(str(item.get("unavailable_reason") or "当前行动不可用"))
-        if opportunity_id not in item.get("opportunity_ids", []):
-            raise ValueError("行动入口不可用；先输入 actions 查看当前入口")
-        client_action_id = self.api.new_key("tool")
-        result = self.api.execute_tool(
+        if item.get("execution_mode") == "conversation":
+            raise ValueError("该行动必须从“交谈”入口选择具体人物")
+        self._run_resource_action(item)
+
+    def _run_resource_action(self, item: dict) -> None:
+        target_schema = item.get("target_schema") or {}
+        minimum = int(target_schema.get("min_items", 0))
+        choices = list(item.get("target_choices", []))
+        targets: list[str] = []
+        remaining = list(choices)
+        for position in range(minimum):
+            if not remaining:
+                raise ValueError("当前可选对象不足，尚不能执行这个行动")
+            selected = self._select(
+                f"选择行动对象（{position + 1}/{minimum}）",
+                [str(value.get("label", "行动对象")) for value in remaining],
+                back_label="取消本次行动",
+            )
+            if selected is None:
+                return
+            targets.append(str(remaining.pop(selected)["target_id"]))
+        parameter_schema = item.get("parameter_schema") or {}
+        properties = dict(parameter_schema.get("properties", {}))
+        parameters: dict = {}
+        for key in parameter_schema.get("required", []):
+            spec = properties.get(key, {})
+            enum_values = list(spec.get("enum", []))
+            if not enum_values:
+                raise ValueError(f"参数 {key} 没有可供选择的登记值")
+            selected = self._select(
+                f"选择{key}",
+                [str(value) for value in enum_values],
+                back_label="取消本次行动",
+            )
+            if selected is None:
+                return
+            parameters[str(key)] = enum_values[selected]
+        session_id = self._require_session()
+        quote = self.api.quote_action(
             session_id,
-            state_version=int(document["state_version"]),
-            action_id=action_id,
-            opportunity_id=opportunity_id,
+            state_version=self._require_version(),
+            action_id=str(item["action_id"]),
+            target_ids=targets,
+            parameters=parameters,
+        )
+        self.output(
+            f"执行前报价：行动点 {quote['cost_action_points']}｜"
+            f"直接财政支出 {quote['direct_budget_cost']} {quote['budget_unit']}"
+        )
+        if quote.get("resource_ids"):
+            self.output("承办资源：" + "、".join(quote["resource_ids"]))
+        if quote.get("narrative_preview"):
+            self.output("程序说明：" + str(quote["narrative_preview"]))
+        if self._select(
+            "确认执行该行动？", ["按以上对象、参数与报价执行"], back_label="取消"
+        ) is None:
+            return
+        client_action_id = self.api.new_key("resource")
+        result = self.api.execute_resource_action(
+            session_id,
+            state_version=int(quote["state_version"]),
+            action_id=str(item["action_id"]),
+            target_ids=targets,
+            parameters=parameters,
+            quote_id=str(quote["quote_id"]),
             client_action_id=client_action_id,
         )
         result = self._await_operation(client_action_id, result)
         self.state_version = int(result["state_version"])
         self.output(str(result.get("narrative", "行动已完成。")))
+        self._refresh()
+
+    def _request_overtime(self, points: int) -> None:
+        client_action_id = self.api.new_key("overtime")
+        result = self.api.request_overtime(
+            self._require_session(),
+            state_version=self._require_version(),
+            points=points,
+            client_action_id=client_action_id,
+        )
+        result = self._await_operation(client_action_id, result)
+        self.state_version = int(result["state_version"])
+        self.output(str(result.get("narrative", "加班额度已发放。")))
         self._refresh()
 
     def _talk(
@@ -534,7 +609,8 @@ class TerminalApp:
         self.state_version = int(document["state_version"])
         options = [
             "任务与硬约束", "五份背景卷宗", "补偿政策与财政盘子",
-            "当前可调资源", "全部行动工具", "事实、线索与证据",
+            "当前可调资源", "全部行动工具", "36户公开底表",
+            "事实、线索与证据",
         ]
         while True:
             selected = self._select("县长案头", options, back_label="返回游戏菜单")
@@ -555,9 +631,15 @@ class TerminalApp:
                 budget = policy["current_budget"]
                 self.output(f"【{policy['title']}】{policy['status']}")
                 self.output(
-                    f"当前财政盘：初始 {budget['initial']}、剩余 {budget['remaining']}、"
-                    f"已扣减 {budget['deducted']} {budget['unit']}"
+                    f"当前财政盘：基础授权 {budget['base_authorized']}、"
+                    f"有来源调整 {budget['approved_adjustments']}、"
+                    f"已承诺 {budget['committed']}、已支出 {budget['paid']}、"
+                    f"当前可安排 {budget['remaining']} {budget['unit']}"
                 )
+                if budget.get("precoord_suspense"):
+                    self.output(
+                        f"疑点挂账：前期协调费 {budget['precoord_suspense']} {budget['unit']}。"
+                    )
                 self.output("已确定资金口径：")
                 for item in policy.get("funding", []):
                     self.output(f"  - {item['label']}：{item['value']}")
@@ -581,17 +663,101 @@ class TerminalApp:
                         f"    作用：{item['description']}\n"
                         f"    条件：{item['availability_note']}"
                     )
+            elif selected == 5:
+                households = list(document.get("household_registry", []))
+                self.output(
+                    f"【36户公开底表】共 {len(households)} 户。"
+                    "以下是已登记基础量；地类、附属物数量等未给出的明细仍待核验。"
+                )
+                for item in households:
+                    other_land = ""
+                    if item.get("other_land_mu"):
+                        other_land = f"，其他土地 {item['other_land_mu']:g}亩"
+                    self.output(
+                        f"  - {item['household_id']}｜户籍 {item['registered_population']} 人｜"
+                        f"住宅 {item['legal_residential_area_m2']:g}㎡｜"
+                        f"宅基地认定 {item['homestead_recognized_m2']:g}㎡｜"
+                        f"承包地 {item['contracted_land_mu']:g}亩{other_land}｜"
+                        f"权属：{item['ownership_status']}"
+                    )
             else:
                 self._knowledge()
 
     def _map(self) -> None:
         document = self.api.get_map(self._require_session())
+        locations = list(document.get("locations", []))
+        if self.menu_mode:
+            selected_location = self._select(
+                f"地图入口（D{document.get('story_day', '?')}）",
+                [
+                    f"{item.get('name')}｜{item.get('description')}｜{item.get('visual_state')}"
+                    for item in locations
+                ],
+                back_label="返回游戏菜单",
+            )
+            if selected_location is None:
+                return
+            location = locations[selected_location]
+            cards = list(location.get("entry_cards", []))
+            if not cards:
+                self.output("这个地点今天没有可进入的人物、事件或资源行动。")
+                return
+            selected_card = self._select(
+                str(location.get("name", "地点入口")),
+                [
+                    f"{card.get('title')}｜{card.get('description')}｜"
+                    + (
+                        f"消耗 {card.get('cost_action_points')} 行动点"
+                        if card.get("available") else
+                        f"不可用：{card.get('unavailable_reason') or '条件不足'}"
+                    )
+                    for card in cards
+                ],
+                back_label="返回地图",
+            )
+            if selected_card is None:
+                return
+            card = cards[selected_card]
+            if not card.get("available"):
+                self.output(str(card.get("unavailable_reason") or "当前入口不可用。"))
+                return
+            submit = card.get("submit") or {}
+            if card.get("entry_type") == "conversation":
+                opportunities = self.api.get_opportunities(
+                    self._require_session()
+                ).get("opportunities", [])
+                opportunity = next(
+                    (
+                        item for item in opportunities
+                        if item.get("opportunity_id") == submit.get("opportunity_id")
+                    ),
+                    None,
+                )
+                if opportunity is None:
+                    self.output("该人物入口刚刚发生变化，请刷新地图后重试。")
+                    return
+                self._run_conversation(opportunity)
+                return
+            actions = self.api.get_actions(self._require_session())
+            self.state_version = int(actions["state_version"])
+            action = next(
+                (
+                    item for item in actions.get("actions", [])
+                    if item.get("action_id") == submit.get("action_id")
+                ),
+                None,
+            )
+            if action is None or not action.get("available"):
+                self.output("该行动入口刚刚发生变化，请刷新地图后重试。")
+                return
+            self._run_resource_action(action)
+            return
         self.output(f"地图入口（D{document.get('story_day', '?')}）：")
-        for item in document.get("locations", []):
-            opportunities = ", ".join(item.get("opportunity_ids", [])) or "无"
+        for item in locations:
+            cards = item.get("entry_cards", [])
             self.output(
-                f"  {item.get('location_id')}｜{item.get('name')}｜"
-                f"{item.get('visual_state')}｜机会：{opportunities}"
+                f"  {item.get('name')}｜{item.get('visual_state')}｜"
+                f"当前入口 {len(cards)} 项"
             )
         self.output(
             "查看完毕，返回游戏菜单。" if self.menu_mode else
@@ -603,8 +769,27 @@ class TerminalApp:
         self.output(
             f"复盘：决策 {len(document.get('decision_timeline', []))}｜"
             f"行动 {len(document.get('action_timeline', []))}｜"
+            f"会谈记录 {len(document.get('conversation_timeline', []))}｜"
             f"夜间 {len(document.get('night_timeline', []))}"
         )
+        for item in document.get("decision_timeline", []):
+            self.output(
+                f"  D{item.get('story_day')} 决策｜{item.get('title')}｜"
+                f"选择：{item.get('choice')}"
+            )
+        for item in document.get("action_timeline", []):
+            self.output(
+                f"  D{item.get('story_day')} 行动｜{item.get('name')}｜"
+                f"行动点 {item.get('cost_action_points', 0)}｜"
+                f"财政 {item.get('budget_cost', 0)}"
+            )
+            if item.get("public_result"):
+                self.output(f"    公开结果：{item['public_result']}")
+        for item in document.get("known_facts", []):
+            self.output(
+                f"  材料｜{item.get('title')}｜{item.get('source_label')}\n"
+                f"    {item.get('text')}"
+            )
         ending = document.get("ending")
         if ending:
             self.output(
@@ -631,16 +816,20 @@ class TerminalApp:
             "下一步：输入 origins 开始新局，或 scene 返回当前游戏。"
         )
 
-    def _end_day(self) -> None:
+    def _end_day(self, *, active_rest: bool = False) -> None:
         client_action_id = self.api.new_key("end")
         result = self.api.end_day(
             self._require_session(),
             state_version=self._require_version(),
+            active_rest=active_rest,
             client_action_id=client_action_id,
         )
         result = self._await_operation(client_action_id, result)
         self.state_version = int(result["state_version"])
-        self.output("夜间模拟完成。")
+        self.output(
+            "你主动收工，剩余行动点已经作废；夜间结算完成。"
+            if active_rest else "夜间模拟完成。"
+        )
         self._refresh()
 
     def _run_menu(self) -> int:
@@ -784,6 +973,9 @@ class TerminalApp:
             options.append(("action", "执行自主行动"))
         if self.commands.get("can_end_day"):
             options.append(("end", "结束当天并执行夜间推进"))
+        points = self.state.get("ledger", {}).get("action_points", {})
+        if points.get("overtime_available"):
+            options.append(("overtime", "申请加班 1–3 点（本章最多三次）"))
         options.extend((
             ("desk", "打开县长案头（任务、政策、资源和材料）"),
             ("knowledge", "查看已掌握的事实、线索和证据"),
@@ -805,8 +997,24 @@ class TerminalApp:
         elif action == "action":
             self._menu_action()
         elif action == "end":
-            if self._select("确认结束当天？", ["确认结束当天"], back_label="取消") is not None:
-                self._end_day()
+            rest_choice = self._select(
+                "选择今天的收束方式",
+                [
+                    "正常结束当天并进入夜间",
+                    "主动收工休息（剩余行动点作废，日终额外恢复疲惫）",
+                ],
+                back_label="取消",
+            )
+            if rest_choice is not None:
+                self._end_day(active_rest=rest_choice == 1)
+        elif action == "overtime":
+            selected_points = self._select(
+                "选择加班额度",
+                ["加班 1 点", "加班 2 点", "加班 3 点"],
+                back_label="取消",
+            )
+            if selected_points is not None:
+                self._request_overtime(selected_points + 1)
         elif action == "desk":
             self._menu_desk()
         elif action == "knowledge":
@@ -914,7 +1122,9 @@ class TerminalApp:
         )
         if selected is None:
             return
-        opportunity = opportunities[selected]
+        self._run_conversation(opportunities[selected])
+
+    def _run_conversation(self, opportunity: dict) -> None:
         if opportunity.get("conversation_active"):
             conversation_id = str(opportunity["conversation_id"])
         else:
@@ -956,28 +1166,26 @@ class TerminalApp:
 
     def _menu_action(self) -> None:
         document = self.api.get_actions(self._require_session())
-        entries: list[tuple[dict, str]] = []
-        for action in document.get("actions", []):
-            if not action.get("available"):
-                continue
-            for opportunity_id in action.get("opportunity_ids", []):
-                entries.append((action, str(opportunity_id)))
+        self.state_version = int(document["state_version"])
+        entries = [
+            action for action in document.get("actions", [])
+            if action.get("available")
+            and action.get("execution_mode") == "resource_action"
+        ]
         if not entries:
-            self.output("当前没有可执行的自主行动。")
+            self.output("当前没有可直接执行的资源行动；人物类行动请从“交谈”进入。")
             return
         selected = self._select(
             "请选择自主行动",
             [
-                f"{action.get('name')}｜对象 "
-                f"{action.get('opportunity_labels', {}).get(opportunity_id, '当前剧情对象')}｜"
-                f"消耗 {action.get('cost_action_points')} 行动点"
-                for action, opportunity_id in entries
+                f"{action.get('name')}｜消耗 {action.get('cost_action_points')} 行动点｜"
+                f"直接财政支出 {action.get('direct_budget_cost', 0)}"
+                for action in entries
             ],
             back_label="返回上一级",
         )
         if selected is not None:
-            action, opportunity_id = entries[selected]
-            self._do(str(action["action_id"]), opportunity_id)
+            self._run_resource_action(entries[selected])
 
     def _menu_logout(self) -> None:
         self.api.logout()

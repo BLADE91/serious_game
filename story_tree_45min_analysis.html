@@ -1,0 +1,1641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Story Path Tree</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;max-width:736px;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Story Path Tree" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Story Path Tree&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;sg-story-tree&quot;&gt;
+  &lt;div class=&quot;sg-summary&quot; aria-label=&quot;剧情树摘要&quot;&gt;
+    &lt;strong&gt;完整剧情树&lt;/strong&gt;
+    &lt;span&gt;根节点 → 76 个剧情/事件节点 → 第九十日结算 → 24 个主结局 → 95 个叶子结局&lt;/span&gt;
+    &lt;span class=&quot;text-muted&quot;&gt;蓝色主干按时间顺序推进，结局从结算节点向右分枝；所有连线均单向且无回环。&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;sg-toolbar&quot; aria-label=&quot;剧情树操作&quot;&gt;
+    &lt;label class=&quot;form-label sg-search-label&quot; for=&quot;sg-search&quot;&gt;定位剧情
+      &lt;input class=&quot;form-control&quot; id=&quot;sg-search&quot; type=&quot;search&quot; placeholder=&quot;输入 DP、EV 或剧情名称&quot;&gt;
+    &lt;/label&gt;
+    &lt;button class=&quot;btn&quot; id=&quot;sg-search-button&quot; type=&quot;button&quot;&gt;定位&lt;/button&gt;
+    &lt;button class=&quot;btn&quot; id=&quot;sg-expand-chapters&quot; type=&quot;button&quot;&gt;展开全部章节&lt;/button&gt;
+    &lt;button class=&quot;btn&quot; id=&quot;sg-collapse-chapters&quot; type=&quot;button&quot;&gt;收起章节&lt;/button&gt;
+    &lt;button class=&quot;btn&quot; id=&quot;sg-expand-endings&quot; type=&quot;button&quot;&gt;展开全部结局&lt;/button&gt;
+    &lt;button class=&quot;btn&quot; id=&quot;sg-collapse-endings&quot; type=&quot;button&quot;&gt;收起结局&lt;/button&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;sg-legend text-small&quot; aria-label=&quot;图例&quot;&gt;
+    &lt;span&gt;&lt;i class=&quot;sg-dot sg-dot-root&quot;&gt;&lt;/i&gt;根与章节主干&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;sg-dot sg-dot-main&quot;&gt;&lt;/i&gt;必经剧情&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;sg-dot sg-dot-conditional&quot;&gt;&lt;/i&gt;条件剧情&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;sg-dot sg-dot-event&quot;&gt;&lt;/i&gt;突发事件&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;sg-dot sg-dot-ending&quot;&gt;&lt;/i&gt;主结局&lt;/span&gt;
+    &lt;span&gt;&lt;i class=&quot;sg-dot sg-dot-leaf&quot;&gt;&lt;/i&gt;叶子结局&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;sg-canvas card&quot;&gt;
+    &lt;svg id=&quot;sg-tree-svg&quot; role=&quot;img&quot; aria-label=&quot;可缩放、可拖动的剧情节点树&quot; tabindex=&quot;0&quot;&gt;
+      &lt;g id=&quot;sg-scene&quot;&gt;
+        &lt;g id=&quot;sg-edges&quot;&gt;&lt;/g&gt;
+        &lt;g id=&quot;sg-nodes&quot;&gt;&lt;/g&gt;
+      &lt;/g&gt;
+    &lt;/svg&gt;
+    &lt;div class=&quot;sg-zoom-tools&quot; aria-label=&quot;画布缩放&quot;&gt;
+      &lt;button class=&quot;btn&quot; id=&quot;sg-zoom-in&quot; type=&quot;button&quot; title=&quot;放大&quot; aria-label=&quot;放大&quot;&gt;+&lt;/button&gt;
+      &lt;button class=&quot;btn&quot; id=&quot;sg-zoom-out&quot; type=&quot;button&quot; title=&quot;缩小&quot; aria-label=&quot;缩小&quot;&gt;−&lt;/button&gt;
+      &lt;button class=&quot;btn&quot; id=&quot;sg-fit&quot; type=&quot;button&quot; title=&quot;适应画布&quot; aria-label=&quot;适应画布&quot;&gt;适应&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;sg-detail&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;span class=&quot;viz-badge&quot; id=&quot;sg-detail-code&quot;&gt;根节点&lt;/span&gt;
+    &lt;strong id=&quot;sg-detail-title&quot;&gt;李致远到任云溪县&lt;/strong&gt;
+    &lt;span class=&quot;text-small text-muted&quot; id=&quot;sg-detail-text&quot;&gt;点击蓝色章节节点展开具体剧情；点击橙色主结局展开叶子路径。&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;sg-timing&quot;&gt;
+    &lt;label class=&quot;form-label&quot; for=&quot;sg-turns&quot;&gt;每章自由对话轮数：&lt;strong id=&quot;sg-turns-value&quot;&gt;3&lt;/strong&gt;
+      &lt;input class=&quot;form-range&quot; id=&quot;sg-turns&quot; type=&quot;range&quot; min=&quot;0&quot; max=&quot;12&quot; step=&quot;1&quot; value=&quot;3&quot;&gt;
+    &lt;/label&gt;
+    &lt;label class=&quot;form-label&quot; for=&quot;sg-seconds&quot;&gt;每轮平均耗时：&lt;strong id=&quot;sg-seconds-value&quot;&gt;22 秒&lt;/strong&gt;
+      &lt;input class=&quot;form-range&quot; id=&quot;sg-seconds&quot; type=&quot;range&quot; min=&quot;10&quot; max=&quot;45&quot; step=&quot;1&quot; value=&quot;22&quot;&gt;
+    &lt;/label&gt;
+    &lt;p&gt;&lt;strong&gt;时长结论：&lt;/strong&gt;默认估算为 40.1-58.4 分钟；当前剧本允许无限对话，所以任何叶子的理论最大时长仍为 ∞，不能硬性保证 45 分钟。&lt;/p&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+
+&lt;style&gt;
+  #sg-story-tree { display: grid; gap: .85rem; color: var(--foreground); }
+  #sg-story-tree .sg-summary { display: grid; gap: .2rem; }
+  #sg-story-tree .sg-summary strong { font-size: 1.1rem; }
+  #sg-story-tree .sg-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
+  #sg-story-tree .sg-search-label { flex: 1 1 18rem; min-width: min(100%, 18rem); }
+  #sg-story-tree .sg-legend { display: flex; flex-wrap: wrap; gap: .45rem 1rem; color: var(--muted-foreground); }
+  #sg-story-tree .sg-legend span { display: inline-flex; gap: .35rem; align-items: center; }
+  #sg-story-tree .sg-dot { width: .7rem; height: .7rem; border-radius: 50%; display: inline-block; }
+  #sg-story-tree .sg-dot-root { background: var(--viz-series-1); }
+  #sg-story-tree .sg-dot-main { background: var(--foreground); }
+  #sg-story-tree .sg-dot-conditional { background: var(--viz-series-3); }
+  #sg-story-tree .sg-dot-event { background: var(--viz-series-5); }
+  #sg-story-tree .sg-dot-ending { background: var(--viz-series-4); }
+  #sg-story-tree .sg-dot-leaf { background: var(--destructive); }
+  #sg-story-tree .sg-canvas { position: relative; overflow: hidden; height: min(72vh, 760px); min-height: 520px; padding: 0; background: color-mix(in srgb, var(--card) 96%, var(--muted)); }
+  #sg-story-tree #sg-tree-svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; user-select: none; }
+  #sg-story-tree #sg-tree-svg.is-dragging { cursor: grabbing; }
+  #sg-story-tree .sg-edge { fill: none; stroke: color-mix(in srgb, var(--muted-foreground) 48%, transparent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+  #sg-story-tree .sg-edge.sg-edge-trunk { stroke: var(--viz-series-1); stroke-width: 3; }
+  #sg-story-tree .sg-node { cursor: pointer; outline: none; }
+  #sg-story-tree .sg-node rect { rx: 6; fill: var(--card); stroke: var(--border); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  #sg-story-tree .sg-node:hover rect,
+  #sg-story-tree .sg-node:focus rect,
+  #sg-story-tree .sg-node.is-selected rect { stroke: var(--primary); stroke-width: 3; }
+  #sg-story-tree .sg-node text { fill: var(--foreground); font-size: 13px; pointer-events: none; letter-spacing: 0; }
+  #sg-story-tree .sg-node .sg-node-code { fill: var(--muted-foreground); font-size: 11px; font-weight: 600; }
+  #sg-story-tree .sg-node-root rect,
+  #sg-story-tree .sg-node-chapter rect,
+  #sg-story-tree .sg-node-settlement rect { fill: color-mix(in srgb, var(--viz-series-1) 14%, var(--card)); stroke: var(--viz-series-1); }
+  #sg-story-tree .sg-node-conditional rect { fill: color-mix(in srgb, var(--viz-series-3) 12%, var(--card)); stroke: var(--viz-series-3); }
+  #sg-story-tree .sg-node-event rect { fill: color-mix(in srgb, var(--viz-series-5) 13%, var(--card)); stroke: var(--viz-series-5); }
+  #sg-story-tree .sg-node-ending rect { fill: color-mix(in srgb, var(--viz-series-4) 14%, var(--card)); stroke: var(--viz-series-4); }
+  #sg-story-tree .sg-node-leaf rect { fill: color-mix(in srgb, var(--destructive) 8%, var(--card)); stroke: color-mix(in srgb, var(--destructive) 72%, var(--border)); }
+  #sg-story-tree .sg-node-toggle { fill: var(--foreground); font-size: 16px; font-weight: 700; }
+  #sg-story-tree .sg-zoom-tools { position: absolute; right: .75rem; bottom: .75rem; display: flex; gap: .35rem; }
+  #sg-story-tree .sg-zoom-tools .btn { min-width: 2.4rem; background: var(--card); }
+  #sg-story-tree .sg-detail { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem .65rem; align-items: center; padding: .7rem 0; border-bottom: 1px solid var(--border); }
+  #sg-story-tree .sg-detail .text-small { grid-column: 2; overflow-wrap: anywhere; }
+  #sg-story-tree .sg-timing { display: flex; flex-wrap: wrap; gap: .7rem 1.25rem; align-items: end; }
+  #sg-story-tree .sg-timing .form-label { flex: 1 1 16rem; min-width: min(100%, 16rem); }
+  #sg-story-tree .sg-timing .form-range { width: 100%; }
+  #sg-story-tree .sg-timing p { flex: 2 1 28rem; margin: 0; padding-left: .75rem; border-left: 3px solid var(--destructive); line-height: 1.5; }
+  @media (max-width: 620px) {
+    #sg-story-tree .sg-canvas { min-height: 560px; height: 72vh; }
+    #sg-story-tree .sg-toolbar .btn { flex: 1 1 calc(50% - .5rem); }
+    #sg-story-tree .sg-search-label { flex-basis: 100%; }
+    #sg-story-tree .sg-detail { grid-template-columns: 1fr; }
+    #sg-story-tree .sg-detail .text-small { grid-column: 1; }
+  }
+&lt;/style&gt;
+
+&lt;script&gt;
+(() =&gt; {
+  const root = document.getElementById(&#x27;sg-story-tree&#x27;);
+  if (!root) return;
+
+  const chapters = [
+    {
+      id: &#x27;CH1&#x27;, name: &#x27;迷雾初现&#x27;, days: &#x27;第 1-15 日&#x27;, minutes: [4.5, 6.0],
+      nodes: [
+        [&#x27;EV1-01&#x27;, &#x27;接风袋：第一次廉政试炼&#x27;, &#x27;event&#x27;],
+        [&#x27;DP1-01&#x27;, &#x27;组建专班与摸派系图&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-02&#x27;, &#x27;补偿争议与乡贤路线&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-03&#x27;, &#x27;弱势户走访袁桂兰&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-04&#x27;, &#x27;立威一幕对孙强&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-05&#x27;, &#x27;与赵建国的第一回合&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-06&#x27;, &#x27;首轮签约试水&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-07&#x27;, &#x27;程序红线&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-08&#x27;, &#x27;下村攻坚的先后&#x27;, &#x27;main&#x27;],
+        [&#x27;DP1-09&#x27;, &#x27;夜间串联的初兆&#x27;, &#x27;main&#x27;],
+        [&#x27;EV1-02&#x27;, &#x27;渡口堵路&#x27;, &#x27;event&#x27;],
+        [&#x27;EV1-03&#x27;, &#x27;病儿急送&#x27;, &#x27;event&#x27;]
+      ]
+    },
+    {
+      id: &#x27;CH2&#x27;, name: &#x27;暗流涌动&#x27;, days: &#x27;第 16-30 日&#x27;, minutes: [4.5, 6.0],
+      nodes: [
+        [&#x27;DP2-01&#x27;, &#x27;四十一张原始凭证&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-02&#x27;, &#x27;茶叶盒底下的那张卡&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-03&#x27;, &#x27;粮站后院这半个钟头&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-04&#x27;, &#x27;三份一模一样的报告&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-05&#x27;, &#x27;三十六户怎么攻&#x27;, &#x27;main&#x27;],
+        [&#x27;EV2-01&#x27;, &#x27;谭老六堵了县政府的门&#x27;, &#x27;event&#x27;],
+        [&#x27;DP2-06&#x27;, &#x27;站队&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-07&#x27;, &#x27;文件上的那道红线&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-08&#x27;, &#x27;四条战线排先后&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-09&#x27;, &#x27;护住刘三&#x27;, &#x27;main&#x27;],
+        [&#x27;DP2-10&#x27;, &#x27;周转金掰成几瓣&#x27;, &#x27;main&#x27;]
+      ]
+    },
+    {
+      id: &#x27;CH3&#x27;, name: &#x27;风暴前夕&#x27;, days: &#x27;第 31-45 日&#x27;, minutes: [5.0, 7.0],
+      nodes: [
+        [&#x27;DP3-01&#x27;, &#x27;见面定调&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-02&#x27;, &#x27;台账关&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-03&#x27;, &#x27;赵建国甩锅&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-04&#x27;, &#x27;瞒报红线&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-05&#x27;, &#x27;钱伟的条件&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-06&#x27;, &#x27;谭老六的状子&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-07&#x27;, &#x27;四桩事排先后&#x27;, &#x27;main&#x27;],
+        [&#x27;EV3-01&#x27;, &#x27;血铅患儿曝光&#x27;, &#x27;event&#x27;],
+        [&#x27;DP3-08&#x27;, &#x27;个别谈话&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-09&#x27;, &#x27;情况说明&#x27;, &#x27;main&#x27;],
+        [&#x27;DP3-10&#x27;, &#x27;最后两日的定向&#x27;, &#x27;main&#x27;]
+      ]
+    },
+    {
+      id: &#x27;CH4&#x27;, name: &#x27;真相与谎言&#x27;, days: &#x27;第 46-60 日&#x27;, minutes: [5.5, 8.0],
+      nodes: [
+        [&#x27;DP4-01&#x27;, &#x27;一百零七份单子&#x27;, &#x27;main&#x27;],
+        [&#x27;DP4-02&#x27;, &#x27;通报的先后&#x27;, &#x27;main&#x27;],
+        [&#x27;DP4-03&#x27;, &#x27;一个信封&#x27;, &#x27;main&#x27;],
+        [&#x27;DP4-04&#x27;, &#x27;祠堂里的第二堵墙&#x27;, &#x27;main&#x27;],
+        [&#x27;DP4-05&#x27;, &#x27;祠堂重建那块地&#x27;, &#x27;conditional&#x27;],
+        [&#x27;DP4-06&#x27;, &#x27;那张白条&#x27;, &#x27;main&#x27;],
+        [&#x27;EV4-01&#x27;, &#x27;门诊楼前&#x27;, &#x27;event&#x27;],
+        [&#x27;DP4-07&#x27;, &#x27;那份名册&#x27;, &#x27;main&#x27;],
+        [&#x27;DP4-08&#x27;, &#x27;十一个孩子&#x27;, &#x27;main&#x27;],
+        [&#x27;EV4-02&#x27;, &#x27;深夜登门&#x27;, &#x27;event&#x27;],
+        [&#x27;DP4-09&#x27;, &#x27;用途栏那四个字&#x27;, &#x27;main&#x27;],
+        [&#x27;EV4-03&#x27;, &#x27;围堰漫了&#x27;, &#x27;event&#x27;],
+        [&#x27;EV4-04&#x27;, &#x27;先遣先到&#x27;, &#x27;event&#x27;],
+        [&#x27;DP4-10&#x27;, &#x27;怎么见人&#x27;, &#x27;main&#x27;],
+        [&#x27;DP4-11&#x27;, &#x27;座谈桌上那句话&#x27;, &#x27;main&#x27;]
+      ]
+    },
+    {
+      id: &#x27;CH5&#x27;, name: &#x27;最后冲刺&#x27;, days: &#x27;第 61-75 日&#x27;, minutes: [5.5, 8.0],
+      nodes: [
+        [&#x27;DP5-01&#x27;, &#x27;十五天怎么打&#x27;, &#x27;main&#x27;],
+        [&#x27;DP5-02&#x27;, &#x27;祠堂的门槛&#x27;, &#x27;main&#x27;],
+        [&#x27;DP5-03&#x27;, &#x27;后山那道坡&#x27;, &#x27;main&#x27;],
+        [&#x27;EV5-01&#x27;, &#x27;祠堂前的白幡&#x27;, &#x27;conditional&#x27;],
+        [&#x27;DP5-04&#x27;, &#x27;手写本子：先摆什么&#x27;, &#x27;conditional&#x27;],
+        [&#x27;DP5-05&#x27;, &#x27;手写本子：半寸&#x27;, &#x27;conditional&#x27;],
+        [&#x27;DP5-06&#x27;, &#x27;四十一年没签过一个字&#x27;, &#x27;conditional&#x27;],
+        [&#x27;EV5-02&#x27;, &#x27;门板上的复印件&#x27;, &#x27;event&#x27;],
+        [&#x27;DP5-07&#x27;, &#x27;小卖部门口的那道坎&#x27;, &#x27;conditional&#x27;],
+        [&#x27;DP5-08&#x27;, &#x27;孩子的那笔账&#x27;, &#x27;main&#x27;],
+        [&#x27;DP5-09&#x27;, &#x27;周大山的那张纸&#x27;, &#x27;main&#x27;],
+        [&#x27;DP5-10&#x27;, &#x27;书记的那条线&#x27;, &#x27;main&#x27;],
+        [&#x27;DP5-11&#x27;, &#x27;稳住了没有&#x27;, &#x27;main&#x27;],
+        [&#x27;DP5-12&#x27;, &#x27;剩下十五天的次序&#x27;, &#x27;main&#x27;],
+        [&#x27;EV5-03&#x27;, &#x27;五分钟&#x27;, &#x27;event&#x27;]
+      ]
+    },
+    {
+      id: &#x27;CH6&#x27;, name: &#x27;验收之日&#x27;, days: &#x27;第 76-90 日&#x27;, minutes: [5.5, 8.0],
+      nodes: [
+        [&#x27;DP6-01&#x27;, &#x27;迎检定调：台账怎么摆&#x27;, &#x27;main&#x27;],
+        [&#x27;DP6-02&#x27;, &#x27;样板房现场&#x27;, &#x27;main&#x27;],
+        [&#x27;DP6-03&#x27;, &#x27;血铅二八七善后核验&#x27;, &#x27;main&#x27;],
+        [&#x27;EV6-01&#x27;, &#x27;患儿家属现场&#x27;, &#x27;event&#x27;],
+        [&#x27;DP6-04&#x27;, &#x27;两百万前期协调费&#x27;, &#x27;main&#x27;],
+        [&#x27;DP6-05&#x27;, &#x27;铁盒里的账怎么走&#x27;, &#x27;main&#x27;],
+        [&#x27;EV6-02&#x27;, &#x27;二次舆情&#x27;, &#x27;event&#x27;],
+        [&#x27;DP6-06&#x27;, &#x27;陈默的稿子&#x27;, &#x27;main&#x27;],
+        [&#x27;DP6-07&#x27;, &#x27;整改清单怎么排&#x27;, &#x27;main&#x27;],
+        [&#x27;DP6-08&#x27;, &#x27;问责名单报不报&#x27;, &#x27;main&#x27;],
+        [&#x27;DP6-09&#x27;, &#x27;会前怎么和他说&#x27;, &#x27;main&#x27;],
+        [&#x27;DP6-10&#x27;, &#x27;常委会上怎么讲&#x27;, &#x27;main&#x27;]
+      ]
+    }
+  ];
+
+  const endings = [
+    [&#x27;01&#x27;, &#x27;铁窗之内&#x27;, &#x27;轴D＝入局败露&#x27;, [&#x27;溃败&#x27;,&#x27;差一两户&#x27;,&#x27;压线&#x27;,&#x27;宽裕&#x27;,&#x27;全额&#x27;], 1.0],
+    [&#x27;02&#x27;, &#x27;一票否决&#x27;, &#x27;轴V＝否决&#x27;, [&#x27;溃败&#x27;,&#x27;差一两户&#x27;,&#x27;压线&#x27;,&#x27;宽裕&#x27;,&#x27;全额&#x27;], 0.8],
+    [&#x27;03&#x27;, &#x27;强手收场&#x27;, &#x27;轴M＝暴力&#x27;, [&#x27;溃败&#x27;,&#x27;差一两户&#x27;,&#x27;压线&#x27;,&#x27;宽裕&#x27;,&#x27;全额&#x27;], 1.2],
+    [&#x27;04&#x27;, &#x27;祠堂封门&#x27;, &#x27;掘坟结怨为真&#x27;, [&#x27;无知&#x27;,&#x27;知而捂&#x27;,&#x27;揭而未治&#x27;,&#x27;揭而已治&#x27;], 1.0],
+    [&#x27;05&#x27;, &#x27;掩耳盗铃&#x27;, &#x27;样板充数且居功避重&#x27;, [&#x27;溃败&#x27;,&#x27;差一两户&#x27;,&#x27;压线&#x27;,&#x27;宽裕&#x27;,&#x27;全额&#x27;], 0.7],
+    [&#x27;06&#x27;, &#x27;全线溃败&#x27;, &#x27;轴A＝溃败&#x27;, [&#x27;未触碰&#x27;,&#x27;捂住&#x27;,&#x27;弃车保帅&#x27;,&#x27;端掉&#x27;], 0.0],
+    [&#x27;07&#x27;, &#x27;悲壮的失守&#x27;, &#x27;差一两户且揭而已治&#x27;, [&#x27;归心&#x27;,&#x27;认可&#x27;,&#x27;疏离&#x27;,&#x27;离散&#x27;], 0.8],
+    [&#x27;08&#x27;, &#x27;功亏一篑&#x27;, &#x27;轴A＝差一两户&#x27;, [&#x27;归附&#x27;,&#x27;中立&#x27;,&#x27;对立&#x27;,&#x27;掘坟结怨&#x27;], 0.5],
+    [&#x27;09&#x27;, &#x27;串供过关&#x27;, &#x27;达线且轴R＝串供口径&#x27;, [&#x27;无知&#x27;,&#x27;知而捂&#x27;,&#x27;揭而未治&#x27;,&#x27;揭而已治&#x27;], 0.5],
+    [&#x27;10&#x27;, &#x27;粉饰太平&#x27;, &#x27;达线且轴X＝假&#x27;, [&#x27;无知&#x27;,&#x27;知而捂&#x27;,&#x27;揭而未治&#x27;,&#x27;揭而已治&#x27;], 0.5],
+    [&#x27;11&#x27;, &#x27;报喜不报忧&#x27;, &#x27;达线且瞒报或全面粉饰&#x27;, [&#x27;无知&#x27;,&#x27;知而捂&#x27;,&#x27;揭而未治&#x27;,&#x27;揭而已治&#x27;], 0.4],
+    [&#x27;12&#x27;, &#x27;一手遮天&#x27;, &#x27;达线且轴T＝知而捂&#x27;, [&#x27;未触碰&#x27;,&#x27;捂住&#x27;,&#x27;弃车保帅&#x27;,&#x27;端掉&#x27;], 0.6],
+    [&#x27;13&#x27;, &#x27;弃车保帅&#x27;, &#x27;达线且轴C＝弃车保帅&#x27;, [&#x27;归心&#x27;,&#x27;认可&#x27;,&#x27;疏离&#x27;,&#x27;离散&#x27;], 0.5],
+    [&#x27;14&#x27;, &#x27;捂住的账&#x27;, &#x27;达线且轴C＝捂住&#x27;, [&#x27;归心&#x27;,&#x27;认可&#x27;,&#x27;疏离&#x27;,&#x27;离散&#x27;], 0.5],
+    [&#x27;15&#x27;, &#x27;铁腕的代价&#x27;, &#x27;达线、施压且民心疏离/离散&#x27;, [&#x27;未起疑&#x27;,&#x27;警觉&#x27;,&#x27;立案&#x27;], 0.7],
+    [&#x27;16&#x27;, &#x27;人走心散&#x27;, &#x27;达线且轴P＝离散&#x27;, [&#x27;拥护&#x27;,&#x27;离心&#x27;,&#x27;结怨&#x27;], 0.6],
+    [&#x27;17&#x27;, &#x27;独木难支&#x27;, &#x27;达线且轴K＝结怨&#x27;, [&#x27;未接触&#x27;,&#x27;结盟发稿&#x27;,&#x27;被压制&#x27;], 0.6],
+    [&#x27;18&#x27;, &#x27;记者的沉默&#x27;, &#x27;达线且轴E＝被压制&#x27;, [&#x27;揭而已治&#x27;,&#x27;揭而未治&#x27;,&#x27;知而捂&#x27;,&#x27;无知&#x27;], 0.7],
+    [&#x27;19&#x27;, &#x27;巡察组的档案&#x27;, &#x27;达线且轴J＝立案&#x27;, [&#x27;未触碰&#x27;,&#x27;捂住&#x27;,&#x27;弃车保帅&#x27;,&#x27;端掉&#x27;], 0.7],
+    [&#x27;20&#x27;, &#x27;无知者的功劳&#x27;, &#x27;达线且轴T＝无知&#x27;, [&#x27;揽责&#x27;,&#x27;中立&#x27;,&#x27;居功&#x27;], 0.3],
+    [&#x27;21&#x27;, &#x27;揭而未治&#x27;, &#x27;达线且轴T＝揭而未治&#x27;, [&#x27;背书&#x27;,&#x27;默许&#x27;,&#x27;弃保&#x27;,&#x27;否决&#x27;], 0.7],
+    [&#x27;22&#x27;, &#x27;山河可鉴&#x27;, &#x27;宽裕/全额、已治、端掉、干净、温和&#x27;, [&#x27;归心&#x27;,&#x27;认可&#x27;,&#x27;疏离&#x27;,&#x27;离散&#x27;], 1.5],
+    [&#x27;23&#x27;, &#x27;清白收官&#x27;, &#x27;达线、干净且揭而已治&#x27;, [&#x27;掘坟结怨&#x27;,&#x27;对立&#x27;,&#x27;归附&#x27;,&#x27;中立&#x27;], 1.2],
+    [&#x27;24&#x27;, &#x27;尘埃落定&#x27;, &#x27;前 23 行均未命中&#x27;, [&#x27;揽责&#x27;,&#x27;中立&#x27;,&#x27;居功&#x27;], 0.0]
+  ];
+
+  const complexity = {
+    &#x27;溃败&#x27;:0, &#x27;差一两户&#x27;:0.5, &#x27;压线&#x27;:1.0, &#x27;宽裕&#x27;:1.5, &#x27;全额&#x27;:2.0,
+    &#x27;无知&#x27;:0, &#x27;知而捂&#x27;:0.5, &#x27;揭而未治&#x27;:1.2, &#x27;揭而已治&#x27;:2.0,
+    &#x27;未触碰&#x27;:0, &#x27;捂住&#x27;:0.4, &#x27;弃车保帅&#x27;:0.8, &#x27;端掉&#x27;:1.2,
+    &#x27;归心&#x27;:1.5, &#x27;认可&#x27;:1.0, &#x27;疏离&#x27;:0.5, &#x27;离散&#x27;:0,
+    &#x27;归附&#x27;:1.2, &#x27;中立&#x27;:0.5, &#x27;对立&#x27;:0.4, &#x27;掘坟结怨&#x27;:0.8,
+    &#x27;未起疑&#x27;:0, &#x27;警觉&#x27;:0.5, &#x27;立案&#x27;:1.0,
+    &#x27;拥护&#x27;:1.0, &#x27;离心&#x27;:0.4, &#x27;结怨&#x27;:0.7,
+    &#x27;未接触&#x27;:0, &#x27;结盟发稿&#x27;:1.0, &#x27;被压制&#x27;:0.7,
+    &#x27;揽责&#x27;:0.8, &#x27;居功&#x27;:0.3,
+    &#x27;背书&#x27;:1.0, &#x27;默许&#x27;:0.5, &#x27;弃保&#x27;:0.7, &#x27;否决&#x27;:0.9
+  };
+
+  const svg = root.querySelector(&#x27;#sg-tree-svg&#x27;);
+  const scene = root.querySelector(&#x27;#sg-scene&#x27;);
+  const edgesLayer = root.querySelector(&#x27;#sg-edges&#x27;);
+  const nodesLayer = root.querySelector(&#x27;#sg-nodes&#x27;);
+  const turnsEl = root.querySelector(&#x27;#sg-turns&#x27;);
+  const secondsEl = root.querySelector(&#x27;#sg-seconds&#x27;);
+  const turnsValueEl = root.querySelector(&#x27;#sg-turns-value&#x27;);
+  const secondsValueEl = root.querySelector(&#x27;#sg-seconds-value&#x27;);
+  const detailCodeEl = root.querySelector(&#x27;#sg-detail-code&#x27;);
+  const detailTitleEl = root.querySelector(&#x27;#sg-detail-title&#x27;);
+  const detailTextEl = root.querySelector(&#x27;#sg-detail-text&#x27;);
+  const searchEl = root.querySelector(&#x27;#sg-search&#x27;);
+  const kindLabel = { main: &#x27;必经剧情&#x27;, conditional: &#x27;条件剧情&#x27;, event: &#x27;突发事件&#x27; };
+  const structuralMin = chapters.reduce((sum, chapter) =&gt; sum + chapter.minutes[0], 0);
+  const structuralMax = chapters.reduce((sum, chapter) =&gt; sum + chapter.minutes[1], 0);
+  const expandedChapters = new Set();
+  const expandedGroups = new Set();
+  const expandedEndings = new Set();
+  const endingGroups = [
+    { id: &#x27;G1&#x27;, label: &#x27;结局 01-06&#x27;, detail: &#x27;入局败露、否决、暴力与全线失败&#x27;, endings: endings.slice(0, 6) },
+    { id: &#x27;G2&#x27;, label: &#x27;结局 07-12&#x27;, detail: &#x27;失守、粉饰、串供与知情捂盖&#x27;, endings: endings.slice(6, 12) },
+    { id: &#x27;G3&#x27;, label: &#x27;结局 13-18&#x27;, detail: &#x27;弃车保帅、民心离散与舆论代价&#x27;, endings: endings.slice(12, 18) },
+    { id: &#x27;G4&#x27;, label: &#x27;结局 19-24&#x27;, detail: &#x27;巡察、清白收官与兜底结局&#x27;, endings: endings.slice(18, 24) }
+  ];
+  const nodeById = new Map();
+  const positionById = new Map();
+  let selectedId = &#x27;root&#x27;;
+  let layoutBounds = { minX: 0, minY: 0, maxX: 1000, maxY: 1000 };
+  let transform = { x: 0, y: 0, k: 1 };
+  const NODE_W = 184;
+  const NODE_H = 58;
+  const LEAF_H = 72;
+  const X_STEP = 218;
+  const Y_STEP = 102;
+
+  function treeNode(id, code, label, type, detail, children = []) {
+    return { id, code, label, type, detail, children };
+  }
+
+  function buildTree() {
+    const rootNode = treeNode(&#x27;root&#x27;, &#x27;根节点&#x27;, &#x27;李致远到任云溪县&#x27;, &#x27;root&#x27;, &#x27;全部剧情路径的共同起点。&#x27;);
+    let cursor = rootNode;
+    chapters.forEach(chapter =&gt; {
+      const chapterNode = treeNode(
+        chapter.id,
+        chapter.id,
+        `${chapter.name} · ${chapter.days}`,
+        &#x27;chapter&#x27;,
+        `${chapter.nodes.length} 个具体剧情节点，基础时长 ${chapter.minutes[0]}-${chapter.minutes[1]} 分钟。点击可展开或收起。`
+      );
+      cursor.children = [chapterNode];
+      cursor = chapterNode;
+      if (expandedChapters.has(chapter.id)) {
+        chapter.nodes.forEach(node =&gt; {
+          const plotNode = treeNode(node[0], node[0], node[1], node[2], `${chapter.id} ${chapter.name} · ${kindLabel[node[2]]}`);
+          cursor.children = [plotNode];
+          cursor = plotNode;
+        });
+      }
+    });
+    const settlement = treeNode(&#x27;settlement&#x27;, &#x27;第 90 日&#x27;, &#x27;十四条轴按优先级结算&#x27;, &#x27;settlement&#x27;, &#x27;根据资源、民心、程序、廉政、舆情等状态，进入第一个命中的主结局。&#x27;);
+    cursor.children = [settlement];
+    settlement.children = endingGroups.map(group =&gt; {
+      const groupNode = treeNode(group.id, group.label, group.detail, &#x27;ending&#x27;, &#x27;结局分组节点。点击展开其中六个具体主结局。&#x27;);
+      if (expandedGroups.has(group.id)) {
+        groupNode.children = group.endings.map(ending =&gt; {
+          const endingNode = treeNode(`END-${ending[0]}`, `#${ending[0]}`, ending[1], &#x27;ending&#x27;, `触发条件：${ending[2]}`);
+          endingNode.ending = ending;
+          if (expandedEndings.has(ending[0])) {
+            endingNode.children = ending[3].map((leafName, index) =&gt; {
+              const letter = String.fromCharCode(97 + index);
+              const leaf = treeNode(`LEAF-${ending[0]}${letter}`, `${ending[0]}${letter}`, leafName, &#x27;leaf&#x27;, `${ending[1]}的叶子结局`);
+              leaf.ending = ending;
+              leaf.leafName = leafName;
+              return leaf;
+            });
+          }
+          return endingNode;
+        });
+      }
+      return groupNode;
+    });
+    return rootNode;
+  }
+
+  function estimate(ending, leafName) {
+    const dialogueMinutes = chapters.length * Number(turnsEl.value) * Number(secondsEl.value) / 60;
+    const mainMod = Number(ending[4]);
+    const leafMod = complexity[leafName] ?? 0.5;
+    return [
+      structuralMin + 2 + dialogueMinutes + mainMod + leafMod,
+      structuralMax + 3 + dialogueMinutes * 1.35 + mainMod + leafMod * 1.25
+    ];
+  }
+
+  function layoutTree(tree) {
+    nodeById.clear();
+    positionById.clear();
+    let leafIndex = 0;
+    let maxDepth = 0;
+    function visit(node, depth) {
+      nodeById.set(node.id, node);
+      maxDepth = Math.max(maxDepth, depth);
+      const childXs = node.children.map(child =&gt; visit(child, depth + 1));
+      const x = childXs.length ? childXs.reduce((sum, value) =&gt; sum + value, 0) / childXs.length : 80 + leafIndex++ * X_STEP;
+      const y = 54 + depth * Y_STEP;
+      positionById.set(node.id, { x, y });
+      return x;
+    }
+    visit(tree, 0);
+    const xs = [...positionById.values()].map(position =&gt; position.x);
+    layoutBounds = {
+      minX: Math.min(...xs) - NODE_W / 2 - 30,
+      maxX: Math.max(...xs) + NODE_W / 2 + 30,
+      minY: 10,
+      maxY: 54 + maxDepth * Y_STEP + LEAF_H + 30
+    };
+  }
+
+  function svgElement(name, attributes = {}) {
+    const element = document.createElementNS(&#x27;http://www.w3.org/2000/svg&#x27;, name);
+    Object.entries(attributes).forEach(([key, value]) =&gt; element.setAttribute(key, value));
+    return element;
+  }
+
+  function splitLabel(label, max = 13) {
+    if (label.length &lt;= max) return [label];
+    return [label.slice(0, max), `${label.slice(max, max * 2 - 1)}${label.length &gt; max * 2 - 1 ? &#x27;…&#x27; : &#x27;&#x27;}`];
+  }
+
+  function isExpandable(node) {
+    return node.type === &#x27;chapter&#x27; || node.id.startsWith(&#x27;G&#x27;) || node.id.startsWith(&#x27;END-&#x27;);
+  }
+
+  function isExpanded(node) {
+    if (node.type === &#x27;chapter&#x27;) return expandedChapters.has(node.id);
+    if (node.id.startsWith(&#x27;G&#x27;)) return expandedGroups.has(node.id);
+    if (node.id.startsWith(&#x27;END-&#x27;)) return expandedEndings.has(node.ending[0]);
+    return false;
+  }
+
+  function drawEdge(parent, child) {
+    const start = positionById.get(parent.id);
+    const end = positionById.get(child.id);
+    const midY = (start.y + end.y) / 2;
+    edgesLayer.appendChild(svgElement(&#x27;path&#x27;, {
+      d: `M ${start.x} ${start.y + NODE_H / 2} C ${start.x} ${midY}, ${end.x} ${midY}, ${end.x} ${end.y - NODE_H / 2}`,
+      class: `sg-edge ${child.type === &#x27;chapter&#x27; || [&#x27;main&#x27;,&#x27;conditional&#x27;,&#x27;event&#x27;,&#x27;settlement&#x27;].includes(child.type) ? &#x27;sg-edge-trunk&#x27; : &#x27;&#x27;}`
+    }));
+    child.children.forEach(grandchild =&gt; drawEdge(child, grandchild));
+  }
+
+  function showDetail(node) {
+    selectedId = node.id;
+    detailCodeEl.textContent = node.code;
+    detailTitleEl.textContent = node.label;
+    if (node.type === &#x27;leaf&#x27;) {
+      const [low, high] = estimate(node.ending, node.leafName);
+      detailTextEl.textContent = `${node.ending[1]} / ${node.leafName}；根到叶预计 ${low.toFixed(1)}-${high.toFixed(1)} 分钟，当前规则理论上限为 ∞。`;
+    } else {
+      detailTextEl.textContent = node.detail;
+    }
+    nodesLayer.querySelectorAll(&#x27;.sg-node&#x27;).forEach(element =&gt; element.classList.toggle(&#x27;is-selected&#x27;, element.dataset.id === node.id));
+  }
+
+  function toggleNode(node) {
+    if (node.type === &#x27;chapter&#x27;) {
+      expandedChapters.has(node.id) ? expandedChapters.delete(node.id) : expandedChapters.add(node.id);
+    } else if (node.id.startsWith(&#x27;G&#x27;)) {
+      expandedGroups.has(node.id) ? expandedGroups.delete(node.id) : expandedGroups.add(node.id);
+    } else if (node.id.startsWith(&#x27;END-&#x27;)) {
+      const endingId = node.ending[0];
+      expandedEndings.has(endingId) ? expandedEndings.delete(endingId) : expandedEndings.add(endingId);
+    } else {
+      showDetail(node);
+      return;
+    }
+    renderTree();
+    const updated = nodeById.get(node.id);
+    if (updated) showDetail(updated);
+    focusNode(node.id, .9);
+  }
+
+  function drawNode(node) {
+    const position = positionById.get(node.id);
+    const height = node.type === &#x27;leaf&#x27; ? LEAF_H : NODE_H;
+    const group = svgElement(&#x27;g&#x27;, {
+      class: `sg-node sg-node-${node.type}${selectedId === node.id ? &#x27; is-selected&#x27; : &#x27;&#x27;}`,
+      transform: `translate(${position.x - NODE_W / 2} ${position.y - height / 2})`,
+      tabindex: &#x27;0&#x27;,
+      role: &#x27;button&#x27;,
+      &#x27;aria-label&#x27;: `${node.code} ${node.label}`,
+      &#x27;data-id&#x27;: node.id
+    });
+    group.appendChild(svgElement(&#x27;rect&#x27;, { width: NODE_W, height }));
+    const title = svgElement(&#x27;title&#x27;);
+    title.textContent = `${node.code} · ${node.label}`;
+    group.appendChild(title);
+    const code = svgElement(&#x27;text&#x27;, { x: 10, y: 17, class: &#x27;sg-node-code&#x27; });
+    code.textContent = node.code;
+    group.appendChild(code);
+    const label = svgElement(&#x27;text&#x27;, { x: 10, y: 36 });
+    splitLabel(node.label).forEach((line, index) =&gt; {
+      const part = svgElement(&#x27;tspan&#x27;, { x: 10, dy: index === 0 ? 0 : 16 });
+      part.textContent = line;
+      label.appendChild(part);
+    });
+    group.appendChild(label);
+    if (node.type === &#x27;leaf&#x27;) {
+      const [low, high] = estimate(node.ending, node.leafName);
+      const time = svgElement(&#x27;text&#x27;, { x: 10, y: 64, class: &#x27;sg-node-code&#x27; });
+      time.textContent = `${low.toFixed(1)}-${high.toFixed(1)} 分钟 · 上限 ∞`;
+      group.appendChild(time);
+    }
+    if (isExpandable(node)) {
+      const toggle = svgElement(&#x27;text&#x27;, { x: NODE_W - 18, y: 19, class: &#x27;sg-node-toggle&#x27;, &#x27;text-anchor&#x27;: &#x27;middle&#x27; });
+      toggle.textContent = isExpanded(node) ? &#x27;−&#x27; : &#x27;+&#x27;;
+      group.appendChild(toggle);
+    }
+    group.addEventListener(&#x27;click&#x27;, event =&gt; { event.stopPropagation(); toggleNode(node); });
+    group.addEventListener(&#x27;keydown&#x27;, event =&gt; {
+      if (event.key === &#x27;Enter&#x27; || event.key === &#x27; &#x27;) {
+        event.preventDefault();
+        toggleNode(node);
+      }
+    });
+    nodesLayer.appendChild(group);
+    node.children.forEach(drawNode);
+  }
+
+  function renderTree(fit = false) {
+    const tree = buildTree();
+    layoutTree(tree);
+    edgesLayer.replaceChildren();
+    nodesLayer.replaceChildren();
+    tree.children.forEach(child =&gt; drawEdge(tree, child));
+    drawNode(tree);
+    if (fit) requestAnimationFrame(fitTree);
+    else applyTransform();
+  }
+
+  function applyTransform() {
+    scene.setAttribute(&#x27;transform&#x27;, `translate(${transform.x} ${transform.y}) scale(${transform.k})`);
+  }
+
+  function fitTree() {
+    const rect = svg.getBoundingClientRect();
+    const width = layoutBounds.maxX - layoutBounds.minX;
+    const height = layoutBounds.maxY - layoutBounds.minY;
+    const scale = Math.max(.12, Math.min(1.1, (rect.width - 50) / width, (rect.height - 50) / height));
+    transform.k = scale;
+    transform.x = (rect.width - width * scale) / 2 - layoutBounds.minX * scale;
+    transform.y = (rect.height - height * scale) / 2 - layoutBounds.minY * scale;
+    applyTransform();
+  }
+
+  function focusNode(id, desiredScale = 1) {
+    const position = positionById.get(id);
+    if (!position) return;
+    const rect = svg.getBoundingClientRect();
+    transform.k = Math.max(.55, Math.min(1.5, desiredScale));
+    transform.x = rect.width / 2 - position.x * transform.k;
+    transform.y = rect.height / 2 - position.y * transform.k;
+    applyTransform();
+  }
+
+  function adjustZoom(multiplier) {
+    const rect = svg.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const oldScale = transform.k;
+    const newScale = Math.max(.12, Math.min(2.5, oldScale * multiplier));
+    transform.x = centerX - (centerX - transform.x) * newScale / oldScale;
+    transform.y = centerY - (centerY - transform.y) * newScale / oldScale;
+    transform.k = newScale;
+    applyTransform();
+  }
+
+  function findAndFocus() {
+    const query = searchEl.value.trim().toLowerCase();
+    if (!query) return;
+    const chapterMatch = chapters.find(chapter =&gt; chapter.id.toLowerCase() === query || chapter.name.toLowerCase().includes(query));
+    if (chapterMatch) {
+      expandedChapters.add(chapterMatch.id);
+      renderTree();
+      showDetail(nodeById.get(chapterMatch.id));
+      focusNode(chapterMatch.id);
+      return;
+    }
+    for (const chapter of chapters) {
+      const plot = chapter.nodes.find(node =&gt; node[0].toLowerCase().includes(query) || node[1].toLowerCase().includes(query));
+      if (plot) {
+        expandedChapters.add(chapter.id);
+        renderTree();
+        showDetail(nodeById.get(plot[0]));
+        focusNode(plot[0]);
+        return;
+      }
+    }
+    for (const group of endingGroups) {
+      const ending = group.endings.find(item =&gt; item[0] === query.replace(&#x27;#&#x27;, &#x27;&#x27;) || item[1].toLowerCase().includes(query));
+      if (ending) {
+        expandedGroups.add(group.id);
+        renderTree();
+        showDetail(nodeById.get(`END-${ending[0]}`));
+        focusNode(`END-${ending[0]}`);
+        return;
+      }
+    }
+    detailCodeEl.textContent = &#x27;未找到&#x27;;
+    detailTitleEl.textContent = searchEl.value.trim();
+    detailTextEl.textContent = &#x27;请尝试输入完整 DP/EV 编号、章节名或主结局名称。&#x27;;
+  }
+
+  let drag = null;
+  svg.addEventListener(&#x27;pointerdown&#x27;, event =&gt; {
+    if (event.target.closest(&#x27;.sg-node&#x27;)) return;
+    drag = { x: event.clientX, y: event.clientY, tx: transform.x, ty: transform.y };
+    svg.classList.add(&#x27;is-dragging&#x27;);
+    svg.setPointerCapture(event.pointerId);
+  });
+  svg.addEventListener(&#x27;pointermove&#x27;, event =&gt; {
+    if (!drag) return;
+    transform.x = drag.tx + event.clientX - drag.x;
+    transform.y = drag.ty + event.clientY - drag.y;
+    applyTransform();
+  });
+  svg.addEventListener(&#x27;pointerup&#x27;, event =&gt; {
+    drag = null;
+    svg.classList.remove(&#x27;is-dragging&#x27;);
+    if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+  });
+  svg.addEventListener(&#x27;wheel&#x27;, event =&gt; {
+    event.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const oldScale = transform.k;
+    const newScale = Math.max(.12, Math.min(2.5, oldScale * (event.deltaY &lt; 0 ? 1.12 : .89)));
+    transform.x = pointerX - (pointerX - transform.x) * newScale / oldScale;
+    transform.y = pointerY - (pointerY - transform.y) * newScale / oldScale;
+    transform.k = newScale;
+    applyTransform();
+  }, { passive: false });
+
+  root.querySelector(&#x27;#sg-search-button&#x27;).addEventListener(&#x27;click&#x27;, findAndFocus);
+  searchEl.addEventListener(&#x27;keydown&#x27;, event =&gt; { if (event.key === &#x27;Enter&#x27;) findAndFocus(); });
+  root.querySelector(&#x27;#sg-expand-chapters&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+    chapters.forEach(chapter =&gt; expandedChapters.add(chapter.id));
+    renderTree(true);
+  });
+  root.querySelector(&#x27;#sg-collapse-chapters&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+    expandedChapters.clear();
+    renderTree(true);
+  });
+  root.querySelector(&#x27;#sg-expand-endings&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+    endingGroups.forEach(group =&gt; expandedGroups.add(group.id));
+    endings.forEach(ending =&gt; expandedEndings.add(ending[0]));
+    renderTree(true);
+  });
+  root.querySelector(&#x27;#sg-collapse-endings&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+    expandedGroups.clear();
+    expandedEndings.clear();
+    renderTree(true);
+  });
+  root.querySelector(&#x27;#sg-zoom-in&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; adjustZoom(1.2));
+  root.querySelector(&#x27;#sg-zoom-out&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; adjustZoom(.82));
+  root.querySelector(&#x27;#sg-fit&#x27;).addEventListener(&#x27;click&#x27;, fitTree);
+  turnsEl.addEventListener(&#x27;input&#x27;, () =&gt; {
+    turnsValueEl.textContent = turnsEl.value;
+    renderTree();
+    if (nodeById.has(selectedId)) showDetail(nodeById.get(selectedId));
+  });
+  secondsEl.addEventListener(&#x27;input&#x27;, () =&gt; {
+    secondsValueEl.textContent = `${secondsEl.value} 秒`;
+    renderTree();
+    if (nodeById.has(selectedId)) showDetail(nodeById.get(selectedId));
+  });
+  window.addEventListener(&#x27;resize&#x27;, fitTree);
+  renderTree(true);
+})();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

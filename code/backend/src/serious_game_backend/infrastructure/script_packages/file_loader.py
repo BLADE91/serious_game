@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from serious_game_backend.domain.action import ActionRule
+from serious_game_backend.domain.action import ActionRule, ResourceActionDefinition
 from serious_game_backend.domain.enums import ActionCostTier, AvailabilityMode, NPCStateTier
 from serious_game_backend.domain.errors import ContentValidationError
 from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
@@ -15,6 +15,7 @@ from serious_game_backend.domain.script_package import (
     FixedEventRule,
     MainEndingDefinition,
     MapLocationDefinition,
+    HouseholdDefinition,
     MetricBand,
     NPCProfileStub,
     ScriptPackage,
@@ -83,12 +84,25 @@ EXPECTED_SUPPORTING_RUNTIME = {
     "dp5_04_recovery",
     "dp5_05_recovery",
 }
+GAMEPLAY_V3_SUPPORTING_RUNTIME = {"dp3_tea_disposition"}
 ON_DEMAND_SUPPORTING_RUNTIME = {"dp5_04_recovery", "dp5_05_recovery"}
 ALLOWED_STATE_VALUES = {
     "lead_roster_disposition": {
         "未获取", "己方封存", "呈交上级", "交给记者", "被销毁"
     }
 }
+PLAYER_TEXT_INTERNAL_MARKERS = (
+    "开启旗标",
+    "关闭旗标",
+    "显示位",
+    "本节点",
+    "结局轴",
+    "状态量",
+    "代码照此算",
+    "行动点重置",
+    "轴 T",
+    "flag_",
+)
 
 
 class FileScriptPackageLoader:
@@ -118,6 +132,16 @@ class FileScriptPackageLoader:
 
         numbers = self._json(package_dir / "numbers.json")
         actions = self._load_actions(self._json(package_dir / "action_rules.json"))
+        resource_actions = self._load_resource_actions(
+            self._json(package_dir / "resource_actions.json")
+            if (package_dir / "resource_actions.json").is_file()
+            else {"actions": []}
+        )
+        households = self._load_households(
+            self._json(package_dir / "households.json")
+            if (package_dir / "households.json").is_file()
+            else {"households": []}
+        )
         calendar = self._load_calendar(self._json(package_dir / "story_calendar.json"))
         events = self._load_events(self._json(package_dir / "event_rules.json"))
         profiles = self._load_profiles(self._json(package_dir / "npc_profiles.json"))
@@ -142,6 +166,12 @@ class FileScriptPackageLoader:
         event_catalog = self._load_catalog(catalog_doc, "events")
         flags_doc = self._json(package_dir / "flags.json")
         registered_flags = frozenset(str(item) for item in flags_doc.get("registered_flags", []))
+        social_rules = (
+            self._json(package_dir / "social_rules.json")
+            if (package_dir / "social_rules.json").is_file()
+            else {}
+        )
+        gameplay_schema_version = int(manifest.get("gameplay_schema_version", 1))
         metric_bands = self._load_metric_bands(numbers)
         role_prompt_path = package_dir / "prompt_templates" / "role_turn_system.md"
         if not role_prompt_path.is_file():
@@ -167,6 +197,9 @@ class FileScriptPackageLoader:
             appendices,
             decision_catalog,
             event_catalog,
+            resource_actions,
+            households,
+            gameplay_schema_version=gameplay_schema_version,
             status=str(manifest["status"]),
         )
         return ScriptPackage(
@@ -185,6 +218,22 @@ class FileScriptPackageLoader:
             origins=origins,
             facts=facts,
             public_briefing=public_briefing,
+            resource_actions=resource_actions,
+            households=households,
+            initial_state=dict(numbers.get("initial_state", {})),
+            gameplay_schema_version=gameplay_schema_version,
+            origin_npc_attitude_modifiers={
+                str(origin_id): {
+                    str(npc_id): int(delta) for npc_id, delta in values.items()
+                }
+                for origin_id, values in social_rules.get(
+                    "origin_npc_attitude_modifiers", {}
+                ).items()
+            },
+            trust_rules=dict(social_rules.get("trust_rules", {})),
+            npc_relationships=tuple(
+                dict(item) for item in social_rules.get("npc_relationships", [])
+            ),
             interaction_opportunities=opportunities,
             registered_flags=registered_flags,
             map_locations=map_locations,
@@ -250,6 +299,81 @@ class FileScriptPackageLoader:
             )
         return result
 
+    @classmethod
+    def _load_resource_actions(
+        cls, document: dict
+    ) -> dict[str, ResourceActionDefinition]:
+        result: dict[str, ResourceActionDefinition] = {}
+        for item in document.get("actions", []):
+            action_id = str(item["action_id"])
+            if action_id in result:
+                raise ContentValidationError(f"资源 action_id 重复：{action_id}")
+            result[action_id] = ResourceActionDefinition(
+                action_id=action_id,
+                executor_kind=str(item["executor_kind"]),
+                enabled=bool(item.get("enabled", True)),
+                unavailable_reason=(
+                    str(item["unavailable_reason"])
+                    if item.get("unavailable_reason") else None
+                ),
+                target_schema=dict(item.get("target_schema", {})),
+                parameter_schema=dict(item.get("parameter_schema", {})),
+                budget_cost=int(item.get("budget_cost", 0)),
+                resource_ids=tuple(str(value) for value in item.get("resource_ids", [])),
+                location_ids=tuple(str(value) for value in item.get("location_ids", [])),
+                required_flags=frozenset(item.get("required_flags", [])),
+                required_any_flags=frozenset(item.get("required_any_flags", [])),
+                forbidden_flags=frozenset(item.get("forbidden_flags", [])),
+                effects=cls._load_effects(item.get("effects", {})),
+                result_fact_ids=frozenset(item.get("result_fact_ids", [])),
+                narrative=str(item.get("narrative", "")),
+            )
+        return result
+
+    @staticmethod
+    def _load_households(document: dict) -> tuple[HouseholdDefinition, ...]:
+        result: list[HouseholdDefinition] = []
+        seen: set[str] = set()
+        defaults = dict(document.get("defaults", {}))
+        for raw_item in document.get("households", []):
+            item = {**defaults, **raw_item}
+            household_id = str(item["household_id"])
+            if household_id in seen:
+                raise ContentValidationError(f"户号重复：{household_id}")
+            seen.add(household_id)
+            result.append(HouseholdDefinition(
+                household_id=household_id,
+                representative_group=str(item["representative_group"]),
+                representative_npc=str(item["representative_npc"]),
+                group_index=int(item["group_index"]),
+                is_shadow_household=bool(item["is_shadow_household"]),
+                registered_population=int(item["registered_population"]),
+                actual_residents=int(item["actual_residents"]),
+                resettlement_population=int(item["resettlement_population"]),
+                residential_structure=str(item["residential_structure"]),
+                legal_residential_area_m2=float(item["legal_residential_area_m2"]),
+                homestead_recognized_m2=float(item["homestead_recognized_m2"]),
+                homestead_over_m2=float(item.get("homestead_over_m2", 0)),
+                contracted_land_mu=float(item.get("contracted_land_mu", 0)),
+                other_land_mu=float(item.get("other_land_mu", 0)),
+                other_land_note=(
+                    str(item["other_land_note"])
+                    if item.get("other_land_note") else None
+                ),
+                business_area_m2=float(item.get("business_area_m2", 0)),
+                attachments_profile=str(item.get("attachments_profile", "待清点")),
+                grave_or_shrine_profile=str(item.get("grave_or_shrine_profile", "none")),
+                hardship_tags=tuple(str(value) for value in item.get("hardship_tags", [])),
+                medical_tags=tuple(str(value) for value in item.get("medical_tags", [])),
+                employment_startup_tags=tuple(
+                    str(value) for value in item.get("employment_startup_tags", [])
+                ),
+                resettlement_preference=str(item["resettlement_preference"]),
+                ownership_status=str(item["ownership_status"]),
+                signing_lock_flag=str(item["signing_lock_flag"]),
+            ))
+        return tuple(result)
+
     @staticmethod
     def _load_calendar(document: dict) -> tuple[CalendarSegment, ...]:
         return tuple(CalendarSegment(
@@ -282,6 +406,7 @@ class FileScriptPackageLoader:
             unlock_day=int(item.get("unlock_day", 1)),
             linked_opportunity_ids=tuple(item.get("linked_opportunity_ids", [])),
             linked_event_ids=tuple(item.get("linked_event_ids", [])),
+            linked_action_ids=tuple(item.get("linked_action_ids", [])),
             required_flags=frozenset(item.get("required_flags", [])),
         ) for item in document.get("locations", []))
 
@@ -363,6 +488,19 @@ class FileScriptPackageLoader:
             conversation_goal=str(
                 contexts.get(item["opportunity_id"], {}).get("conversation_goal", "")
             ),
+            minimum_turns=int(item.get("completion_policy", {}).get("minimum_turns", 1)),
+            completion_mode=str(
+                item.get("completion_policy", {}).get("completion_mode", "minimum_turns")
+            ),
+            required_disclosure_ids=frozenset(
+                item.get("completion_policy", {}).get("required_disclosure_ids", [])
+            ),
+            complete_on_player_exit=bool(
+                item.get("completion_policy", {}).get("complete_on_player_exit", True)
+            ),
+            complete_on_npc_exit=bool(
+                item.get("completion_policy", {}).get("complete_on_npc_exit", True)
+            ),
         ) for item in document.get("opportunities", []))
 
     @staticmethod
@@ -411,6 +549,17 @@ class FileScriptPackageLoader:
                     "use_hint",
                     "可在后续会谈、调查和决策中作为已掌握材料引用。",
                 )),
+                disclosure_tier=int(item.get(
+                    "disclosure_tier",
+                    2 if item.get("fact_id") in {
+                        "fact_inspection_anchors", "fact_total_households"
+                    } else 4 if item.get("category") == "evidence" else 3,
+                )),
+                owner_npc_ids=tuple(
+                    str(value) for value in item.get(
+                        "owner_npc_ids", item.get("related_npc_ids", [])
+                    )
+                ),
             )
         return result
 
@@ -689,11 +838,81 @@ class FileScriptPackageLoader:
         appendices,
         decision_catalog,
         event_catalog,
+        resource_actions,
+        households,
         *,
+        gameplay_schema_version: int,
         status: str,
     ) -> None:
         if len(actions) != 31:
             raise ContentValidationError(f"行动规则必须正好 31 项，当前 {len(actions)}")
+        if gameplay_schema_version >= 2:
+            if set(resource_actions) != set(actions):
+                raise ContentValidationError(
+                    "玩法 Schema v2 必须为 31 项工具逐一登记执行定义",
+                    details={
+                        "missing": sorted(set(actions) - set(resource_actions)),
+                        "unknown": sorted(set(resource_actions) - set(actions)),
+                    },
+                )
+            allowed_executors = {
+                "conversation", "deterministic_analysis", "resource_dispatch",
+                "policy_adjustment", "group_scene", "legal_procedure",
+            }
+            invalid = sorted(
+                item.action_id for item in resource_actions.values()
+                if item.executor_kind not in allowed_executors
+            )
+            if invalid:
+                raise ContentValidationError(
+                    "资源动作引用未知处理器", details={"action_ids": invalid}
+                )
+            non_conversation_opportunities = sorted(
+                item.opportunity_id for item in opportunities
+                if resource_actions[item.action_id].executor_kind != "conversation"
+            )
+            if non_conversation_opportunities:
+                raise ContentValidationError(
+                    "NPC 互动机会只能引用会谈类动作",
+                    details={"opportunity_ids": non_conversation_opportunities},
+                )
+            if len(households) != 36:
+                raise ContentValidationError(
+                    "玩法 Schema v2 必须登记 36 户逐户底表",
+                    details={"actual": len(households)},
+                )
+            npc_ids = {item.npc_id for item in profiles}
+            unknown_household_npcs = sorted({
+                item.representative_npc for item in households
+                if item.representative_npc not in npc_ids
+            })
+            if unknown_household_npcs:
+                raise ContentValidationError(
+                    "逐户底表引用未知代表人物",
+                    details={"npc_ids": unknown_household_npcs},
+                )
+            expected_totals = {
+                "registered_population": 122,
+                "resettlement_population": 122,
+                "legal_residential_area_m2": 4745.0,
+                "homestead_recognized_m2": 5950.0,
+                "homestead_over_m2": 160.0,
+                "contracted_land_mu": 82.8,
+                "business_area_m2": 45.0,
+            }
+            actual_totals = {
+                key: round(sum(float(getattr(item, key)) for item in households), 3)
+                for key in expected_totals
+            }
+            mismatched = {
+                key: {"expected": expected, "actual": actual_totals[key]}
+                for key, expected in expected_totals.items()
+                if actual_totals[key] != expected
+            }
+            if mismatched:
+                raise ContentValidationError(
+                    "36 户底表合计未闭合", details=mismatched
+                )
         covered = []
         for segment in calendar:
             covered.extend(range(segment.day_start, segment.day_end + 1))
@@ -827,6 +1046,8 @@ class FileScriptPackageLoader:
                 "dp1_01_taskforce_faction_map", "ev1_01_reception_bag"
             }
             runtime_ids |= EXPECTED_SUPPORTING_RUNTIME
+            if gameplay_schema_version >= 3:
+                runtime_ids |= GAMEPLAY_V3_SUPPORTING_RUNTIME
             if set(decisions) != runtime_ids:
                 raise ContentValidationError(
                     "完整包的 62 DP、14 EV 与强制配套处置点必须全部可提交"
@@ -900,6 +1121,8 @@ class FileScriptPackageLoader:
         for fact in facts.values():
             if not fact.fact_id or not fact.title.strip() or not fact.text.strip():
                 raise ContentValidationError(f"事实字段不能为空：{fact.fact_id}")
+            if fact.disclosure_tier not in {1, 2, 3, 4}:
+                raise ContentValidationError(f"事实吐露档位非法：{fact.fact_id}")
         if status == "published":
             if len(facts) < 16 or not all(item.source_line > 0 for item in facts.values()):
                 raise ContentValidationError(
@@ -915,6 +1138,12 @@ class FileScriptPackageLoader:
                 or beat.day_mode not in allowed_day_modes
             ):
                 raise ContentValidationError(f"非法 story beat：{beat.beat_id}")
+            if gameplay_schema_version >= 3 and any(
+                marker in beat.title for marker in PLAYER_TEXT_INTERNAL_MARKERS
+            ):
+                raise ContentValidationError(
+                    f"story beat 标题混入内部说明：{beat.beat_id}"
+                )
             if beat.beat_id in beat_ids:
                 raise ContentValidationError(f"beat_id 重复：{beat.beat_id}")
             beat_ids.add(beat.beat_id)
@@ -964,6 +1193,12 @@ class FileScriptPackageLoader:
                     raise ContentValidationError(
                         f"story block 字段不能为空：{beat.beat_id}"
                     )
+                if gameplay_schema_version >= 3 and any(
+                    marker in block.text for marker in PLAYER_TEXT_INTERNAL_MARKERS
+                ):
+                    raise ContentValidationError(
+                        f"story block 混入内部说明：{block.block_id}"
+                    )
                 if block.block_id in block_ids:
                     raise ContentValidationError(
                         f"story block ID 重复：{block.block_id}"
@@ -996,13 +1231,15 @@ class FileScriptPackageLoader:
             )
             unknown_flags = location.required_flags - registered_flags
             unknown_events = set(location.linked_event_ids) - {item.event_id for item in events}
-            if unknown_opportunities or unknown_flags or unknown_events:
+            unknown_actions = set(location.linked_action_ids) - set(actions)
+            if unknown_opportunities or unknown_flags or unknown_events or unknown_actions:
                 raise ContentValidationError(
                     f"地图地点引用悬空：{location.location_id}",
                     details={
                         "opportunities": sorted(unknown_opportunities),
                         "flags": sorted(unknown_flags),
                         "events": sorted(unknown_events),
+                        "actions": sorted(unknown_actions),
                     },
                 )
         main_ids = {item.ending_id for item in main_endings}
@@ -1050,6 +1287,14 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(
                     f"决策基础字段非法：{decision.decision_id}"
                 )
+            if gameplay_schema_version >= 3 and any(
+                marker in value
+                for value in (decision.title, decision.prompt)
+                for marker in PLAYER_TEXT_INTERNAL_MARKERS
+            ):
+                raise ContentValidationError(
+                    f"决策玩家文本混入内部说明：{decision.decision_id}"
+                )
             if decision.action_point_cost != 0:
                 raise ContentValidationError(f"强制决策必须为 0 行动点：{decision.decision_id}")
             if decision.input_kind not in {"choice", "sorting", "allocation"}:
@@ -1088,6 +1333,15 @@ class FileScriptPackageLoader:
                 ):
                     raise ContentValidationError(
                         f"决策选项字段不能为空：{decision.decision_id}"
+                    )
+                if gameplay_schema_version >= 3 and any(
+                    marker in value
+                    for value in (option.text, option.consequence)
+                    for marker in PLAYER_TEXT_INTERNAL_MARKERS
+                ):
+                    raise ContentValidationError(
+                        f"决策选项玩家文本混入内部说明："
+                        f"{decision.decision_id}:{option.option_id}"
                     )
                 unknown_fields = set(option.effects.metric_deltas) - allowed_effect_fields
                 unknown_ledger_fields = (

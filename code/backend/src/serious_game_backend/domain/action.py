@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from serious_game_backend.domain.enums import ActionCostTier, ActionInputMode
+from serious_game_backend.domain.story import ScriptedEffects
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,41 @@ class ActionRule:
 
 
 @dataclass(frozen=True, slots=True)
+class ResourceActionDefinition:
+    """不依赖 NPC 会谈的确定性资源动作定义。"""
+
+    action_id: str
+    executor_kind: str
+    enabled: bool = True
+    unavailable_reason: str | None = None
+    target_schema: dict[str, Any] = field(default_factory=dict)
+    parameter_schema: dict[str, Any] = field(default_factory=dict)
+    budget_cost: int = 0
+    resource_ids: tuple[str, ...] = ()
+    location_ids: tuple[str, ...] = ()
+    required_flags: frozenset[str] = frozenset()
+    required_any_flags: frozenset[str] = frozenset()
+    forbidden_flags: frozenset[str] = frozenset()
+    effects: ScriptedEffects = field(default_factory=ScriptedEffects)
+    result_fact_ids: frozenset[str] = frozenset()
+    narrative: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ActionQuote:
+    quote_id: str
+    state_version: int
+    action_id: str
+    target_ids: tuple[str, ...]
+    parameters: dict[str, Any]
+    action_point_cost: int
+    budget_cost: int
+    budget_unit: str
+    executor_kind: str
+    resource_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ActionCommand:
     input_mode: ActionInputMode
     client_action_id: str
@@ -31,6 +67,8 @@ class ActionCommand:
     opportunity_id: str | None = None
     player_text: str | None = None
     target_npc_id: str | None = None
+    target_ids: tuple[str, ...] = ()
+    quote_id: str | None = None
     conversation_id: str | None = None
     decision_id: str | None = None
     option_id: str | None = None
@@ -48,6 +86,8 @@ class ActionCommand:
             "opportunity_id": self.opportunity_id,
             "player_text": self.player_text,
             "target_npc_id": self.target_npc_id,
+            "target_ids": list(self.target_ids),
+            "quote_id": self.quote_id,
             "conversation_id": self.conversation_id,
             "decision_id": self.decision_id,
             "option_id": self.option_id,

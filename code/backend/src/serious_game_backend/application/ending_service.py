@@ -40,7 +40,15 @@ class EndingAxisProjector:
 
     def project(self, session: GameSession) -> dict[str, str]:
         flags = session.flags
-        signed = session.game_state.signed_households
+        signed = session.audited_signed_households()
+        if signed != session.game_state.signed_households:
+            raise ContentValidationError(
+                "D90真实签约总数与分批台账不一致",
+                details={
+                    "aggregate": session.game_state.signed_households,
+                    "audited": signed,
+                },
+            )
         if signed <= 27:
             axis_a = "溃败"
         elif signed <= 29:
@@ -179,7 +187,16 @@ class EndingService:
         if session.ending_result is not None:
             return session.ending_result
         session.game_state = replace(session.game_state, days_left=0)
-        if session.game_state.signed_households >= 30:
+        signed = session.audited_signed_households()
+        if signed != session.game_state.signed_households:
+            raise ContentValidationError(
+                "D90验收拒绝不一致的签约台账",
+                details={
+                    "aggregate": session.game_state.signed_households,
+                    "audited": signed,
+                },
+            )
+        if signed >= 30:
             session.flags.add("最后一公里攻坚成功")
         axes = self._axes.project(session)
         main = next(
@@ -207,7 +224,7 @@ class EndingService:
                 f"主结局 {main.ending_id} 缺少自由轴 {axis_value} 的亚结局"
             )
         rendered_sub_text = self._render_sub_text(
-            sub.text, session.game_state.signed_households
+            sub.text, signed
         )
         result = {
             "main_ending_id": main.ending_id,

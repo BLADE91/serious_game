@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from serious_game_backend.api.schemas import (
     ActionRequest,
+    ActionQuoteRequest,
     ConsentSignRequest,
     ConsentWithdrawRequest,
     EndDayRequest,
@@ -161,7 +162,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         busy = session.processing_action_id is not None
         beat = package.story_day(session.game_state.story_day)
         active = session.status.value == "active"
-        allow_actions = beat is None or beat.allow_actions
+        allow_actions = (
+            beat is None
+            or beat.allow_actions
+            or (
+                package.gameplay_schema_version >= 2
+                and session.game_state.story_day < 90
+            )
+        )
         allow_end_day = (
             beat is None
             or (
@@ -204,14 +212,37 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 item.opportunity_id for item in available_opportunities
                 if item.action_id == rule.action_id
             ]
-            available = (
-                gate["can_act"]
-                and bool(opportunity_ids)
-                and state.action_points >= cost
+            definition = package.resource_actions.get(rule.action_id)
+            conversation_only = bool(
+                definition and definition.executor_kind == "conversation"
             )
+            resource_available = bool(
+                definition
+                and definition.enabled
+                and not conversation_only
+                and definition.required_flags.issubset(session.flags)
+                and (
+                    not definition.required_any_flags
+                    or bool(definition.required_any_flags & session.flags)
+                )
+                and not bool(definition.forbidden_flags & session.flags)
+            )
+            target_choices = (
+                resource_target_choices(session, package, rule.action_id)
+                if resource_available else []
+            )
+            if definition and resource_available and (
+                len(target_choices) < int(definition.target_schema.get("min_items", 0))
+            ):
+                resource_available = False
+            available = gate["can_act"] and (
+                bool(opportunity_ids) or resource_available
+            ) and state.action_points >= cost
             reason = gate["action_blocked_reason"]
-            if reason is None and not opportunity_ids:
-                reason = "当前剧情尚未出现可用入口"
+            if reason is None and definition and not definition.enabled:
+                reason = definition.unavailable_reason or "当前版本尚未开放"
+            elif reason is None and not opportunity_ids and not resource_available:
+                reason = "当前剧情尚未出现可用入口或程序条件未满足"
             elif (
                 reason is None
                 and rule.daily_cap is not None
@@ -241,8 +272,67 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     for item in available_opportunities
                     if item.opportunity_id in opportunity_ids
                 },
+                "execution_mode": (
+                    "conversation" if conversation_only or opportunity_ids
+                    else "resource_action"
+                ),
+                "requires_quote": bool(resource_available),
+                "target_schema": definition.target_schema if resource_available else None,
+                "target_choices": (
+                    target_choices if resource_available else []
+                ),
+                "parameter_schema": definition.parameter_schema if resource_available else None,
+                "direct_budget_cost": (
+                    definition.budget_cost if resource_available else None
+                ),
             })
         return tier.value, result
+
+    def resource_target_choices(session, package, action_id: str) -> list[dict]:
+        definition = package.resource_actions[action_id]
+        target_kind = str(definition.target_schema.get("target_kind", "npc"))
+        if target_kind == "household":
+            return [
+                {
+                    "target_id": item.household_id,
+                    "label": (
+                        f"{item.household_id}｜{item.registered_population}人｜"
+                        f"住宅 {item.legal_residential_area_m2:g}㎡"
+                    ),
+                }
+                for item in package.households
+            ]
+        if target_kind == "fact":
+            return [
+                {"target_id": fact_id, "label": package.facts[fact_id].title}
+                for fact_id in sorted(session.known_fact_ids)
+                if fact_id in package.facts
+            ]
+        if target_kind == "location":
+            return [
+                {"target_id": item.location_id, "label": item.name}
+                for item in package.map_locations
+                if session.game_state.story_day >= item.unlock_day
+                and item.required_flags.issubset(session.flags)
+            ]
+        if action_id in {"cross_validate_clues", "zheng_clue_summary"}:
+            return [
+                {"target_id": fact_id, "label": package.facts[fact_id].title}
+                for fact_id in sorted(session.known_fact_ids)
+                if fact_id in package.facts
+            ]
+        if action_id == "field_visit":
+            return [
+                {"target_id": item.location_id, "label": item.name}
+                for item in package.map_locations
+                if session.game_state.story_day >= item.unlock_day
+                and item.required_flags.issubset(session.flags)
+            ]
+        return [
+            {"target_id": item.npc_id, "label": item.name}
+            for item in package.npc_profiles
+            if item.npc_id in session.npc_states
+        ]
 
     def public_fact(item) -> dict:
         return {
@@ -278,7 +368,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         return {
             "status": "ok",
             "service": "serious-game-backend",
-            "terminal_protocol_version": "text-conversation-v2",
+            "terminal_protocol_version": "text-gameplay-v3",
         }
 
     @app.get("/health/ready")
@@ -627,9 +717,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "compensation_policy": {
                 **briefing["compensation_policy"],
                 "current_budget": {
-                    "initial": 8000,
+                    "base_authorized": state.budget_base_authorized,
                     "remaining": state.budget_remaining,
-                    "deducted": 8000 - state.budget_remaining,
+                    "approved_adjustments": state.budget_approved_adjustments,
+                    "committed": state.budget_committed,
+                    "paid": state.budget_paid,
+                    "precoord_suspense": state.budget_precoord_suspense,
                     "unit": state.budget_unit,
                 },
             },
@@ -637,6 +730,27 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "tool_categories": briefing["tool_categories"],
             "cost_tier": tier,
             "tools": tools,
+            "household_registry": [
+                {
+                    "household_id": item.household_id,
+                    "registered_population": item.registered_population,
+                    "actual_residents": item.actual_residents,
+                    "resettlement_population": item.resettlement_population,
+                    "residential_structure": item.residential_structure,
+                    "legal_residential_area_m2": item.legal_residential_area_m2,
+                    "homestead_recognized_m2": item.homestead_recognized_m2,
+                    "homestead_over_m2": item.homestead_over_m2,
+                    "contracted_land_mu": item.contracted_land_mu,
+                    "other_land_mu": item.other_land_mu,
+                    "other_land_note": item.other_land_note,
+                    "business_area_m2": item.business_area_m2,
+                    "attachments_profile": item.attachments_profile,
+                    "resettlement_preference": item.resettlement_preference,
+                    "ownership_status": item.ownership_status,
+                    "detail_status": "附属物数量、地类等未登记明细待核验",
+                }
+                for item in package.households
+            ],
             "knowledge_summary": {
                 "total": len(known),
                 "facts": sum(item.category == "fact" for item in known),
@@ -771,6 +885,34 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         if result.get("status") == "processing":
             return JSONResponse(status_code=202, content=result)
         return result
+
+    @app.post("/api/game/session/{session_id}/actions/quote")
+    async def quote_action(
+        session_id: str,
+        body: ActionQuoteRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        session = runtime.game_sessions.get_owned(session_id, account_id)
+        package = require_locked_package(runtime.packages, session)
+        gate = command_gate(session, package)
+        if not gate["can_act"]:
+            raise DomainError(gate["action_blocked_reason"] or "当前不能执行行动")
+        if session.state_version != body.state_version:
+            from serious_game_backend.domain.errors import StateVersionConflictError
+            raise StateVersionConflictError(
+                "状态版本已变化，请刷新后重试",
+                details={"current_state_version": session.state_version},
+            )
+        quote = runtime.action_quotes.quote(
+            session,
+            package,
+            action_id=body.action_id,
+            target_ids=tuple(body.target_ids),
+            parameters=body.parameters,
+        )
+        definition = package.resource_actions[body.action_id]
+        return runtime.action_quotes.public(quote, definition)
 
     @app.post("/api/game/session/{session_id}/end-day")
     async def end_day(

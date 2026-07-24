@@ -40,7 +40,10 @@ class FakeRoleLLMGateway:
                 attitude_band="micro",
                 anxiety_direction="decrease",
                 anxiety_band="light",
-                disclosure_id="fact_clan_power_map",
+                disclosure_id=(
+                    "fact_clan_power_map"
+                    if "fact_clan_power_map" in context.allowed_fact_ids else None
+                ),
                 memory_candidate="新县长愿意先听她讲村里的真实关系。",
             )
         return RoleTurnResult(

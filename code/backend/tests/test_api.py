@@ -41,7 +41,7 @@ class ApiTests(unittest.TestCase):
         health = self.client.get("/health/live")
         self.assertEqual(200, health.status_code)
         self.assertEqual(
-            "text-conversation-v2",
+            "text-gameplay-v3",
             health.json()["terminal_protocol_version"],
         )
         result = self._new_session()
@@ -66,7 +66,10 @@ class ApiTests(unittest.TestCase):
         desk_body = desk.json()
         self.assertEqual(5, len(desk_body["dossiers"]))
         self.assertEqual(31, len(desk_body["tools"]))
-        self.assertEqual(8000, desk_body["compensation_policy"]["current_budget"]["remaining"])
+        budget = desk_body["compensation_policy"]["current_budget"]
+        self.assertEqual(7800, budget["remaining"])
+        self.assertEqual(8000, budget["base_authorized"])
+        self.assertEqual(200, budget["precoord_suspense"])
         self.assertIn("具体计价参数待正式细则补全", desk_body["compensation_policy"]["status"])
         self.assertTrue(all("description" in item for item in desk_body["tools"]))
 

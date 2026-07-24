@@ -150,7 +150,7 @@ class ApiClientTests(unittest.TestCase):
 
         self.assertEqual("BACKEND_RESTART_REQUIRED", raised.exception.code)
         client.require_compatible_backend({
-            "terminal_protocol_version": "text-conversation-v2"
+            "terminal_protocol_version": "text-gameplay-v3"
         })
 
     def test_mayor_desk_uses_owned_session_path(self) -> None:

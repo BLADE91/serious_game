@@ -1,6 +1,6 @@
 # M2 终端文字协议
 
-版本：`v0.3`
+版本：`v0.4`（终端协议 `text-gameplay-v3`）
 适用范围：M1 D1–D3 教程切片及 M2 D1–D90 完整文字运行时
 
 ## 1. 协议边界
@@ -48,6 +48,7 @@ X-Account-ID: terminal-local
 | `GET` | `/api/game/session/{session_id}/view?after=N` | 获取状态、增量文字流和可用命令；终端主入口 |
 | `GET` | `/api/game/session/{session_id}/feed?after=N` | 仅获取增量文字流 |
 | `GET` | `/api/game/session/{session_id}/actions` | 获取自主行动目录及当前可用性 |
+| `POST` | `/api/game/session/{session_id}/actions/quote` | 按当前状态、对象和参数生成一次性资源动作报价 |
 | `GET` | `/api/game/session/{session_id}/opportunities` | 获取可进行自由交谈的 NPC 机会 |
 | `GET` | `/api/game/session/{session_id}/knowledge` | 获取玩家已经掌握的事实、线索和证据 |
 | `GET` | `/api/game/session/{session_id}/map` | 获取当前文字地图入口及锁定、已知、可用、事件状态 |
@@ -120,6 +121,25 @@ GET /api/game/session/{session_id}/view?after=0
 }
 ```
 
+D75 夜间冻结前，`ledger.signed_households.batches.roster_locked=false`。冻结后该字段提供玩家可见的分批台账：
+
+```json
+{
+  "signed_households": {
+    "signed": 27,
+    "total": 36,
+    "batches": {
+      "roster_locked": true,
+      "first_batch": 24,
+      "acceptance_confirmed": 3,
+      "unsigned": 9
+    }
+  }
+}
+```
+
+`first_batch` 是 D75 冻结数，`acceptance_confirmed` 只统计 D76–D89 从实名未决名册依法补齐的协议。D90 仅核验这两批数据，不接受新增签约。
+
 `pending_decision.options` 已按权威剧本顺序给出 `option_id + text`。客户端可以临时显示 A/B/C/D，但提交时必须发送 `option_id`，不能把显示序号当作权威标识。
 
 ## 5. 动作联合协议
@@ -140,19 +160,36 @@ GET /api/game/session/{session_id}/view?after=0
 
 决策固定为 0 行动点。存在 `pending_decision` 时，自主行动、自由文字互动与日终均返回 `DECISION_REQUIRED`。
 
-### 5.2 自主工具行动
+### 5.2 确定性资源行动
+
+先把当前状态、行动、对象和参数提交到 `/actions/quote`：
 
 ```json
 {
-  "input_mode": "tool",
-  "client_action_id": "cli-tool-2d347a1a6b18467793c108af5f577d14",
   "state_version": 7,
-  "opportunity_id": "opp_d07_zhou_dashan_home_visit",
-  "action_id": "home_visit"
+  "action_id": "party_member_demonstration",
+  "target_ids": ["NING-01"],
+  "parameters": {"public_matter": "政策公示"}
 }
 ```
 
-客户端必须先读取 `/actions`，使用服务端返回的 `available`、`unavailable_reason`、`opportunity_ids` 和实际行动点成本。`opportunity_id` 是必填的上下文入口；服务端会再次校验它仍然开放且与 `action_id` 匹配。客户端不能根据本地规则自行判断。
+响应返回绑定 `session_id + state_version + action_id + target_ids + parameters + 行动点 + 直接财政支出` 的 `quote_id`。玩家确认后再提交：
+
+```json
+{
+  "input_mode": "resource_action",
+  "client_action_id": "cli-resource-2d347a1a6b18467793c108af5f577d14",
+  "state_version": 7,
+  "action_id": "party_member_demonstration",
+  "target_ids": ["NING-01"],
+  "parameters": {"public_matter": "政策公示"},
+  "quote_id": "quote_..."
+}
+```
+
+客户端必须先读取 `/actions`，只使用服务端给出的 `target_choices`、`parameter_schema`、实际行动点和可用性。需要逐户处理的动作只接受 36 户底表中的 `household_id`；线索汇总只接受本局已知材料；下乡只接受已解锁地点。服务端执行前会重新计算报价，任何状态变化、对象或参数变化都会使旧报价失效。
+
+玩法 Schema v2 禁止旧 `input_mode=tool` 直接完成行动。会谈动作必须走下节的会谈入口；非会谈动作必须走报价与 `resource_action`，两类路径不能互相绕过。
 
 ### 5.3 多轮 NPC 会谈
 
@@ -193,7 +230,7 @@ GET /api/game/session/{session_id}/view?after=0
 }
 ```
 
-LLM 也可返回 `conversation_state=end` 和符合人物、场景的 `exit_narrative`，由 NPC 自主送客、离开或终止会谈。只有玩家或 NPC 明确结束时，服务端才执行该机会的完成旗标、完成事实、硬结算和后续决策；玩家正常结束时追加剧本预设离场块，NPC 自主结束时使用模型已经通过场景连续性校验的离场叙事，避免同一人物重复离开或把冲突会谈接成友好固定结尾。会谈进行中禁止切换其他写操作或结束当天；存档会持久化 `active_conversation` 和本次会谈历史，重启后可以继续。
+LLM 也可返回 `conversation_state=end` 和符合人物、场景的 `exit_narrative`，由 NPC 自主送客、离开或终止会谈。只有玩家或 NPC 明确结束，且最低轮数、必要披露等完成条件都满足时，服务端才执行完成旗标、事实、硬结算和后续决策。零轮离场或条件未满足只记为 `incomplete`，机会保持可再次进入。玩家正常完成时追加剧本预设离场块；NPC 自主结束时使用通过场景连续性校验的离场叙事。会谈进行中禁止切换其他写操作或结束当天；存档会持久化 `active_conversation` 和本次会谈历史，重启后可以继续。
 
 `opportunity_id` 和 `target_npc_id` 必须来自同一次服务端机会列表。机会 DTO 同时返回玩家可见的 `npc_name`、`npc_title`、`npc_introduction`、`action_name`、`conversation_context`、`opening_narrative` 和 `conversation_goal`；内部角色提示词、隐藏动机和未解锁事实不得进入该 DTO。发布校验要求 32 个机会全部具有非空前情提要和会谈方向。首个真实机会为 D2 的 `opp_d02_wu_xiuying_first_talk`。本地默认配置调用 `qwen3.6-plus`，且关闭 Fake 降级；模型只能提出受限的态度/焦虑档位和允许披露的事实，不能直接写数值、旗标或任意事实。
 
@@ -210,6 +247,19 @@ LLM 也可返回 `conversation_state=end` 和符合人物、场景的 `exit_narr
 ```
 
 后端依次执行当前日夜间块、夜间模拟、固定事件检查、日期推进、次日开场和行动点重置，并只提交一次状态版本。客户端不能直接修改日期或行动点。
+
+`active_rest=true` 表示主动收工并获得额外疲惫恢复；会谈或强制决策未结束时不能收工。行动点归零后可在终端选择加班 1、2 或 3 点：
+
+```json
+{
+  "input_mode": "overtime",
+  "client_action_id": "cli-overtime-...",
+  "state_version": 18,
+  "parameters": {"points": 2}
+}
+```
+
+加班每天一次、每章最多三次，疲惫达到 75 后关闭。D1–D89 不再自动跳过白天；每一天都必须由玩家主动收工或结束当天，夜间结算幂等执行一次。
 
 ## 7. 错误外形
 

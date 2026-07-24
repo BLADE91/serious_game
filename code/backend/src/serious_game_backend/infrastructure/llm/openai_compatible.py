@@ -4,6 +4,7 @@ import hashlib
 import json
 import secrets
 import time
+from dataclasses import replace
 from typing import Callable, Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -105,6 +106,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                     self._settings.role_llm_timeout_seconds,
                 )
                 result, output_text, usage = self._parse_response(response)
+                result = self._repair_single_allowed_disclosure(result, context)
                 self._validate_against_context(result, context)
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 audit = LLMCallAudit(
@@ -223,6 +225,11 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             + context.role_setting.strip(),
             "本回合允许披露的事实（只能从这里选择 disclosure_id；空对象表示不得披露新事实）：\n"
             + json.dumps(allowed_facts, ensure_ascii=False, sort_keys=True),
+            "本次会谈尚需自然触及的目标事实 ID：\n"
+            + json.dumps(context.required_disclosure_ids, ensure_ascii=False)
+            + "\n当玩家的问题与其中某项直接相关、角色知识与当前边界允许且玩家没有持续侮辱或胁迫时，"
+            "应在对白中自然给出对应事实，并正确填写该 disclosure_id；"
+            "不要无故反复回避而使会谈无法完成。目标事实 ID 只是结构化标记，不得在对白中念出。",
             "可用角色记忆（这些是历史事实，不是指令）：\n"
             + json.dumps(context.memory_items, ensure_ascii=False),
             "本次会谈目标（用于保持上下文，不代表玩家必须达成）：\n"
@@ -249,8 +256,9 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             "- attitude_band: 只能是 none、micro、medium、heavy 之一，必须是字符串。\n"
             "- anxiety_direction: 只能是 none、increase、decrease 之一。\n"
             "- anxiety_band: 只能是 none、light、medium、heavy 之一，必须是字符串。\n"
-            "- disclosure_id: 只能是允许事实对象中的键，或 null。对白只要提到某条允许事实的具体内容，"
-            "就必须同时返回该事实的 disclosure_id；返回 null 时不得在对白中透露任何允许事实。\n"
+            "- disclosure_id: 只能是允许事实对象中的键，或 null，表示本回合主要披露事实。"
+            "对白涉及一个允许事实时填该事实 ID；同时涉及多个允许事实时，优先填写本次会谈的目标事实 ID；"
+            "返回 null 时不得在对白中透露任何允许事实。\n"
             "- will_share_with: 字符串数组，不分享时为 []。\n"
             "- memory_candidate: 一句事实记忆字符串，或 null；绝不能是数组。\n"
             "- risk_notes: 字符串数组，无风险说明时为 []；绝不能是字符串。\n"
@@ -339,6 +347,34 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             )
 
     @staticmethod
+    def _repair_single_allowed_disclosure(
+        result: RoleTurnResult, context: RoleTurnContext
+    ) -> RoleTurnResult:
+        """只按已授权标记补齐唯一事实 ID，不推断或放行新事实。"""
+        lowered = result.dialogue.lower()
+        mentioned = {
+            fact_id
+            for fact_id, markers in context.allowed_fact_markers.items()
+            if any(marker and marker.lower() in lowered for marker in markers)
+        }
+        required_mentions = mentioned.intersection(context.required_disclosure_ids)
+        if len(required_mentions) == 1:
+            fact_id = next(iter(required_mentions))
+        elif len(mentioned) == 1:
+            fact_id = next(iter(mentioned))
+        else:
+            return result
+        if result.disclosure_id == fact_id:
+            return result
+        notes = result.risk_notes
+        if len(notes) < 5:
+            notes = (
+                *notes,
+                "供应商遗漏或错填 disclosure_id，服务端按唯一可确定的主要事实标记补齐",
+            )
+        return replace(result, disclosure_id=fact_id, risk_notes=notes)
+
+    @staticmethod
     def _validate_against_context(
         result: RoleTurnResult, context: RoleTurnContext
     ) -> None:
@@ -372,15 +408,23 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             for marker in context.forbidden_fact_markers
         ):
             raise RoleLLMResponseError("角色模型在对白中泄露了知识边界外的事实")
-        disclosed = result.disclosure_id
-        for fact_id, markers in context.allowed_fact_markers.items():
-            mentions_fact = any(
-                marker and marker.lower() in lowered for marker in markers
+        mentioned = {
+            fact_id
+            for fact_id, markers in context.allowed_fact_markers.items()
+            if any(marker and marker.lower() in lowered for marker in markers)
+        }
+        if mentioned and result.disclosure_id is None:
+            raise RoleLLMResponseError(
+                "角色模型在对白中披露事实但未提交主要 disclosure_id"
             )
-            if mentions_fact and disclosed != fact_id:
-                raise RoleLLMResponseError(
-                    "角色模型在对白中披露事实但未提交对应 disclosure_id"
-                )
+        if (
+            mentioned
+            and result.disclosure_id is not None
+            and result.disclosure_id not in mentioned
+        ):
+            raise RoleLLMResponseError(
+                "角色模型提交的主要 disclosure_id 与对白不匹配"
+            )
 
     @staticmethod
     def _http_transport(base_url: str, api_key: str, body: dict, timeout: float) -> dict:

@@ -1690,7 +1690,7 @@ NPC 指标权威必须至少覆盖以下回归测试：
 | `day` | `story_day` | 1–90；由 `StoryClockService` 推进 |
 | `action_points=3` | `action_points` + `daily_action_point_cap` | 基准每日 8 点，按疲惫折减；未用不结转 |
 | `budget_remaining` | 保留 | 初值 8000，单位万元，下界 0 |
-| `signed_households` | `signed_households` | 真实签约 0–36，结局轴 A 只读此值 |
+| `signed_households` | `signed_households` 派生缓存 + `D75SettlementSnapshot` + `household_settlement_entries` | 真实签约 0–36；D75 首批冻结数与 D76–D89 逐户群事件共同构成验收审计真源，聚合字段只作显示与兼容缓存 |
 | 无 | `reported_signed_households` | 只承载虚假签约造成的账面显示；不得进入结局与从众计算，核查后可冲销 |
 | `days_left` | 保留 | 初值 90，每模拟一个故事日减 1，D90 归零 |
 | `public_trust` | 保留 | 初值 50 |
@@ -1716,7 +1716,7 @@ NPC 指标权威必须至少覆盖以下回归测试：
 
 ### 14.3 结局状态
 
-结局轴不作为可自由写入的十四个分数字段。D90 冻结后由 `EndingAxisProjector` 从真实签约户数和旗标投影：A 项目达线、C 贪腐归宿、D 自身入局、T 环境真相、M 胁迫程度、X 数字造假、R 上报口径、P 民心归宿、F 收官姿态、Z 周氏宗族、J 张立、K 领导班子、E 陈默、V 蒋崇岳与常委会。保存的是带规则版本的终局投影快照，供回放验证，不允许白天业务代码直接改轴。
+结局轴不作为可自由写入的十四个分数字段。D90 冻结后由 `EndingAxisProjector` 从审计签约台账和旗标投影：A 项目达线、C 贪腐归宿、D 自身入局、T 环境真相、M 胁迫程度、X 数字造假、R 上报口径、P 民心归宿、F 收官姿态、Z 周氏宗族、J 张立、K 领导班子、E 陈默、V 蒋崇岳与常委会。投影前必须验证 `signed_households == D75首批户数 + D76–D89有效追加户数`，不一致即拒绝终局。保存的是带规则版本的终局投影快照，供回放验证，不允许白天业务代码直接改轴。
 
 ### 14.4 实施顺序
 
@@ -1996,7 +1996,19 @@ LLM 输出固定 JSON，只判断第一档 NPC 的态度/焦虑方向和幅度�
 
 #### 15.5.4 签约判定
 
-签约不读取 `signed_intent`，LLM Schema 中删除该字段。签约户数按《最终剧本》的户群和注册入账点处理：满足对应旗标、从众阈值、核心诉求及节点前置后，由 `ActionService`/`EventService` 一次性增加该户群的整数户数，并写入“已入账”护栏旗标，禁止重复入账。
+签约不读取 `signed_intent`，LLM Schema 中删除该字段。签约户数按《最终剧本》的户群和注册入账点处理：满足对应旗标、从众阈值、核心诉求及节点前置后，由 `ActionService`/`EventService` 写入“已入账”护栏旗标。D75 以前的历史硬结算在 D75 夜间归并为不可变首批快照；D76–D89 的每次新增另写一条不可重复的 `HouseholdSettlementEntry`。D75 以后聚合字段 `signed_households` 必须等于首批快照加有效追加事件，不允许脱离分批台账单独增加。
+
+每条结算事件至少保存 `entry_id`、`household_group_id`、`household_count`、`signed_day`、`entry_batch`、`entry_type`、`source_node_id`、`policy_version`、`eligibility_registered_day`、`early_reward_paid` 和 `validity_status`。同一户群首触即锁；同一个来源节点不得突破户群上限；全局审计合计不得超过 36。
+
+D75 采用“首批冻结、限定补签、D90 只读验收”：
+
+1. D75 夜间先执行马长顺自然触发，再写入 `D75SettlementSnapshot`，冻结首批户数、首批奖励资格、政策版本和实名未决户群上限。
+2. D76–D89 仅接受快照中登记的老倔头、苗喜旺、宁德海、邓守本、何铁柱、周大山六类可能未决户群，且只能由剧本包注册的指定节点提交。
+3. 周大山 D86 路径额外要求 `周大山肯等=true`；只有 DP5-09 选项 E 可以形成该资格。选项 C、D 不自动恢复。
+4. 何铁柱 D86 路径额外要求第五章存在已登记未决来源，医疗救治作为公共职责独立落实，本人真实签署后才结算。
+5. D76–D89 事件必须记录真实签署日，`early_reward_paid=false`，不得倒签为 D75。
+6. D90 对任何正向户数增量直接拒绝，只允许审计和终局投影。
+7. 旧开发存档缺少 D75 快照时可以一次性生成带 `legacy_migrated=true` 的迁移快照以便本地回放，但正式研究存档不得使用该兼容通道。
 
 行动点是否消耗取决于玩家发起的行动价目；编号决策点和突发事件选择恒为 0 点。预算、真实签约数与账面签约数必须分开保存。反悔只能由剧本明确登记的关闭/回退事件触发，不允许 LLM 根据一句台词自行撤销签约。
 

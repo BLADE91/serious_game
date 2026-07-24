@@ -28,7 +28,7 @@ class ApiError(RuntimeError):
 class ApiClient:
     """只通过玩家 API 操作游戏；不导入或读取后端内部对象。"""
 
-    TERMINAL_PROTOCOL_VERSION = "text-conversation-v2"
+    TERMINAL_PROTOCOL_VERSION = "text-gameplay-v3"
 
     def __init__(
         self,
@@ -195,6 +195,70 @@ class ApiClient:
                 "state_version": state_version,
                 "action_id": action_id,
                 "opportunity_id": opportunity_id,
+            },
+        )
+
+    def quote_action(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+        action_id: str,
+        target_ids: list[str],
+        parameters: dict[str, Any],
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/actions/quote",
+            {
+                "state_version": state_version,
+                "action_id": action_id,
+                "target_ids": target_ids,
+                "parameters": parameters,
+            },
+        )
+
+    def execute_resource_action(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+        action_id: str,
+        target_ids: list[str],
+        parameters: dict[str, Any],
+        quote_id: str,
+        client_action_id: str | None = None,
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/action",
+            {
+                "input_mode": "resource_action",
+                "client_action_id": client_action_id or self.new_key("resource"),
+                "state_version": state_version,
+                "action_id": action_id,
+                "target_ids": target_ids,
+                "parameters": parameters,
+                "quote_id": quote_id,
+            },
+        )
+
+    def request_overtime(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+        points: int,
+        client_action_id: str | None = None,
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/action",
+            {
+                "input_mode": "overtime",
+                "client_action_id": client_action_id or self.new_key("overtime"),
+                "state_version": state_version,
+                "parameters": {"points": points},
             },
         )
 

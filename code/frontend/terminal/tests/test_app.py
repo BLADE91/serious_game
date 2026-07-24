@@ -4,6 +4,7 @@ import unittest
 
 from terminal_client.app import TerminalApp
 from terminal_client.api_client import ApiError
+from terminal_client.renderer import render_state
 
 
 def visible_state(
@@ -238,6 +239,19 @@ class FakeApi:
 
 
 class TerminalAppTests(unittest.TestCase):
+    def test_d75_locked_state_shows_signing_batches(self) -> None:
+        state = visible_state(version=75, day=76, pending=None)
+        state["ledger"]["signed_households"]["batches"] = {
+            "roster_locked": True,
+            "first_batch": 24,
+            "acceptance_confirmed": 3,
+            "unsigned": 9,
+        }
+        rendered = "\n".join(render_state(state))
+        self.assertIn("D75 首批 24 户", rendered)
+        self.assertIn("验收期确认 3 户", rendered)
+        self.assertIn("尚未签署 9 户", rendered)
+
     def test_default_menu_can_register_choose_origin_and_resolve_decision(self) -> None:
         class MenuApi(FakeApi):
             def readiness(self):
@@ -321,9 +335,10 @@ class TerminalAppTests(unittest.TestCase):
                 }]}
 
             def get_actions(self, session_id):
-                return {"actions": [{
+                return {"state_version": 1, "actions": [{
                     "action_id": "visit", "name": "走访", "available": True,
-                    "cost_action_points": 1, "opportunity_ids": ["opp_1"],
+                    "cost_action_points": 1, "execution_mode": "resource_action",
+                    "direct_budget_cost": 0,
                 }]}
 
         api = SelectionApi()
@@ -357,9 +372,9 @@ class TerminalAppTests(unittest.TestCase):
         app = TerminalApp(api, input_fn=lambda _prompt: next(action_inputs))
         app.session_id = "game_m1_test"
         captured_action = []
-        app._do = lambda action_id, opportunity_id: captured_action.extend((action_id, opportunity_id))
+        app._run_resource_action = lambda item: captured_action.append(item["action_id"])
         app._menu_action()
-        self.assertEqual(["visit", "opp_1"], captured_action)
+        self.assertEqual(["visit"], captured_action)
 
     def test_knowledge_displays_body_source_and_use(self) -> None:
         output: list[str] = []
@@ -536,7 +551,7 @@ class TerminalAppTests(unittest.TestCase):
         self.assertIn("你叫李致远", text)
         self.assertIn("谁的话在谁面前好使", text)
         self.assertIn("M1 首条完整垂直切片已经收束", text)
-        self.assertIn("opp_d03_zhou_dashan_first_talk", text)
+        self.assertIn("npc_zhou_dashan", text)
         self.assertNotIn("hidden duplicate", text)
 
     def test_command_requires_loaded_session(self) -> None:

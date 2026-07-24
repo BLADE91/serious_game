@@ -6,6 +6,7 @@ from serious_game_backend.domain.enums import SessionStatus
 from serious_game_backend.domain.errors import DecisionRequiredError, SessionEndedError
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
+from dataclasses import replace
 
 
 class StoryClockService:
@@ -69,6 +70,12 @@ class StoryClockService:
             consecutive_full_load_days=consecutive,
             chapter_overtime_count=overtime_count,
         )
+        if chapter_transition:
+            for npc_id, npc_state in tuple(session.npc_states.items()):
+                if npc_state.chapter_disclosure_used:
+                    session.npc_states[npc_id] = replace(
+                        npc_state, chapter_disclosure_used=False
+                    )
         session.logs.append({
             "type": "day_advance",
             "from_day": state.story_day,
