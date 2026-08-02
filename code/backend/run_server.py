@@ -1,4 +1,4 @@
-"""启动独立游戏后端，不加载根目录剧本生成器。"""
+"""启动游戏权威后端。"""
 
 from __future__ import annotations
 

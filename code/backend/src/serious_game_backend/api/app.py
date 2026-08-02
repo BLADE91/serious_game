@@ -93,7 +93,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app = FastAPI(
         title="浊流之下·清江搬迁记后端",
         version="0.1.0",
-        description="独立权威游戏运行时；不包含剧本生成器或游戏前端。",
+        description="游戏权威运行时；前端通过玩家 API 与其交互。",
     )
     app.state.container = runtime
     authentication_enabled = (

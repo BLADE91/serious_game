@@ -4,30 +4,5 @@ __pycache__/
 *.py[cod]
 .DS_Store
 
-# Frontend build artifacts
-frontend/dist/
-frontend/node_modules/
-frontend/tsconfig.tsbuildinfo
-
-# Local dev data
+# Local runtime data
 data/
-
-# Generated draft history and local counters
-outputs/history/
-outputs/script_drafts/.version_counter
-
-# Generated script draft internals. Keep final_*.md and script_*.json trackable.
-outputs/script_drafts/**/.artifact_inputs.json
-outputs/script_drafts/**/.source_baseline/
-outputs/script_drafts/**/01_*.md
-outputs/script_drafts/**/02_*.md
-outputs/script_drafts/**/03_ch*.md
-outputs/script_drafts/**/04_*.md
-outputs/script_drafts/**/05_*.json
-outputs/script_drafts/**/06_*.json
-outputs/script_drafts/**/06a_*.json
-outputs/script_drafts/**/06b_*.json
-outputs/script_drafts/**/06b_ch*_parts/
-outputs/script_drafts/**/07_*.json
-outputs/script_drafts/**/08_*.json
-outputs/script_drafts/**/revision_*.json
