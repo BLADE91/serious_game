@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+from dataclasses import replace
+
+from serious_game_backend.domain.errors import ActionUnavailableError, ContentValidationError
+from serious_game_backend.domain.events import PendingDecision, VisibleDecisionOption
+from serious_game_backend.domain.game_session import GameSession
+from serious_game_backend.domain.script_package import ScriptPackage
+from serious_game_backend.domain.story import DecisionOptionDefinition, StoryDayDefinition
+
+
+class StoryFlowService:
+    """把结构化 story beat 投影为可恢复的玩家叙事流和待决策实例。"""
+
+    INTERNAL_MARKERS = (
+        "开启旗标", "关闭旗标", "显示位", "本节点", "结局轴",
+        "状态量", "代码照此算", "行动点重置", "轴 T", "flag_",
+    )
+
+    def initialize(self, session: GameSession, package: ScriptPackage) -> None:
+        self._enter_day(session, package, session.game_state.story_day)
+
+    def append_night(self, session: GameSession, package: ScriptPackage) -> None:
+        beat = package.story_day(session.game_state.story_day)
+        if beat is None:
+            return
+        self._append_blocks(session, beat.night_blocks)
+
+    def enter_current_day(self, session: GameSession, package: ScriptPackage) -> None:
+        self._enter_day(session, package, session.game_state.story_day)
+
+    def resolve_decision(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        *,
+        decision_id: str,
+        option_id: str,
+        complete: bool = True,
+    ) -> DecisionOptionDefinition:
+        pending = session.pending_decision
+        if pending is None or pending.decision_id != decision_id:
+            raise ActionUnavailableError("当前待处理决策与提交不一致")
+        decision = package.decisions.get(decision_id)
+        if decision is None:
+            raise ContentValidationError(f"剧本包缺少决策：{decision_id}")
+        option = decision.option(option_id)
+        if option is None or option_id not in pending.option_ids:
+            raise ActionUnavailableError("当前决策不包含该选项")
+        session.append_narrative(
+            story_day=session.game_state.story_day,
+            kind="consequence",
+            text=self.public_text(option.consequence),
+        )
+        self._append_blocks(session, decision.followup_blocks)
+        if complete:
+            session.pending_decision = None
+        return option
+
+    def present_next_decision(
+        self, session: GameSession, package: ScriptPackage
+    ) -> None:
+        if session.pending_decision is not None:
+            return
+        while session.pending_decision_queue:
+            decision_id = session.pending_decision_queue.pop(0)
+            if decision_id in {
+                item.get("decision_id")
+                for item in session.logs
+                if item.get("type") == "decision"
+            }:
+                continue
+            decision = package.decisions.get(decision_id)
+            if decision is None:
+                raise ContentValidationError(f"剧本包缺少决策：{decision_id}")
+            if not decision.is_available(session.flags):
+                session.logs.append({
+                    "type": "decision_skipped",
+                    "story_day": session.game_state.story_day,
+                    "decision_id": decision_id,
+                    "visible_to_player": False,
+                })
+                continue
+            self._present_decision_id(session, package, decision_id)
+            return
+
+    def append_blocks(self, session: GameSession, blocks) -> None:
+        self._append_blocks(session, blocks)
+
+    @staticmethod
+    def feed_since(session: GameSession, after: int) -> dict:
+        items = [item for item in session.narrative_feed if item.cursor > after]
+        return {
+            "after": after,
+            "cursor": session.next_feed_cursor - 1,
+            "items": [
+                {
+                    "cursor": item.cursor,
+                    "story_day": item.story_day,
+                    "kind": item.kind,
+                    "speaker": item.speaker,
+                    "text": item.text,
+                }
+                for item in items
+            ],
+        }
+
+    def _enter_day(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        story_day: int,
+    ) -> None:
+        beat = package.story_day(story_day)
+        if beat is None:
+            session.story_beat_id = None
+            return
+        session.story_beat_id = beat.beat_id
+        self._append_blocks(session, beat.opening_blocks)
+        scheduled = list(beat.decision_ids)
+        if beat.opening_decision_id and beat.opening_decision_id not in scheduled:
+            scheduled.insert(0, beat.opening_decision_id)
+        for decision in package.decisions.values():
+            if decision.is_due_early(story_day, session.flags):
+                scheduled.insert(0, decision.decision_id)
+        for decision_id in scheduled:
+            if decision_id not in session.pending_decision_queue:
+                session.pending_decision_queue.append(decision_id)
+        self.present_next_decision(session, package)
+
+    @staticmethod
+    def _append_blocks(session: GameSession, blocks) -> None:
+        for block in blocks:
+            if not block.is_visible(origin_id=session.origin_id, flags=session.flags):
+                continue
+            session.append_narrative(
+                story_day=session.game_state.story_day,
+                kind=block.kind,
+                text=StoryFlowService.public_text(block.text),
+                speaker=block.speaker,
+            )
+
+    @staticmethod
+    def _present_decision_id(
+        session: GameSession,
+        package: ScriptPackage,
+        decision_id: str,
+    ) -> None:
+        decision = package.decisions.get(decision_id)
+        if decision is None:
+            raise ContentValidationError(f"剧本包缺少决策：{decision_id}")
+        if (
+            decision_id == "dp2_03"
+            and session.game_state.story_day == 19
+            and not any(item.get("type") == "dp2_03_early_anxiety" for item in session.logs)
+        ):
+            npc = session.npc_states.get("npc_liu_san")
+            if npc is not None and npc.anxiety_score is not None:
+                session.npc_states["npc_liu_san"] = replace(
+                    npc, anxiety_score=min(100, npc.anxiety_score + 10)
+                )
+            session.logs.append({
+                "type": "dp2_03_early_anxiety",
+                "story_day": 19,
+                "visible_to_player": False,
+            })
+        ledger_values = {
+            "budget_remaining": session.game_state.budget_remaining,
+            "signed_households": session.game_state.signed_households,
+            "reported_signed_households": session.game_state.reported_signed_households,
+            "chapter_overtime_count": session.game_state.chapter_overtime_count,
+        }
+        context = (
+            session.pending_decision.context
+            if session.pending_decision is not None
+            and session.pending_decision.decision_id == decision_id
+            else {}
+        )
+        availability = {
+            item.option_id: item.is_available(
+                session.flags, session.state_values, ledger_values
+            ) and not (
+                decision_id == "dp4_04"
+                and item.option_id == "a"
+                and context.get("listened_once")
+            )
+            for item in decision.options
+        }
+        available_ids = tuple(
+            item.option_id for item in decision.options if availability[item.option_id]
+        )
+        if not available_ids:
+            raise ContentValidationError(f"当前决策没有可达选项：{decision_id}")
+        self_context = dict(context)
+        session.pending_decision = PendingDecision(
+            event_instance_id=f"evt_{session.session_id}_{decision.decision_id}",
+            decision_id=decision.decision_id,
+            option_ids=available_ids,
+            presented_state_version=session.state_version,
+            visible_title=StoryFlowService.public_text(decision.title),
+            visible_text=StoryFlowService.public_text(decision.prompt),
+            options=tuple(
+                VisibleDecisionOption(
+                    item.option_id,
+                    StoryFlowService.public_text(item.text),
+                    available=availability[item.option_id],
+                    unavailable_reason=(
+                        None if availability[item.option_id] else item.unavailable_reason
+                    ),
+                )
+                for item in decision.options
+            ),
+            input_kind=decision.input_kind,
+            input_schema=decision.input_schema or None,
+            context=self_context,
+        )
+        StoryFlowService._append_blocks(session, decision.presentation_blocks)
+        session.logs.append({
+            "type": "decision_presented",
+            "story_day": session.game_state.story_day,
+            "decision_id": decision.decision_id,
+            "visible_to_player": True,
+        })
+
+    @classmethod
+    def public_text(cls, text: str) -> str:
+        if not any(marker in text for marker in cls.INTERNAL_MARKERS):
+            return text
+        parts = []
+        for sentence in text.replace("\n", "。").split("。"):
+            value = sentence.strip()
+            if value and not any(marker in value for marker in cls.INTERNAL_MARKERS):
+                parts.append(value)
+        return "。".join(parts) + ("。" if parts else "相关处置已经记录，后续影响将在剧情中体现。")

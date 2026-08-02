@@ -1,4 +1,0 @@
-opensearch-py>=2.4,<4
-openai>=1.30,<3
-fastapi>=0.100,<1
-uvicorn>=0.20,<1
