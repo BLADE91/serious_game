@@ -39,8 +39,11 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
 )
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 
-where node.exe >nul 2>&1 || goto :missing_node
-where npm.cmd >nul 2>&1 || goto :missing_node
+where wsl.exe >nul 2>&1 || goto :missing_wsl
+set "WEB_WSL_DIR="
+for /f "delims=" %%I in ('wsl.exe wslpath -a "%WEB_DIR%" 2^>nul') do set "WEB_WSL_DIR=%%I"
+if not defined WEB_WSL_DIR goto :missing_wsl
+wsl.exe bash -lc "command -v node >/dev/null && command -v npm >/dev/null" || goto :missing_wsl_node
 "%PYTHON_EXE%" -c "import fastapi, pydantic, uvicorn, pymysql, cryptography" >nul 2>&1
 if errorlevel 1 (
     echo Installing Python dependencies for this version...
@@ -52,23 +55,14 @@ if /i "%~1"=="--check" (
     echo Web worktree check passed.
     echo Backend: %BACKEND_DIR%
     echo Web:     %WEB_DIR%
+    echo WSL Web: %WEB_WSL_DIR%
     echo URLs:    http://127.0.0.1:8101 and http://127.0.0.1:3001
     exit /b 0
 )
 
-pushd "%WEB_DIR%"
-if not exist "node_modules\.bin\vinext.cmd" (
-    echo Installing web dependencies for this version...
-    call npm.cmd ci
-    if errorlevel 1 goto :web_install_failed
-)
-if not exist "dist\server\index.js" (
-    echo Building the web client for this version...
-    set "WRANGLER_LOG_PATH=.wrangler\wrangler.log"
-    call npx.cmd vinext build
-    if errorlevel 1 goto :web_build_failed
-)
-popd
+echo Preparing the Linux web runtime...
+wsl.exe bash -lc "cd '%WEB_WSL_DIR%' && if [ ! -f .wsl-deps-ready ]; then npm ci && touch .wsl-deps-ready; fi && npm run build"
+if errorlevel 1 goto :web_prepare_failed
 
 echo Starting dedicated web backend on http://127.0.0.1:8101 ...
 powershell.exe -NoProfile -Command "try { $r=Invoke-RestMethod 'http://127.0.0.1:8101/health/ready' -TimeoutSec 2; if($r.repository -eq 'sqlite'){exit 0}else{exit 2} } catch { exit 1 }" >nul 2>&1
@@ -80,7 +74,7 @@ powershell.exe -NoProfile -Command "$limit=(Get-Date).AddSeconds(45); do { try {
 if errorlevel 1 goto :backend_failed
 
 echo Starting web client on http://127.0.0.1:3001 ...
-start "Web Client - Keep Open" /D "%WEB_DIR%" "%ComSpec%" /k "set WRANGLER_LOG_PATH=.wrangler\wrangler.log&& npx.cmd vinext start"
+start "Web Client - Keep Open" wsl.exe bash -lc "cd '%WEB_WSL_DIR%' && export GAME_BACKEND_URL='http://127.0.0.1:8101' PORT='3001' WRANGLER_LOG_PATH='.wrangler/wrangler.log' && npm run start"
 powershell.exe -NoProfile -Command "$limit=(Get-Date).AddSeconds(45); do { try { $r=Invoke-WebRequest 'http://127.0.0.1:3001' -UseBasicParsing -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0} } catch {}; Start-Sleep -Milliseconds 500 } while((Get-Date)-lt $limit); exit 1" >nul 2>&1
 if errorlevel 1 goto :web_failed
 
@@ -108,22 +102,21 @@ exit /b 1
 echo [ERROR] Could not create the web version's isolated Python environment.
 pause
 exit /b 1
-:missing_node
-echo [ERROR] Node.js and npm were not found.
+:missing_wsl
+echo [ERROR] WSL is required to run the Vinext web server correctly.
+echo Install WSL, then run this launcher again.
+pause
+exit /b 1
+:missing_wsl_node
+echo [ERROR] Node.js and npm were not found inside WSL.
 pause
 exit /b 1
 :install_failed
 echo [ERROR] Python dependency installation failed.
 pause
 exit /b 1
-:web_install_failed
-popd
-echo [ERROR] Web dependency installation failed.
-pause
-exit /b 1
-:web_build_failed
-popd
-echo [ERROR] Web production build failed.
+:web_prepare_failed
+echo [ERROR] WSL web dependency installation or production build failed.
 pause
 exit /b 1
 :backend_failed
