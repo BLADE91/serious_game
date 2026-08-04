@@ -16,6 +16,7 @@ export class ApiError extends Error {
 export class GameApi {
   baseUrl: string;
   csrfToken = "";
+  accountId = "";
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -28,6 +29,7 @@ export class GameApi {
   async request<T = Record<string, unknown>>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json; charset=utf-8";
+    if (this.accountId) headers["X-Account-ID"] = this.accountId;
     if (this.csrfToken && !["GET", "HEAD"].includes(method)) headers["X-CSRF-Token"] = this.csrfToken;
     let response: Response;
     try {

@@ -106,9 +106,18 @@ export default function GameShell() {
       setConnected(true);
       log(`已连接 ${baseUrl} · text-gameplay-v3`, "success");
       if (ready.authentication_required) {
-        try { const me = await api.me() as Dict; setAccount(String(me.account_id || "已登录")); log(`身份已恢复：${me.account_id}`, "success"); }
+        try { const me = await api.me() as Dict; api.accountId = String(me.account_id || ""); setAccount(String(me.account_id || "已登录")); log(`身份已恢复：${me.account_id}`, "success"); }
         catch { setAuthOpen(true); }
-      } else setAccount("开发沙盒");
+      } else {
+        const storageKey = "qingjiang-sandbox-account";
+        let sandboxAccount = localStorage.getItem(storageKey);
+        if (!sandboxAccount) {
+          sandboxAccount = `sandbox_web_${crypto.randomUUID().replaceAll("-", "")}`;
+          localStorage.setItem(storageKey, sandboxAccount);
+        }
+        api.accountId = sandboxAccount;
+        setAccount("开发沙盒");
+      }
     } catch (e) { setConnected(false); fail(e); }
     finally { setBusy(false); }
   }
@@ -121,6 +130,7 @@ export default function GameShell() {
     try {
       const result = await api.auth(String(data.get("mode")) as "login" | "register", String(data.get("username")), String(data.get("password")));
       api.csrfToken = result.csrf_token; sessionStorage.setItem("qingjiang-csrf", result.csrf_token);
+      api.accountId = result.account_id;
       setAccount(result.account_id); setAuthOpen(false); log(`账号已登录：${result.account_id}`, "success"); setSessionOpen(true);
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
