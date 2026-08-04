@@ -3,11 +3,11 @@
   "title": "浊流之下·清江搬迁记",
   "package_version": "1.2.0-gameplay-closure",
   "source_version": "最终剧本_20260723",
-  "content_hash": "sha256:06ed5be40a8526c29f4b5553135a563e20c7309ce4ba036a6857711abe8411be",
+  "content_hash": "sha256:84951a9fbadcc162dcad272dfe911e82f4560aa1ea7b928dbc9828c86832cccc",
   "status": "draft",
   "gameplay_schema_version": 3,
   "script_schema_version": 2,
   "rules_schema_version": 3,
   "notes": "每日玩法闭环 v2；补齐 D43 茶叶处置、张立显式信任结算、玩家可见文本清理与内部标记校验；保留 D75 首批冻结、D76-D89 限定补签及 D90 只读验收。",
-  "source_sha256": "sha256:dfb71566e90a3982edaef75396f84c6c8c5f8e2f65958a28841cefc372984204"
+  "source_sha256": "sha256:17093350cecc5288168e3e8728be59d352ce31fe2c466ea2100dda3e60067e8b"
 }

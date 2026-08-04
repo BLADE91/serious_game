@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, GameApi } from "./lib/api";
 
@@ -29,7 +31,6 @@ const PANEL_TITLES: Record<PanelName, string> = {
 
 const get = (obj: Dict | null, path: string, fallback: any = undefined) => path.split(".").reduce((v, k) => v?.[k], obj) ?? fallback;
 const arr = (value: unknown): Dict[] => Array.isArray(value) ? value.filter(v => v && typeof v === "object") as Dict[] : [];
-const textOf = (value: unknown) => typeof value === "string" ? value : value == null ? "" : JSON.stringify(value, null, 2);
 const displayValue = (value: unknown, fallback: string | number = "—"): string | number => {
   if (typeof value === "string" || typeof value === "number") return value;
   if (typeof value === "boolean") return value ? "是" : "否";
@@ -54,7 +55,11 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 }
 
 export default function GameShell() {
-  const [baseUrl, setBaseUrl] = useState("/api/backend");
+  const [baseUrl, setBaseUrl] = useState(() => {
+    if (typeof window === "undefined") return "/api/backend";
+    const saved = localStorage.getItem("qingjiang-api-base");
+    return saved && saved !== "http://127.0.0.1:8100" ? saved : "/api/backend";
+  });
   const api = useMemo(() => new GameApi(baseUrl), [baseUrl]);
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState("");
@@ -77,9 +82,7 @@ export default function GameShell() {
   const terminalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-      const savedBase = localStorage.getItem("qingjiang-api-base");
     const savedToken = sessionStorage.getItem("qingjiang-csrf");
-      if (savedBase && savedBase !== "http://127.0.0.1:8100") setBaseUrl(savedBase);
     if (savedToken) api.csrfToken = savedToken;
   }, [api]);
 
@@ -122,7 +125,10 @@ export default function GameShell() {
     finally { setBusy(false); }
   }
 
-  useEffect(() => { connect(); /* initial connection */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const timer = window.setTimeout(() => void connect(), 0);
+    return () => window.clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function authenticate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
@@ -251,7 +257,7 @@ export default function GameShell() {
           <div className="terminal-output" ref={terminalRef} aria-live="polite">
             {lines.map(line => <div className={`terminal-line ${line.kind}`} key={line.id}>{line.speaker && <b>{line.speaker}</b>}<span>{line.text}</span></div>)}
             {!sessionId && <div className="welcome-block"><p>这里不是一份政策答卷。</p><h2>你有 90 天，处理一场正在失控的搬迁。</h2><p>每次会谈、批示、承诺和沉默，都会留下痕迹。</p><button onClick={() => setSessionOpen(true)}>建立治理档案 →</button></div>}
-            {pending && <div className="decision-block"><div className="eyebrow">必须决策 · {pending.decision_id}</div><h3>{pending.title || pending.prompt || pending.situation || "当前事项需要你的决定"}</h3>{pending.description && <p>{pending.description}</p>}<div className="decision-options">{options.map((option, index) => <button key={option.option_id || index} onClick={() => submitDecision(option)} disabled={busy}><span>{String.fromCharCode(65 + index)}</span><div><b>{option.text || option.label}</b>{option.description && <small>{option.description}</small>}</div><i>选择</i></button>)}</div>{pending.input_type && pending.input_type !== "single" && <button className="secondary-action" onClick={() => setFormOpen({ title: "提交结构化决策", kind: "decision", item: pending })}>排序 / 分配题表单</button>}</div>}
+            {pending && <div className="decision-block"><div className="eyebrow">必须决策 · {pending.decision_id}</div><h3>{pending.title || pending.prompt || pending.situation || "当前事项需要你的决定"}</h3>{pending.description && <p>{pending.description}</p>}{["sorting", "allocation"].includes(pending.input_kind) ? <StructuredDecision key={pending.decision_id} pending={pending} busy={busy} onSubmit={payload => perform(() => api.action(sessionId, { input_mode: "decision", client_action_id: api.key("decision"), state_version: state.state_version, decision_id: pending.decision_id, ...payload }), "决策已提交")} /> : <div className="decision-options">{options.map((option, index) => <button key={option.option_id || index} onClick={() => submitDecision(option)} disabled={busy || option.available === false}><span>{String.fromCharCode(65 + index)}</span><div><b>{option.text || option.label}</b>{option.description && <small>{option.description}</small>}</div><i>{option.available === false ? option.unavailable_reason || "不可选" : "选择"}</i></button>)}</div>}</div>}
           </div>
           <form className="command-bar" onSubmit={runCommand}><span>县长@清江</span><b>$</b><input value={commandInput} onChange={e => setCommandInput(e.target.value)} placeholder={get(state, "active_conversation.conversation_id") ? "输入你要对 NPC 说的话…" : "输入命令，或键入 help…"} disabled={!sessionId || busy} aria-label="终端命令"/><button disabled={!commandInput.trim() || busy}>执行 ↵</button></form>
         </section>
@@ -286,7 +292,26 @@ function Settings({ baseUrl, onSave, onConnect }: { baseUrl: string; onSave: (ur
 
 function SceneSummary({ state, commands }: { state: Dict; commands: Dict }) {
   const active = state.active_conversation;
-  return <div className="scene-summary"><div className="status-card"><small>当前阶段</small><strong>{displayValue(get(state, "story.beat_name", get(state, "story.beat_id", "等待进入游戏")), "等待进入游戏")}</strong><p>{state.status === "completed" ? "本局已经终结，可前往复盘查看结果。" : active ? `正在与 ${displayValue(active.npc_name, "NPC")} 会谈` : state.pending_decision ? "有一项必须处理的决策。" : "请从当前开放的行动、会谈或剧情决策中继续。"}</p></div><div className="command-grid">{Object.entries(commands).map(([key, value]) => <div key={key}><i className={value ? "yes" : "no"}/><span>{key.replace("can_", "")}</span></div>)}</div></div>;
+  return <div className="scene-summary"><div className="status-card"><small>当前阶段</small><strong>{displayValue(get(state, "story.beat_name", get(state, "story.beat_id", "等待进入游戏")), "等待进入游戏")}</strong><p>{["completed", "ended"].includes(state.status) ? "本局已经终结，可前往复盘查看结果。" : active ? `正在与 ${displayValue(active.npc_name, "NPC")} 会谈` : state.pending_decision ? "有一项必须处理的决策。" : "请从当前开放的行动、会谈或剧情决策中继续。"}</p></div><div className="command-grid">{Object.entries(commands).map(([key, value]) => <div key={key}><i className={value ? "yes" : "no"}/><span>{key.replace("can_", "")}</span></div>)}</div></div>;
+}
+
+function StructuredDecision({ pending, busy, onSubmit }: { pending: Dict; busy: boolean; onSubmit: (payload: Dict) => Promise<void> }) {
+  const schema = pending.input_schema || {};
+  const items = Array.isArray(schema.items) ? schema.items.map(String) : [];
+  const fields = Array.isArray(schema.fields) ? schema.fields.map(String) : [];
+  const total = Number(schema.total || 0);
+  const [order, setOrder] = useState(items);
+  const [allocations, setAllocations] = useState<Record<string, number>>(() => Object.fromEntries(fields.map((field, index) => [field, index === 0 ? total : 0])));
+  if (pending.input_kind === "sorting") {
+    const move = (index: number, delta: number) => setOrder(current => {
+      const target = index + delta;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current]; [next[index], next[target]] = [next[target], next[index]]; return next;
+    });
+    return <div className="structured-decision"><p>请按优先级排列，最上方最优先。</p>{order.map((item, index) => <div className="sort-row" key={item}><strong>{index + 1}</strong><span>{String(item).toUpperCase()}</span><button onClick={() => move(index, -1)} disabled={busy || index === 0} aria-label={`上移 ${item}`}>↑</button><button onClick={() => move(index, 1)} disabled={busy || index === order.length - 1} aria-label={`下移 ${item}`}>↓</button></div>)}<button className="structured-submit" onClick={() => onSubmit({ ordered_option_ids: order })} disabled={busy || !order.length}>确认排序</button></div>;
+  }
+  const allocated = Object.values(allocations).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+  return <div className="structured-decision"><p>请分配全部 {total} {schema.unit || "单位"}，不能剩余或超额。</p>{fields.map(field => <label className="allocation-row" key={field}><span>{schema.labels?.[field] || field}</span><input type="number" min="0" step="1" value={allocations[field] ?? 0} onChange={event => setAllocations(current => ({ ...current, [field]: Math.max(0, Number(event.target.value) || 0) }))}/><em>{schema.unit || ""}</em></label>)}<div className={allocated === total ? "allocation-total valid" : "allocation-total invalid"}>已分配 {allocated} / {total}</div><button className="structured-submit" onClick={() => onSubmit({ parameters: { allocations } })} disabled={busy || allocated !== total}>确认分配</button></div>;
 }
 
 function ActionPanel({ data, onRun }: { data: Dict | null; onRun: (item: Dict) => void }) {

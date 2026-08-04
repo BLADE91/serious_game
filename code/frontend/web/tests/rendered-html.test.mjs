@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -18,4 +19,16 @@ test("renders the Qingjiang governance web client", async () => {
   assert.match(html, /清江搬迁记/);
   assert.match(html, /县域治理情境模拟系统/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/);
+});
+
+test("sends the persisted sandbox account on player API requests", async () => {
+  const source = await readFile(new URL("../app/lib/api.ts", import.meta.url), "utf8");
+  assert.match(source, /headers\["X-Account-ID"\] = this\.accountId/);
+});
+
+test("provides player controls for sorting and allocation decisions", async () => {
+  const source = await readFile(new URL("../app/GameShell.tsx", import.meta.url), "utf8");
+  assert.match(source, /ordered_option_ids: order/);
+  assert.match(source, /parameters: \{ allocations \}/);
+  assert.match(source, /allocated !== total/);
 });
