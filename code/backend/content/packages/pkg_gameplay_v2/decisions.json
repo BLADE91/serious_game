@@ -9630,7 +9630,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "周大山归心已入账"
+                "周大山核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -9641,7 +9641,7 @@
                   ]
                 },
                 "open_flags": [
-                  "周大山归心已入账"
+                  "周大山核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -9719,7 +9719,7 @@
                 "旧账缺口已坐实"
               ],
               "forbidden_flags": [
-                "谭老六已入账",
+                "谭老六合同批次可发起",
                 "谭老六被强压"
               ],
               "effects": {
@@ -9733,15 +9733,12 @@
                     -5
                   ]
                 },
-                "ledger_deltas": {
-                  "signed_households": [
-                    3,
-                    3
-                  ]
-                },
+                "ledger_deltas": {},
                 "open_flags": [
                   "谭老六已安抚",
-                  "谭老六已入账"
+                  "谭老六愿意进入拟约",
+                  "谭老六核心矛盾已缓解",
+                  "谭老六合同批次可发起"
                 ],
                 "close_flags": []
               }
@@ -9749,7 +9746,7 @@
             {
               "forbidden_flags": [
                 "旧账缺口已坐实",
-                "谭老六已入账"
+                "谭老六合同批次可发起"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -9883,19 +9880,16 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "袁桂兰已入账",
+                "袁桂兰合同批次可发起",
                 "赔付换谅解在册"
               ],
               "effects": {
                 "metric_deltas": {},
-                "ledger_deltas": {
-                  "signed_households": [
-                    2,
-                    2
-                  ]
-                },
+                "ledger_deltas": {},
                 "open_flags": [
-                  "袁桂兰已入账"
+                  "袁桂兰愿意进入拟约",
+                  "袁桂兰核心矛盾已缓解",
+                  "袁桂兰合同批次可发起"
                 ],
                 "close_flags": []
               }
@@ -9992,7 +9986,7 @@
                 "普查结果公开"
               ],
               "forbidden_flags": [
-                "吴秀英已入账"
+                "吴秀英核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -10003,7 +9997,7 @@
                   ]
                 },
                 "open_flags": [
-                  "吴秀英已入账"
+                  "吴秀英核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -10043,7 +10037,7 @@
                 "普查结果公开"
               ],
               "forbidden_flags": [
-                "吴秀英已入账"
+                "吴秀英核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -10054,7 +10048,7 @@
                   ]
                 },
                 "open_flags": [
-                  "吴秀英已入账"
+                  "吴秀英核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -10199,12 +10193,12 @@
           "conditional_effects": [
             {
               "required_flags": [
-                "吴秀英已入账",
+                "吴秀英核心矛盾已缓解",
                 "谭老六已安抚"
               ],
               "forbidden_flags": [
-                "何铁柱已入账",
-                "杨波已入账",
+                "何铁柱核心矛盾已缓解",
+                "杨波核心矛盾已缓解",
                 "杨波已被宏达绑定"
               ],
               "effects": {
@@ -10216,20 +10210,20 @@
                   ]
                 },
                 "open_flags": [
-                  "何铁柱已入账",
-                  "杨波已入账"
+                  "何铁柱核心矛盾已缓解",
+                  "杨波核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
             },
             {
               "required_flags": [
-                "吴秀英已入账",
+                "吴秀英核心矛盾已缓解",
                 "杨波已被宏达绑定"
               ],
               "forbidden_flags": [
-                "何铁柱已入账",
-                "杨波已入账"
+                "何铁柱核心矛盾已缓解",
+                "杨波核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -10240,19 +10234,19 @@
                   ]
                 },
                 "open_flags": [
-                  "何铁柱已入账",
-                  "杨波已入账"
+                  "何铁柱核心矛盾已缓解",
+                  "杨波核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
             },
             {
               "required_flags": [
-                "吴秀英已入账",
-                "杨波已入账"
+                "吴秀英核心矛盾已缓解",
+                "杨波核心矛盾已缓解"
               ],
               "forbidden_flags": [
-                "何铁柱已入账"
+                "何铁柱核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -10263,18 +10257,18 @@
                   ]
                 },
                 "open_flags": [
-                  "何铁柱已入账"
+                  "何铁柱核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
             },
             {
               "required_flags": [
-                "吴秀英已入账"
+                "吴秀英核心矛盾已缓解"
               ],
               "forbidden_flags": [
-                "何铁柱已入账",
-                "杨波已入账",
+                "何铁柱核心矛盾已缓解",
+                "杨波核心矛盾已缓解",
                 "谭老六已安抚",
                 "杨波已被宏达绑定"
               ],
@@ -10287,18 +10281,18 @@
                   ]
                 },
                 "open_flags": [
-                  "何铁柱已入账"
+                  "何铁柱核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
             },
             {
               "required_flags": [
-                "何铁柱已入账",
+                "何铁柱核心矛盾已缓解",
                 "谭老六已安抚"
               ],
               "forbidden_flags": [
-                "杨波已入账",
+                "杨波核心矛盾已缓解",
                 "杨波已被宏达绑定"
               ],
               "effects": {
@@ -10310,18 +10304,18 @@
                   ]
                 },
                 "open_flags": [
-                  "杨波已入账"
+                  "杨波核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
             },
             {
               "required_flags": [
-                "何铁柱已入账",
+                "何铁柱核心矛盾已缓解",
                 "杨波已被宏达绑定"
               ],
               "forbidden_flags": [
-                "杨波已入账"
+                "杨波核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -10332,7 +10326,7 @@
                   ]
                 },
                 "open_flags": [
-                  "杨波已入账"
+                  "杨波核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -11519,7 +11513,7 @@
               ]
             },
             "open_flags": [
-              "周奎元已入账",
+              "周奎元核心矛盾已缓解",
               "祖坟迁定"
             ],
             "close_flags": [
@@ -11851,7 +11845,7 @@
               ]
             },
             "open_flags": [
-              "周满仓已入账",
+              "周满仓核心矛盾已缓解",
               "明账服人"
             ],
             "close_flags": [],
@@ -11977,7 +11971,7 @@
                 "代签已查实"
               ],
               "forbidden_flags": [
-                "宁德海已入账"
+                "宁德海核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {
@@ -12001,7 +11995,7 @@
                   ]
                 },
                 "open_flags": [
-                  "宁德海已入账",
+                  "宁德海核心矛盾已缓解",
                   "程序已正",
                   "党员样板已立"
                 ],
@@ -12011,7 +12005,7 @@
             {
               "forbidden_flags": [
                 "代签已查实",
-                "宁德海已入账"
+                "宁德海核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12310,7 +12304,7 @@
                 "党员样板已立"
               ],
               "forbidden_flags": [
-                "马长顺已入账"
+                "马长顺核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12321,7 +12315,7 @@
                   ]
                 },
                 "open_flags": [
-                  "马长顺已入账"
+                  "马长顺核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -12387,7 +12381,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "马长顺已入账"
+                "马长顺核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12398,12 +12392,12 @@
                   ]
                 },
                 "open_flags": [
-                  "马长顺已入账"
+                  "马长顺核心矛盾已缓解"
                 ],
                 "close_flags": []
               },
               "required_any_flags": [
-                "宁德海已入账",
+                "宁德海核心矛盾已缓解",
                 "样板已下乡"
               ]
             },
@@ -12456,7 +12450,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "马长顺已入账"
+                "马长顺核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12467,7 +12461,7 @@
                   ]
                 },
                 "open_flags": [
-                  "马长顺已入账"
+                  "马长顺核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -12550,7 +12544,7 @@
                 "党员样板已立"
               ],
               "forbidden_flags": [
-                "马长顺已入账"
+                "马长顺核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12561,7 +12555,7 @@
                   ]
                 },
                 "open_flags": [
-                  "马长顺已入账"
+                  "马长顺核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -12629,7 +12623,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "何铁柱已入账"
+                "何铁柱核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12640,7 +12634,7 @@
                   ]
                 },
                 "open_flags": [
-                  "何铁柱已入账"
+                  "何铁柱核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -12665,7 +12659,7 @@
                 "何铁柱欠你一个人情"
               ],
               "forbidden_flags": [
-                "何铁柱已入账"
+                "何铁柱核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {
@@ -12686,7 +12680,7 @@
                 },
                 "open_flags": [
                   "人情已兑现",
-                  "何铁柱已入账"
+                  "何铁柱核心矛盾已缓解"
                 ],
                 "close_flags": [
                   "何铁柱欠你一个人情"
@@ -12696,7 +12690,7 @@
             {
               "forbidden_flags": [
                 "何铁柱欠你一个人情",
-                "何铁柱已入账"
+                "何铁柱核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {
@@ -12841,10 +12835,10 @@
           "conditional_effects": [
             {
               "required_flags": [
-                "周大山预付已入账"
+                "周大山预付条件已核验"
               ],
               "forbidden_flags": [
-                "周大山归心已入账"
+                "周大山核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12855,16 +12849,16 @@
                   ]
                 },
                 "open_flags": [
-                  "周大山归心已入账",
-                  "周大山补账已入账"
+                  "周大山核心矛盾已缓解",
+                  "周大山补账已核验"
                 ],
                 "close_flags": []
               }
             },
             {
               "forbidden_flags": [
-                "周大山归心已入账",
-                "周大山预付已入账"
+                "周大山核心矛盾已缓解",
+                "周大山预付条件已核验"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -12875,8 +12869,8 @@
                   ]
                 },
                 "open_flags": [
-                  "周大山归心已入账",
-                  "周大山补账已入账"
+                  "周大山核心矛盾已缓解",
+                  "周大山补账已核验"
                 ],
                 "close_flags": []
               }
@@ -12919,10 +12913,10 @@
           "conditional_effects": [
             {
               "required_flags": [
-                "周大山预付已入账"
+                "周大山预付条件已核验"
               ],
               "forbidden_flags": [
-                "周大山归心已入账",
+                "周大山核心矛盾已缓解",
                 "周大山被压价"
               ],
               "effects": {
@@ -12947,8 +12941,8 @@
                   ]
                 },
                 "open_flags": [
-                  "周大山归心已入账",
-                  "周大山补账已入账",
+                  "周大山核心矛盾已缓解",
+                  "周大山补账已核验",
                   "祠堂地块批文已签发",
                   "用地手续有瑕疵"
                 ],
@@ -12959,9 +12953,9 @@
             },
             {
               "forbidden_flags": [
-                "周大山归心已入账",
+                "周大山核心矛盾已缓解",
                 "周大山被压价",
-                "周大山预付已入账"
+                "周大山预付条件已核验"
               ],
               "effects": {
                 "metric_deltas": {
@@ -12985,8 +12979,8 @@
                   ]
                 },
                 "open_flags": [
-                  "周大山归心已入账",
-                  "周大山补账已入账",
+                  "周大山核心矛盾已缓解",
+                  "周大山补账已核验",
                   "祠堂地块批文已签发",
                   "用地手续有瑕疵"
                 ],
@@ -13000,7 +12994,7 @@
                 "周大山被压价"
               ],
               "forbidden_flags": [
-                "周大山归心已入账"
+                "周大山核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {
@@ -17436,7 +17430,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "老倔头已入账",
+                "老倔头核心矛盾已缓解",
                 "差异化口子已开"
               ],
               "effects": {
@@ -17448,7 +17442,7 @@
                   ]
                 },
                 "open_flags": [
-                  "老倔头已入账"
+                  "老倔头核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -17459,7 +17453,7 @@
                 "进度榜已上墙"
               ],
               "forbidden_flags": [
-                "老倔头已入账"
+                "老倔头核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -17470,7 +17464,7 @@
                   ]
                 },
                 "open_flags": [
-                  "老倔头已入账"
+                  "老倔头核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -17534,7 +17528,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "苗喜旺已入账",
+                "苗喜旺核心矛盾已缓解",
                 "差异化口子已开"
               ],
               "effects": {
@@ -17546,7 +17540,7 @@
                   ]
                 },
                 "open_flags": [
-                  "苗喜旺已入账"
+                  "苗喜旺核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -17557,7 +17551,7 @@
                 "进度榜已上墙"
               ],
               "forbidden_flags": [
-                "苗喜旺已入账"
+                "苗喜旺核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -17568,7 +17562,7 @@
                   ]
                 },
                 "open_flags": [
-                  "苗喜旺已入账"
+                  "苗喜旺核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -17632,7 +17626,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "宁德海已入账",
+                "宁德海核心矛盾已缓解",
                 "宁德海线已锁死"
               ],
               "effects": {
@@ -17644,7 +17638,7 @@
                   ]
                 },
                 "open_flags": [
-                  "宁德海已入账",
+                  "宁德海核心矛盾已缓解",
                   "程序已正"
                 ],
                 "close_flags": []
@@ -18067,7 +18061,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18078,7 +18072,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18102,7 +18096,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18113,7 +18107,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18137,7 +18131,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18148,7 +18142,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18172,7 +18166,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18183,7 +18177,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18207,7 +18201,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18218,7 +18212,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18242,7 +18236,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18253,7 +18247,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18277,7 +18271,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18288,7 +18282,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18312,7 +18306,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18323,7 +18317,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18347,7 +18341,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18358,7 +18352,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18382,7 +18376,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18393,7 +18387,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18417,7 +18411,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18428,7 +18422,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18452,7 +18446,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18463,7 +18457,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18487,7 +18481,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18498,7 +18492,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18522,7 +18516,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18533,7 +18527,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18557,7 +18551,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18568,7 +18562,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18592,7 +18586,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18603,7 +18597,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18627,7 +18621,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18638,7 +18632,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18662,7 +18656,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18673,7 +18667,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18697,7 +18691,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18708,7 +18702,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18732,7 +18726,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18743,7 +18737,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18767,7 +18761,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18778,7 +18772,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18802,7 +18796,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18813,7 +18807,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18837,7 +18831,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18848,7 +18842,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18872,7 +18866,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账"
+                "邓守本核心矛盾已缓解"
               ],
               "effects": {
                 "metric_deltas": {},
@@ -18883,7 +18877,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18907,7 +18901,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账",
+                "邓守本核心矛盾已缓解",
                 "环评揭穿"
               ],
               "effects": {
@@ -18919,7 +18913,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -18960,7 +18954,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账",
+                "邓守本核心矛盾已缓解",
                 "环评揭穿"
               ],
               "effects": {
@@ -18972,7 +18966,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -19013,7 +19007,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账",
+                "邓守本核心矛盾已缓解",
                 "环评揭穿"
               ],
               "effects": {
@@ -19025,7 +19019,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -19066,7 +19060,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账",
+                "邓守本核心矛盾已缓解",
                 "环评揭穿"
               ],
               "effects": {
@@ -19078,7 +19072,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -19119,7 +19113,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账",
+                "邓守本核心矛盾已缓解",
                 "环评揭穿"
               ],
               "effects": {
@@ -19131,7 +19125,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -19172,7 +19166,7 @@
           "conditional_effects": [
             {
               "forbidden_flags": [
-                "邓守本已入账",
+                "邓守本核心矛盾已缓解",
                 "环评揭穿"
               ],
               "effects": {
@@ -19184,7 +19178,7 @@
                   ]
                 },
                 "open_flags": [
-                  "邓守本已入账"
+                  "邓守本核心矛盾已缓解"
                 ],
                 "close_flags": []
               }
@@ -21466,7 +21460,7 @@
               ]
             },
             "open_flags": [
-              "周满仓已入账",
+              "周满仓核心矛盾已缓解",
               "明账服人"
             ],
             "close_flags": [],

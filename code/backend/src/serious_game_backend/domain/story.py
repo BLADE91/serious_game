@@ -213,3 +213,4 @@ class VisibleNarrativeEntry:
     kind: str
     text: str
     speaker: str | None = None
+    content_instance_id: str | None = None

@@ -24,3 +24,34 @@ class ActiveConversation:
             {"speaker": "npc", "text": npc_text},
         ))
         self.turn_count += 1
+
+
+@dataclass(slots=True)
+class ForcedGroupConversation:
+    conversation_id: str
+    conversation_type: str
+    initiator_npc_id: str
+    participant_ids: tuple[str, ...]
+    agenda: str
+    demands: tuple[str, ...]
+    urgency: str
+    story_day: int
+    turn_count: int = 0
+    max_turns: int = 3
+    transcript: list[dict] = field(default_factory=list)
+    status: str = "pending"
+    started_at: str = field(default_factory=conversation_now_iso)
+
+    def add_player_turn(self, text: str) -> None:
+        self.transcript.append({"speaker_type": "player", "text": text})
+
+    def add_npc_turn(
+        self, *, npc_id: str, npc_name: str, model_id: str, text: str
+    ) -> None:
+        self.transcript.append({
+            "speaker_type": "npc",
+            "npc_id": npc_id,
+            "npc_name": npc_name,
+            "model_id": model_id,
+            "text": text,
+        })

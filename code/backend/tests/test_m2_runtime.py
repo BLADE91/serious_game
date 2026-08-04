@@ -170,6 +170,23 @@ class M2RuntimeTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(200, feed.status_code, feed.text)
+        feed_items = feed.json()["items"]
+        content_ids = [
+            item["content_instance_id"]
+            for item in feed_items
+            if item.get("content_instance_id")
+        ]
+        self.assertEqual(len(content_ids), len(set(content_ids)))
+        self.assertFalse(
+            {
+                item["text"] for item in feed_items if item["kind"] == "night"
+            }
+            & {
+                item["text"]
+                for item in feed_items
+                if item["kind"] == "morning_card"
+            }
+        )
         for marker in (
             "开启旗标", "关闭旗标", "本节点", "状态量", "结局轴",
             "代码照此算", "行动点重置", "轴 T", "flag_",

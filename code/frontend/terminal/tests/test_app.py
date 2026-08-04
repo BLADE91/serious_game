@@ -8,7 +8,7 @@ from terminal_client.renderer import render_state
 
 
 def visible_state(
-    *, version: int, day: int, pending: dict | None, origin_id: str = "technical"
+    *, version: int, day: int, pending: dict | None, origin_id: str = "mayor"
 ) -> dict:
     return {
         "session_id": "game_m1_test",
@@ -19,7 +19,7 @@ def visible_state(
             "chapter": 1,
             "cost_tier": "normal",
             "beat_id": "beat",
-            "origin": {"origin_id": origin_id, "title": "技术派"},
+            "origin": {"origin_id": origin_id, "title": "云溪县县长"},
         },
         "ledger": {
             "days_left": 91 - day,
@@ -68,8 +68,7 @@ class FakeApi:
     def new_key(prefix: str) -> str:
         return f"test-{prefix}-key"
 
-    def new_session(self, *, origin_id: str) -> dict:
-        assert origin_id == "technical"
+    def new_session(self) -> dict:
         return visible_state(version=1, day=1, pending=RECEPTION_PENDING)
 
     def get_view(self, session_id: str, *, after: int) -> dict:
@@ -207,6 +206,74 @@ class FakeApi:
         return {"status": "active", "decision_timeline": [],
                 "night_timeline": [], "visible_events": [], "ending": None}
 
+    def get_night_dialogues(self, session_id: str) -> dict:
+        return {
+            "session_id": session_id,
+            "nights": [{
+                "story_day": 29,
+                "contact_selections": [{
+                    "npc_id": "npc_qian_wei",
+                    "model_id": "model-qian",
+                    "contact_ids": ["npc_zhao_jianguo"],
+                    "rationale": "需要核对口径。",
+                    "accepted": True,
+                }],
+                "contact_responses": [{
+                    "initiator_npc_id": "npc_qian_wei",
+                    "invited_npc_id": "npc_zhao_jianguo",
+                    "model_id": "model-zhao",
+                    "response": "accept",
+                    "rationale": "需要听听对方准备怎么说。",
+                    "accepted": True,
+                }],
+                "agent_exchanges": [{
+                    "scene_id": "night_d29_qian_zhao_private_room",
+                    "group_index": 1,
+                    "participant_ids": [
+                        "npc_qian_wei", "npc_zhao_jianguo"
+                    ],
+                    "transcript": [{
+                        "round": 1,
+                        "speaker_name": "钱伟",
+                        "model_id": "model-qian",
+                        "dialogue": "这件事不能再有两套说法。",
+                    }],
+                    "action_proposals": [{
+                        "npc_id": "npc_qian_wei",
+                        "action_id": "night_unify_story",
+                        "accepted": True,
+                        "rationale": "继续合作更安全。",
+                    }],
+                    "executed_action_ids": ["night_unify_story"],
+                }],
+            }],
+        }
+
+    def reply_group_conversation(
+        self, session_id: str, *, state_version: int, player_text: str
+    ) -> dict:
+        state = visible_state(version=state_version + 1, day=30, pending=None)
+        state["active_group_conversation"] = None
+        return {
+            "state_version": state_version + 1,
+            "completed": True,
+            "turn_dialogues": [
+                {
+                    "npc_id": "npc_zhao_jianguo",
+                    "npc_name": "赵建国",
+                    "model_id": "model-zhao",
+                    "text": "这项责任需要在今天明确下来。",
+                },
+                {
+                    "npc_id": "npc_sun_qiang",
+                    "npc_name": "孙强",
+                    "model_id": "model-sun",
+                    "text": "基层需要一份可以照着执行的书面口径。",
+                },
+            ],
+            "visible_state": state,
+        }
+
     def get_package_validation(self) -> dict:
         return {"valid": True, "package_id": "pkg_backend_dev_v1",
                 "counts": {"story_days": 90, "decision_catalog": 62,
@@ -239,6 +306,48 @@ class FakeApi:
 
 
 class TerminalAppTests(unittest.TestCase):
+    def test_forced_group_conversation_renders_each_npc_reply(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+        app.session_id = "game_m1_test"
+        app.state_version = 10
+        app.state = visible_state(version=10, day=30, pending=None)
+        app.state["active_group_conversation"] = {
+            "conversation_id": "group_test",
+            "conversation_type": "cadre_meeting",
+            "participant_ids": ["npc_zhao_jianguo", "npc_sun_qiang"],
+            "agenda": "汇报基层材料风险",
+            "demands": ["明确责任"],
+            "turn_count": 2,
+            "max_turns": 3,
+            "transcript": [],
+        }
+
+        app._reply_group_conversation("我会今天明确书面责任。")
+
+        text = "\n".join(output)
+        self.assertIn("赵建国 [model-zhao]：这项责任需要", text)
+        self.assertIn("孙强 [model-sun]：基层需要", text)
+        self.assertIn("强制群组会谈队列已经处理完毕", text)
+    def test_night_dialogue_debug_view_renders_contacts_transcript_and_action(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+        app.session_id = "game_m1_test"
+        app.show_night_dialogues = True
+
+        app._show_new_night_dialogues(force=True)
+
+        text = "\n".join(output)
+        self.assertIn("D29 夜间联系人选择", text)
+        self.assertIn("npc_qian_wei [model-qian] → npc_zhao_jianguo", text)
+        self.assertIn(
+            "npc_qian_wei → npc_zhao_jianguo [model-zhao]：接受",
+            text,
+        )
+        self.assertIn("钱伟 [model-qian]：这件事不能再有两套说法", text)
+        self.assertIn("night_unify_story｜通过", text)
+        self.assertIn("最终执行：night_unify_story", text)
+
     def test_d75_locked_state_shows_signing_batches(self) -> None:
         state = visible_state(version=75, day=76, pending=None)
         state["ledger"]["signed_households"]["batches"] = {
@@ -252,7 +361,7 @@ class TerminalAppTests(unittest.TestCase):
         self.assertIn("验收期确认 3 户", rendered)
         self.assertIn("尚未签署 9 户", rendered)
 
-    def test_default_menu_can_register_choose_origin_and_resolve_decision(self) -> None:
+    def test_default_menu_can_register_start_game_and_resolve_decision(self) -> None:
         class MenuApi(FakeApi):
             def readiness(self):
                 return {"authentication_required": True}
@@ -267,11 +376,6 @@ class TerminalAppTests(unittest.TestCase):
 
             def get_latest_active(self):
                 raise ApiError("没有存档", code="NOT_FOUND", status=404)
-
-            def get_origins(self):
-                return {"origins": [{
-                    "origin_id": "technical", "title": "技术派", "description": "测试出身",
-                }]}
 
         menu_inputs = iter(["2", "player", "1", "1", "1", "0"])
         passwords = iter(["pass1234", "pass1234"])
@@ -289,9 +393,60 @@ class TerminalAppTests(unittest.TestCase):
         self.assertEqual(["a_reject_on_site"], api.selected_options)
         text = "\n".join(output)
         self.assertIn("账号入口", text)
-        self.assertIn("请选择开局出身", text)
+        self.assertIn("是否观看 NPC 夜间对话", text)
+        self.assertNotIn("请选择开局出身", text)
         self.assertTrue(any("请选择序号" in prompt for prompt in prompts))
         self.assertNotIn("输入 choose", text)
+
+    def test_menu_does_not_retry_incompatible_latest_save_forever(self) -> None:
+        class IncompatibleSaveApi(FakeApi):
+            def __init__(self) -> None:
+                super().__init__()
+                self.latest_calls = 0
+
+            def get_latest_active(self):
+                self.latest_calls += 1
+                raise ApiError(
+                    "游戏锁定的剧本包版本或内容哈希不匹配",
+                    code="SESSION_CONTENT_UNAVAILABLE",
+                    status=503,
+                )
+
+        menu_inputs = iter(["1", "0"])
+        output: list[str] = []
+        api = IncompatibleSaveApi()
+        app = TerminalApp(
+            api,
+            menu_mode=True,
+            input_fn=lambda _prompt: next(menu_inputs),
+            output_fn=output.append,
+            sleep_fn=lambda _seconds: None,
+        )
+
+        self.assertEqual(0, app.run())
+        self.assertEqual(1, api.latest_calls)
+        text = "\n".join(output)
+        self.assertIn("旧存档不可继续", text)
+        self.assertIn("旧存档仍会保留", text)
+        self.assertNotIn("已刷新服务端权威状态", text)
+
+    def test_incompatible_loaded_session_returns_to_game_entry(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+        app.session_id = "game_old"
+        app.state_version = 23
+        app.pending_operation_id = "operation_old"
+        app.state = visible_state(version=23, day=12, pending=None)
+        app.commands = {"can_end_day": True}
+
+        app._handle_unavailable_session()
+
+        self.assertIsNone(app.session_id)
+        self.assertIsNone(app.state_version)
+        self.assertIsNone(app.pending_operation_id)
+        self.assertEqual({}, app.state)
+        self.assertEqual({}, app.commands)
+        self.assertIn("开始新游戏", "\n".join(output))
 
     def test_menu_handles_sorting_and_allocation_without_commands(self) -> None:
         sorting = {
@@ -322,6 +477,56 @@ class TerminalAppTests(unittest.TestCase):
         app._allocate = lambda values: captured_allocation.extend(values)
         app._menu_decision(allocation)
         self.assertEqual(["1", "2", "3", "4"], captured_allocation)
+
+    def test_meeting_participants_repeat_until_zero_finishes(self) -> None:
+        people = [
+            {"target_id": "npc_a", "label": "甲"},
+            {"target_id": "npc_b", "label": "乙"},
+            {"target_id": "npc_c", "label": "丙"},
+        ]
+        inputs = iter(["1", "2", "0"])
+        output: list[str] = []
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: next(inputs),
+            output_fn=output.append,
+        )
+
+        selected = app._select_meeting_participants(people, [])
+
+        self.assertEqual(["npc_a", "npc_c"], selected)
+        self.assertNotIn("至少需要2名", "\n".join(output))
+
+    def test_meeting_participants_cannot_finish_below_minimum(self) -> None:
+        people = [
+            {"target_id": "npc_a", "label": "甲"},
+            {"target_id": "npc_b", "label": "乙"},
+        ]
+        inputs = iter(["0", "1", "0", "1"])
+        output: list[str] = []
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: next(inputs),
+            output_fn=output.append,
+        )
+
+        selected = app._select_meeting_participants(people, [])
+
+        self.assertEqual(["npc_a", "npc_b"], selected)
+        self.assertIn("至少需要2名", "\n".join(output))
+
+    def test_governance_codes_have_chinese_terminal_labels(self) -> None:
+        self.assertEqual(
+            {
+                "工作实施通知", "医疗保障文件", "迁坟或祠堂事项批复",
+                "补偿方案调整文件", "听证通知", "调查通知",
+            },
+            set(TerminalApp.DOCUMENT_TYPE_LABELS.values()),
+        )
+        self.assertEqual(
+            "历史道路旧案未结",
+            TerminalApp.OWNERSHIP_STATUS_LABELS["old_road_case_pending"],
+        )
 
     def test_menu_selects_talk_and_action_by_number(self) -> None:
         class SelectionApi(FakeApi):
@@ -376,6 +581,49 @@ class TerminalAppTests(unittest.TestCase):
         app._menu_action()
         self.assertEqual(["visit"], captured_action)
 
+    def test_menu_routes_governance_action_and_can_cancel_active_flow(self) -> None:
+        class GovernanceApi(FakeApi):
+            def get_actions(self, session_id):
+                return {"state_version": 2, "actions": [{
+                    "action_id": "household_visit",
+                    "name": "入户走访",
+                    "available": True,
+                    "cost": 1,
+                    "execution_mode": "governance",
+                }]}
+
+            def get_governance(self, session_id):
+                return {
+                    "state_version": 3,
+                    "resources": {"cash_ledger": {}},
+                    "governance_actions": [{
+                        "action_instance_id": "govact_1",
+                        "action_kind": "household_visit",
+                        "topic": "核实搬迁诉求",
+                        "status": "active",
+                    }],
+                }
+
+            def cancel_governance_action(
+                self, session_id: str, action_instance_id: str, **payload
+            ):
+                self.cancel_request = (session_id, action_instance_id, payload)
+                return {"state_version": 4, "action": {"status": "cancelled"}}
+
+        api = GovernanceApi()
+        app = TerminalApp(api, input_fn=lambda _prompt: "1")
+        app.session_id = "game_1"
+        captured: list[str] = []
+        app._run_governance_action = lambda item: captured.append(item["action_id"])
+
+        app._menu_action()
+        self.assertEqual(["household_visit"], captured)
+
+        app._menu_governance()
+        self.assertEqual(("game_1", "govact_1"), api.cancel_request[:2])
+        self.assertEqual(3, api.cancel_request[2]["state_version"])
+        self.assertEqual(4, app.state_version)
+
     def test_knowledge_displays_body_source_and_use(self) -> None:
         output: list[str] = []
         app = TerminalApp(FakeApi(), output_fn=output.append)
@@ -398,11 +646,6 @@ class TerminalAppTests(unittest.TestCase):
             def get_latest_active(self):
                 raise ApiError("没有存档", code="NOT_FOUND", status=404)
 
-            def get_origins(self):
-                return {"origins": [{
-                    "origin_id": "technical", "title": "技术派", "description": "测试",
-                }]}
-
         passwords = iter([
             "short", "validpass", "different", "validpass", "validpass",
         ])
@@ -419,14 +662,14 @@ class TerminalAppTests(unittest.TestCase):
         text = "\n".join(output)
         self.assertIn("密码少于 8 个字符", text)
         self.assertIn("两次输入的密码不一致", text)
-        self.assertIn("下一步：输入 new <origin_id>", text)
+        self.assertIn("下一步：输入 new 开始新游戏", text)
 
     def test_command_prompt_always_contains_contextual_guidance(self) -> None:
         app = TerminalApp(FakeApi())
         app.authentication_required = True
         self.assertIn("register/login/help", app._command_prompt())
         app.authenticated = True
-        self.assertIn("origins/new/continue/help", app._command_prompt())
+        self.assertIn("new/continue/help", app._command_prompt())
         app.session_id = "game_m1_test"
         app.state = visible_state(version=1, day=2, pending=None)
         self.assertIn("D2", app._command_prompt())
@@ -522,7 +765,7 @@ class TerminalAppTests(unittest.TestCase):
 
     def test_scripted_m1_flow_reaches_d3_and_next_opportunity(self) -> None:
         commands = iter([
-            "new technical",
+            "new",
             "choose A",
             "end",
             "choose C",
@@ -561,7 +804,7 @@ class TerminalAppTests(unittest.TestCase):
             app.handle("end")
 
     def test_m2_map_review_and_validation_commands(self) -> None:
-        commands = iter(["new technical", "map", "review", "validate", "quit"])
+        commands = iter(["new", "map", "review", "validate", "quit"])
         output: list[str] = []
         app = TerminalApp(
             FakeApi(), input_fn=lambda _prompt: next(commands), output_fn=output.append
@@ -571,6 +814,395 @@ class TerminalAppTests(unittest.TestCase):
         self.assertIn("柳林村", text)
         self.assertIn("剧本包校验：通过", text)
         self.assertIn("结局 24/95", text)
+
+    def test_governance_action_uses_governance_api_instead_of_legacy_quote(self) -> None:
+        class GovernanceApi:
+            def get_actions(self, session_id: str) -> dict:
+                return {
+                    "state_version": 7,
+                    "actions": [{
+                        "action_id": "inspect_archives",
+                        "name": "查阅档案",
+                        "available": True,
+                        "execution_mode": "governance",
+                        "target_kind": "archive",
+                    }],
+                }
+
+            def get_governance(self, session_id: str) -> dict:
+                return {
+                    "state_version": 7,
+                    "archives": [{
+                        "archive_id": "archive_policy",
+                        "title": "补偿安置方案",
+                        "evidence_level": "E3",
+                    }],
+                }
+
+            def start_governance_action(self, session_id: str, **payload) -> dict:
+                self.payload = payload
+                return {
+                    "state_version": 8,
+                    "archives": [{
+                        "title": "补偿安置方案",
+                        "content": "逐户合同必须以实测底账为准。",
+                    }],
+                }
+
+            def quote_action(self, *_args, **_kwargs):
+                raise AssertionError("治理行动不得进入旧资源报价流程")
+
+        api = GovernanceApi()
+        output: list[str] = []
+        app = TerminalApp(
+            api,
+            input_fn=lambda _prompt: "1",
+            output_fn=output.append,
+        )
+        app.session_id = "game_1"
+        app.state_version = 7
+
+        app.handle("do inspect_archives")
+
+        self.assertEqual("inspect_archives", api.payload["action_kind"])
+        self.assertEqual(["archive_policy"], api.payload["archive_ids"])
+        self.assertIn("逐户合同必须以实测底账为准", "\n".join(output))
+
+    def test_cancel_governance_recovers_an_active_action(self) -> None:
+        class GovernanceApi:
+            def cancel_governance_action(
+                self, session_id: str, action_instance_id: str, **payload
+            ) -> dict:
+                self.request = {
+                    "session_id": session_id,
+                    "action_instance_id": action_instance_id,
+                    **payload,
+                }
+                return {
+                    "state_version": 9,
+                    "action": {"status": "cancelled"},
+                }
+
+        api = GovernanceApi()
+        output: list[str] = []
+        app = TerminalApp(api, output_fn=output.append)
+        app.session_id = "game_1"
+        app.state_version = 8
+
+        app.handle("cancel-governance govact_1")
+
+        self.assertEqual("govact_1", api.request["action_instance_id"])
+        self.assertEqual(8, api.request["state_version"])
+        self.assertEqual(9, app.state_version)
+        self.assertIn("已中止", "\n".join(output))
+
+    def test_contract_audit_renders_problem_location_and_fix(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+
+        app._render_contract_audit({
+            "audit_status": "reject",
+            "audit_model_id": "professional-contract-auditor",
+            "audit_result": {
+                "summary": "存在超出授权的额外付款承诺。",
+                "issues": [{
+                    "category": "resource_authority",
+                    "term_field": "cash_amount",
+                    "text_quote": "再额外支付100万元专项补助",
+                    "message": "该金额未写入结构化资源条款。",
+                    "suggestion": "删除该承诺，或先取得新的批准文件。",
+                }],
+            },
+        })
+
+        text = "\n".join(output)
+        self.assertIn("合同专业审校：不通过", text)
+        self.assertIn("审校模型：professional-contract-auditor", text)
+        self.assertIn("位置字段：现金补偿额", text)
+        self.assertIn("位置：再额外支付100万元专项补助", text)
+        self.assertIn("说明：该金额未写入结构化资源条款", text)
+        self.assertIn("建议：删除该承诺，或先取得新的批准文件", text)
+
+    def test_multiline_contract_editor_preserves_paragraphs(self) -> None:
+        inputs = iter([
+            "第一条：现金补偿100万元。",
+            "",
+            "第二条：付款日D10。",
+            "完成",
+        ])
+        output: list[str] = []
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: next(inputs),
+            output_fn=output.append,
+        )
+
+        text = app._input_multiline_contract()
+
+        self.assertEqual(
+            "第一条：现金补偿100万元。\n\n第二条：付款日D10。",
+            text,
+        )
+        self.assertIn("可输入多行", "\n".join(output))
+
+    def test_contract_form_error_translates_missing_fields(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+
+        app._render_contract_form_error(ApiError(
+            "合同文本与结构化条款不一致",
+            details={
+                "missing_term_fields": [
+                    "cash_amount", "payment_day",
+                ],
+            },
+        ))
+
+        text = "\n".join(output)
+        self.assertIn("现金补偿额", text)
+        self.assertIn("付款日", text)
+        self.assertNotIn("cash_amount", text)
+
+    def test_contract_form_error_translates_numeric_details(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+
+        app._render_contract_form_error(ApiError(
+            "合同现金低于开局政策标准",
+            code="ACTION_UNAVAILABLE",
+            details={"minimum": 100, "submitted": 90},
+        ))
+
+        text = "\n".join(output)
+        self.assertIn("政策最低补偿额：100", text)
+        self.assertIn("本次填写金额：90", text)
+        self.assertNotIn("minimum", text)
+        self.assertNotIn("submitted", text)
+
+    def test_only_editable_contract_errors_stay_in_form(self) -> None:
+        self.assertTrue(TerminalApp._is_editable_contract_error(ApiError(
+            "现金低于标准", code="ACTION_UNAVAILABLE"
+        )))
+        self.assertFalse(TerminalApp._is_editable_contract_error(ApiError(
+            "账户无权操作", code="PERMISSION_DENIED"
+        )))
+        self.assertFalse(TerminalApp._is_editable_contract_error(ApiError(
+            "状态已变化", code="STATE_VERSION_CONFLICT"
+        )))
+        self.assertFalse(TerminalApp._is_editable_contract_error(ApiError(
+            "审校模型不可用", code="ROLE_LLM_UNAVAILABLE"
+        )))
+        self.assertTrue(TerminalApp._is_retryable_contract_audit_error(
+            ApiError("审校模型不可用", code="ROLE_LLM_UNAVAILABLE")
+        ))
+        self.assertTrue(TerminalApp._is_retryable_contract_audit_error(
+            ApiError("审校响应无效", code="ROLE_LLM_INVALID_RESPONSE")
+        ))
+        self.assertFalse(TerminalApp._is_retryable_contract_audit_error(
+            ApiError("状态已变化", code="STATE_VERSION_CONFLICT")
+        ))
+
+    def test_contract_audit_retry_explains_retained_content(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: "1",
+            output_fn=output.append,
+        )
+
+        retry = app._prompt_contract_audit_retry(
+            ApiError("模型暂时离线", code="ROLE_LLM_UNAVAILABLE"),
+            retained_content="刚才输入的完整合同正文",
+        )
+
+        self.assertTrue(retry)
+        text = "\n".join(output)
+        self.assertIn("专业合同审校暂不可用", text)
+        self.assertIn("刚才输入的完整合同正文仍保留", text)
+        self.assertIn("本次未通过内容不会保存", text)
+
+    def test_document_flow_shows_and_edits_text_before_countersign(self) -> None:
+        class DocumentApi(FakeApi):
+            def get_governance(self, _session_id):
+                return {
+                    "state_version": 4,
+                    "documents": [{
+                        "document_id": "doc_1",
+                        "title": "搬迁补偿调整通知",
+                        "version": 1,
+                        "content": "原文件正文",
+                        "status": "draft",
+                        "required_countersign_ids": ["npc_finance"],
+                        "countersigned_by": [],
+                    }],
+                }
+
+            def edit_document(self, session_id, document_id, **payload):
+                self.edit_request = (session_id, document_id, payload)
+                return {
+                    "state_version": 5,
+                    "document": {
+                        "document_id": "doc_1",
+                        "title": "搬迁补偿调整通知",
+                        "version": 2,
+                        "content": payload["content"],
+                        "status": "draft",
+                        "required_countersign_ids": ["npc_finance"],
+                        "countersigned_by": [],
+                    },
+                }
+
+            def countersign_document(
+                self, session_id, document_id, **payload
+            ):
+                self.countersign_request = (session_id, document_id, payload)
+                return {
+                    "state_version": 6,
+                    "accepted": True,
+                    "reason": "财政授权边界清楚。",
+                    "document": {
+                        "document_id": "doc_1",
+                        "title": "搬迁补偿调整通知",
+                        "version": 2,
+                        "content": "修改后的第一条\n修改后的第二条",
+                        "status": "approved",
+                        "required_countersign_ids": ["npc_finance"],
+                        "countersigned_by": ["npc_finance"],
+                    },
+                }
+
+        inputs = iter([
+            "2",
+            "修改后的第一条",
+            "修改后的第二条",
+            "完成",
+            "1",
+            "0",
+        ])
+        output: list[str] = []
+        api = DocumentApi()
+        app = TerminalApp(
+            api,
+            input_fn=lambda _prompt: next(inputs),
+            output_fn=output.append,
+        )
+        app.session_id = "game_1"
+        app.state_version = 4
+
+        app._process_document("doc_1")
+
+        self.assertEqual(
+            "修改后的第一条\n修改后的第二条",
+            api.edit_request[2]["content"],
+        )
+        self.assertEqual(5, api.countersign_request[2]["state_version"])
+        text = "\n".join(output)
+        self.assertIn("原文件正文", text)
+        self.assertIn("修改后全文", text)
+        self.assertIn("此前会签已按现实程序清空", text)
+
+    def test_service_resource_input_uses_player_facing_numbers(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: "2=1",
+            output_fn=output.append,
+        )
+
+        result = app._prompt_service_allocations([
+            {
+                "resource_id": "medical_review",
+                "name": "血铅复检",
+                "available": 3,
+            },
+            {
+                "resource_id": "school_transfer",
+                "name": "就学衔接",
+                "available": 2,
+            },
+        ])
+
+        self.assertEqual({"school_transfer": 1}, result)
+        self.assertIn("就学衔接", "\n".join(output))
+
+    def test_contract_field_correction_preserves_other_terms(self) -> None:
+        inputs = iter(["1", "125"])
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: next(inputs),
+        )
+        terms = {
+            "cash_amount": 100,
+            "budget_envelope": "property_land",
+            "housing_resource_id": None,
+            "service_allocations": {},
+            "payment_day": 10,
+            "move_out_day": 20,
+            "housing_delivery_day": 20,
+            "transition_months": 12,
+            "public_window_reward": True,
+            "approval_document_ids": [],
+            "authorization_confirmed": False,
+            "real_unit_viewed": False,
+            "ledger_disclosed": False,
+            "old_case_resolved": False,
+            "prior_payment_verified": False,
+        }
+
+        changed = app._edit_contract_term(
+            terms,
+            envelopes=["property_land"],
+            budget_envelopes={"property_land": {"available": 1000}},
+            housing=[],
+            service_resources=[],
+            approval_documents=[],
+            resource_names={},
+        )
+
+        self.assertTrue(changed)
+        self.assertEqual(125, terms["cash_amount"])
+        self.assertEqual(10, terms["payment_day"])
+        self.assertTrue(terms["public_window_reward"])
+
+    def test_contract_field_exit_warns_unsaved_input_is_discarded(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: "0",
+            output_fn=output.append,
+        )
+
+        changed = app._edit_contract_term(
+            {
+                "cash_amount": 100,
+                "budget_envelope": "property_land",
+                "housing_resource_id": None,
+                "service_allocations": {},
+                "payment_day": 10,
+                "move_out_day": 20,
+                "housing_delivery_day": 20,
+                "transition_months": 12,
+                "public_window_reward": True,
+                "approval_document_ids": [],
+                "authorization_confirmed": False,
+                "real_unit_viewed": False,
+                "ledger_disclosed": False,
+                "old_case_resolved": False,
+                "prior_payment_verified": False,
+            },
+            envelopes=["property_land"],
+            budget_envelopes={"property_land": {"available": 1000}},
+            housing=[],
+            service_resources=[],
+            approval_documents=[],
+            resource_names={},
+        )
+
+        self.assertFalse(changed)
+        self.assertIn(
+            "本次未通过内容不会保存",
+            "\n".join(output),
+        )
 
 
 if __name__ == "__main__":

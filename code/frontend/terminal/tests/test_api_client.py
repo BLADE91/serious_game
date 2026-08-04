@@ -55,7 +55,7 @@ class ApiClientTests(unittest.TestCase):
 
         self.assertEqual("game_1", result["session_id"])
         payload = json.loads(captured["request"].data.decode("utf-8"))
-        self.assertEqual("technical", payload["origin_id"])
+        self.assertNotIn("origin_id", payload)
         self.assertTrue(payload["client_request_id"].startswith("cli-new-"))
 
     def test_decision_request_uses_visible_contract_and_account_header(self) -> None:
@@ -95,12 +95,20 @@ class ApiClientTests(unittest.TestCase):
 
     def test_conversation_requests_preserve_one_session_across_multiple_turns(self) -> None:
         payloads = []
+        timeouts = []
 
         def opener(request, *, timeout):
             payloads.append(json.loads(request.data.decode("utf-8")))
+            timeouts.append(timeout)
             return FakeResponse({"state_version": len(payloads) + 4, "status": "succeeded"})
 
-        client = ApiClient("http://example.test", "acct_terminal", opener=opener)
+        client = ApiClient(
+            "http://example.test",
+            "acct_terminal",
+            timeout=3.5,
+            conversation_timeout=35.0,
+            opener=opener,
+        )
         client.start_conversation(
             "game_1", state_version=4, opportunity_id="opp_1",
             target_npc_id="npc_1", client_action_id="start-conversation-1",
@@ -122,6 +130,7 @@ class ApiClientTests(unittest.TestCase):
         self.assertEqual("conv_1", payloads[1]["conversation_id"])
         self.assertEqual("conv_1", payloads[2]["conversation_id"])
         self.assertNotIn("player_text", payloads[2])
+        self.assertEqual([3.5, 35.0, 3.5], timeouts)
 
     def test_structured_backend_error_is_preserved(self) -> None:
         body = json.dumps({
@@ -166,6 +175,66 @@ class ApiClientTests(unittest.TestCase):
             "http://example.test/api/game/session/game%2Funsafe/desk",
             captured["url"],
         )
+
+    def test_cancel_governance_uses_scoped_action_endpoint(self) -> None:
+        captured = {}
+
+        def opener(request, *, timeout):
+            captured["request"] = request
+            return FakeResponse({
+                "state_version": 4,
+                "action": {"status": "cancelled"},
+            })
+
+        client = ApiClient(
+            "http://example.test", "acct_terminal", opener=opener
+        )
+        client.cancel_governance_action(
+            "game/unsafe",
+            "gov/action",
+            state_version=3,
+        )
+
+        self.assertEqual(
+            (
+                "http://example.test/api/game/session/game%2Funsafe/"
+                "governance/actions/gov%2Faction/cancel"
+            ),
+            captured["request"].full_url,
+        )
+
+    def test_edit_document_uses_scoped_put_endpoint(self) -> None:
+        captured = {}
+
+        def opener(request, *, timeout):
+            captured["request"] = request
+            return FakeResponse({
+                "state_version": 6,
+                "document": {"document_id": "doc/file", "version": 2},
+            })
+
+        client = ApiClient(
+            "http://example.test", "acct_terminal", opener=opener
+        )
+        client.edit_document(
+            "game/unsafe",
+            "doc/file",
+            state_version=5,
+            content="修改后的文件正文",
+        )
+
+        request = captured["request"]
+        self.assertEqual(
+            (
+                "http://example.test/api/game/session/game%2Funsafe/"
+                "governance/documents/doc%2Ffile"
+            ),
+            request.full_url,
+        )
+        self.assertEqual("PUT", request.method)
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(5, payload["state_version"])
+        self.assertEqual("修改后的文件正文", payload["content"])
 
 
 if __name__ == "__main__":

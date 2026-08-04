@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -13,7 +13,9 @@ class StartSessionRequest(BaseModel):
 
     client_request_id: str = Field(min_length=8, max_length=128)
     package_id: str | None = Field(default=None, min_length=1, max_length=128)
-    origin_id: str = Field(min_length=1, max_length=64)
+    # Kept as a tolerated legacy field so older clients can still start a game.
+    # New games always use the fixed mayor identity selected by the server.
+    origin_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ActionRequest(BaseModel):
@@ -151,7 +153,144 @@ class EndDayRequest(BaseModel):
 
     client_action_id: str = Field(min_length=8, max_length=128)
     state_version: int = Field(ge=1)
-    active_rest: bool = False
+    retry: bool = False
+    # Transitional compatibility only. True is invalid, so there is no
+    # player-triggered rest branch in the settlement logic.
+    active_rest: Literal[False] | None = None
+
+
+class GroupConversationTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    state_version: int = Field(ge=1)
+    player_text: str = Field(min_length=1, max_length=2000)
+
+
+class GovernanceActionStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    state_version: int = Field(ge=1)
+    action_kind: str = Field(
+        pattern="^(household_visit|cadre_interview|leadership_meeting|inspect_archives)$"
+    )
+    target_ids: list[str] = Field(default_factory=list, max_length=8)
+    topic: str = Field(default="", max_length=500)
+    archive_ids: list[str] = Field(default_factory=list, max_length=32)
+    proposed_document_type: str | None = Field(
+        default=None, min_length=1, max_length=128
+    )
+
+    @model_validator(mode="after")
+    def unique_governance_targets(self) -> "GovernanceActionStartRequest":
+        if len(self.target_ids) != len(set(self.target_ids)):
+            raise ValueError("target_ids不能重复")
+        if len(self.archive_ids) != len(set(self.archive_ids)):
+            raise ValueError("archive_ids不能重复")
+        return self
+
+
+class GovernanceTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    state_version: int = Field(ge=1)
+    player_text: str = Field(min_length=1, max_length=4000)
+
+
+class GovernanceFinishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state_version: int = Field(ge=1)
+
+
+class MeetingTurnRequest(GovernanceTurnRequest):
+    addressed_npc_id: str | None = Field(default=None, max_length=128)
+
+
+class MeetingResolutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state_version: int = Field(ge=1)
+    adopt: bool
+    resolution: dict[str, Any]
+
+
+class DocumentEditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    state_version: int = Field(ge=1)
+    content: str = Field(min_length=1, max_length=30000)
+
+
+class DocumentCountersignRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    state_version: int = Field(ge=1)
+    npc_id: str = Field(min_length=1, max_length=128)
+
+
+class DocumentPublishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    state_version: int = Field(ge=1)
+    scope: list[str] = Field(min_length=1, max_length=32)
+
+
+class ContractBatchConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state_version: int = Field(ge=1)
+    confirmed: bool
+
+
+class ContractTermsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    state_version: int = Field(ge=1)
+    policy_document_id: str = Field(min_length=1, max_length=128)
+    cash_amount: int = Field(ge=0, le=8000)
+    budget_envelope: str = Field(min_length=1, max_length=128)
+    housing_resource_id: str | None = Field(default=None, max_length=128)
+    service_allocations: dict[str, int] = Field(default_factory=dict)
+    payment_day: int = Field(ge=1, le=90)
+    move_out_day: int = Field(ge=1, le=90)
+    housing_delivery_day: int = Field(ge=1, le=90)
+    transition_months: int = Field(ge=0, le=12)
+    public_window_reward: bool = False
+    approval_document_ids: list[str] = Field(default_factory=list, max_length=16)
+    authorization_confirmed: bool = False
+    real_unit_viewed: bool = False
+    ledger_disclosed: bool = False
+    old_case_resolved: bool = False
+    prior_payment_verified: bool = False
+
+    def term_sheet(self) -> dict:
+        return self.model_dump(exclude={"state_version"})
+
+
+class ContractEditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    state_version: int = Field(ge=1)
+    text: str = Field(min_length=1, max_length=30000)
+
+
+class ContractStateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state_version: int = Field(ge=1)
+
+
+class ContractSignRequest(ContractStateRequest):
+    confirmed: bool
+
+
+class ManualSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    client_action_id: str = Field(min_length=8, max_length=128)
+    state_version: int = Field(ge=1)
+    slot_number: int = Field(ge=1, le=5)
+    display_name: str = Field(min_length=1, max_length=128)
+    overwrite: bool = False
+
+
+class LoadSnapshotRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    client_action_id: str = Field(min_length=8, max_length=128)
+    state_version: int = Field(ge=1)
+    snapshot_id: str = Field(min_length=8, max_length=128)
+    confirmed: bool = False
 
 
 class LoginRequest(BaseModel):

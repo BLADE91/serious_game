@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from threading import RLock
 
 from serious_game_backend.domain.errors import StateVersionConflictError
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.operation import OperationRecord
+from serious_game_backend.domain.enums import OperationStatus
+from serious_game_backend.domain.errors import ActionUnavailableError
+from serious_game_backend.domain.snapshots import GameSnapshot, ManualSaveSlot
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
 from serious_game_backend.domain.consent import ConsentDocument, ConsentRecord
@@ -16,6 +20,7 @@ from serious_game_backend.domain.research import (
     ResearchSubject,
 )
 import secrets
+from serious_game_backend.infrastructure.repositories.snapshot_codec import build_snapshot
 
 
 class InMemoryGameSessionRepository:
@@ -125,6 +130,156 @@ class InMemorySessionRequestRepository:
             self._items[key] = deepcopy(request)
 
 
+class InMemorySnapshotRepository:
+    def __init__(
+        self,
+        sessions: InMemoryGameSessionRepository,
+        operations: InMemoryOperationRepository,
+    ) -> None:
+        self._sessions = sessions
+        self._operations = operations
+        self._snapshots: dict[str, GameSnapshot] = {}
+        self._slots: dict[tuple[str, str, int], ManualSaveSlot] = {}
+        self._lock = RLock()
+
+    def append(
+        self,
+        session: GameSession,
+        *,
+        snapshot_type: str,
+        reason: str,
+        parent_snapshot_id: str | None = None,
+    ) -> GameSnapshot:
+        snapshot = build_snapshot(
+            session,
+            snapshot_type=snapshot_type,
+            reason=reason,
+            parent_snapshot_id=parent_snapshot_id,
+        )
+        with self._lock:
+            if any(
+                item.session_id == snapshot.session_id
+                and item.timeline_id == snapshot.timeline_id
+                and item.state_version == snapshot.state_version
+                for item in self._snapshots.values()
+            ):
+                raise ValueError("duplicate snapshot version")
+            self._snapshots[snapshot.snapshot_id] = deepcopy(snapshot)
+        return snapshot
+
+    def latest_for_timeline(self, session: GameSession) -> GameSnapshot | None:
+        with self._lock:
+            values = [
+                item
+                for item in self._snapshots.values()
+                if item.account_id == session.account_id
+                and item.session_id == session.session_id
+                and item.timeline_id == session.timeline_id
+            ]
+            return deepcopy(max(values, key=lambda item: item.state_version)) if values else None
+
+    def get_owned(
+        self, account_id: str, session_id: str, snapshot_id: str
+    ) -> GameSnapshot | None:
+        with self._lock:
+            value = self._snapshots.get(snapshot_id)
+            if (
+                value is None
+                or value.account_id != account_id
+                or value.session_id != session_id
+            ):
+                return None
+            return deepcopy(value)
+
+    def current_for_session(self, session: GameSession) -> GameSnapshot | None:
+        with self._lock:
+            for value in self._snapshots.values():
+                if (
+                    value.account_id == session.account_id
+                    and value.session_id == session.session_id
+                    and value.timeline_id == session.timeline_id
+                    and value.state_version == session.state_version
+                ):
+                    return deepcopy(value)
+        return None
+
+    def list_manual_slots(
+        self, account_id: str, session_id: str
+    ) -> tuple[tuple[ManualSaveSlot, GameSnapshot], ...]:
+        with self._lock:
+            values = [
+                (slot, self._snapshots[slot.snapshot_id])
+                for slot in self._slots.values()
+                if slot.account_id == account_id and slot.session_id == session_id
+            ]
+            return tuple(
+                (deepcopy(slot), deepcopy(snapshot))
+                for slot, snapshot in sorted(values, key=lambda item: item[0].slot_number)
+            )
+
+    def list_history(
+        self, account_id: str, session_id: str, *, limit: int = 20
+    ) -> tuple[GameSnapshot, ...]:
+        with self._lock:
+            values = [
+                item
+                for item in self._snapshots.values()
+                if item.account_id == account_id and item.session_id == session_id
+            ]
+            values.sort(key=lambda item: (item.created_at, item.state_version), reverse=True)
+            return tuple(deepcopy(values[:limit]))
+
+    def create_manual_save(
+        self,
+        session: GameSession,
+        *,
+        slot_number: int,
+        display_name: str,
+        overwrite: bool,
+        operation: OperationRecord,
+    ) -> tuple[ManualSaveSlot, GameSnapshot]:
+        current = self._sessions.get_owned(session.session_id, session.account_id)
+        if (
+            current is None
+            or current.state_version != session.state_version
+            or current.processing_action_id is not None
+        ):
+            raise StateVersionConflictError("状态版本已变化或游戏正在处理操作")
+        snapshot = self.current_for_session(session)
+        if snapshot is None:
+            raise StateVersionConflictError("当前稳定状态缺少历史快照")
+        key = (session.account_id, session.session_id, slot_number)
+        with self._lock:
+            if key in self._slots and not overwrite:
+                raise ActionUnavailableError("手动存档槽位已存在，覆盖前必须确认")
+            slot = ManualSaveSlot(
+                account_id=session.account_id,
+                session_id=session.session_id,
+                slot_number=slot_number,
+                snapshot_id=snapshot.snapshot_id,
+                display_name=display_name,
+                updated_at=operation.updated_at,
+            )
+            self._operations.create(operation)
+            self._slots[key] = slot
+            return deepcopy(slot), deepcopy(snapshot)
+
+    def commit_load(
+        self,
+        current: GameSession,
+        restored: GameSession,
+        *,
+        expected_version: int,
+        source_snapshot: GameSnapshot,
+        result_snapshot: GameSnapshot,
+        operation: OperationRecord,
+    ) -> None:
+        with self._lock:
+            self._sessions.save(restored, expected_version=expected_version)
+            self._operations.create(operation)
+            self._snapshots[result_snapshot.snapshot_id] = deepcopy(result_snapshot)
+
+
 class InMemoryRuntimeTransactionRepository:
     """内存测试适配器；生产级原子性由持久化适配器保证。"""
 
@@ -134,12 +289,50 @@ class InMemoryRuntimeTransactionRepository:
         operations: InMemoryOperationRepository,
         requests: InMemorySessionRequestRepository,
         research_events: InMemoryResearchEventRepository | None = None,
+        snapshots: InMemorySnapshotRepository | None = None,
     ) -> None:
         self._sessions = sessions
         self._operations = operations
         self._requests = requests
         self._research_events = research_events
+        self._snapshots = snapshots
         self._lock = RLock()
+
+    def recover_stale_operations(self, stale_before: str) -> int:
+        recovered = 0
+        with self._lock:
+            for operation in tuple(self._operations._items.values()):
+                if (
+                    operation.status is not OperationStatus.PROCESSING
+                    or operation.updated_at > stale_before
+                    or operation.session_id is None
+                ):
+                    continue
+                session = self._sessions.get_owned(
+                    operation.session_id, operation.account_id
+                )
+                if (
+                    session is None
+                    or session.processing_action_id != operation.operation_id
+                ):
+                    continue
+                session.processing_action_id = None
+                session.touch()
+                failed = replace(
+                    operation,
+                    status=OperationStatus.FAILED_RETRYABLE,
+                    error={
+                        "code": "OPERATION_LEASE_EXPIRED",
+                        "message": "操作进程中断，已释放占用；请显式重试",
+                        "details": {},
+                        "http_status": 409,
+                    },
+                    updated_at=session.updated_at,
+                )
+                self._sessions.save(session, expected_version=session.state_version)
+                self._operations.save(failed)
+                recovered += 1
+        return recovered
 
     def reserve_operation(
         self,
@@ -167,6 +360,20 @@ class InMemoryRuntimeTransactionRepository:
         with self._lock:
             self._sessions.save(session, expected_version=expected_version)
             self._operations.save(operation)
+            if (
+                self._snapshots is not None
+                and operation.status is OperationStatus.SUCCEEDED
+                and session.state_version > expected_version
+            ):
+                parent = self._snapshots.latest_for_timeline(session)
+                self._snapshots.append(
+                    session,
+                    snapshot_type="auto",
+                    reason="operation_committed",
+                    parent_snapshot_id=(
+                        parent.snapshot_id if parent is not None else None
+                    ),
+                )
             if research_event is not None and self._research_events is not None:
                 self._research_events.append(research_event)
 
@@ -178,6 +385,12 @@ class InMemoryRuntimeTransactionRepository:
         with self._lock:
             self._sessions.create(session)
             self._requests.save(request)
+            if self._snapshots is not None:
+                self._snapshots.append(
+                    session,
+                    snapshot_type="checkpoint",
+                    reason="session_started",
+                )
 
 class InMemoryScriptPackageRepository:
     def __init__(self, packages: list[ScriptPackage]) -> None:

@@ -3,7 +3,13 @@ from __future__ import annotations
 from dataclasses import replace
 
 from serious_game_backend.application.scripted_delta_resolver import ScriptedDeltaResolver
-from serious_game_backend.domain.errors import ContentValidationError
+from serious_game_backend.application.resource_availability import (
+    unencumbered_budget,
+)
+from serious_game_backend.domain.errors import (
+    ActionUnavailableError,
+    ContentValidationError,
+)
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.game_state import SCORE_FIELDS
 from serious_game_backend.domain.household_settlement import (
@@ -16,6 +22,8 @@ from serious_game_backend.domain.story import ScriptedEffects
 
 class ScriptedEffectService:
     """只执行剧本包声明的硬结算；区间按 session seed 稳定解析。"""
+
+    _RESOURCE_AUTHORITIES = frozenset({"player_choice", "player_action"})
 
     _POST75_GROUP_RULES = {
         "dp6_02:b": (
@@ -61,8 +69,22 @@ class ScriptedEffectService:
         effects: ScriptedEffects,
         *,
         source_id: str,
+        resource_authority: str = "none",
+        resource_reference: str | None = None,
     ) -> None:
-        unknown_flags = (effects.open_flags | effects.close_flags) - package.registered_flags
+        blocked_contract_flags = frozenset(
+            flag
+            for flag in effects.open_flags
+            if flag.endswith(("已入账", "已签"))
+        ) if bool(
+            (package.governance_config or {}).get(
+                "contract_signing_authoritative", False
+            )
+        ) else frozenset()
+        effective_open_flags = effects.open_flags - blocked_contract_flags
+        unknown_flags = (
+            effective_open_flags | effects.close_flags
+        ) - package.registered_flags
         if unknown_flags:
             raise ContentValidationError(
                 "硬结算引用未注册旗标",
@@ -81,12 +103,22 @@ class ScriptedEffectService:
                     details={"field": key, "value": value, "source_id": source_id},
                 )
 
+        if blocked_contract_flags:
+            session.logs.append({
+                "type": "legacy_contract_flag_suppressed",
+                "source_id": source_id,
+                "story_day": session.game_state.story_day,
+                "flags": sorted(blocked_contract_flags),
+                "note": "进入拟约不等于已签约或已入账",
+                "visible_to_player": False,
+            })
+
         attitude_group = {
             "蒋崇岳背书", "蒋崇岳默许", "蒋崇岳弃保", "蒋崇岳否决",
             "flag_jiang_endorses", "flag_jiang_acquiesces",
             "flag_jiang_abandons", "flag_jiang_veto",
         }
-        opened_attitudes = effects.open_flags & attitude_group
+        opened_attitudes = effective_open_flags & attitude_group
         if len(opened_attitudes) > 1:
             raise ContentValidationError(
                 "同一结算不能同时开启多个蒋崇岳立场",
@@ -114,6 +146,7 @@ class ScriptedEffectService:
             "signed_households": (0, session.game_state.total_households),
             "reported_signed_households": (0, session.game_state.total_households),
         }
+        budget_change: dict | None = None
         for field_name, (minimum, maximum) in effects.ledger_deltas.items():
             if field_name not in ledger_bounds:
                 raise ContentValidationError(
@@ -126,6 +159,38 @@ class ScriptedEffectService:
                 random_seed=session.random_seed,
                 source_id=f"{source_id}:{field_name}",
             )
+            if field_name == "budget_remaining" and (
+                resource_authority not in self._RESOURCE_AUTHORITIES
+                or not resource_reference
+            ):
+                raise ContentValidationError(
+                    "资源变化缺少允许的玩家选择来源",
+                    details={
+                        "field": field_name,
+                        "source_id": source_id,
+                        "resource_authority": resource_authority,
+                        "required_authorities": sorted(
+                            self._RESOURCE_AUTHORITIES
+                        ),
+                    },
+                )
+            if (
+                field_name == "signed_households"
+                and bool(
+                    (package.governance_config or {}).get(
+                        "contract_signing_authoritative", False
+                    )
+                )
+            ):
+                session.logs.append({
+                    "type": "scripted_signing_intent",
+                    "source_id": source_id,
+                    "story_day": session.game_state.story_day,
+                    "proposed_household_delta": delta,
+                    "note": "剧情节点不再替代逐户合同签署",
+                    "visible_to_player": False,
+                })
+                continue
             if field_name == "signed_households" and session.game_state.story_day >= 76:
                 updates[field_name] = self._apply_post75_settlement(
                     session,
@@ -139,21 +204,56 @@ class ScriptedEffectService:
             value = max(lower, getattr(session.game_state, field_name) + delta)
             updates[field_name] = min(upper, value) if upper is not None else value
             if field_name == "budget_remaining":
+                before = session.game_state.budget_remaining
+                after = updates[field_name]
                 if delta < 0:
-                    actual_spend = session.game_state.budget_remaining - updates[field_name]
+                    actual_spend = before - after
+                    spendable = unencumbered_budget(session)
+                    if actual_spend > spendable:
+                        raise ActionUnavailableError(
+                            "本次选择会占用已经向合同或文件承诺的预算",
+                            details={
+                                "required": actual_spend,
+                                "available_unencumbered": spendable,
+                                "ledger_remaining": before,
+                                "source_id": resource_reference,
+                            },
+                        )
                     updates["budget_paid"] = session.game_state.budget_paid + actual_spend
                 elif delta > 0:
-                    actual_income = updates[field_name] - session.game_state.budget_remaining
+                    actual_income = after - before
                     updates["budget_approved_adjustments"] = (
                         session.game_state.budget_approved_adjustments + actual_income
                     )
+                budget_change = {
+                    "entry_id": (
+                        f"resource:{session.game_state.story_day}:"
+                        f"{len(session.resource_ledger_entries) + 1}"
+                    ),
+                    "story_day": session.game_state.story_day,
+                    "change_kind": (
+                        "payment" if after < before else "approved_adjustment"
+                    ),
+                    "source_type": resource_authority,
+                    "source_id": resource_reference,
+                    "script_source_id": source_id,
+                    "resource_id": "budget_remaining",
+                    "delta": after - before,
+                    "before": before,
+                    "after": after,
+                    "payment_status": (
+                        "paid" if after < before else "available"
+                    ),
+                }
 
         if updates:
             session.game_state = replace(session.game_state, **updates)
+        if budget_change is not None:
+            session.resource_ledger_entries.append(budget_change)
         session.flags.difference_update(effects.close_flags)
         if opened_attitudes:
             session.flags.difference_update(attitude_group - opened_attitudes)
-        session.flags.update(effects.open_flags)
+        session.flags.update(effective_open_flags)
         session.state_values.update(effects.state_assignments)
         session.logs.append({
             "type": "scripted_effect",
@@ -199,6 +299,7 @@ class ScriptedEffectService:
                 "D75 首批进度名册与提前签约奖励资格已经冻结。"
                 "D76 至 D89 只处理此前登记的未决事项，全部按真实日期进入验收期台账。"
             ),
+            content_instance_id="settlement:d75_roster_locked",
         )
         return snapshot
 
@@ -305,6 +406,7 @@ class ScriptedEffectService:
             story_day=day,
             kind="settlement_confirmation",
             text=self._POST75_NARRATIVES[group_id],
+            content_instance_id=f"settlement:{entry_id}",
         )
         session.logs.append({
             "type": "household_settlement",

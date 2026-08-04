@@ -17,7 +17,12 @@ from serious_game_backend.domain.errors import (
     RoleLLMResponseError,
     RoleLLMUnavailableError,
 )
-from serious_game_backend.domain.llm import RoleTurnContext, RoleTurnResult
+from serious_game_backend.domain.llm import (
+    GovernanceLLMContext,
+    NightAgentContext,
+    RoleTurnContext,
+    RoleTurnResult,
+)
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
 from serious_game_backend.domain.npc_state import NPCState
 from serious_game_backend.infrastructure.llm.fake import FakeRoleLLMGateway
@@ -104,6 +109,389 @@ class M3LLMRuntimeTests(unittest.TestCase):
         self.assertEqual(120, saved[0].input_tokens)
         self.assertFalse(hasattr(saved[0], "raw_output"))
 
+    def test_limited_role_soft_deltas_are_discarded_without_retry(self) -> None:
+        calls = []
+
+        def transport(_base_url, _api_key, _body, _timeout):
+            calls.append(1)
+            return valid_response()
+
+        audits = InMemoryLLMCallAuditRepository()
+        result = OpenAICompatibleRoleLLMGateway(
+            self.settings(), "test-key", audits, transport=transport
+        ).run_turn(replace(
+            self.context("act_limited_soft_delta"),
+            npc_state_tier="limited",
+        ))
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual("none", result.attitude_direction)
+        self.assertEqual("none", result.attitude_band)
+        self.assertEqual("none", result.anxiety_direction)
+        self.assertEqual("none", result.anxiety_band)
+        self.assertIn("已由服务端归零", result.risk_notes[-1])
+        self.assertEqual("succeeded", audits.list_for_session("session_m3")[0].status)
+
+    def test_contract_audit_uses_dedicated_model_and_keeps_ui_locations(self) -> None:
+        calls: list[dict] = []
+
+        def transport(_base_url, _api_key, body, _timeout):
+            calls.append(body)
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "status": "reject",
+                    "summary": "存在未获授权的额外付款。",
+                    "detected_commitments": ["现金补偿100万元", "另付100万元"],
+                    "issues": [{
+                        "issue_id": "extra-cash-1",
+                        "severity": "error",
+                        "category": "resource_authority",
+                        "term_field": "cash_amount",
+                        "message": "正文形成第二项100万元付款承诺。",
+                        "text_quote": "再额外支付100万元专项补助",
+                        "suggestion": "删除该句或取得新的批准文件后重拟条款。",
+                    }],
+                }, ensure_ascii=False)}}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(
+                role_llm_model="role-model",
+                contract_audit_llm_model="contract-audit-model",
+            ),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        result = gateway.run_governance_task(GovernanceLLMContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="audit:contract:1",
+            story_day=3,
+            task="audit_contract",
+            actor_id="contract_1",
+            actor_name="ZDS-01逐户合同",
+            actor_profile="审校合同正文与结构化资源条款。",
+            payload={
+                "contract_text": "补偿100万元。再额外支付100万元专项补助。",
+                "term_sheet": {"cash_amount": 100},
+            },
+        ))
+
+        self.assertEqual("contract-audit-model", calls[0]["model"])
+        self.assertEqual("contract-audit-model", result.model_id)
+        self.assertEqual(
+            "再额外支付100万元专项补助",
+            result.data["issues"][0]["text_quote"],
+        )
+
+    def test_contract_audit_reject_requires_a_locatable_issue(self) -> None:
+        def transport(_base_url, _api_key, _body, _timeout):
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "status": "reject",
+                    "summary": "合同不能通过。",
+                    "detected_commitments": [],
+                    "issues": [],
+                }, ensure_ascii=False)}}],
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(contract_audit_llm_model="contract-audit-model"),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        with self.assertRaisesRegex(
+            RoleLLMResponseError, "治理文书模型未返回合法结构化响应"
+        ):
+            gateway.run_governance_task(GovernanceLLMContext(
+                session_id="session_m3",
+                account_id="account_m3",
+                operation_id="audit:contract:empty-issues",
+                story_day=3,
+                task="audit_contract",
+                actor_id="contract_1",
+                actor_name="逐户合同",
+                actor_profile="合同专业审校。",
+                payload={
+                    "contract_text": "合同正文",
+                    "term_sheet": {"cash_amount": 100},
+                },
+            ))
+
+    def test_invalid_cached_contract_audit_is_ignored_and_refreshed(self) -> None:
+        calls: list[dict] = []
+
+        class StaleAuditRepository:
+            stale: LLMCallAudit | None = None
+
+            def successful_for_operation(self, operation_id, request_hash):
+                self.stale = LLMCallAudit(
+                    audit_id="stale-audit",
+                    session_id="session_m3",
+                    account_id="account_m3",
+                    operation_id=operation_id,
+                    story_day=3,
+                    npc_id="contract_auditor",
+                    provider="openai_compatible",
+                    model_id="old-contract-model",
+                    prompt_version="contract-audit-v1",
+                    request_hash=request_hash,
+                    status="succeeded",
+                    validated_result={
+                        "task": "audit_contract",
+                        "data": {
+                            "status": "reject",
+                            "summary": "旧缓存拒绝结果。",
+                            "detected_commitments": [],
+                            "issues": [],
+                        },
+                        "model_id": "old-contract-model",
+                    },
+                )
+                return self.stale
+
+            def list_for_session(self, _session_id):
+                return (self.stale,) if self.stale is not None else ()
+
+            def save(self, audit):
+                self.saved = audit
+
+        def transport(_base_url, _api_key, body, _timeout):
+            calls.append(body)
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "status": "pass",
+                    "summary": "重新审校后通过。",
+                    "detected_commitments": [],
+                    "issues": [],
+                }, ensure_ascii=False)}}],
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(
+                contract_audit_llm_model="contract-audit-model",
+                role_llm_max_calls_per_session=1,
+            ),
+            "test-key",
+            StaleAuditRepository(),
+            transport=transport,
+        )
+        result = gateway.run_governance_task(GovernanceLLMContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="audit:contract:stale-cache",
+            story_day=3,
+            task="audit_contract",
+            actor_id="contract_1",
+            actor_name="逐户合同",
+            actor_profile="合同专业审校。",
+            payload={
+                "contract_text": "现金补偿100万元。",
+                "term_sheet": {"cash_amount": 100},
+            },
+        ))
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual("pass", result.data["status"])
+        self.assertEqual("contract-audit-model", result.model_id)
+
+    def test_night_agent_uses_role_model_and_reuses_audited_result(self) -> None:
+        calls = []
+
+        def transport(_base_url, _api_key, body, _timeout):
+            calls.append(body)
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "npc_id": "npc_qian_wei",
+                    "dialogue": "这件事不能再留两套说法。",
+                    "action_id": None,
+                    "target_ids": [],
+                    "rationale": "",
+                }, ensure_ascii=False)}}],
+                "usage": {"prompt_tokens": 80, "completion_tokens": 20},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(), "test-key", InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        context = NightAgentContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="night:29:dialogue:qian",
+            story_day=29,
+            scene_id="night_d29_qian_zhao_private_room",
+            phase="dialogue",
+            npc_id="npc_qian_wei",
+            npc_name="钱伟",
+            role_setting="商人，优先自保。",
+            big_five={"openness": 30},
+            counterpart_ids=("npc_zhao_jianguo",),
+            scene_goal="判断是否继续合作。",
+            model_id="role-model-qian",
+        )
+
+        first = gateway.run_night_turn(context)
+        second = gateway.run_night_turn(context)
+
+        self.assertEqual(first, second)
+        self.assertEqual("role-model-qian", first.model_id)
+        self.assertEqual(1, len(calls))
+        self.assertEqual("role-model-qian", calls[0]["model"])
+
+    def test_night_invitee_can_reject_contact(self) -> None:
+        def transport(_base_url, _api_key, _body, _timeout):
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "npc_id": "npc_sun_qiang",
+                    "dialogue": None,
+                    "action_id": None,
+                    "contact_ids": [],
+                    "contact_response": "reject",
+                    "target_ids": [],
+                    "rationale": "现在见面会让自己过早暴露。",
+                }, ensure_ascii=False)}}],
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        result = gateway.run_night_turn(NightAgentContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="night:29:response:qian:sun",
+            story_day=29,
+            scene_id="night_d29_qian_zhao_private_room",
+            phase="contact_response",
+            npc_id="npc_sun_qiang",
+            npc_name="孙强",
+            role_setting="基层干部，担心被调查牵连。",
+            big_five={},
+            counterpart_ids=("npc_qian_wei",),
+            scene_goal="判断是否回应钱伟的夜间邀请。",
+        ))
+
+        self.assertEqual("reject", result.contact_response)
+        self.assertIsNone(result.dialogue)
+
+    def test_night_agent_repairs_common_json_wrapper_and_null_defaults(self) -> None:
+        def transport(_base_url, _api_key, _body, _timeout):
+            return {
+                "choices": [{"message": {"content": """```json
+{"npc_id":"npc_qian_wei","dialogue":"先把口径对清楚。","action_id":"","contact_ids":null,"contact_response":"","initiate_followup":false,"followup_type":"","participant_ids":null,"agenda":null,"demands":null,"urgency":"none","target_ids":null,"rationale":null}
+```"""}}],
+            }
+
+        result = OpenAICompatibleRoleLLMGateway(
+            self.settings(), "test-key", InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        ).run_night_turn(NightAgentContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="night:repair:dialogue:qian",
+            story_day=2,
+            scene_id="night_repair",
+            phase="dialogue",
+            npc_id="npc_qian_wei",
+            npc_name="钱伟",
+            role_setting="商人，优先自保。",
+            big_five={},
+            counterpart_ids=("npc_zhao_jianguo",),
+            scene_goal="核对说法。",
+        ))
+
+        self.assertEqual("先把口径对清楚。", result.dialogue)
+        self.assertEqual((), result.contact_ids)
+        self.assertIsNone(result.action_id)
+
+    def test_invalid_night_response_is_audited_and_falls_back(self) -> None:
+        audits = InMemoryLLMCallAuditRepository()
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(role_llm_fallback_to_fake=True),
+            "test-key",
+            audits,
+            fallback=FakeRoleLLMGateway(),
+            transport=lambda *_args: {
+                "choices": [{"message": {"content": "not-json"}}]
+            },
+        )
+        context = NightAgentContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="night:fallback:selection:qian",
+            story_day=2,
+            scene_id="night_fallback",
+            phase="contact_selection",
+            npc_id="npc_qian_wei",
+            npc_name="钱伟",
+            role_setting="商人，优先自保。",
+            big_five={},
+            counterpart_ids=("npc_zhao_jianguo",),
+            max_contacts=1,
+        )
+
+        result = gateway.run_night_turn(context)
+
+        self.assertEqual("fake-role-v1", result.model_id)
+        saved = audits.list_for_session("session_m3")
+        self.assertEqual(["failed", "succeeded"], [item.status for item in saved])
+        self.assertEqual("fake_fallback", saved[1].provider)
+
+    def test_night_participant_can_propose_cadre_followup(self) -> None:
+        def transport(_base_url, _api_key, _body, _timeout):
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "npc_id": "npc_zhao_jianguo",
+                    "dialogue": None,
+                    "action_id": None,
+                    "contact_ids": [],
+                    "contact_response": None,
+                    "initiate_followup": True,
+                    "followup_type": "cadre_meeting",
+                    "participant_ids": [
+                        "npc_zhao_jianguo", "npc_sun_qiang"
+                    ],
+                    "agenda": "汇报基层材料保全风险",
+                    "demands": ["明确责任人"],
+                    "urgency": "high",
+                    "target_ids": [],
+                    "rationale": "风险已经不能留到下一晚。",
+                }, ensure_ascii=False)}}],
+            }
+
+        result = OpenAICompatibleRoleLLMGateway(
+            self.settings(),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        ).run_night_turn(NightAgentContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="night:29:followup:zhao",
+            story_day=29,
+            scene_id="followup:cadre_meeting",
+            phase="followup_initiation",
+            npc_id="npc_zhao_jianguo",
+            npc_name="赵建国",
+            role_setting="县政府干部。",
+            big_five={},
+            counterpart_ids=("npc_sun_qiang",),
+            allowed_followup_type="cadre_meeting",
+        ))
+
+        self.assertTrue(result.initiate_followup)
+        self.assertEqual("cadre_meeting", result.followup_type)
+        self.assertEqual(
+            ("npc_zhao_jianguo", "npc_sun_qiang"),
+            result.participant_ids,
+        )
+
     def test_prompt_includes_player_policy_and_forbids_invented_rates(self) -> None:
         captured = []
 
@@ -125,6 +513,36 @@ class M3LLMRuntimeTests(unittest.TestCase):
         self.assertIn("具体计价参数待正式细则补全", system)
         self.assertIn("不得自行编造、推算", system)
         self.assertIn("补偿单价", system)
+
+    def test_prompt_includes_structured_big_five_as_authoritative_scores(self) -> None:
+        captured = []
+
+        def transport(_base_url, _api_key, body, _timeout):
+            captured.append(body)
+            return valid_response()
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        gateway.run_turn(replace(
+            self.context("act_big_five_prompt"),
+            big_five={
+                "openness": 55,
+                "conscientiousness": 80,
+                "extraversion": 30,
+                "agreeableness": 50,
+                "neuroticism": 60,
+            },
+        ))
+
+        system = captured[0]["messages"][0]["content"]
+        self.assertIn("结构化大五人格评分", system)
+        self.assertIn("这是分数的权威来源", system)
+        self.assertIn('"openness": 55', system)
+        self.assertIn("不得自行补全", system)
 
     def test_prompt_identifies_required_disclosure_without_relaxing_allowlist(self) -> None:
         captured = []

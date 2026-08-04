@@ -41,6 +41,9 @@ class PackageValidationService:
                 "npc_role_profiles": sum(
                     bool(item.role_setting) for item in package.npc_profiles
                 ),
+                "npc_big_five_profiles": sum(
+                    item.big_five is not None for item in package.npc_profiles
+                ),
                 "facts_and_clues": len(package.facts),
                 "public_dossiers": len(package.public_briefing.get("dossiers", [])),
                 "public_tool_guidance": len(package.public_briefing.get("tool_guidance", {})),
@@ -69,7 +72,12 @@ class PackageValidationService:
                 "conditional_night_rules": sum(
                     len(item.night_conditional_effects)
                     for item in package.story_days.values()
+                ) + sum(
+                    bool(item.get("effects"))
+                    for item in (package.night_agent_actions or {}).values()
                 ),
+                "night_agent_scenes": len(package.night_agent_scenes),
+                "night_agent_actions": len(package.night_agent_actions or {}),
                 "map_locations": len(package.map_locations),
                 "main_endings": len(package.main_endings),
                 "sub_endings": len(package.sub_endings),

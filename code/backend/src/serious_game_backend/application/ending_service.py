@@ -250,6 +250,7 @@ class EndingService:
             story_day=90,
             kind="ending",
             text=f"结局：{main.name} · {sub.title}\n\n{main.text}\n\n{rendered_sub_text}",
+            content_instance_id="ending:final",
         )
         return result
 
@@ -318,4 +319,6 @@ class EndingService:
             return all(self._matches(item, axes, flags) for item in condition["all"])
         if "any" in condition:
             return any(self._matches(item, axes, flags) for item in condition["any"])
+        if "not" in condition:
+            return not self._matches(condition["not"], axes, flags)
         raise ContentValidationError("结局条件 DSL 非法", details={"condition": condition})

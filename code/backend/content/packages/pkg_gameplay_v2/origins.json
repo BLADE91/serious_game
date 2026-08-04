@@ -2,6 +2,11 @@
   "schema_version": 1,
   "origins": [
     {
+      "origin_id": "mayor",
+      "title": "云溪县县长",
+      "description": "玩家以现任县长身份直接进入柳林村整体搬迁任务，不附加出身修正。"
+    },
+    {
       "origin_id": "technical",
       "title": "技术派",
       "description": "经济学博士，从省级研究机构下派，擅长数据、模型与政策测算。"
