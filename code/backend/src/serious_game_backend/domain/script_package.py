@@ -95,6 +95,38 @@ class MetricBand:
 
 
 @dataclass(frozen=True, slots=True)
+class BigFiveProfile:
+    openness: int
+    conscientiousness: int
+    extraversion: int
+    agreeableness: int
+    neuroticism: int
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "neuroticism",
+        ):
+            value = getattr(self, field_name)
+            if type(value) is not int:
+                raise TypeError(f"{field_name} must be an integer")
+            if not 0 <= value <= 100:
+                raise ValueError(f"{field_name} must be between 0 and 100")
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "openness": self.openness,
+            "conscientiousness": self.conscientiousness,
+            "extraversion": self.extraversion,
+            "agreeableness": self.agreeableness,
+            "neuroticism": self.neuroticism,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class NPCProfileStub:
     npc_id: str
     name: str
@@ -103,6 +135,7 @@ class NPCProfileStub:
     initial_attitude: int = 50
     initial_anxiety: int = 50
     role_setting: str = ""
+    big_five: BigFiveProfile | None = None
     source_line: int = 0
 
 
@@ -133,7 +166,20 @@ class HouseholdDefinition:
     employment_startup_tags: tuple[str, ...]
     resettlement_preference: str
     ownership_status: str
-    signing_lock_flag: str
+    signing_lock_flag: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class LimitedHouseholdSignatory:
+    """仅在逐户合同中出场的签约人，不进入完整 NPC 主线与关系网。"""
+
+    household_id: str
+    name: str
+    initial_position: str
+    core_concern: str
+    acceptance_condition: str
+    refusal_trigger: str
+    counteroffer_focus: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,10 +202,15 @@ class ScriptPackage:
     resource_actions: dict[str, ResourceActionDefinition]
     households: tuple[HouseholdDefinition, ...]
     initial_state: dict
+    limited_household_signatories: tuple[LimitedHouseholdSignatory, ...] = ()
+    governance_config: dict | None = None
     gameplay_schema_version: int = 1
     origin_npc_attitude_modifiers: dict[str, dict[str, int]] | None = None
     trust_rules: dict | None = None
     npc_relationships: tuple[dict, ...] = ()
+    night_agent_scenes: tuple[dict, ...] = ()
+    night_agent_actions: dict[str, dict] | None = None
+    npc_social_roles: dict[str, tuple[str, ...]] | None = None
     interaction_opportunities: tuple[InteractionOpportunity, ...] = ()
     registered_flags: frozenset[str] = frozenset()
     map_locations: tuple[MapLocationDefinition, ...] = ()
@@ -186,3 +237,34 @@ class ScriptPackage:
 
     def story_day(self, story_day: int) -> StoryDayDefinition | None:
         return self.story_days.get(story_day)
+
+    def contract_batch_for_representative(
+        self,
+        representative_npc: str,
+    ) -> tuple[HouseholdDefinition, ...]:
+        """返回代表户本人及其n个关联户；每一项后续仍生成独立合同。"""
+
+        members = tuple(sorted(
+            (
+                item
+                for item in self.households
+                if item.representative_npc == representative_npc
+            ),
+            key=lambda item: item.group_index,
+        ))
+        if not members:
+            raise KeyError(f"代表人物没有关联家庭：{representative_npc}")
+        return members
+
+    def limited_signatory_for(
+        self,
+        household_id: str,
+    ) -> LimitedHouseholdSignatory | None:
+        return next(
+            (
+                item
+                for item in self.limited_household_signatories
+                if item.household_id == household_id
+            ),
+            None,
+        )

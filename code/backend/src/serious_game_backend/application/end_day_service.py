@@ -19,6 +19,9 @@ from serious_game_backend.application.ending_service import EndingService
 from serious_game_backend.application.night_simulation_service import NightSimulationService
 from serious_game_backend.application.story_clock_service import StoryClockService
 from serious_game_backend.application.story_flow_service import StoryFlowService
+from serious_game_backend.application.gameplay_governance_service import (
+    GameplayGovernanceService,
+)
 from serious_game_backend.application.visible_state import VisibleStateProjector
 from serious_game_backend.domain.enums import OperationStatus, SessionStatus
 from serious_game_backend.domain.errors import (
@@ -26,6 +29,7 @@ from serious_game_backend.domain.errors import (
     DecisionRequiredError,
     IdempotencyKeyReusedError,
     NotFoundError,
+    OperationRetryRequiredError,
     SessionBusyError,
     SessionEndedError,
     StateVersionConflictError,
@@ -47,6 +51,7 @@ class EndDayService:
         endings: EndingService,
         projector: VisibleStateProjector,
         story_flow: StoryFlowService,
+        gameplay_governance: GameplayGovernanceService | None = None,
     ) -> None:
         self._sessions = sessions
         self._operations = operations
@@ -57,6 +62,7 @@ class EndDayService:
         self._endings = endings
         self._projector = projector
         self._story_flow = story_flow
+        self._gameplay_governance = gameplay_governance
 
     def end_day(
         self,
@@ -65,13 +71,12 @@ class EndDayService:
         session_id: str,
         client_action_id: str,
         state_version: int,
-        active_rest: bool = False,
+        retry: bool = False,
     ) -> dict:
         payload = {
             "session_id": session_id,
             "client_action_id": client_action_id,
             "state_version": state_version,
-            "active_rest": active_rest,
         }
         request_hash = canonical_request_hash(payload)
         existing = self._operations.get(account_id, session_id, client_action_id)
@@ -88,6 +93,11 @@ class EndDayService:
                 }
             if existing.status is OperationStatus.FAILED_FINAL:
                 raise_stored_operation_error(existing)
+            if existing.status is OperationStatus.FAILED_RETRYABLE and not retry:
+                raise OperationRetryRequiredError(
+                    "上次日终执行为可重试失败；请确认后显式设置 retry=true",
+                    details={"operation_id": existing.operation_id},
+                )
 
         session = self._sessions.get_owned(session_id, account_id)
         if session is None:
@@ -100,6 +110,8 @@ class EndDayService:
             raise DecisionRequiredError("必须先处理当前决策")
         if session.active_conversation is not None:
             raise ActionUnavailableError("会谈正在进行，请先结束当前会谈")
+        if session.active_group_conversation is not None:
+            raise ActionUnavailableError("强制群组会谈正在进行，请先完成")
         if session.state_version != state_version:
             raise StateVersionConflictError(
                 "状态版本已变化，请刷新后重试",
@@ -115,12 +127,22 @@ class EndDayService:
         ):
             raise ActionUnavailableError("当前剧情节点还有必须完成的互动")
 
-        operation = OperationRecord(
-            operation_id=f"day_{secrets.token_hex(12)}",
-            account_id=account_id,
-            session_id=session_id,
-            client_action_id=client_action_id,
-            request_hash=request_hash,
+        operation = (
+            replace(
+                existing,
+                status=OperationStatus.PROCESSING,
+                attempt_count=existing.attempt_count + 1,
+                error=None,
+                updated_at=utc_now_iso(),
+            )
+            if existing is not None
+            else OperationRecord(
+                operation_id=f"day_{secrets.token_hex(12)}",
+                account_id=account_id,
+                session_id=session_id,
+                client_action_id=client_action_id,
+                request_hash=request_hash,
+            )
         )
         session.processing_action_id = operation.operation_id
         session.touch()
@@ -128,7 +150,7 @@ class EndDayService:
             session,
             expected_version=state_version,
             operation=operation,
-            create_operation=True,
+            create_operation=existing is None,
         )
 
         try:
@@ -143,29 +165,41 @@ class EndDayService:
             self._story_flow.append_night(current, package)
             night_record = self._nights.run_night(current, package)
             triggered: list[str] = []
+            contract_settlements: list[dict] = []
+            expired_contract_reservations: list[str] = []
             simulated_days: list[int] = []
             while True:
                 previous_day = current.game_state.story_day
                 triggered.extend(
-                    self._clock.end_day(
-                        current,
-                        package,
-                        active_rest=active_rest if not simulated_days else False,
-                    )
+                    self._clock.end_day(current, package)
                 )
                 if current.game_state.story_day == previous_day:
                     break
                 self._story_flow.enter_current_day(current, package)
-                for line in night_record.get("morning_card", ()):
+                if self._gameplay_governance is not None:
+                    expired_contract_reservations.extend(
+                        self._gameplay_governance.expire_reservations(current)
+                    )
+                    contract_settlements.extend(
+                        self._gameplay_governance.settle_due_contracts(
+                            current, package
+                        )
+                    )
+                for index, line in enumerate(night_record.get("morning_card", ())):
                     current.append_narrative(
                         story_day=current.game_state.story_day,
                         kind="morning_card",
                         text=line,
+                        content_instance_id=(
+                            f"morning:{night_record.get('story_day')}:{index}"
+                        ),
                     )
                 if current.game_state.story_day == 90:
                     self._endings.finalize(current, package)
                     break
                 if current.pending_decision is not None:
+                    break
+                if current.group_conversation_queue:
                     break
                 next_beat = package.story_day(current.game_state.story_day)
                 if (
@@ -177,6 +211,7 @@ class EndDayService:
                 simulated_days.append(current.game_state.story_day)
                 self._story_flow.append_night(current, package)
                 night_record = self._nights.run_night(current, package)
+            self._nights.activate_next_group_conversation(current)
             current.processing_action_id = None
             current.state_version += 1
             current.touch()
@@ -186,6 +221,10 @@ class EndDayService:
                 "state_version": current.state_version,
                 "triggered_event_ids": triggered,
                 "simulated_story_days": simulated_days,
+                "contract_settlements": contract_settlements,
+                "expired_contract_reservations": sorted(set(
+                    expired_contract_reservations
+                )),
                 "ending": current.ending_result,
                 "visible_state": self._projector.project(current, package),
             }

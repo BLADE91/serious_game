@@ -1,0 +1,44 @@
+from __future__ import annotations
+
+from serious_game_backend.application.ports import RoleLLMGateway
+from serious_game_backend.domain.game_session import GameSession
+from serious_game_backend.domain.llm import GovernanceLLMContext
+
+
+UNRELATED_INPUT_MESSAGE = "请输入与本游戏相关的话语"
+
+
+class InputReviewService:
+    """A side-effect-free gate shared by every multi-party player utterance."""
+
+    def __init__(self, gateway: RoleLLMGateway) -> None:
+        self._gateway = gateway
+
+    def review(
+        self,
+        session: GameSession,
+        *,
+        operation_id: str,
+        player_text: str,
+        scene_goal: str,
+    ) -> tuple[bool, str]:
+        result = self._gateway.run_governance_task(
+            GovernanceLLMContext(
+                session_id=session.session_id,
+                account_id=session.account_id,
+                operation_id=operation_id,
+                story_day=session.game_state.story_day,
+                task="review_input",
+                actor_id="input_review_agent",
+                actor_name="输入审查员",
+                actor_profile=(
+                    "只判断玩家发言是否与当前严肃游戏、当前场景、人物、"
+                    "政策、资源、合同或剧情推进相关。"
+                ),
+                payload={
+                    "player_text": player_text,
+                    "scene_goal": scene_goal,
+                },
+            )
+        )
+        return bool(result.data["relevant"]), str(result.data["reason"])

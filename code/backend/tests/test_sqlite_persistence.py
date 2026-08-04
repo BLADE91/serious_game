@@ -4,8 +4,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from dataclasses import replace
+import sqlite3
 
 from serious_game_backend.bootstrap import build_container
+from serious_game_backend.application.hashing import canonical_request_hash
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.action import ActionCommand
 from serious_game_backend.domain.enums import ActionInputMode, OperationStatus
@@ -20,6 +22,180 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class SqlitePersistenceTests(unittest.TestCase):
+    def test_startup_recovers_expired_operation_lease_for_explicit_retry(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "lease.db"
+            settings = Settings(
+                environment="test",
+                content_root=BACKEND_ROOT / "content" / "packages",
+                repository="sqlite",
+                database_path=database,
+                role_llm_provider="fake",
+                operation_lease_seconds=300,
+            )
+            runtime = build_container(settings)
+            session = runtime.game_sessions.start_session(
+                account_id="acct_lease",
+                package_id="pkg_backend_dev_v1",
+                client_request_id="lease-new-session",
+                origin_id="technical",
+            )
+            command = ActionCommand(
+                input_mode=ActionInputMode.DECISION,
+                client_action_id="lease-action-0001",
+                state_version=1,
+                decision_id="ev1_01_reception_bag",
+                option_id="a_reject_on_site",
+            )
+            operation = OperationRecord(
+                operation_id="act_expired_lease",
+                account_id="acct_lease",
+                session_id=session.session_id,
+                client_action_id=command.client_action_id,
+                request_hash=canonical_request_hash(
+                    {"session_id": session.session_id, **command.canonical_payload()}
+                ),
+                updated_at="2000-01-01T00:00:00+00:00",
+            )
+            reserved = runtime.sessions.get_owned(session.session_id, "acct_lease")
+            reserved.processing_action_id = operation.operation_id
+            transactions = SqliteRuntimeTransactionRepository(
+                SqliteRuntimeStore(database)
+            )
+            transactions.reserve_operation(
+                reserved,
+                expected_version=1,
+                operation=operation,
+                create_operation=True,
+            )
+
+            restarted = build_container(settings)
+            recovered_session = restarted.sessions.get_owned(
+                session.session_id, "acct_lease"
+            )
+            self.assertIsNone(recovered_session.processing_action_id)
+            recovered_operation = restarted.operations.get(
+                "acct_lease", session.session_id, command.client_action_id
+            )
+            self.assertEqual(
+                OperationStatus.FAILED_RETRYABLE, recovered_operation.status
+            )
+            retried = restarted.actions.execute(
+                account_id="acct_lease",
+                session_id=session.session_id,
+                command=replace(command, retry=True),
+            )
+            self.assertEqual(2, retried["state_version"])
+            self.assertEqual(
+                2,
+                len(
+                    restarted.snapshots.list_history(
+                        "acct_lease", session.session_id
+                    )
+                ),
+            )
+
+    def test_snapshot_history_manual_slot_and_load_survive_restart(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "snapshots.db"
+            settings = Settings(
+                environment="test",
+                content_root=BACKEND_ROOT / "content" / "packages",
+                repository="sqlite",
+                database_path=database,
+                role_llm_provider="fake",
+            )
+            runtime = build_container(settings)
+            session = runtime.game_sessions.start_session(
+                account_id="acct_snapshot_restart",
+                package_id="pkg_backend_dev_v1",
+                client_request_id="snapshot-restart-new",
+                origin_id="technical",
+            )
+            first_save = runtime.saves.create_manual_save(
+                account_id="acct_snapshot_restart",
+                session_id=session.session_id,
+                client_action_id="snapshot-manual-save-1",
+                state_version=1,
+                slot_number=1,
+                display_name="开局",
+                overwrite=False,
+            )
+            action = runtime.actions.execute(
+                account_id="acct_snapshot_restart",
+                session_id=session.session_id,
+                command=ActionCommand(
+                    input_mode=ActionInputMode.DECISION,
+                    client_action_id="snapshot-action-1",
+                    state_version=1,
+                    decision_id="ev1_01_reception_bag",
+                    option_id="a_reject_on_site",
+                ),
+            )
+            runtime.saves.create_manual_save(
+                account_id="acct_snapshot_restart",
+                session_id=session.session_id,
+                client_action_id="snapshot-manual-overwrite",
+                state_version=action["state_version"],
+                slot_number=1,
+                display_name="行动后",
+                overwrite=True,
+            )
+
+            connection = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    2,
+                    connection.execute(
+                        "select count(*) from runtime_game_snapshots"
+                    ).fetchone()[0],
+                )
+            finally:
+                connection.close()
+
+            restarted = build_container(settings)
+            saves = restarted.saves.list_manual_saves(
+                account_id="acct_snapshot_restart",
+                session_id=session.session_id,
+            )
+            self.assertEqual(1, len(saves["manual_saves"]))
+            self.assertEqual("行动后", saves["manual_saves"][0]["display_name"])
+            restored_before_load = restarted.sessions.get_owned(
+                session.session_id, "acct_snapshot_restart"
+            )
+            feed_count = len(restored_before_load.narrative_feed)
+            package = restarted.packages.get(restored_before_load.package_id)
+            restarted.story_flow.enter_current_day(restored_before_load, package)
+            self.assertEqual(feed_count, len(restored_before_load.narrative_feed))
+            loaded = restarted.saves.load_snapshot(
+                account_id="acct_snapshot_restart",
+                session_id=session.session_id,
+                client_action_id="snapshot-load-1",
+                state_version=2,
+                snapshot_id=first_save["snapshot_id"],
+                confirmed=True,
+            )
+            self.assertEqual(3, loaded["state_version"])
+            self.assertEqual(first_save["snapshot_id"], loaded["loaded_from_snapshot_id"])
+
+            after_second_restart = build_container(settings)
+            restored = after_second_restart.game_sessions.get_owned(
+                session.session_id, "acct_snapshot_restart"
+            )
+            self.assertEqual(3, restored.state_version)
+            self.assertEqual(loaded["timeline_id"], restored.timeline_id)
+            self.assertEqual(first_save["snapshot_id"], restored.loaded_from_snapshot_id)
+            connection = sqlite3.connect(database)
+            try:
+                self.assertEqual(
+                    3,
+                    connection.execute(
+                        "select count(*) from runtime_game_snapshots"
+                    ).fetchone()[0],
+                )
+            finally:
+                connection.close()
+
     def test_restart_restores_m2_pending_decision_queue(self) -> None:
         with TemporaryDirectory() as temp_dir:
             settings = Settings(

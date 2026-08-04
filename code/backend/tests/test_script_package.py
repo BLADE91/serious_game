@@ -5,11 +5,13 @@ import unittest
 
 from serious_game_backend.application.action_service import ActionService
 from serious_game_backend.domain.enums import ActionCostTier, NPCStateTier
+from serious_game_backend.domain.errors import ContentValidationError
 from serious_game_backend.infrastructure.script_packages.file_loader import FileScriptPackageLoader
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_backend_dev_v1"
+GAMEPLAY_PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v2"
 
 
 class ScriptPackageTests(unittest.TestCase):
@@ -36,6 +38,73 @@ class ScriptPackageTests(unittest.TestCase):
             {item.npc_id for item in self.package.npc_profiles},
             {item.npc_id for item in self.package.interaction_opportunities},
         )
+
+    def test_gameplay_profiles_have_structured_big_five(self) -> None:
+        package = FileScriptPackageLoader().load(GAMEPLAY_PACKAGE_DIR)
+        profiles = {item.npc_id: item for item in package.npc_profiles}
+
+        self.assertEqual(
+            29,
+            sum(item.big_five is not None for item in package.npc_profiles),
+        )
+        self.assertFalse(any(
+            item.big_five is None for item in package.npc_profiles
+        ))
+        self.assertEqual(
+            {
+                "openness": 55,
+                "conscientiousness": 80,
+                "extraversion": 30,
+                "agreeableness": 50,
+                "neuroticism": 60,
+            },
+            profiles["npc_shi_wenbin"].big_five.as_dict(),
+        )
+        self.assertIn(
+            "他在网络里站在体制的最末梢",
+            profiles["npc_shi_wenbin"].role_setting,
+        )
+        expected_inferred_profiles = {
+            "npc_lao_juetou": (20, 70, 20, 30, 50),
+            "npc_miao_xiwang": (45, 65, 35, 55, 75),
+            "npc_deng_shouben": (25, 70, 20, 50, 70),
+            "npc_jiang_chongyue": (45, 90, 50, 35, 30),
+            "npc_luo_jian": (65, 85, 35, 65, 55),
+            "npc_cui_guanglin": (30, 90, 25, 60, 25),
+        }
+        for npc_id, expected in expected_inferred_profiles.items():
+            with self.subTest(npc_id=npc_id):
+                big_five = profiles[npc_id].big_five
+                self.assertEqual(expected, (
+                    big_five.openness,
+                    big_five.conscientiousness,
+                    big_five.extraversion,
+                    big_five.agreeableness,
+                    big_five.neuroticism,
+                ))
+                self.assertIn(
+                    "这组大五人格分数依据剧本行为反推，只用于角色扮演",
+                    profiles[npc_id].role_setting,
+                )
+                self.assertGreater(len(profiles[npc_id].role_setting), 500)
+
+    def test_big_five_rejects_incomplete_or_invalid_scores(self) -> None:
+        valid = {
+            "openness": 55,
+            "conscientiousness": 80,
+            "extraversion": 30,
+            "agreeableness": 50,
+            "neuroticism": 60,
+        }
+        incomplete = dict(valid)
+        incomplete.pop("neuroticism")
+        out_of_range = dict(valid, openness=101)
+        non_integer = dict(valid, openness="55")
+
+        for value in (incomplete, out_of_range, non_integer):
+            with self.subTest(value=value):
+                with self.assertRaises(ContentValidationError):
+                    FileScriptPackageLoader._load_big_five(value)
 
     def test_action_cost_table_matches_final_script(self) -> None:
         script_path = BACKEND_ROOT.parents[1] / "最终剧本.md"

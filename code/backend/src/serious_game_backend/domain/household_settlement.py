@@ -21,6 +21,9 @@ class HouseholdSettlementEntry:
     eligibility_registered_day: int
     early_reward_paid: bool = False
     validity_status: str = "valid"
+    contract_id: str | None = None
+    household_id: str | None = None
+    resource_details: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.household_count <= 0:

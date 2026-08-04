@@ -19,7 +19,14 @@ from serious_game_backend.domain.errors import (
     RoleLLMResponseError,
     RoleLLMUnavailableError,
 )
-from serious_game_backend.domain.llm import RoleTurnContext, RoleTurnResult
+from serious_game_backend.domain.llm import (
+    GovernanceLLMContext,
+    GovernanceLLMResult,
+    NightAgentContext,
+    NightAgentResult,
+    RoleTurnContext,
+    RoleTurnResult,
+)
 from serious_game_backend.domain.llm_runtime import LLMCallAudit
 
 
@@ -31,6 +38,7 @@ class RoleTurnPayload(BaseModel):
 
     npc_id: str = Field(min_length=1, max_length=128)
     dialogue: str = Field(min_length=1, max_length=800)
+    input_relevance: Literal["relevant", "irrelevant"] = "relevant"
     portrait_state: Literal["neutral", "warm", "guarded", "anxious"]
     attitude_direction: Literal["none", "increase", "decrease"]
     attitude_band: Literal["none", "micro", "medium", "heavy"]
@@ -52,6 +60,24 @@ class RoleTurnPayload(BaseModel):
         if (self.conversation_state == "end") != bool(self.exit_narrative):
             raise ValueError("ended conversation requires exit_narrative, continuing one forbids it")
         return self
+
+
+class NightAgentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    npc_id: str = Field(min_length=1, max_length=128)
+    dialogue: str | None = Field(default=None, min_length=1, max_length=800)
+    action_id: str | None = Field(default=None, max_length=128)
+    contact_ids: list[str] = Field(default_factory=list, max_length=8)
+    contact_response: Literal["accept", "reject", "defer"] | None = None
+    initiate_followup: bool = False
+    followup_type: Literal["petition", "cadre_meeting"] | None = None
+    participant_ids: list[str] = Field(default_factory=list, max_length=8)
+    agenda: str = Field(default="", max_length=300)
+    demands: list[str] = Field(default_factory=list, max_length=8)
+    urgency: Literal["none", "normal", "high", "critical"] = "none"
+    target_ids: list[str] = Field(default_factory=list, max_length=5)
+    rationale: str = Field(default="", max_length=500)
 
 
 class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
@@ -107,6 +133,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 )
                 result, output_text, usage = self._parse_response(response)
                 result = self._repair_single_allowed_disclosure(result, context)
+                result = self._constrain_soft_deltas(result, context)
                 self._validate_against_context(result, context)
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 audit = LLMCallAudit(
@@ -192,10 +219,527 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             return result
         raise last_error or RoleLLMUnavailableError("角色模型暂时不可用")
 
-    def _enforce_budget(self, context: RoleTurnContext, estimated_input: int) -> None:
+    def run_night_turn(self, context: NightAgentContext) -> NightAgentResult:
+        actions = {
+            str(item["action_id"]): {
+                "name": item.get("name", ""),
+                "description": item.get("description", ""),
+                "targets": item.get("allowed_target_ids", []),
+            }
+            for item in context.allowed_actions
+        }
+        if context.phase == "contact_selection":
+            contract = (
+                f"决定今晚是否主动联系别人。contact_ids 可为空，最多"
+                f"{context.max_contacts}人，只能从候选对象中选择；dialogue 和 action_id"
+                "必须为 null，target_ids 必须为 []。不要为了制造剧情而强行联系人。"
+            )
+        elif context.phase in {"contact_response", "followup_response"}:
+            contract = (
+                "另一名 NPC 邀请当前角色今晚交流。当前角色必须独立决定是否响应："
+                "contact_response 只能是 accept、reject 或 defer；dialogue、action_id"
+                "必须为 null，contact_ids 和 target_ids 必须为 []。rationale 说明原因。"
+            )
+        elif context.phase == "followup_initiation":
+            contract = (
+                f"判断是否在次日主动向县长发起{context.allowed_followup_type}群组会话。"
+                "可以不发起。发起时 initiate_followup=true，followup_type 必须是允许类型，"
+                "participant_ids 至少包含当前角色和一名候选NPC，agenda、demands 必须来自"
+                "当前剧情和当夜交流，urgency 为 normal、high 或 critical。"
+                "不发起时 initiate_followup=false，followup_type=null，participant_ids=[]，"
+                "agenda为空，demands=[]，urgency=none。不得直接修改游戏状态。"
+            )
+        elif context.phase == "player_group_dialogue":
+            contract = (
+                "玩家正在回应当前角色参与的强制群组会话。本回合只输出当前角色实际说出的"
+                "dialogue；其他决策字段保持空值。必须回应当前议题和玩家原话，不得替其他NPC发言。"
+            )
+        elif context.phase == "dialogue":
+            contract = (
+                "本回合只输出对白：dialogue 必须是角色实际说出的话；"
+                "action_id 必须为 null，contact_ids 和 target_ids 必须为 []，rationale 可为空。"
+            )
+        else:
+            contract = (
+                "本回合只做行动决定：dialogue 必须为 null；action_id 必须从允许动作键中选择，"
+                "target_ids 只能使用动作允许目标；contact_ids 必须为 []；"
+                "rationale 说明角色为何在交流后这样做。"
+            )
+        system = "\n\n".join((
+            "你是严肃游戏夜间场景中的一个独立 NPC Agent。你只能扮演当前角色，"
+            "不能替其他角色发言，不能决定游戏数值、旗标或结局。",
+            f"当前角色：{context.npc_name}（{context.npc_id}）",
+            "角色设定：\n" + context.role_setting,
+            "结构化大五人格：\n"
+            + json.dumps(context.big_five, ensure_ascii=False, sort_keys=True),
+            "场景目标：\n" + context.scene_goal,
+            "当前角色私有处境（不得直接复述为系统资料）：\n" + context.private_context,
+            "已经真实发生的夜间对话：\n"
+            + json.dumps(context.transcript, ensure_ascii=False),
+            "本阶段可联系或正在交流的其他 NPC ID：\n"
+            + json.dumps(context.counterpart_ids, ensure_ascii=False),
+            "玩家在当前强制群组会话中的最新回应：\n" + context.player_text,
+            "允许动作：\n" + json.dumps(actions, ensure_ascii=False, sort_keys=True),
+            contract,
+            "只返回 JSON 对象，字段必须且只能是 npc_id、dialogue、action_id、"
+            "contact_ids、contact_response、initiate_followup、followup_type、"
+            "participant_ids、agenda、demands、urgency、target_ids、rationale。"
+            "npc_id 必须是当前角色。",
+        ))
+        model_id = context.model_id or self._settings.role_llm_model
+        request_document = {
+            "model": model_id,
+            "messages": [{"role": "system", "content": system}],
+            "temperature": 0.65,
+            "max_tokens": self._settings.role_llm_max_output_tokens,
+            "response_format": {"type": "json_object"},
+            "enable_thinking": False,
+        }
+        request_hash = self._hash(request_document)
+        cached = self._audits.successful_for_operation(
+            context.operation_id, request_hash
+        )
+        if cached is not None and cached.validated_result is not None:
+            return self._night_result_from_dict(cached.validated_result)
+        estimated_input = self._estimate_tokens(system)
+        self._enforce_budget(context, estimated_input)
+        started = time.perf_counter()
+        try:
+            response = self._transport(
+                self._settings.role_llm_base_url,
+                self._api_key,
+                request_document,
+                self._settings.role_llm_timeout_seconds,
+            )
+            content = response["choices"][0]["message"]["content"]
+            payload = self._parse_night_payload(content)
+            allowed_ids = set(actions)
+            if payload.npc_id != context.npc_id:
+                raise RoleLLMResponseError("夜间 Agent 返回了错误的 npc_id")
+            if context.phase == "contact_selection":
+                contacts = tuple(dict.fromkeys(payload.contact_ids))
+                if (
+                    payload.dialogue is not None
+                    or payload.action_id is not None
+                    or payload.contact_response is not None
+                    or payload.initiate_followup
+                    or payload.followup_type is not None
+                    or payload.participant_ids
+                    or payload.target_ids
+                    or len(contacts) > context.max_contacts
+                    or not set(contacts).issubset(context.counterpart_ids)
+                ):
+                    raise RoleLLMResponseError("夜间 Agent 返回了非法联系对象")
+            elif context.phase in {"contact_response", "followup_response"}:
+                if (
+                    payload.dialogue is not None
+                    or payload.action_id is not None
+                    or payload.contact_ids
+                    or payload.target_ids
+                    or payload.initiate_followup
+                    or payload.followup_type is not None
+                    or payload.participant_ids
+                    or payload.contact_response not in {
+                        "accept", "reject", "defer"
+                    }
+                ):
+                    raise RoleLLMResponseError("夜间 Agent 返回了非法邀请响应")
+            elif context.phase == "followup_initiation":
+                participants = tuple(dict.fromkeys(payload.participant_ids))
+                valid_followup = (
+                    payload.initiate_followup
+                    and payload.followup_type == context.allowed_followup_type
+                    and context.npc_id in participants
+                    and len(participants) >= 2
+                    and set(participants).issubset(
+                        {context.npc_id, *context.counterpart_ids}
+                    )
+                    and bool(payload.agenda.strip())
+                    and bool(payload.demands)
+                    and payload.urgency != "none"
+                )
+                valid_none = (
+                    not payload.initiate_followup
+                    and payload.followup_type is None
+                    and not participants
+                    and not payload.agenda
+                    and not payload.demands
+                    and payload.urgency == "none"
+                )
+                if not (valid_followup or valid_none):
+                    raise RoleLLMResponseError("夜间 Agent 返回了非法次日会谈提议")
+            elif context.phase == "player_group_dialogue":
+                if (
+                    payload.dialogue is None
+                    or payload.action_id is not None
+                    or payload.contact_ids
+                    or payload.contact_response is not None
+                    or payload.initiate_followup
+                    or payload.followup_type is not None
+                    or payload.participant_ids
+                    or payload.initiate_followup
+                    or payload.followup_type is not None
+                    or payload.participant_ids
+                ):
+                    raise RoleLLMResponseError("群组会谈角色返回了非法字段")
+            elif context.phase == "dialogue":
+                if (
+                    payload.dialogue is None
+                    or payload.action_id is not None
+                    or payload.contact_ids
+                    or payload.contact_response is not None
+                ):
+                    raise RoleLLMResponseError("夜间对白回合返回了非法动作")
+            elif (
+                payload.dialogue is not None
+                or payload.contact_ids
+                or payload.contact_response is not None
+                or payload.initiate_followup
+                or payload.followup_type is not None
+                or payload.participant_ids
+                or payload.action_id not in allowed_ids
+            ):
+                raise RoleLLMResponseError("夜间行动不在剧本白名单")
+            result = NightAgentResult(
+                npc_id=payload.npc_id,
+                model_id=model_id,
+                dialogue=payload.dialogue,
+                action_id=payload.action_id,
+                contact_ids=tuple(payload.contact_ids),
+                contact_response=payload.contact_response,
+                initiate_followup=payload.initiate_followup,
+                followup_type=payload.followup_type,
+                participant_ids=tuple(payload.participant_ids),
+                agenda=payload.agenda,
+                demands=tuple(payload.demands),
+                urgency=payload.urgency,
+                target_ids=tuple(payload.target_ids),
+                rationale=payload.rationale,
+            )
+            usage = response.get("usage", {}) or {}
+            self._audits.save(LLMCallAudit(
+                audit_id=f"llm_{secrets.token_hex(12)}",
+                session_id=context.session_id,
+                account_id=context.account_id,
+                operation_id=context.operation_id,
+                story_day=context.story_day,
+                npc_id=context.npc_id,
+                provider="openai_compatible",
+                model_id=model_id,
+                prompt_version=context.prompt_version,
+                request_hash=request_hash,
+                status="succeeded",
+                input_tokens=int(usage.get("prompt_tokens", estimated_input)),
+                output_tokens=int(usage.get(
+                    "completion_tokens", self._estimate_tokens(content)
+                )),
+                latency_ms=int((time.perf_counter() - started) * 1000),
+                response_hash=self._hash(content),
+                validated_result=self._night_result_dict(result),
+            ))
+            return result
+        except RoleLLMConfigurationError:
+            raise
+        except (RoleLLMResponseError, RoleLLMUnavailableError) as exc:
+            error = exc
+        except (
+            KeyError, IndexError, TypeError, ValueError,
+            ValidationError, json.JSONDecodeError,
+        ) as exc:
+            error = RoleLLMResponseError("夜间 Agent 未返回合法结构化响应")
+            error.__cause__ = exc
+        self._audits.save(LLMCallAudit(
+            audit_id=f"llm_{secrets.token_hex(12)}",
+            session_id=context.session_id,
+            account_id=context.account_id,
+            operation_id=context.operation_id,
+            story_day=context.story_day,
+            npc_id=context.npc_id,
+            provider="openai_compatible",
+            model_id=model_id,
+            prompt_version=context.prompt_version,
+            request_hash=request_hash,
+            status="failed",
+            input_tokens=estimated_input,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            error_code=getattr(error, "code", type(error).__name__),
+        ))
+        if self._fallback is not None and self._settings.role_llm_fallback_to_fake:
+            result = self._fallback.run_night_turn(context)
+            self._audits.save(LLMCallAudit(
+                audit_id=f"llm_{secrets.token_hex(12)}",
+                session_id=context.session_id,
+                account_id=context.account_id,
+                operation_id=context.operation_id,
+                story_day=context.story_day,
+                npc_id=context.npc_id,
+                provider="fake_fallback",
+                model_id=result.model_id,
+                prompt_version=context.prompt_version,
+                request_hash=request_hash,
+                status="succeeded",
+                validated_result=self._night_result_dict(result),
+                error_code=getattr(error, "code", type(error).__name__),
+            ))
+            return result
+        raise error
+
+    def run_governance_task(
+        self, context: GovernanceLLMContext
+    ) -> GovernanceLLMResult:
+        task_contracts = {
+            "review_input": (
+                "判断玩家发言是否与本游戏或当前场景目标相关。允许策略讨论、"
+                "角色扮演、询问规则、质疑NPC、文件、合同和资源；只返回"
+                "relevant布尔值与reason。不要回答玩家的问题。"
+            ),
+            "detect_contract_intent": (
+                "判断玩家是否明确要求与当前代表人物进入合同或签约流程。"
+                "只返回 intent 和 reason；intent 只能是 request_contract_batch 或 none。"
+            ),
+            "draft_contract": (
+                "把已经校验的结构化合同条款转写为中文合同。不得增加金额、资源、对象或期限。"
+                "只返回 contract_text、clause_index、term_references、warnings。"
+            ),
+            "audit_contract": (
+                "你是独立于合同生成模型和签约人的专业合同审校模型。逐句抽取正文中的"
+                "全部具有约束力或可能被理解为有约束力的金额、预算、房源、服务、日期、"
+                "奖励、违约与解除承诺，并与结构化条款和政策依据逐项比较。重复使用附件"
+                "已有数字形成第二项承诺、中文数字、模糊兜底、另行解决和口头承诺也必须"
+                "识别。不得替玩家改合同。只返回 status、summary、detected_commitments、"
+                "issues；status只能是pass、reject、needs_revision。每个问题必须给出"
+                "issue_id、severity、category、term_field、message、text_quote、suggestion，"
+                "让UI可以精确展示问题位置和修改方法。"
+            ),
+            "review_contract": (
+                "以当前签约人身份审阅合同，只能从 allowed_decisions 中选择。"
+                "只返回 decision、reason、counteroffer；不得自行修改游戏状态。"
+            ),
+            "draft_document": (
+                "把已经通过的会议决议转写为行政文件，不得扩大对象、资源、权限或期限。"
+                "只返回 document_text 和 warnings。"
+            ),
+            "meeting_position": (
+                "以当前参会人身份对会议议案表态。只返回 position 和 reason；"
+                "position 只能是 approve、conditional、oppose、abstain。"
+            ),
+        }
+        contract = task_contracts.get(context.task)
+        if contract is None:
+            raise RoleLLMConfigurationError(
+                f"未知治理模型任务：{context.task}"
+            )
+        system = "\n\n".join((
+            "你是严肃游戏中的治理文书与合同专用模型。输入数据已经由规则层准备。"
+            "你不能直接修改预算、资源、户数、文件状态或合同状态，只能返回受限候选。",
+            f"任务：{context.task}",
+            f"当前主体：{context.actor_name}（{context.actor_id}）",
+            "主体设定：\n" + context.actor_profile,
+            contract,
+            "只返回一个JSON对象，不要代码块，不要解释系统规则。",
+        ))
+        user = json.dumps(context.payload, ensure_ascii=False, sort_keys=True)
+        model_id = (
+            self._settings.contract_audit_llm_model
+            if context.task == "audit_contract"
+            else self._settings.role_llm_model
+        )
+        request_document = {
+            "model": model_id,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.2,
+            "max_tokens": self._settings.role_llm_max_output_tokens,
+            "response_format": {"type": "json_object"},
+            "enable_thinking": False,
+        }
+        request_hash = self._hash(request_document)
+        cached = self._audits.successful_for_operation(
+            context.operation_id, request_hash
+        )
+        invalid_cached_audit_ids: set[str] = set()
+        if cached is not None and cached.validated_result is not None:
+            value = cached.validated_result
+            try:
+                cached_task = str(value.get("task", ""))
+                cached_data = value.get("data")
+                cached_model_id = value.get("model_id")
+                if cached_task != context.task:
+                    raise RoleLLMResponseError(
+                        "缓存治理任务与当前任务不一致"
+                    )
+                if (
+                    not isinstance(cached_model_id, str)
+                    or not cached_model_id.strip()
+                ):
+                    raise RoleLLMResponseError(
+                        "缓存治理结果缺少模型标识"
+                    )
+                self._validate_governance_data(
+                    context.task, cached_data, context.payload
+                )
+            except (AttributeError, TypeError, RoleLLMResponseError):
+                invalid_cached_audit_ids.add(cached.audit_id)
+            else:
+                return GovernanceLLMResult(
+                    task=cached_task,
+                    data=dict(cached_data),
+                    model_id=cached_model_id,
+                )
+        estimated_input = self._estimate_tokens(system + user)
+        self._enforce_budget(
+            context,
+            estimated_input,
+            excluded_audit_ids=invalid_cached_audit_ids,
+        )
+        started = time.perf_counter()
+        try:
+            response = self._transport(
+                self._settings.role_llm_base_url,
+                self._api_key,
+                request_document,
+                self._settings.role_llm_timeout_seconds,
+            )
+            content = response["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or content.strip().startswith("```"):
+                raise ValueError("content is not a bare JSON object")
+            data = json.loads(content)
+            self._validate_governance_data(context.task, data, context.payload)
+            result = GovernanceLLMResult(
+                task=context.task,
+                data=data,
+                model_id=model_id,
+            )
+            usage = response.get("usage", {}) or {}
+            self._audits.save(LLMCallAudit(
+                audit_id=f"llm_{secrets.token_hex(12)}",
+                session_id=context.session_id,
+                account_id=context.account_id,
+                operation_id=context.operation_id,
+                story_day=context.story_day,
+                npc_id=context.actor_id or "governance",
+                provider="openai_compatible",
+                model_id=model_id,
+                prompt_version=context.prompt_version,
+                request_hash=request_hash,
+                status="succeeded",
+                input_tokens=int(usage.get("prompt_tokens", estimated_input)),
+                output_tokens=int(usage.get(
+                    "completion_tokens", self._estimate_tokens(content)
+                )),
+                latency_ms=int((time.perf_counter() - started) * 1000),
+                response_hash=self._hash(content),
+                validated_result={
+                    "task": result.task,
+                    "data": result.data,
+                    "model_id": result.model_id,
+                },
+            ))
+            return result
+        except (
+            KeyError, IndexError, TypeError, ValueError,
+            json.JSONDecodeError, RoleLLMResponseError,
+        ) as exc:
+            if self._fallback is not None and self._settings.role_llm_fallback_to_fake:
+                return self._fallback.run_governance_task(context)
+            raise RoleLLMResponseError(
+                "治理文书模型未返回合法结构化响应"
+            ) from exc
+
+    @staticmethod
+    def _validate_governance_data(
+        task: str, data: object, payload: dict
+    ) -> None:
+        if not isinstance(data, dict):
+            raise RoleLLMResponseError("治理模型响应必须是对象")
+        expected = {
+            "review_input": {"relevant", "reason"},
+            "detect_contract_intent": {"intent", "reason"},
+            "draft_contract": {
+                "contract_text", "clause_index", "term_references", "warnings",
+            },
+            "audit_contract": {
+                "status", "summary", "detected_commitments", "issues",
+            },
+            "review_contract": {"decision", "reason", "counteroffer"},
+            "draft_document": {"document_text", "warnings"},
+            "meeting_position": {"position", "reason"},
+        }[task]
+        if set(data) != expected:
+            raise RoleLLMResponseError("治理模型响应字段不符合任务契约")
+        if task == "review_input" and not isinstance(data["relevant"], bool):
+            raise RoleLLMResponseError("输入审查结果必须是布尔值")
+        if task == "detect_contract_intent" and data["intent"] not in {
+            "request_contract_batch", "none",
+        }:
+            raise RoleLLMResponseError("合同意图枚举非法")
+        if task == "audit_contract":
+            if data["status"] not in {"pass", "reject", "needs_revision"}:
+                raise RoleLLMResponseError("合同审校状态枚举非法")
+            if not isinstance(data["detected_commitments"], list):
+                raise RoleLLMResponseError("合同承诺抽取结果必须是数组")
+            if not isinstance(data["issues"], list):
+                raise RoleLLMResponseError("合同审校问题必须是数组")
+            if (
+                data["status"] in {"reject", "needs_revision"}
+                and not data["issues"]
+            ):
+                raise RoleLLMResponseError(
+                    "未通过的合同审校必须给出至少一项可定位问题"
+                )
+            for issue in data["issues"]:
+                if not isinstance(issue, dict) or set(issue) != {
+                    "issue_id", "severity", "category", "term_field",
+                    "message", "text_quote", "suggestion",
+                }:
+                    raise RoleLLMResponseError("合同审校问题字段不完整")
+                if issue["severity"] not in {"error", "warning"}:
+                    raise RoleLLMResponseError("合同审校问题级别非法")
+                if issue["term_field"] is not None and not isinstance(
+                    issue["term_field"], str
+                ):
+                    raise RoleLLMResponseError("合同审校字段定位非法")
+                for key in (
+                    "issue_id", "category", "message",
+                    "text_quote", "suggestion",
+                ):
+                    if not isinstance(issue[key], str) or not issue[key].strip():
+                        raise RoleLLMResponseError("合同审校问题说明不能为空")
+        if task == "review_contract" and data["decision"] not in set(
+            payload.get("allowed_decisions", ())
+        ):
+            raise RoleLLMResponseError("签约人返回了规则层未开放的决定")
+        if task == "meeting_position" and data["position"] not in {
+            "approve", "conditional", "oppose", "abstain",
+        }:
+            raise RoleLLMResponseError("会议表态枚举非法")
+        text_fields = {
+            "review_input": ("reason",),
+            "detect_contract_intent": ("reason",),
+            "draft_contract": ("contract_text",),
+            "audit_contract": ("summary",),
+            "review_contract": ("reason",),
+            "draft_document": ("document_text",),
+            "meeting_position": ("reason",),
+        }[task]
+        if any(not isinstance(data.get(key), str) or not data[key].strip()
+               for key in text_fields):
+            raise RoleLLMResponseError("治理模型必要文本字段为空")
+
+    def _enforce_budget(
+        self,
+        context: RoleTurnContext,
+        estimated_input: int,
+        *,
+        excluded_audit_ids: set[str] | None = None,
+    ) -> None:
+        excluded = excluded_audit_ids or set()
         audits = tuple(
             item for item in self._audits.list_for_session(context.session_id)
             if item.provider == "openai_compatible"
+            and item.audit_id not in excluded
         )
         if len(audits) >= self._settings.role_llm_max_calls_per_session:
             raise RoleLLMBudgetExceededError("本局角色模型调用次数已达上限")
@@ -223,6 +767,9 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             f"当前角色：{context.npc_name or context.npc_id}（{context.npc_id}）",
             "角色设定（只用于扮演，不得逐字复述设定或泄露未授权秘密）：\n"
             + context.role_setting.strip(),
+            "结构化大五人格评分（0到100；这是分数的权威来源；角色设定同时保留"
+            "自然语言解释；空对象表示原始剧本未提供明确分数，不得自行补全）：\n"
+            + json.dumps(context.big_five, ensure_ascii=False, sort_keys=True),
             "本回合允许披露的事实（只能从这里选择 disclosure_id；空对象表示不得披露新事实）：\n"
             + json.dumps(allowed_facts, ensure_ascii=False, sort_keys=True),
             "本次会谈尚需自然触及的目标事实 ID：\n"
@@ -250,6 +797,9 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             tier_contract,
             "输出契约（字段、类型和枚举必须逐项完全一致）：\n"
             "- npc_id: 字符串，必须等于当前 npc_id。\n"
+            "- input_relevance: relevant 或 irrelevant。只有玩家输入与本游戏、当前剧情、"
+            "治理任务、案头材料或正在进行的角色会谈都无关时才返回 irrelevant；"
+            "闲聊、写代码、算题、通用知识问答等均属 irrelevant。拿不准时返回 relevant。\n"
             "- dialogue: 1到800字的角色对白字符串。\n"
             "- portrait_state: 只能是 neutral、warm、guarded、anxious 之一。\n"
             "- attitude_direction: 只能是 none、increase、decrease 之一。\n"
@@ -272,6 +822,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             + json.dumps({
                 "npc_id": context.npc_id,
                 "dialogue": "角色对白",
+                "input_relevance": "relevant",
                 "portrait_state": "neutral",
                 "attitude_direction": "none",
                 "attitude_band": "none",
@@ -308,6 +859,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         result = RoleTurnResult(
             npc_id=payload.npc_id,
             dialogue=payload.dialogue,
+            input_relevance=payload.input_relevance,
             portrait_state=payload.portrait_state,
             attitude_direction=payload.attitude_direction,
             attitude_band=payload.attitude_band,
@@ -345,6 +897,56 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             document["risk_notes"].append(
                 "供应商方向/幅度不一致，已保守归零：" + ",".join(repaired)
             )
+
+    @staticmethod
+    def _constrain_soft_deltas(
+        result: RoleTurnResult, context: RoleTurnContext
+    ) -> RoleTurnResult:
+        """Discard soft-state candidates that this NPC tier cannot own."""
+        if context.npc_state_tier == "deep" or (
+            result.attitude_band == "none" and result.anxiety_band == "none"
+        ):
+            return result
+        notes = result.risk_notes
+        if len(notes) < 5:
+            notes = (*notes, "有限或氛围角色的数值变化候选已由服务端归零")
+        return replace(
+            result,
+            attitude_direction="none",
+            attitude_band="none",
+            anxiety_direction="none",
+            anxiety_band="none",
+            risk_notes=notes,
+        )
+
+    @staticmethod
+    def _parse_night_payload(content: object) -> NightAgentPayload:
+        if not isinstance(content, str):
+            raise RoleLLMResponseError("夜间 Agent 未返回合法结构化响应")
+        text = content.strip()
+        if text.startswith("```") and text.endswith("```"):
+            lines = text.splitlines()
+            if len(lines) >= 3:
+                text = "\n".join(lines[1:-1]).strip()
+        try:
+            document = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise RoleLLMResponseError("夜间 Agent 未返回合法结构化响应") from exc
+        if not isinstance(document, dict):
+            raise RoleLLMResponseError("夜间 Agent 未返回合法结构化响应")
+        for key in ("contact_ids", "participant_ids", "demands", "target_ids"):
+            if document.get(key) is None:
+                document[key] = []
+        for key in ("agenda", "rationale"):
+            if document.get(key) is None:
+                document[key] = ""
+        for key in ("dialogue", "action_id", "contact_response", "followup_type"):
+            if document.get(key) == "":
+                document[key] = None
+        try:
+            return NightAgentPayload.model_validate(document)
+        except ValidationError as exc:
+            raise RoleLLMResponseError("夜间 Agent 未返回合法结构化响应") from exc
 
     @staticmethod
     def _repair_single_allowed_disclosure(
@@ -467,6 +1069,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         return {
             "npc_id": result.npc_id,
             "dialogue": result.dialogue,
+            "input_relevance": result.input_relevance,
             "portrait_state": result.portrait_state,
             "attitude_direction": result.attitude_direction,
             "attitude_band": result.attitude_band,
@@ -489,5 +1092,36 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 "flag_candidates": tuple(value.get("flag_candidates", ())),
                 "will_share_with": tuple(value.get("will_share_with", ())),
                 "risk_notes": tuple(value.get("risk_notes", ())),
+            }
+        )
+
+    @staticmethod
+    def _night_result_dict(result: NightAgentResult) -> dict:
+        return {
+            "npc_id": result.npc_id,
+            "model_id": result.model_id,
+            "dialogue": result.dialogue,
+            "action_id": result.action_id,
+            "contact_ids": list(result.contact_ids),
+            "contact_response": result.contact_response,
+            "initiate_followup": result.initiate_followup,
+            "followup_type": result.followup_type,
+            "participant_ids": list(result.participant_ids),
+            "agenda": result.agenda,
+            "demands": list(result.demands),
+            "urgency": result.urgency,
+            "target_ids": list(result.target_ids),
+            "rationale": result.rationale,
+        }
+
+    @staticmethod
+    def _night_result_from_dict(value: dict) -> NightAgentResult:
+        return NightAgentResult(
+            **{
+                **value,
+                "contact_ids": tuple(value.get("contact_ids", ())),
+                "participant_ids": tuple(value.get("participant_ids", ())),
+                "demands": tuple(value.get("demands", ())),
+                "target_ids": tuple(value.get("target_ids", ())),
             }
         )

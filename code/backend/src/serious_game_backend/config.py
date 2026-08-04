@@ -59,6 +59,7 @@ class Settings:
     role_llm_provider: str = "fake"
     role_llm_base_url: str = "https://api.qianzhang-ai.cn/v1"
     role_llm_model: str = "qwen3.6-plus"
+    contract_audit_llm_model: str = "qwen3.6-plus"
     role_llm_api_key_env: str = "DASHSCOPE_API_KEY"
     role_llm_timeout_seconds: float = 30.0
     role_llm_max_retries: int = 2
@@ -66,6 +67,7 @@ class Settings:
     role_llm_max_calls_per_session: int = 120
     role_llm_max_tokens_per_session: int = 240_000
     role_llm_fallback_to_fake: bool = True
+    operation_lease_seconds: int = 300
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -155,6 +157,10 @@ class Settings:
                 "https://api.qianzhang-ai.cn/v1",
             ).strip().rstrip("/"),
             role_llm_model=os.getenv("ROLE_LLM_MODEL", "qwen3.6-plus").strip(),
+            contract_audit_llm_model=os.getenv(
+                "CONTRACT_AUDIT_LLM_MODEL",
+                os.getenv("ROLE_LLM_MODEL", "qwen3.6-plus"),
+            ).strip(),
             role_llm_api_key_env=os.getenv(
                 "ROLE_LLM_API_KEY_ENV", "DASHSCOPE_API_KEY"
             ).strip(),
@@ -174,6 +180,9 @@ class Settings:
             role_llm_fallback_to_fake=os.getenv(
                 "ROLE_LLM_FALLBACK_TO_FAKE", "true"
             ).strip().lower() in {"1", "true", "yes", "on"},
+            operation_lease_seconds=int(
+                os.getenv("OPERATION_LEASE_SECONDS", "300")
+            ),
         )
         settings.validate()
         return settings
@@ -230,7 +239,11 @@ class Settings:
         if self.role_llm_provider == "openai_compatible":
             if not self.role_llm_base_url.startswith("https://"):
                 raise ValueError("ROLE_LLM_BASE_URL must use https")
-            if not self.role_llm_model or not self.role_llm_api_key_env:
+            if (
+                not self.role_llm_model
+                or not self.contract_audit_llm_model
+                or not self.role_llm_api_key_env
+            ):
                 raise ValueError("real role LLM requires model and API key env name")
         if not 1 <= self.role_llm_max_output_tokens <= 4000:
             raise ValueError("ROLE_LLM_MAX_OUTPUT_TOKENS must be between 1 and 4000")
@@ -243,3 +256,5 @@ class Settings:
             raise ValueError("role LLM budgets must be positive")
         if self.auth_session_ttl_seconds <= 0 or self.raw_text_retention_days <= 0:
             raise ValueError("invalid auth session TTL or raw text retention")
+        if self.operation_lease_seconds <= 0:
+            raise ValueError("OPERATION_LEASE_SECONDS must be positive")

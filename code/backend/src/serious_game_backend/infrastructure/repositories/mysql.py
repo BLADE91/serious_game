@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -12,11 +12,16 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 from serious_game_backend.domain.consent import ConsentDocument, ConsentRecord
-from serious_game_backend.domain.errors import StateVersionConflictError
+from serious_game_backend.domain.errors import (
+    ActionUnavailableError,
+    StateVersionConflictError,
+)
+from serious_game_backend.domain.enums import OperationStatus
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.identity import Account, AuthSession, ROLE_PERMISSIONS
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
 from serious_game_backend.domain.operation import OperationRecord
+from serious_game_backend.domain.snapshots import GameSnapshot, ManualSaveSlot
 from serious_game_backend.domain.research import (
     ExperimentAssignment,
     ResearchEvent,
@@ -32,6 +37,7 @@ from serious_game_backend.infrastructure.repositories.codec import (
     encode_session,
 )
 from serious_game_backend.infrastructure.crypto import FieldCipher
+from serious_game_backend.infrastructure.repositories.snapshot_codec import build_snapshot
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
@@ -61,6 +67,62 @@ def _payload(value) -> dict:
     return json.loads(value)
 
 
+def _mysql_snapshot_from_row(
+    store: "MySQLRuntimeStore", row: dict
+) -> GameSnapshot:
+    return GameSnapshot(
+        snapshot_id=str(row["snapshot_id"]),
+        session_id=str(row["session_id"]),
+        account_id=str(row["account_id"]),
+        timeline_id=str(row["timeline_id"]),
+        snapshot_type=str(row["snapshot_type"]),
+        reason=str(row["reason"]),
+        story_day=int(row["story_day"]),
+        state_version=int(row["state_version"]),
+        package_id=str(row["package_id"]),
+        package_version=str(row["package_version"]),
+        package_content_hash=str(row["package_content_hash"]),
+        snapshot_hash=str(row["snapshot_hash"]),
+        parent_snapshot_id=row["parent_snapshot_id"],
+        created_at=str(_iso(row["created_at"])),
+        session_payload=store.unprotect_json(
+            row["snapshot_json"], purpose="game_snapshot"
+        ),
+    )
+
+
+def _mysql_insert_snapshot(
+    store: "MySQLRuntimeStore", cursor, snapshot: GameSnapshot
+) -> None:
+    cursor.execute(
+        """
+        insert into game_snapshots(
+          snapshot_id, session_id, account_id, timeline_id, snapshot_type,
+          reason, story_day, action_index, state_version, package_id,
+          package_version, package_content_hash, snapshot_json, snapshot_hash,
+          parent_snapshot_id, json_file_path, created_at
+        ) values (%s,%s,%s,%s,%s,%s,%s,0,%s,%s,%s,%s,%s,%s,%s,null,%s)
+        """,
+        (
+            snapshot.snapshot_id,
+            snapshot.session_id,
+            snapshot.account_id,
+            snapshot.timeline_id,
+            snapshot.snapshot_type,
+            snapshot.reason,
+            snapshot.story_day,
+            snapshot.state_version,
+            snapshot.package_id,
+            snapshot.package_version,
+            snapshot.package_content_hash,
+            store.protect_json(snapshot.session_payload, purpose="game_snapshot"),
+            snapshot.snapshot_hash,
+            snapshot.parent_snapshot_id,
+            _dt(snapshot.created_at),
+        ),
+    )
+
+
 class MySQLRuntimeStore:
     def __init__(
         self, mysql_url: str, *, field_cipher: FieldCipher, run_migrations: bool = True
@@ -84,7 +146,35 @@ class MySQLRuntimeStore:
         self._field_cipher = field_cipher
         if run_migrations:
             MySQLMigrationRunner(self, BACKEND_ROOT / "migrations").migrate()
+            self._backfill_current_snapshots()
             self.seed_rbac()
+
+    def _backfill_current_snapshots(self) -> None:
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select s.current_snapshot_json
+                from game_sessions s
+                where not exists (
+                  select 1 from game_snapshots p where p.session_id=s.session_id
+                )
+                """
+            )
+            for row in cursor.fetchall():
+                session = decode_session(
+                    self.unprotect_json(
+                        row["current_snapshot_json"], purpose="game_session"
+                    )
+                )
+                _mysql_insert_snapshot(
+                    self,
+                    cursor,
+                    build_snapshot(
+                        session,
+                        snapshot_type="checkpoint",
+                        reason="migration_backfill",
+                    ),
+                )
 
     def protect_json(self, value: dict, *, purpose: str) -> str:
         return dumps(self._field_cipher.encrypt_json(value, purpose=purpose))
@@ -386,9 +476,301 @@ class MySQLSessionRequestRepository:
             raise ValueError("session request does not exist")
 
 
+class MySQLSnapshotRepository:
+    def __init__(self, store: MySQLRuntimeStore) -> None:
+        self._store = store
+
+    def get_owned(
+        self, account_id: str, session_id: str, snapshot_id: str
+    ) -> GameSnapshot | None:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select * from game_snapshots
+                where account_id=%s and session_id=%s and snapshot_id=%s
+                """,
+                (account_id, session_id, snapshot_id),
+            )
+            row = cursor.fetchone()
+        return _mysql_snapshot_from_row(self._store, row) if row else None
+
+    def current_for_session(self, session: GameSession) -> GameSnapshot | None:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select * from game_snapshots
+                where account_id=%s and session_id=%s and timeline_id=%s
+                  and state_version=%s
+                """,
+                (
+                    session.account_id,
+                    session.session_id,
+                    session.timeline_id,
+                    session.state_version,
+                ),
+            )
+            row = cursor.fetchone()
+        return _mysql_snapshot_from_row(self._store, row) if row else None
+
+    def list_manual_slots(
+        self, account_id: str, session_id: str
+    ) -> tuple[tuple[ManualSaveSlot, GameSnapshot], ...]:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select s.account_id as slot_account_id,
+                       s.session_id as slot_session_id, s.slot_number,
+                       s.snapshot_id as slot_snapshot_id, s.display_name,
+                       s.updated_at as slot_updated_at, p.*
+                from manual_save_slots s
+                join game_snapshots p on p.snapshot_id=s.snapshot_id
+                where s.account_id=%s and s.session_id=%s
+                order by s.slot_number
+                """,
+                (account_id, session_id),
+            )
+            rows = cursor.fetchall()
+        return tuple(
+            (
+                ManualSaveSlot(
+                    account_id=str(row["slot_account_id"]),
+                    session_id=str(row["slot_session_id"]),
+                    slot_number=int(row["slot_number"]),
+                    snapshot_id=str(row["slot_snapshot_id"]),
+                    display_name=str(row["display_name"]),
+                    updated_at=str(_iso(row["slot_updated_at"])),
+                ),
+                _mysql_snapshot_from_row(self._store, row),
+            )
+            for row in rows
+        )
+
+    def list_history(
+        self, account_id: str, session_id: str, *, limit: int = 20
+    ) -> tuple[GameSnapshot, ...]:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select * from game_snapshots
+                where account_id=%s and session_id=%s
+                order by created_at desc, state_version desc limit %s
+                """,
+                (account_id, session_id, limit),
+            )
+            rows = cursor.fetchall()
+        return tuple(_mysql_snapshot_from_row(self._store, row) for row in rows)
+
+    def create_manual_save(
+        self,
+        session: GameSession,
+        *,
+        slot_number: int,
+        display_name: str,
+        overwrite: bool,
+        operation: OperationRecord,
+    ) -> tuple[ManualSaveSlot, GameSnapshot]:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select state_version, processing_action_id from game_sessions
+                where account_id=%s and session_id=%s for update
+                """,
+                (session.account_id, session.session_id),
+            )
+            state_row = cursor.fetchone()
+            if (
+                not state_row
+                or int(state_row["state_version"]) != session.state_version
+                or state_row["processing_action_id"] is not None
+            ):
+                raise StateVersionConflictError("状态版本已变化或游戏正在处理操作")
+            cursor.execute(
+                """
+                select * from game_snapshots
+                where account_id=%s and session_id=%s and timeline_id=%s
+                  and state_version=%s
+                """,
+                (
+                    session.account_id,
+                    session.session_id,
+                    session.timeline_id,
+                    session.state_version,
+                ),
+            )
+            snapshot_row = cursor.fetchone()
+            if not snapshot_row:
+                raise StateVersionConflictError("当前稳定状态缺少历史快照")
+            cursor.execute(
+                """
+                select snapshot_id from manual_save_slots
+                where account_id=%s and session_id=%s and slot_number=%s
+                for update
+                """,
+                (session.account_id, session.session_id, slot_number),
+            )
+            existing = cursor.fetchone()
+            if existing and not overwrite:
+                raise ActionUnavailableError("手动存档槽位已存在，覆盖前必须确认")
+            snapshot = _mysql_snapshot_from_row(self._store, snapshot_row)
+            if existing:
+                cursor.execute(
+                    """
+                    update manual_save_slots
+                    set snapshot_id=%s, display_name=%s, updated_at=%s
+                    where account_id=%s and session_id=%s and slot_number=%s
+                    """,
+                    (
+                        snapshot.snapshot_id,
+                        display_name,
+                        _dt(operation.updated_at),
+                        session.account_id,
+                        session.session_id,
+                        slot_number,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    insert into manual_save_slots(
+                      account_id, session_id, slot_number, snapshot_id,
+                      display_name, updated_at
+                    ) values (%s,%s,%s,%s,%s,%s)
+                    """,
+                    (
+                        session.account_id,
+                        session.session_id,
+                        slot_number,
+                        snapshot.snapshot_id,
+                        display_name,
+                        _dt(operation.updated_at),
+                    ),
+                )
+            MySQLOperationRepository(self._store)._insert(
+                cursor, operation, session.state_version
+            )
+        slot = ManualSaveSlot(
+            account_id=session.account_id,
+            session_id=session.session_id,
+            slot_number=slot_number,
+            snapshot_id=snapshot.snapshot_id,
+            display_name=display_name,
+            updated_at=operation.updated_at,
+        )
+        return slot, snapshot
+
+    def commit_load(
+        self,
+        current: GameSession,
+        restored: GameSession,
+        *,
+        expected_version: int,
+        source_snapshot: GameSnapshot,
+        result_snapshot: GameSnapshot,
+        operation: OperationRecord,
+    ) -> None:
+        parameters = MySQLGameSessionRepository(self._store)._update_parameters(
+            restored, expected_version
+        )
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                update game_sessions set status=%s, state_version=%s,
+                  processing_action_id=%s, pending_decision_id=%s,
+                  consent_record_id=%s, environment=%s, experiment_group_id=%s,
+                  updated_at=%s, current_snapshot_json=%s
+                where session_id=%s and account_id=%s and state_version=%s
+                  and processing_action_id is null
+                """,
+                parameters,
+            )
+            if cursor.rowcount != 1:
+                raise StateVersionConflictError("加载存档时状态版本已变化")
+            _mysql_insert_snapshot(self._store, cursor, result_snapshot)
+            MySQLOperationRepository(self._store)._insert(
+                cursor, operation, expected_version
+            )
+
+
 class MySQLRuntimeTransactionRepository:
     def __init__(self, store: MySQLRuntimeStore) -> None:
         self._store = store
+
+    def recover_stale_operations(self, stale_before: str) -> int:
+        recovered = 0
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select request_json from game_actions
+                where status='processing' and updated_at <= %s
+                for update
+                """,
+                (_dt(stale_before),),
+            )
+            for row in cursor.fetchall():
+                operation = decode_operation(
+                    self._store.unprotect_json(
+                        row["request_json"], purpose="game_operation"
+                    )
+                )
+                if operation.session_id is None:
+                    continue
+                cursor.execute(
+                    """
+                    select current_snapshot_json from game_sessions
+                    where session_id=%s and account_id=%s
+                      and processing_action_id=%s for update
+                    """,
+                    (
+                        operation.session_id,
+                        operation.account_id,
+                        operation.operation_id,
+                    ),
+                )
+                session_row = cursor.fetchone()
+                if not session_row:
+                    continue
+                session = decode_session(
+                    self._store.unprotect_json(
+                        session_row["current_snapshot_json"],
+                        purpose="game_session",
+                    )
+                )
+                session.processing_action_id = None
+                session.touch()
+                failed = replace(
+                    operation,
+                    status=OperationStatus.FAILED_RETRYABLE,
+                    error={
+                        "code": "OPERATION_LEASE_EXPIRED",
+                        "message": "操作进程中断，已释放占用；请显式重试",
+                        "details": {},
+                        "http_status": 409,
+                    },
+                    updated_at=session.updated_at,
+                )
+                cursor.execute(
+                    """
+                    update game_sessions
+                    set processing_action_id=null, updated_at=%s,
+                        current_snapshot_json=%s
+                    where session_id=%s and account_id=%s
+                      and processing_action_id=%s
+                    """,
+                    (
+                        _dt(session.updated_at),
+                        self._store.protect_json(
+                            encode_session(session), purpose="game_session"
+                        ),
+                        session.session_id,
+                        session.account_id,
+                        operation.operation_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    continue
+                MySQLOperationRepository(self._store)._update(cursor, failed)
+                recovered += 1
+        return recovered
 
     def reserve_operation(
         self, session: GameSession, *, expected_version: int,
@@ -440,6 +822,31 @@ class MySQLRuntimeTransactionRepository:
             if cursor.rowcount != 1:
                 raise StateVersionConflictError("动作预留已失效或状态版本冲突")
             MySQLOperationRepository(self._store)._update(cursor, operation)
+            if (
+                operation.status is OperationStatus.SUCCEEDED
+                and session.state_version > expected_version
+            ):
+                cursor.execute(
+                    """
+                    select snapshot_id from game_snapshots
+                    where session_id=%s and account_id=%s and timeline_id=%s
+                    order by state_version desc limit 1
+                    """,
+                    (session.session_id, session.account_id, session.timeline_id),
+                )
+                parent = cursor.fetchone()
+                _mysql_insert_snapshot(
+                    self._store,
+                    cursor,
+                    build_snapshot(
+                        session,
+                        snapshot_type="auto",
+                        reason="operation_committed",
+                        parent_snapshot_id=(
+                            str(parent["snapshot_id"]) if parent else None
+                        ),
+                    ),
+                )
             if research_event is not None:
                 cursor.execute(
                     """
@@ -461,6 +868,15 @@ class MySQLRuntimeTransactionRepository:
             with self._store.connect() as connection, connection.cursor() as cursor:
                 MySQLGameSessionRepository(self._store)._insert(cursor, session)
                 MySQLSessionRequestRepository._update(cursor, request)
+                _mysql_insert_snapshot(
+                    self._store,
+                    cursor,
+                    build_snapshot(
+                        session,
+                        snapshot_type="checkpoint",
+                        reason="session_started",
+                    ),
+                )
         except pymysql.IntegrityError as exc:
             raise ValueError("duplicate session_id or invalid foreign key") from exc
 

@@ -9,6 +9,7 @@ from serious_game_backend.domain.enums import ActionCostTier, AvailabilityMode, 
 from serious_game_backend.domain.errors import ContentValidationError
 from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
 from serious_game_backend.domain.script_package import (
+    BigFiveProfile,
     CalendarSegment,
     ContentCatalogEntry,
     EndingAppendixDefinition,
@@ -16,6 +17,7 @@ from serious_game_backend.domain.script_package import (
     MainEndingDefinition,
     MapLocationDefinition,
     HouseholdDefinition,
+    LimitedHouseholdSignatory,
     MetricBand,
     NPCProfileStub,
     ScriptPackage,
@@ -142,6 +144,16 @@ class FileScriptPackageLoader:
             if (package_dir / "households.json").is_file()
             else {"households": []}
         )
+        limited_household_signatories = self._load_limited_household_signatories(
+            self._json(package_dir / "household_signatories.json")
+            if (package_dir / "household_signatories.json").is_file()
+            else {"signatories": []}
+        )
+        governance_config = (
+            self._json(package_dir / "governance_config.json")
+            if (package_dir / "governance_config.json").is_file()
+            else {}
+        )
         calendar = self._load_calendar(self._json(package_dir / "story_calendar.json"))
         events = self._load_events(self._json(package_dir / "event_rules.json"))
         profiles = self._load_profiles(self._json(package_dir / "npc_profiles.json"))
@@ -199,8 +211,15 @@ class FileScriptPackageLoader:
             event_catalog,
             resource_actions,
             households,
+            limited_household_signatories,
+            governance_config,
             gameplay_schema_version=gameplay_schema_version,
             status=str(manifest["status"]),
+        )
+        self._validate_night_agents(
+            social_rules,
+            profiles=profiles,
+            registered_flags=registered_flags,
         )
         return ScriptPackage(
             package_id=str(manifest["package_id"]),
@@ -221,6 +240,8 @@ class FileScriptPackageLoader:
             resource_actions=resource_actions,
             households=households,
             initial_state=dict(numbers.get("initial_state", {})),
+            limited_household_signatories=limited_household_signatories,
+            governance_config=governance_config,
             gameplay_schema_version=gameplay_schema_version,
             origin_npc_attitude_modifiers={
                 str(origin_id): {
@@ -234,6 +255,19 @@ class FileScriptPackageLoader:
             npc_relationships=tuple(
                 dict(item) for item in social_rules.get("npc_relationships", [])
             ),
+            night_agent_scenes=tuple(
+                dict(item) for item in social_rules.get("night_agent_scenes", [])
+            ),
+            night_agent_actions={
+                str(item["action_id"]): dict(item)
+                for item in social_rules.get("night_agent_actions", [])
+            },
+            npc_social_roles={
+                str(npc_id): tuple(str(role) for role in roles)
+                for npc_id, roles in social_rules.get(
+                    "npc_social_roles", {}
+                ).items()
+            },
             interaction_opportunities=opportunities,
             registered_flags=registered_flags,
             map_locations=map_locations,
@@ -246,6 +280,95 @@ class FileScriptPackageLoader:
             role_turn_prompt=role_turn_prompt,
             role_turn_prompt_version="role-turn-v2",
         )
+
+    @staticmethod
+    def _validate_night_agents(
+        document: dict,
+        *,
+        profiles: tuple[NPCProfileStub, ...],
+        registered_flags: frozenset[str],
+    ) -> None:
+        npc_ids = {item.npc_id for item in profiles}
+        social_roles = document.get("npc_social_roles", {})
+        if not set(social_roles).issubset(npc_ids):
+            raise ContentValidationError("NPC社会标签引用未知人物")
+        if any(
+            role not in {"crowd", "cadre"}
+            for roles in social_roles.values()
+            for role in roles
+        ):
+            raise ContentValidationError("NPC社会标签只能是 crowd 或 cadre")
+        actions = document.get("night_agent_actions", [])
+        action_ids = [str(item.get("action_id", "")) for item in actions]
+        if any(not item for item in action_ids) or len(action_ids) != len(set(action_ids)):
+            raise ContentValidationError("夜间 Agent 动作 ID 为空或重复")
+        action_id_set = set(action_ids)
+        scene_ids: set[str] = set()
+        for scene in document.get("night_agent_scenes", []):
+            scene_id = str(scene.get("scene_id", ""))
+            participants = set(
+                scene.get("candidate_ids", scene.get("participant_ids", ()))
+            )
+            if not scene_id or scene_id in scene_ids:
+                raise ContentValidationError("夜间 Agent 场景 ID 为空或重复")
+            scene_ids.add(scene_id)
+            if len(participants) < 2 or not participants.issubset(npc_ids):
+                raise ContentValidationError(
+                    "夜间 Agent 场景参与者无效",
+                    details={"scene_id": scene_id},
+                )
+            if (
+                scene.get("selection_mode", "fixed")
+                not in {"fixed", "autonomous"}
+                or int(scene.get("max_contacts_per_npc", 2)) < 0
+            ):
+                raise ContentValidationError(
+                    "夜间 Agent 联系人选择规则无效",
+                    details={"scene_id": scene_id},
+                )
+            unknown_actions = set(scene.get("action_ids", ())) - action_id_set
+            if unknown_actions:
+                raise ContentValidationError(
+                    "夜间 Agent 场景引用未登记动作",
+                    details={"scene_id": scene_id, "action_ids": sorted(unknown_actions)},
+                )
+        for action in actions:
+            action_id = str(action["action_id"])
+            if action.get("resolution", "unilateral") not in {
+                "unilateral", "consensus"
+            }:
+                raise ContentValidationError(
+                    "夜间 Agent 动作结算规则无效",
+                    details={"action_id": action_id},
+                )
+            referenced_npcs = (
+                set(action.get("actor_ids", ()))
+                | set(action.get("allowed_target_ids", ()))
+            )
+            if not referenced_npcs.issubset(npc_ids):
+                raise ContentValidationError(
+                    "夜间 Agent 动作引用未知 NPC",
+                    details={"action_id": action_id},
+                )
+            effects = action.get("effects", {})
+            if "budget_remaining" in effects.get("ledger_deltas", {}):
+                raise ContentValidationError(
+                    "NPC夜间行动不得修改预算",
+                    details={"action_id": action_id},
+                )
+            referenced_flags = (
+                set(action.get("required_flags", ()))
+                | set(action.get("required_any_flags", ()))
+                | set(action.get("forbidden_flags", ()))
+                | set(effects.get("open_flags", ()))
+                | set(effects.get("close_flags", ()))
+            )
+            unknown_flags = referenced_flags - registered_flags
+            if unknown_flags:
+                raise ContentValidationError(
+                    "夜间 Agent 动作引用未注册旗标",
+                    details={"action_id": action_id, "flags": sorted(unknown_flags)},
+                )
 
     @staticmethod
     def compute_content_hash(package_dir: Path) -> str:
@@ -370,7 +493,38 @@ class FileScriptPackageLoader:
                 ),
                 resettlement_preference=str(item["resettlement_preference"]),
                 ownership_status=str(item["ownership_status"]),
-                signing_lock_flag=str(item["signing_lock_flag"]),
+                signing_lock_flag=(
+                    str(item["signing_lock_flag"])
+                    if item.get("signing_lock_flag") is not None
+                    else None
+                ),
+            ))
+        return tuple(result)
+
+    @staticmethod
+    def _load_limited_household_signatories(
+        document: dict,
+    ) -> tuple[LimitedHouseholdSignatory, ...]:
+        result: list[LimitedHouseholdSignatory] = []
+        seen_households: set[str] = set()
+        seen_names: set[str] = set()
+        for item in document.get("signatories", []):
+            household_id = str(item["household_id"])
+            name = str(item["name"]).strip()
+            if household_id in seen_households:
+                raise ContentValidationError(f"有限签约人户号重复：{household_id}")
+            if name in seen_names:
+                raise ContentValidationError(f"有限签约人姓名重复：{name}")
+            seen_households.add(household_id)
+            seen_names.add(name)
+            result.append(LimitedHouseholdSignatory(
+                household_id=household_id,
+                name=name,
+                initial_position=str(item["initial_position"]),
+                core_concern=str(item["core_concern"]),
+                acceptance_condition=str(item["acceptance_condition"]),
+                refusal_trigger=str(item["refusal_trigger"]),
+                counteroffer_focus=str(item["counteroffer_focus"]),
             ))
         return tuple(result)
 
@@ -447,8 +601,8 @@ class FileScriptPackageLoader:
             source_line=int(item["source_line"]),
         ) for item in document.get(key, []))
 
-    @staticmethod
-    def _load_profiles(document: dict) -> tuple[NPCProfileStub, ...]:
+    @classmethod
+    def _load_profiles(cls, document: dict) -> tuple[NPCProfileStub, ...]:
         return tuple(NPCProfileStub(
             npc_id=str(item["npc_id"]),
             name=str(item["name"]),
@@ -457,8 +611,35 @@ class FileScriptPackageLoader:
             initial_attitude=int(item.get("initial_attitude", 50)),
             initial_anxiety=int(item.get("initial_anxiety", 50)),
             role_setting=str(item.get("role_setting", "")),
+            big_five=cls._load_big_five(item.get("big_five")),
             source_line=int(item.get("source_line", 0)),
         ) for item in document.get("npcs", []))
+
+    @staticmethod
+    def _load_big_five(value) -> BigFiveProfile | None:
+        if value is None:
+            return None
+        required = {
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "neuroticism",
+        }
+        if not isinstance(value, dict) or set(value) != required:
+            raise ContentValidationError(
+                "NPC 大五人格必须完整包含五个结构化字段",
+                details={
+                    "required": sorted(required),
+                    "actual": sorted(value) if isinstance(value, dict) else [],
+                },
+            )
+        if any(type(value[field_name]) is not int for field_name in required):
+            raise ContentValidationError("NPC 大五人格分数必须是整数")
+        try:
+            return BigFiveProfile(**value)
+        except (TypeError, ValueError) as exc:
+            raise ContentValidationError("NPC 大五人格分数必须在 0 到 100 之间") from exc
 
     @classmethod
     def _load_opportunities(
@@ -840,6 +1021,8 @@ class FileScriptPackageLoader:
         event_catalog,
         resource_actions,
         households,
+        limited_household_signatories,
+        governance_config,
         *,
         gameplay_schema_version: int,
         status: str,
@@ -891,6 +1074,186 @@ class FileScriptPackageLoader:
                     "逐户底表引用未知代表人物",
                     details={"npc_ids": unknown_household_npcs},
                 )
+            unknown_signing_locks = sorted({
+                item.signing_lock_flag
+                for item in households
+                if item.signing_lock_flag
+                and item.signing_lock_flag not in registered_flags
+            })
+            if unknown_signing_locks:
+                raise ContentValidationError(
+                    "逐户签约门槛引用未登记旗标",
+                    details={"flags": unknown_signing_locks},
+                )
+            deprecated_signing_flags = sorted(
+                flag
+                for flag in registered_flags
+                if flag.endswith(("已入账", "已签"))
+            )
+            if deprecated_signing_flags:
+                raise ContentValidationError(
+                    "合同权威模式不得登记已入账或已签类剧情旗标",
+                    details={"flags": deprecated_signing_flags},
+                )
+            household_ids = {item.household_id for item in households}
+            shadow_household_ids = {
+                item.household_id for item in households if item.is_shadow_household
+            }
+            signatory_household_ids = {
+                item.household_id for item in limited_household_signatories
+            }
+            if signatory_household_ids != shadow_household_ids:
+                raise ContentValidationError(
+                    "有限签约人必须与23个关联户逐户对应",
+                    details={
+                        "missing": sorted(shadow_household_ids - signatory_household_ids),
+                        "unexpected": sorted(signatory_household_ids - household_ids),
+                        "primary_households": sorted(
+                            signatory_household_ids - shadow_household_ids
+                        ),
+                    },
+                )
+            allowed_positions = {"观望", "有条件接受", "倾向拒绝"}
+            invalid_positions = sorted(
+                {
+                    item.initial_position
+                    for item in limited_household_signatories
+                    if item.initial_position not in allowed_positions
+                }
+            )
+            if invalid_positions:
+                raise ContentValidationError(
+                    "有限签约人初始立场不在允许范围",
+                    details={"positions": invalid_positions},
+                )
+            npc_names = {item.name for item in profiles}
+            conflicting_names = sorted(
+                item.name
+                for item in limited_household_signatories
+                if item.name in npc_names
+            )
+            if conflicting_names:
+                raise ContentValidationError(
+                    "有限签约人与完整NPC重名",
+                    details={"names": conflicting_names},
+                )
+            empty_stances = sorted(
+                item.household_id
+                for item in limited_household_signatories
+                if not all((
+                    item.name,
+                    item.core_concern,
+                    item.acceptance_condition,
+                    item.refusal_trigger,
+                    item.counteroffer_focus,
+                ))
+            )
+            if empty_stances:
+                raise ContentValidationError(
+                    "有限签约人立场字段不得为空",
+                    details={"household_ids": empty_stances},
+                )
+            group_members: dict[str, list[HouseholdDefinition]] = {}
+            representative_groups: dict[str, set[str]] = {}
+            for household in households:
+                group_members.setdefault(household.representative_group, []).append(
+                    household
+                )
+                representative_groups.setdefault(
+                    household.representative_npc,
+                    set(),
+                ).add(household.representative_group)
+            reused_representatives = {
+                npc_id: sorted(groups)
+                for npc_id, groups in representative_groups.items()
+                if len(groups) != 1
+            }
+            if reused_representatives:
+                raise ContentValidationError(
+                    "同一代表人物不能对应多个合同户群",
+                    details={"representatives": reused_representatives},
+                )
+            invalid_groups = {}
+            for group_name, members in group_members.items():
+                primary = [item for item in members if not item.is_shadow_household]
+                expected_indexes = list(range(1, len(members) + 1))
+                actual_indexes = sorted(item.group_index for item in members)
+                representative_npcs = {item.representative_npc for item in members}
+                if (
+                    len(primary) != 1
+                    or actual_indexes != expected_indexes
+                    or len(representative_npcs) != 1
+                ):
+                    invalid_groups[group_name] = {
+                        "primary_count": len(primary),
+                        "indexes": actual_indexes,
+                        "representative_npcs": sorted(representative_npcs),
+                    }
+            if invalid_groups:
+                raise ContentValidationError(
+                    "合同批次必须由1个代表户和n个关联户构成",
+                    details={"groups": invalid_groups},
+                )
+            base_actions = governance_config.get("base_actions", [])
+            base_action_ids = {
+                str(item.get("action_id", "")) for item in base_actions
+            }
+            expected_base_actions = {
+                "household_visit",
+                "cadre_interview",
+                "leadership_meeting",
+                "inspect_archives",
+            }
+            if base_action_ids != expected_base_actions:
+                raise ContentValidationError(
+                    "治理配置必须且只能登记四项基础行动",
+                    details={
+                        "missing": sorted(expected_base_actions - base_action_ids),
+                        "unexpected": sorted(base_action_ids - expected_base_actions),
+                    },
+                )
+            permissions = set(governance_config.get("permissions", {}))
+            if permissions != {"1.1", "1.2", "1.3", "1.4", "1.5"}:
+                raise ContentValidationError("治理配置权限必须完整登记1.1至1.5")
+            if governance_config.get("contract_signing_authoritative") is not True:
+                raise ContentValidationError("逐户合同必须是唯一真实签约入口")
+            batch_gates = {
+                str(npc_id): str(flag_id)
+                for npc_id, flag_id in governance_config.get(
+                    "contract_batch_gate_flags", {}
+                ).items()
+            }
+            unknown_gate_npcs = sorted(set(batch_gates) - npc_ids)
+            unknown_gate_flags = sorted(
+                set(batch_gates.values()) - registered_flags
+            )
+            if unknown_gate_npcs or unknown_gate_flags:
+                raise ContentValidationError(
+                    "合同批次解锁配置引用未知人物或旗标",
+                    details={
+                        "npc_ids": unknown_gate_npcs,
+                        "flags": unknown_gate_flags,
+                    },
+                )
+            resource_ids = [
+                str(item.get("resource_id", ""))
+                for item in governance_config.get("resource_pools", [])
+            ]
+            if not resource_ids or len(resource_ids) != len(set(resource_ids)):
+                raise ContentValidationError("治理资源池不能为空且资源ID不得重复")
+            if sum(
+                int(item["capacity"])
+                for item in governance_config["resource_pools"]
+                if item.get("category") == "housing"
+            ) != 36:
+                raise ContentValidationError("安置房资源池必须闭合为36套")
+            initial_documents = governance_config.get("initial_documents", [])
+            if not any(
+                item.get("document_type") == "compensation_policy"
+                and item.get("status") == "published"
+                for item in initial_documents
+            ):
+                raise ContentValidationError("开局必须存在已发布的补偿安置方案")
             expected_totals = {
                 "registered_population": 122,
                 "resettlement_population": 122,
@@ -1110,9 +1473,14 @@ class FileScriptPackageLoader:
         }
         if "" in registered_flags:
             raise ContentValidationError("registered_flags 不能包含空字符串")
-        if set(origins) != EXPECTED_ORIGINS:
+        expected_origins = (
+            EXPECTED_ORIGINS | {"mayor"}
+            if gameplay_schema_version >= 2
+            else EXPECTED_ORIGINS
+        )
+        if set(origins) != expected_origins:
             raise ContentValidationError(
-                "开局出身必须完整定义五种固定类型",
+                "开局身份定义不完整",
                 details={"actual": sorted(origins)},
             )
         for origin in origins.values():
@@ -1171,6 +1539,13 @@ class FileScriptPackageLoader:
             unknown_night_flags = (
                 beat.night_effects.open_flags | beat.night_effects.close_flags
             ) - registered_flags
+            if (
+                gameplay_schema_version >= 3
+                and "budget_remaining" in beat.night_effects.ledger_deltas
+            ):
+                raise ContentValidationError(
+                    f"夜间剧情不得修改预算：{beat.beat_id}"
+                )
             for branch in beat.night_conditional_effects:
                 unknown_night_flags |= (
                     branch.required_flags
@@ -1182,6 +1557,13 @@ class FileScriptPackageLoader:
                 if set(branch.minimum_ledger_values) - allowed_ledger_fields:
                     raise ContentValidationError(
                         f"夜间规则引用未知台账字段：{beat.beat_id}"
+                    )
+                if (
+                    gameplay_schema_version >= 3
+                    and "budget_remaining" in branch.effects.ledger_deltas
+                ):
+                    raise ContentValidationError(
+                        f"夜间条件结算不得修改预算：{beat.beat_id}"
                     )
             if unknown_night_flags:
                 raise ContentValidationError(
@@ -1527,6 +1909,14 @@ class FileScriptPackageLoader:
                 set(opportunity.completion_effects.ledger_deltas)
                 - allowed_ledger_fields
             )
+            if (
+                gameplay_schema_version >= 3
+                and "budget_remaining"
+                in opportunity.completion_effects.ledger_deltas
+            ):
+                raise ContentValidationError(
+                    f"普通互动完成不得修改预算：{opportunity.opportunity_id}"
+                )
             invalid_state_keys = (
                 set(opportunity.completion_effects.state_assignments)
                 - set(ALLOWED_STATE_VALUES)

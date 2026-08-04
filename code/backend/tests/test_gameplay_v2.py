@@ -23,11 +23,13 @@ from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.enums import ActionInputMode
 from serious_game_backend.domain.errors import ContentValidationError
+from serious_game_backend.domain.llm import NightAgentResult
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.infrastructure.repositories.codec import (
     decode_session,
     encode_session,
 )
+from serious_game_backend.infrastructure.llm.fake import FakeRoleLLMGateway
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -187,6 +189,40 @@ class GameplayV2Tests(unittest.TestCase):
         )
         self.assertEqual(409, blocked.status_code, blocked.text)
 
+    def test_unrelated_player_text_is_rejected_without_advancing_conversation(self) -> None:
+        self.reach_d2_open()
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "gameplay-v2-review-start-0001",
+            "state_version": self.state["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        before = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        ).npc_states["npc_wu_xiuying"]
+        rejected = self.action({
+            "input_mode": "free_text",
+            "client_action_id": "gameplay-v2-review-turn-0001",
+            "state_version": started["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+            "conversation_id": started["conversation"]["conversation_id"],
+            "player_text": "请给我写一段代码",
+        })
+
+        self.assertEqual("请输入与本游戏相关的话语", rejected["narrative"])
+        self.assertEqual(0, rejected["conversation"]["turn_count"])
+        internal = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertEqual(before, internal.npc_states["npc_wu_xiuying"])
+        self.assertFalse(any(
+            item.get("type") == "conversation_turn"
+            and item.get("conversation_id") == started["conversation"]["conversation_id"]
+            for item in internal.logs
+        ))
+
     def test_overtime_requires_zero_points_and_is_once_per_day(self) -> None:
         internal = self.container.sessions.get_owned(
             self.session_id, "acct_gameplay_v2"
@@ -321,6 +357,23 @@ class GameplayV2Tests(unittest.TestCase):
             for item in package.interaction_opportunities
         ))
         self.assertEqual(36, len(package.households))
+        self.assertEqual(23, len(package.limited_household_signatories))
+        self.assertEqual(
+            23,
+            len({item.name for item in package.limited_household_signatories}),
+        )
+        wu_batch = package.contract_batch_for_representative("npc_wu_xiuying")
+        self.assertEqual(
+            ["WU-01", "WU-02", "WU-03", "WU-04", "WU-05", "WU-06"],
+            [item.household_id for item in wu_batch],
+        )
+        self.assertFalse(wu_batch[0].is_shadow_household)
+        self.assertTrue(all(item.is_shadow_household for item in wu_batch[1:]))
+        self.assertEqual(
+            "刘玉芬",
+            package.limited_signatory_for("WU-02").name,
+        )
+        self.assertIsNone(package.limited_signatory_for("WU-01"))
         self.assertEqual(122, sum(item.registered_population for item in package.households))
         self.assertEqual(106, sum(item.actual_residents for item in package.households))
         self.assertEqual(
@@ -331,8 +384,15 @@ class GameplayV2Tests(unittest.TestCase):
         )
         self.assertEqual(200, desk.status_code, desk.text)
         self.assertEqual(36, len(desk.json()["household_registry"]))
+        registry = {
+            item["household_id"]: item
+            for item in desk.json()["household_registry"]
+        }
+        self.assertEqual("吴秀英", registry["WU-01"]["signatory_name"])
+        self.assertEqual("刘玉芬", registry["WU-02"]["signatory_name"])
         self.assertNotIn("representative_group", desk.text)
         self.assertNotIn("signing_lock_flag", desk.text)
+        self.assertNotIn("refusal_trigger", desk.text)
 
         self.resolve_d1()
         quote = self.client.post(
@@ -358,6 +418,58 @@ class GameplayV2Tests(unittest.TestCase):
         )
         self.assertEqual(409, invalid.status_code, invalid.text)
 
+    def test_npc_contact_windows_follow_first_visible_story_appearance(self) -> None:
+        package = self.container.packages.get("pkg_gameplay_v2")
+        by_id = {
+            item.opportunity_id: item
+            for item in package.interaction_opportunities
+        }
+        expected_windows = {
+            "opp_31_zhang_li_contact": (31, 45),
+            "opp_03_zhou_kuiyuan_contact": (51, 75),
+            "opp_03_zhou_mancang_contact": (48, 69),
+            "opp_03_he_tiezhu_contact": (56, 89),
+            "opp_03_tan_laoliu_contact": (26, 60),
+            "opp_03_ma_changshun_contact": (15, 75),
+            "opp_03_ning_dehai_contact": (70, 71),
+            "opp_03_yuan_guilan_contact": (5, 60),
+            "opp_03_yang_bo_contact": (54, 60),
+            "opp_03_lao_juetou_contact": (77, 77),
+            "opp_03_miao_xiwang_contact": (78, 78),
+            "opp_03_deng_shouben_contact": (84, 84),
+            "opp_03_zheng_xiangdong_contact": (1, 89),
+            "opp_16_feng_jingzhi_contact": (17, 80),
+            "opp_46_he_xingbang_contact": (78, 83),
+            "opp_59_cui_guanglin_contact": (38, 45),
+        }
+        for opportunity_id, expected in expected_windows.items():
+            item = by_id[opportunity_id]
+            self.assertEqual(expected, (item.day_min, item.day_max))
+
+        self.assertEqual(
+            {"opp_d03_zhou_dashan_first_talk"},
+            {
+                item.opportunity_id
+                for item in package.interaction_opportunities
+                if item.day_min == 3
+            },
+        )
+        self.assertEqual(
+            frozenset({"民生优先"}),
+            by_id["opp_03_deng_shouben_contact"].requires_flags,
+        )
+
+        self.assertIn("再次", package.story_day(24).opening_blocks[0].text)
+        self.assertIn("何铁柱", package.story_day(42).opening_blocks[0].text)
+        self.assertIn("周奎元", package.story_day(51).opening_blocks[0].text)
+        self.assertIn("杨波", package.story_day(54).opening_blocks[0].text)
+        self.assertIn("何铁柱", package.story_day(56).opening_blocks[0].text)
+        self.assertIn("顾克明", package.story_day(59).opening_blocks[0].text)
+        self.assertNotIn("还有十三天", package.story_day(59).opening_blocks[0].text)
+        self.assertIn("再次", package.story_day(74).opening_blocks[0].text)
+        self.assertIn("老倔头", package.story_day(77).opening_blocks[0].text)
+        self.assertIn("邓守本", package.story_day(84).opening_blocks[0].text)
+
     def test_d75_night_settles_ma_before_freezing_first_batch(self) -> None:
         session = self.container.sessions.get_owned(
             self.session_id, "acct_gameplay_v2"
@@ -375,10 +487,14 @@ class GameplayV2Tests(unittest.TestCase):
 
         NightSimulationService(effects).run_night(session, package)
 
-        self.assertEqual(6, session.game_state.signed_households)
+        self.assertEqual(3, session.game_state.signed_households)
         self.assertEqual(
-            6, session.d75_settlement_snapshot.first_batch_signed_count
+            3, session.d75_settlement_snapshot.first_batch_signed_count
         )
+        self.assertTrue(any(
+            item.get("type") == "scripted_signing_intent"
+            for item in session.logs
+        ))
         self.assertNotIn(
             "ma_changshun",
             session.d75_settlement_snapshot.pending_group_limits,
@@ -387,7 +503,296 @@ class GameplayV2Tests(unittest.TestCase):
             session.signing_batch_summary()["roster_locked"]
         )
 
-    def test_post75_settlement_is_whitelisted_audited_and_persistent(self) -> None:
+    def test_d29_night_agents_talk_choose_and_settle_once(self) -> None:
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        package = self.container.packages.get("pkg_gameplay_v2")
+        session.pending_decision = None
+        session.game_state = replace(
+            session.game_state,
+            story_day=29,
+            days_left=62,
+        )
+        effects = ScriptedEffectService(ScriptedDeltaResolver())
+        service = NightSimulationService(
+            effects,
+            night_llm=FakeRoleLLMGateway(),
+        )
+
+        record = service.run_night(session, package)
+
+        exchange = record["agent_exchanges"][0]
+        self.assertEqual(4, len(record["contact_selections"]))
+        self.assertEqual(
+            2,
+            sum(bool(item["contact_ids"]) for item in record["contact_selections"]),
+        )
+        self.assertEqual(2, len(record["contact_responses"]))
+        self.assertTrue(all(
+            item["response"] == "accept"
+            for item in record["contact_responses"]
+        ))
+        self.assertEqual(4, len(exchange["transcript"]))
+        self.assertEqual(
+            {"npc_qian_wei", "npc_zhao_jianguo"},
+            {item["speaker_npc_id"] for item in exchange["transcript"]},
+        )
+        self.assertTrue(all(item["model_id"] for item in exchange["transcript"]))
+        self.assertEqual(2, len(exchange["action_proposals"]))
+        self.assertEqual(
+            ["night_unify_story"], exchange["executed_action_ids"]
+        )
+        self.assertIn("协调对外说法", exchange["public_summary"])
+        morning_text = "\n".join(record["morning_card"])
+        self.assertIn("夜间动向：", morning_text)
+        self.assertIn("相互掩护迹象", morning_text)
+        for private_detail in (
+            "钱伟",
+            "赵建国",
+            "这件事不能再有两套说法",
+        ):
+            self.assertNotIn(private_detail, morning_text)
+        self.assertIn("攻守同盟已成", session.flags)
+        self.assertIs(record, service.run_night(session, package))
+        self.assertEqual(1, len(session.night_logs))
+        self.container.sessions.save(
+            session, expected_version=session.state_version
+        )
+        debug_response = self.client.get(
+            f"/api/game/session/{self.session_id}/night-dialogues",
+            headers=self.headers,
+        )
+        self.assertEqual(200, debug_response.status_code)
+        self.assertEqual(
+            exchange["transcript"],
+            debug_response.json()["nights"][0]["agent_exchanges"][0]["transcript"],
+        )
+        review_response = self.client.get(
+            f"/api/game/session/{self.session_id}/review",
+            headers=self.headers,
+        )
+        self.assertNotIn("agent_exchanges", review_response.text)
+        self.assertNotIn("contact_selections", review_response.text)
+        self.assertNotIn("contact_responses", review_response.text)
+        forbidden = self.client.get(
+            f"/api/game/session/{self.session_id}/night-dialogues",
+            headers={"X-Account-ID": "acct_other"},
+        )
+        self.assertEqual(404, forbidden.status_code)
+
+    def test_d29_npc_can_choose_zero_to_multiple_contacts(self) -> None:
+        class MultiContactGateway(FakeRoleLLMGateway):
+            def run_night_turn(self, context):
+                if context.phase == "contact_selection":
+                    contacts = (
+                        ("npc_zhao_jianguo", "npc_sun_qiang")
+                        if context.npc_id == "npc_qian_wei"
+                        else ()
+                    )
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="fake-multi",
+                        contact_ids=contacts,
+                        rationale="按当前风险决定联系人数量。",
+                    )
+                return super().run_night_turn(context)
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        package = self.container.packages.get("pkg_gameplay_v2")
+        session.pending_decision = None
+        session.game_state = replace(
+            session.game_state,
+            story_day=29,
+            days_left=62,
+        )
+        service = NightSimulationService(
+            ScriptedEffectService(ScriptedDeltaResolver()),
+            night_llm=MultiContactGateway(),
+        )
+
+        record = service.run_night(session, package)
+
+        self.assertEqual(
+            ["npc_zhao_jianguo", "npc_sun_qiang"],
+            record["contact_selections"][0]["contact_ids"],
+        )
+        self.assertTrue(all(
+            not item["contact_ids"]
+            for item in record["contact_selections"][1:]
+        ))
+        self.assertEqual(
+            3, len(record["agent_exchanges"][0]["participant_ids"])
+        )
+        self.assertEqual(6, len(record["agent_exchanges"][0]["transcript"]))
+
+    def test_rejected_night_invitation_does_not_force_npc_into_dialogue(self) -> None:
+        class RejectingGateway(FakeRoleLLMGateway):
+            def run_night_turn(self, context):
+                if context.phase == "contact_selection":
+                    contacts = (
+                        ("npc_zhao_jianguo", "npc_sun_qiang")
+                        if context.npc_id == "npc_qian_wei"
+                        else ()
+                    )
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="fake-response",
+                        contact_ids=contacts,
+                        rationale="尝试召集相关人员。",
+                    )
+                if (
+                    context.phase == "contact_response"
+                    and context.npc_id == "npc_sun_qiang"
+                ):
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="fake-response",
+                        contact_response="reject",
+                        rationale="今晚见面会让自己过早暴露。",
+                    )
+                return super().run_night_turn(context)
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        package = self.container.packages.get("pkg_gameplay_v2")
+        session.pending_decision = None
+        session.game_state = replace(
+            session.game_state,
+            story_day=29,
+            days_left=62,
+        )
+        record = NightSimulationService(
+            ScriptedEffectService(ScriptedDeltaResolver()),
+            night_llm=RejectingGateway(),
+        ).run_night(session, package)
+
+        responses = {
+            item["invited_npc_id"]: item["response"]
+            for item in record["contact_responses"]
+        }
+        self.assertEqual("accept", responses["npc_zhao_jianguo"])
+        self.assertEqual("reject", responses["npc_sun_qiang"])
+        self.assertEqual(
+            ["npc_qian_wei", "npc_zhao_jianguo"],
+            record["agent_exchanges"][0]["participant_ids"],
+        )
+        self.assertNotIn(
+            "npc_sun_qiang",
+            {
+                item["speaker_npc_id"]
+                for item in record["agent_exchanges"][0]["transcript"]
+            },
+        )
+
+    def test_night_cadre_can_create_mandatory_group_conversation(self) -> None:
+        class FollowupGateway(FakeRoleLLMGateway):
+            def run_night_turn(self, context):
+                if context.phase == "contact_selection":
+                    contacts = {
+                        "npc_qian_wei": ("npc_zhao_jianguo",),
+                        "npc_zhao_jianguo": ("npc_sun_qiang",),
+                    }.get(context.npc_id, ())
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="fake-followup",
+                        contact_ids=contacts,
+                        rationale="按当晚风险选择联系人。",
+                    )
+                if (
+                    context.phase == "followup_initiation"
+                    and context.npc_id == "npc_zhao_jianguo"
+                    and context.allowed_followup_type == "cadre_meeting"
+                ):
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="fake-followup",
+                        initiate_followup=True,
+                        followup_type="cadre_meeting",
+                        participant_ids=(
+                            "npc_zhao_jianguo", "npc_sun_qiang"
+                        ),
+                        agenda="汇报调查逼近后基层材料可能失控的问题",
+                        demands=("明确材料保全责任", "确定次日处置口径"),
+                        urgency="high",
+                        rationale="当夜交流后认为必须立即向县长汇报。",
+                    )
+                return super().run_night_turn(context)
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        package = self.container.packages.get("pkg_gameplay_v2")
+        session.pending_decision = None
+        session.game_state = replace(
+            session.game_state,
+            story_day=29,
+            days_left=62,
+        )
+        night_service = NightSimulationService(
+            ScriptedEffectService(ScriptedDeltaResolver()),
+            night_llm=FollowupGateway(),
+        )
+
+        record = night_service.run_night(session, package)
+
+        created = [
+            item for item in record["followup_decisions"]
+            if item["created"]
+        ]
+        self.assertEqual(1, len(created))
+        self.assertEqual("cadre_meeting", created[0]["followup_type"])
+        self.assertEqual(1, len(session.group_conversation_queue))
+        night_service.activate_next_group_conversation(session)
+        session.game_state = replace(
+            session.game_state, story_day=30, days_left=61
+        )
+        self.container.sessions.save(
+            session, expected_version=session.state_version
+        )
+
+        rejected = self.container.group_conversations.reply(
+            account_id="acct_gameplay_v2",
+            session_id=self.session_id,
+            state_version=session.state_version,
+            player_text="请帮我写Python代码并查询明天的天气预报。",
+        )
+        self.assertTrue(rejected["input_rejected"])
+        self.assertEqual(
+            "请输入与本游戏相关的话语", rejected["message"]
+        )
+        self.assertEqual([], rejected["turn_dialogues"])
+        self.assertEqual(0, session.active_group_conversation.turn_count)
+
+        for turn in range(3):
+            result = self.container.group_conversations.reply(
+                account_id="acct_gameplay_v2",
+                session_id=self.session_id,
+                state_version=rejected["state_version"] + turn,
+                player_text=f"这是县长对第{turn + 1}轮议题的正式回应。",
+            )
+            self.assertEqual(turn == 2, result["completed"])
+            self.assertEqual(2, len(result["turn_dialogues"]))
+
+        stored = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertIsNone(stored.active_group_conversation)
+        self.assertEqual(1, len(stored.completed_group_conversations))
+        self.assertEqual(
+            9,
+            len(stored.completed_group_conversations[0]["transcript"]),
+        )
+        restored = decode_session(encode_session(stored))
+        self.assertEqual(
+            stored.completed_group_conversations,
+            restored.completed_group_conversations,
+        )
+
+    def test_post75_story_progress_does_not_create_unsigned_contracts(self) -> None:
         session = self.container.sessions.get_owned(
             self.session_id, "acct_gameplay_v2"
         )
@@ -415,19 +820,15 @@ class GameplayV2Tests(unittest.TestCase):
             settlement,
             source_id="dp6_02:b",
         )
-        self.assertEqual(21, session.game_state.signed_households)
-        self.assertEqual(21, session.audited_signed_households())
-        self.assertEqual(1, len(session.household_settlement_entries))
-        entry = session.household_settlement_entries[0]
-        self.assertEqual("lao_juetou", entry.household_group_id)
-        self.assertEqual("post75_confirmation", entry.entry_batch)
-        self.assertFalse(entry.early_reward_paid)
+        self.assertEqual(20, session.game_state.signed_households)
+        self.assertEqual(20, session.audited_signed_households())
+        self.assertEqual([], session.household_settlement_entries)
 
         restored = decode_session(encode_session(session))
-        self.assertEqual(21, restored.audited_signed_households())
-        self.assertEqual(entry, restored.household_settlement_entries[0])
+        self.assertEqual(20, restored.audited_signed_households())
+        self.assertEqual([], restored.household_settlement_entries)
 
-    def test_post75_rejects_unregistered_node_and_d90_addition(self) -> None:
+    def test_post75_script_nodes_cannot_replace_individual_contracts(self) -> None:
         session = self.container.sessions.get_owned(
             self.session_id, "acct_gameplay_v2"
         )
@@ -448,25 +849,25 @@ class GameplayV2Tests(unittest.TestCase):
             story_day=80,
             days_left=11,
         )
-        with self.assertRaises(ContentValidationError):
-            effects.apply(
-                session,
-                package,
-                illegal,
-                source_id="unregistered_late_signing",
-            )
+        effects.apply(
+            session,
+            package,
+            illegal,
+            source_id="unregistered_late_signing",
+        )
+        self.assertEqual(20, session.game_state.signed_households)
         session.game_state = replace(
             session.game_state,
             story_day=90,
             days_left=1,
         )
-        with self.assertRaises(ContentValidationError):
-            effects.apply(
-                session,
-                package,
-                illegal,
-                source_id="dp6_02:b",
-            )
+        effects.apply(
+            session,
+            package,
+            illegal,
+            source_id="dp6_02:b",
+        )
+        self.assertEqual(20, session.game_state.signed_households)
 
     def test_d86_zhou_recovery_requires_willing_to_wait(self) -> None:
         package = self.container.packages.get("pkg_gameplay_v2")
@@ -530,6 +931,98 @@ class GameplayV2Tests(unittest.TestCase):
         )
         with self.assertRaises(ContentValidationError):
             EndingAxisProjector().project(session)
+
+    def test_resource_writes_require_player_or_contract_provenance(self) -> None:
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        package = self.container.packages.get("pkg_gameplay_v2")
+        service = ScriptedEffectService(ScriptedDeltaResolver())
+        spend = ScriptedEffects(
+            ledger_deltas={"budget_remaining": (-100, -100)}
+        )
+        budget_before = session.game_state.budget_remaining
+
+        with self.assertRaises(ContentValidationError):
+            service.apply(
+                session,
+                package,
+                spend,
+                source_id="night:npc_action:test",
+            )
+        self.assertEqual(budget_before, session.game_state.budget_remaining)
+
+        service.apply(
+            session,
+            package,
+            spend,
+            source_id="dp_test:a",
+            resource_authority="player_choice",
+            resource_reference="dp_test:a",
+        )
+        self.assertEqual(
+            budget_before - 100, session.game_state.budget_remaining
+        )
+        self.assertEqual(300, session.game_state.budget_paid)
+        entry = session.resource_ledger_entries[-1]
+        self.assertEqual("player_choice", entry["source_type"])
+        self.assertEqual("dp_test:a", entry["source_id"])
+        self.assertEqual(-100, entry["delta"])
+
+        restored = decode_session(encode_session(session))
+        self.assertEqual(
+            session.resource_ledger_entries,
+            restored.resource_ledger_entries,
+        )
+
+    def test_tan_and_yuan_recovery_only_unlock_contract_negotiation(self) -> None:
+        package = self.container.packages.get("pkg_gameplay_v2")
+        opportunities = {
+            item.opportunity_id: item
+            for item in package.interaction_opportunities
+        }
+        expected = {
+            "opp_d53_tan_laoliu_paid_recovery": {
+                "谭老六愿意进入拟约",
+                "谭老六核心矛盾已缓解",
+                "谭老六合同批次可发起",
+            },
+            "opp_d55_yuan_guilan_paid_recovery": {
+                "袁桂兰愿意进入拟约",
+                "袁桂兰核心矛盾已缓解",
+                "袁桂兰合同批次可发起",
+            },
+        }
+        for opportunity_id, flags in expected.items():
+            effects = opportunities[opportunity_id].completion_effects
+            self.assertNotIn("signed_households", effects.ledger_deltas)
+            self.assertTrue(flags.issubset(effects.open_flags))
+            self.assertFalse(any(
+                flag.endswith(("已入账", "已签"))
+                for flag in effects.open_flags
+            ))
+
+        for decision_id, option_id in (("dp4_06", "a"), ("ev4_01", "a")):
+            option = package.decisions[decision_id].option(option_id)
+            for branch in option.conditional_effects:
+                self.assertNotIn(
+                    "signed_households", branch.effects.ledger_deltas
+                )
+                self.assertFalse(any(
+                    flag.endswith(("已入账", "已签"))
+                    for flag in branch.effects.open_flags
+                ))
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        ScriptedEffectService(ScriptedDeltaResolver()).apply(
+            session,
+            package,
+            ScriptedEffects(open_flags=frozenset({"谭老六已入账"})),
+            source_id="legacy_tan_recovery",
+        )
+        self.assertNotIn("谭老六已入账", session.flags)
 
 
 if __name__ == "__main__":

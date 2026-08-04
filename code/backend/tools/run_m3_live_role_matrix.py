@@ -41,6 +41,7 @@ def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description="M3 全角色真实 API 矩阵测试")
     value.add_argument("--start", type=int, default=0)
     value.add_argument("--limit", type=int, default=5)
+    value.add_argument("--package-id", default="pkg_gameplay_v2")
     value.add_argument("--base-url", default="https://api.qianzhang-ai.cn/v1")
     value.add_argument("--probe", default=PLAYER_PROBE)
     value.add_argument(
@@ -56,7 +57,7 @@ def main() -> None:
     if not api_key:
         raise SystemExit("DASHSCOPE_API_KEY is required")
     package = FileScriptPackageLoader().load(
-        BACKEND_ROOT / "content" / "packages" / "pkg_backend_dev_v1"
+        BACKEND_ROOT / "content" / "packages" / args.package_id
     )
     opportunities = [
         item for item in package.interaction_opportunities
@@ -96,6 +97,10 @@ def main() -> None:
             npc_name=profile.name,
             npc_state_tier=profile.state_tier.value,
             role_setting=profile.role_setting,
+            big_five=(
+                profile.big_five.as_dict()
+                if profile.big_five is not None else {}
+            ),
             prompt_template=package.role_turn_prompt,
             prompt_version=package.role_turn_prompt_version,
             allowed_fact_texts={

@@ -17,8 +17,6 @@ class StoryClockService:
         self,
         session: GameSession,
         package: ScriptPackage,
-        *,
-        active_rest: bool = False,
     ) -> list[str]:
         if session.status is not SessionStatus.ACTIVE:
             raise SessionEndedError("当前游戏已经结束")
@@ -51,12 +49,9 @@ class StoryClockService:
             points_spent=state.points_spent_today,
             overtime_used=state.overtime_used_today,
             overtime_points=state.overtime_points_today,
-            active_rest=active_rest,
             chapter_transition=chapter_transition,
         )
-        if active_rest:
-            consecutive = 0
-        elif state.points_spent_today >= 8:
+        if state.points_spent_today >= 8:
             consecutive = state.consecutive_full_load_days + 1
         else:
             consecutive = 0

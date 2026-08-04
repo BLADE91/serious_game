@@ -77,6 +77,13 @@ class SqliteMigrationRunner:
             "runtime_auth_sessions": {"token_hash", "account_id", "payload_json"},
             "runtime_consent_records": {"consent_record_id", "account_id", "payload_json"},
             "runtime_research_subjects": {"research_subject_id", "account_id", "payload_json"},
+            "runtime_game_snapshots": {
+                "snapshot_id", "session_id", "timeline_id", "state_version",
+                "snapshot_hash", "payload_json",
+            },
+            "runtime_manual_save_slots": {
+                "account_id", "session_id", "slot_number", "snapshot_id",
+            },
         }
         for table, columns in required.items():
             actual = {

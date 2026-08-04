@@ -176,7 +176,12 @@ class ActionService:
                 raise SessionBusyError("当前动作预留已失效")
             if current.state_version != command.state_version:
                 raise StateVersionConflictError("状态版本已变化，请刷新后重试")
-            self._apply_draft(current, package, draft)
+            self._apply_draft(
+                current,
+                package,
+                draft,
+                resource_reference=command.client_action_id,
+            )
             self._trust_derivation.apply(current, package)
             current.processing_action_id = None
             current.state_version += 1
@@ -191,7 +196,7 @@ class ActionService:
             if draft.get("npc_reply") is not None:
                 response["npc_reply"] = draft["npc_reply"]
             if draft["kind"] in {
-                "conversation_start", "free_text", "conversation_end"
+                "conversation_start", "free_text", "input_rejected", "conversation_end"
             }:
                 response["conversation"] = self._conversation_response(
                     current, draft
@@ -260,6 +265,8 @@ class ActionService:
         account_id: str = "",
         operation_id: str = "",
     ) -> dict:
+        if session.active_group_conversation is not None:
+            raise ActionUnavailableError("必须先完成NPC发起的群组会谈")
         if command.input_mode is ActionInputMode.CONVERSATION_START:
             if session.active_conversation is not None:
                 raise ActionUnavailableError("已有进行中的会谈，请先继续或结束当前会谈")
@@ -505,6 +512,10 @@ class ActionService:
                 npc_name=profile.name,
                 npc_state_tier=profile.state_tier.value,
                 role_setting=profile.role_setting,
+                big_five=(
+                    profile.big_five.as_dict()
+                    if profile.big_five is not None else {}
+                ),
                 prompt_template=package.role_turn_prompt,
                 prompt_version=package.role_turn_prompt_version,
                 allowed_fact_texts=allowed_fact_texts,
@@ -552,6 +563,16 @@ class ActionService:
             npc_state,
             random_seed=session.random_seed,
         )
+        if turn.input_relevance == "irrelevant":
+            return {
+                "kind": "input_rejected",
+                "rule": rule,
+                "cost": 0,
+                "conversation_id": conversation.conversation_id,
+                "opportunity": opportunity,
+                "npc_id": opportunity.npc_id,
+                "narrative": turn.dialogue,
+            }
         if turn.attitude_delta > 0 and session.game_state.fatigue >= 25:
             factor = 0.9 if session.game_state.fatigue < 50 else (
                 0.8 if session.game_state.fatigue < 75 else 0.7
@@ -606,9 +627,17 @@ class ActionService:
             )
         return cost
 
-    def _apply_draft(self, session, package, draft: dict) -> None:
+    def _apply_draft(
+        self,
+        session,
+        package,
+        draft: dict,
+        *,
+        resource_reference: str,
+    ) -> None:
         if draft["kind"] in {
-            "tool", "resource_action", "conversation_start", "free_text", "conversation_end",
+            "tool", "resource_action", "conversation_start", "free_text", "input_rejected",
+            "conversation_end",
             "overtime",
         }:
             rule: ActionRule | None = draft.get("rule")
@@ -643,7 +672,11 @@ class ActionService:
                 self._apply_opportunity_completion(session, package, opportunity)
             elif draft["kind"] == "resource_action":
                 narrative = self._action_handlers.execute(
-                    session, package, draft["definition"], draft["quote"]
+                    session,
+                    package,
+                    draft["definition"],
+                    draft["quote"],
+                    source_reference=resource_reference,
                 )
                 draft["narrative"] = narrative
                 log.update({
@@ -797,6 +830,15 @@ class ActionService:
                     })
                     session.active_conversation = None
                 # 玩家日志不记录内部 delta；权威审计适配器另行保存来源字段。
+            elif draft["kind"] == "input_rejected":
+                session.append_narrative(
+                    story_day=session.game_state.story_day,
+                    kind="input_guard",
+                    text=draft["narrative"],
+                )
+                log["type"] = "input_rejected"
+                log["npc_id"] = draft["npc_id"]
+                log["conversation_id"] = draft["conversation_id"]
             elif draft["kind"] == "conversation_end":
                 session.append_narrative(
                     story_day=session.game_state.story_day,
@@ -857,6 +899,10 @@ class ActionService:
                 package,
                 draft["effects"],
                 source_id=f"{draft['decision_id']}:{draft['option_id']}",
+                resource_authority="player_choice",
+                resource_reference=(
+                    f"{draft['decision_id']}:{draft['option_id']}"
+                ),
             )
             if draft.get("parameters"):
                 session.decision_parameters[draft["decision_id"]] = dict(

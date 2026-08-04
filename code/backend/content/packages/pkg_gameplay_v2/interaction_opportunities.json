@@ -42,7 +42,7 @@
       "conversation_goal": "把补偿算法、先后次序和公开标准讲清楚，以可核对的账争取他的判断。"
     },
     "opp_03_he_tiezhu_contact": {
-      "opening_narrative": "何铁柱是村里态度最硬的一户。你没有让镇干部把他叫来，而是亲自走到他家。院门开着，他坐在门槛上擦一枚旧军功章，见你进来没有起身，只把旁边的矮凳踢出半尺。你知道，官话和催签在这里都不会奏效。",
+      "opening_narrative": "第五十六日，何铁柱自己上了县政府的楼。他把孙子血铅二百八十七的检测单拍在你桌上，又用一张年轻时的军装照压住纸角。他没有喊，只问三年前那次体检为什么没人告诉他。你知道，这场谈话只能从孩子的治疗和被隐瞒的事实谈起。",
       "conversation_goal": "先听清他拒签背后的家庭与健康顾虑，以事实和担当回应，而不是逼他表态。"
     },
     "opp_03_tan_laoliu_contact": {
@@ -54,7 +54,7 @@
       "conversation_goal": "了解村中近期风向和普遍顾虑，同时辨别哪些只是传言，避免把闲话当成证据。"
     },
     "opp_03_ning_dehai_contact": {
-      "opening_narrative": "宁德海是退休老党员，家里又有市局工作的子女，在村里说话既有分量也格外谨慎。你带着政策文件登门时，他先把党徽摆正，才请你坐下。他关心的不只是自家补偿，更在意这件事政治上、程序上能不能说得过去。",
+      "opening_narrative": "第七十日，未决名册只剩下几户，郑向东把宁德海的名字放在最上面。你亲自来到宁家，没有拿他在市局工作的儿子说事，只带了公示表、代签记录和能够逐项核对的程序材料。这个入党四十一年的老人没有立刻开门；你必须先让他确认，纸上的每一个名字都经得起追问。",
       "conversation_goal": "从政策、程序和党员责任切入，听取他对带头签约及村内稳定的真实判断。"
     },
     "opp_03_yuan_guilan_contact": {
@@ -62,19 +62,19 @@
       "conversation_goal": "弄清搬迁对照护、医疗和基本生活的具体影响，让困难得到可兑现的制度回应。"
     },
     "opp_03_yang_bo_contact": {
-      "opening_narrative": "杨波刚从外地返乡，既懂村里的人情，也习惯在网上比较不同地方的补偿方案。你在村口碰见他修摩托，便留下来聊。他擦了擦手上的油，先问你的方案敢不敢放到网上让所有人看。",
+      "opening_narrative": "第五十四日，吴秀英把返乡青年杨波带到安置方案公示栏前。杨波既懂村里的人情，也习惯在网上比较各地政策；他没有先问补偿数字，而是指着创业、入学和网络配套三栏，问这些承诺敢不敢让全村逐项核验。经吴秀英引见，你们第一次有了正式谈话的由头。",
       "conversation_goal": "了解年轻返乡户对公开、公平和未来生计的期待，并判断网络舆论可能如何发酵。"
     },
     "opp_03_lao_juetou_contact": {
-      "opening_narrative": "名单上老倔头始终没有留下明确意见。你走到他的老屋时，他正坐在檐下抽烟，听见脚步也没有抬头。屋墙裂缝和院里收好的农具说明他不是没看见现实，只是不愿让别人替他决定最后住在哪里。",
+      "opening_narrative": "第七十七日，老倔头没有坐工作组的车，自己骑了一个多小时到安置小区。他把自行车靠在铁门上，站在毛坯楼前，只说要看的不是照片，是房。此前名册上的沉默到这一刻才有了明确入口：让他亲眼核验一套真正能住、看完不会拆掉的房子。",
       "conversation_goal": "耐心确认他对祖屋、子女和安置房的真实顾虑；少说官话，让可验证的安排替你说话。"
     },
     "opp_03_miao_xiwang_contact": {
-      "opening_narrative": "旧协议和统一补偿口径发生冲突时，苗喜旺成了绕不开的人。你在他从县城做工回来后上门，把两套标准都摊在桌上。他知道自己曾经多拿，也担心一旦重签，孩子后续的检查和生活没人负责。",
+      "opening_narrative": "第二十五日的台账已经让你知道苗喜旺是二十万元特例，但直到第七十八日，他才托人捎话主动求见。郑向东把他领进办公室时，贺兴邦带来的血铅名册正放在桌上。苗喜旺不再谈那笔特例，只问孩子的复检、治疗和费用什么时候能逐项落实。",
       "conversation_goal": "讲清旧约与重签规则，同时听取他对家庭生计和孩子健康安排的具体要求。"
     },
     "opp_03_deng_shouben_contact": {
-      "opening_narrative": "邓守本无儿无女，祖屋几乎是他与过去唯一的联系。你到访时，他正在给门轴上油，院里安静得只剩木门的吱呀声。他没有赶你走，却也没有接你递来的政策册，只等你说明为什么一定要动这间屋。",
+      "opening_narrative": "第八十四日，整改清单把安置房交付、独居老人搬运和医疗兜底排到最前。邓守本因此被请到现场逐项确认：哪一套房真正交付，谁负责搬运，晚年照护由谁承接。对这个无儿无女的老人而言，只有这些安排落到书面并由本人见证，才构成一次可继续的谈话。",
       "conversation_goal": "理解祖屋对独居老人的意义，讨论晚年安置与尊严，而不是只重复补偿金额。"
     },
     "opp_33_jiang_chongyue_contact": {
@@ -94,7 +94,7 @@
       "conversation_goal": "核实预算边界与资金合规路径，比较不同方案的真实财政代价。"
     },
     "opp_46_he_xingbang_contact": {
-      "opening_narrative": "进入后半程后，村民健康问题已不能再被当作零散传言处理。你约分管卫健的贺兴邦带着能够公开核验的材料来汇报。他进门后先确认办公室没有无关人员，才把文件夹放到你面前。",
+      "opening_narrative": "第七十八日，分管卫健的贺兴邦第一次带着完整血铅名册进入你的办公室。四个村孩子的检测数据此前一直压在他手上；现在苗喜旺就在门外等复检答复，他必须当面说明检查、复查、治疗和费用究竟怎样落实。",
       "conversation_goal": "核实检查、复查、救治和费用安排，明确哪些健康信息已经具备合法处理依据。"
     },
     "opp_31_luo_jian_contact": {
@@ -190,7 +190,7 @@
       "npc_id": "npc_zhang_li",
       "entry_type": "story_window",
       "day_min": 31,
-      "day_max": 89,
+      "day_max": 45,
       "action_id": "liaise_zhang_li",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -303,8 +303,8 @@
       "opportunity_id": "opp_03_zhou_kuiyuan_contact",
       "npc_id": "npc_zhou_kuiyuan",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 51,
+      "day_max": 75,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -319,8 +319,8 @@
       "opportunity_id": "opp_03_zhou_mancang_contact",
       "npc_id": "npc_zhou_mancang",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 48,
+      "day_max": 69,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -335,7 +335,7 @@
       "opportunity_id": "opp_03_he_tiezhu_contact",
       "npc_id": "npc_he_tiezhu",
       "entry_type": "story_window",
-      "day_min": 3,
+      "day_min": 56,
       "day_max": 89,
       "action_id": "home_visit",
       "availability_mode": "free",
@@ -351,8 +351,8 @@
       "opportunity_id": "opp_03_tan_laoliu_contact",
       "npc_id": "npc_tan_laoliu",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 26,
+      "day_max": 60,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -367,8 +367,8 @@
       "opportunity_id": "opp_03_ma_changshun_contact",
       "npc_id": "npc_ma_changshun",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 15,
+      "day_max": 75,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -383,8 +383,8 @@
       "opportunity_id": "opp_03_ning_dehai_contact",
       "npc_id": "npc_ning_dehai",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 70,
+      "day_max": 71,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -399,8 +399,8 @@
       "opportunity_id": "opp_03_yuan_guilan_contact",
       "npc_id": "npc_yuan_guilan",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 5,
+      "day_max": 60,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -415,8 +415,8 @@
       "opportunity_id": "opp_03_yang_bo_contact",
       "npc_id": "npc_yang_bo",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 54,
+      "day_max": 60,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -431,8 +431,8 @@
       "opportunity_id": "opp_03_lao_juetou_contact",
       "npc_id": "npc_lao_juetou",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 77,
+      "day_max": 77,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -447,8 +447,8 @@
       "opportunity_id": "opp_03_miao_xiwang_contact",
       "npc_id": "npc_miao_xiwang",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 78,
+      "day_max": 78,
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -463,8 +463,11 @@
       "opportunity_id": "opp_03_deng_shouben_contact",
       "npc_id": "npc_deng_shouben",
       "entry_type": "story_window",
-      "day_min": 3,
-      "day_max": 89,
+      "day_min": 84,
+      "day_max": 84,
+      "requires_flags": [
+        "民生优先"
+      ],
       "action_id": "home_visit",
       "availability_mode": "free",
       "allowed_fact_ids": [
@@ -494,7 +497,7 @@
       "opportunity_id": "opp_03_zheng_xiangdong_contact",
       "npc_id": "npc_zheng_xiangdong",
       "entry_type": "story_window",
-      "day_min": 3,
+      "day_min": 1,
       "day_max": 89,
       "action_id": "heart_to_heart",
       "availability_mode": "limited",
@@ -524,7 +527,7 @@
       "opportunity_id": "opp_16_feng_jingzhi_contact",
       "npc_id": "npc_feng_jingzhi",
       "entry_type": "story_window",
-      "day_min": 16,
+      "day_min": 17,
       "day_max": 80,
       "action_id": "interview_cadre",
       "availability_mode": "limited",
@@ -547,7 +550,7 @@
       "opportunity_id": "opp_46_he_xingbang_contact",
       "npc_id": "npc_he_xingbang",
       "entry_type": "story_window",
-      "day_min": 46,
+      "day_min": 78,
       "day_max": 83,
       "action_id": "interview_cadre",
       "availability_mode": "limited",
@@ -623,8 +626,8 @@
       "opportunity_id": "opp_59_cui_guanglin_contact",
       "npc_id": "npc_cui_guanglin",
       "entry_type": "story_window",
-      "day_min": 59,
-      "day_max": 60,
+      "day_min": 38,
+      "day_max": 45,
       "action_id": "interview_cadre",
       "availability_mode": "limited",
       "allowed_fact_ids": [
@@ -663,20 +666,17 @@
         "旧账缺口已坐实"
       ],
       "closes_on_flags": [
-        "谭老六已入账",
+        "谭老六合同批次可发起",
         "谭老六永久关闭"
       ],
       "completion_effects": {
         "metric_deltas": {},
-        "ledger_deltas": {
-          "signed_households": [
-            3,
-            3
-          ]
-        },
+        "ledger_deltas": {},
         "open_flags": [
           "谭老六已安抚",
-          "谭老六已入账"
+          "谭老六愿意进入拟约",
+          "谭老六核心矛盾已缓解",
+          "谭老六合同批次可发起"
         ],
         "close_flags": []
       }
@@ -694,19 +694,16 @@
         "复查费县垫"
       ],
       "closes_on_flags": [
-        "袁桂兰已入账"
+        "袁桂兰合同批次可发起"
       ],
       "completion_effects": {
         "metric_deltas": {},
-        "ledger_deltas": {
-          "signed_households": [
-            2,
-            2
-          ]
-        },
+        "ledger_deltas": {},
         "open_flags": [
           "困难户帮扶",
-          "袁桂兰已入账"
+          "袁桂兰愿意进入拟约",
+          "袁桂兰核心矛盾已缓解",
+          "袁桂兰合同批次可发起"
         ],
         "close_flags": []
       }
@@ -724,7 +721,7 @@
       ],
       "closes_on_flags": [
         "周满仓顺序已错",
-        "周满仓已入账",
+        "周满仓核心矛盾已缓解",
         "周满仓重启已付费"
       ],
       "completion_flags": [
