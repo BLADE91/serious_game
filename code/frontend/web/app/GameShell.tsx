@@ -112,14 +112,9 @@ export default function GameShell() {
         try { const me = await api.me() as Dict; api.accountId = String(me.account_id || ""); setAccount(String(me.account_id || "已登录")); log(`身份已恢复：${me.account_id}`, "success"); }
         catch { setAuthOpen(true); }
       } else {
-        const storageKey = "qingjiang-sandbox-account";
-        let sandboxAccount = localStorage.getItem(storageKey);
-        if (!sandboxAccount) {
-          sandboxAccount = `sandbox_web_${crypto.randomUUID().replaceAll("-", "")}`;
-          localStorage.setItem(storageKey, sandboxAccount);
-        }
-        api.accountId = sandboxAccount;
-        setAccount("开发沙盒");
+        setAccount("本地试玩");
+        setNotice(current => current.includes("X-Account-ID") ? "" : current);
+        setLines(current => current.filter(line => !line.text.includes("X-Account-ID")));
       }
     } catch (e) { setConnected(false); fail(e); }
     finally { setBusy(false); }

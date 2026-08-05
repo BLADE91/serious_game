@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 
 const backendBase = () => (process.env.GAME_BACKEND_URL || "http://127.0.0.1:8100").replace(/\/$/, "");
+const sandboxCookie = "qingjiang-sandbox-account";
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
@@ -11,6 +12,12 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   headers.delete("host");
   headers.delete("content-length");
   headers.delete("accept-encoding");
+  const providedAccount = (headers.get("X-Account-ID") || "").trim();
+  const cookieAccount = request.cookies.get(sandboxCookie)?.value || "";
+  const anonymousAccount = cookieAccount
+    || (providedAccount.startsWith("sandbox_web_") ? providedAccount : "")
+    || `sandbox_web_${crypto.randomUUID().replaceAll("-", "")}`;
+  if (!providedAccount) headers.set("X-Account-ID", anonymousAccount);
 
   try {
     const response = await fetch(target, {
@@ -22,6 +29,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     const responseHeaders = new Headers(response.headers);
     responseHeaders.delete("content-encoding");
     responseHeaders.delete("content-length");
+    if (!cookieAccount) {
+      responseHeaders.append("set-cookie", `${sandboxCookie}=${encodeURIComponent(anonymousAccount)}; Path=/; Max-Age=31536000; SameSite=Lax`);
+    }
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,

@@ -23,7 +23,14 @@ test("renders the Qingjiang governance web client", async () => {
 
 test("sends the persisted sandbox account on player API requests", async () => {
   const source = await readFile(new URL("../app/lib/api.ts", import.meta.url), "utf8");
+  assert.match(source, /this\.accountId = browserSandboxAccountId\(\)/);
   assert.match(source, /headers\["X-Account-ID"\] = this\.accountId/);
+});
+
+test("the same-origin proxy repairs requests from stale clients without an account header", async () => {
+  const source = await readFile(new URL("../app/api/backend/[...path]/route.ts", import.meta.url), "utf8");
+  assert.match(source, /if \(!providedAccount\) headers\.set\("X-Account-ID", anonymousAccount\)/);
+  assert.match(source, /responseHeaders\.append\("set-cookie"/);
 });
 
 test("provides player controls for sorting and allocation decisions", async () => {

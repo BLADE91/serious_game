@@ -1,5 +1,23 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
+const SANDBOX_ACCOUNT_KEY = "qingjiang-sandbox-account";
+
+function browserSandboxAccountId() {
+  if (typeof window === "undefined") return "";
+  const cookieValue = document.cookie
+    .split(";")
+    .map(part => part.trim())
+    .find(part => part.startsWith(`${SANDBOX_ACCOUNT_KEY}=`))
+    ?.slice(SANDBOX_ACCOUNT_KEY.length + 1);
+  let accountId = "";
+  try { accountId = localStorage.getItem(SANDBOX_ACCOUNT_KEY) || ""; } catch { /* storage may be disabled */ }
+  accountId ||= cookieValue ? decodeURIComponent(cookieValue) : "";
+  accountId ||= `sandbox_web_${crypto.randomUUID().replaceAll("-", "")}`;
+  try { localStorage.setItem(SANDBOX_ACCOUNT_KEY, accountId); } catch { /* cookie remains as fallback */ }
+  document.cookie = `${SANDBOX_ACCOUNT_KEY}=${encodeURIComponent(accountId)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+  return accountId;
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -20,6 +38,7 @@ export class GameApi {
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.accountId = browserSandboxAccountId();
   }
 
   key(prefix: string) {
