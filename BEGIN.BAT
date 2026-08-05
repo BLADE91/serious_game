@@ -20,6 +20,13 @@ set "GAME_BACKEND_URL=http://127.0.0.1:8101"
 set "PORT=3001"
 set "ROLE_LLM_TIMEOUT_SECONDS=15"
 set "ROLE_LLM_MAX_RETRIES=1"
+set "AUTH_REQUIRED=true"
+set "ALLOW_SELF_REGISTRATION=true"
+set "AUTH_COOKIE_SECURE=false"
+if /i "%~1"=="--guest" (
+    set "AUTH_REQUIRED=false"
+    set "ALLOW_SELF_REGISTRATION=false"
+)
 
 if not exist "%BACKEND_DIR%\run_server.py" goto :missing_project
 if not exist "%WEB_DIR%\package.json" goto :missing_project
@@ -57,6 +64,7 @@ if /i "%~1"=="--check" (
     echo Web:     %WEB_DIR%
     echo WSL Web: %WEB_WSL_DIR%
     echo URLs:    http://127.0.0.1:8101 and http://127.0.0.1:3001
+    echo Login:   required by default ^(use BEGIN.BAT --guest for browser-only trial^)
     exit /b 0
 )
 

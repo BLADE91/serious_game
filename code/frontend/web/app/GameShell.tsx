@@ -63,6 +63,11 @@ export default function GameShell() {
   const api = useMemo(() => new GameApi(baseUrl), [baseUrl]);
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
+  const [selfRegistration, setSelfRegistration] = useState(false);
+  const [csrfCookieName, setCsrfCookieName] = useState("serious_game_session_csrf");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authError, setAuthError] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [state, setState] = useState<Dict>({});
   const [commands, setCommands] = useState<Dict>({});
@@ -106,11 +111,27 @@ export default function GameShell() {
       const health = await api.health();
       if (health.terminal_protocol_version && health.terminal_protocol_version !== "text-gameplay-v3") throw new ApiError("后端协议版本不匹配，请重启最新后端。", "BACKEND_RESTART_REQUIRED");
       const ready = await api.ready();
+      const requiresAuth = Boolean(ready.authentication_required);
+      const cookieName = ready.csrf_cookie_name || "serious_game_session_csrf";
+      setAuthRequired(requiresAuth);
+      setSelfRegistration(Boolean(ready.self_registration));
+      setCsrfCookieName(cookieName);
       setConnected(true);
       log(`已连接 ${baseUrl} · text-gameplay-v3`, "success");
-      if (ready.authentication_required) {
-        try { const me = await api.me() as Dict; api.accountId = String(me.account_id || ""); setAccount(String(me.account_id || "已登录")); log(`身份已恢复：${me.account_id}`, "success"); }
-        catch { setAuthOpen(true); }
+      if (requiresAuth) {
+        const restoredCsrf = api.restoreCsrf(cookieName);
+        try {
+          const me = await api.me();
+          if (!restoredCsrf) throw new ApiError("为保护账号，请重新输入密码恢复操作权限。", "AUTH_REVALIDATION_REQUIRED");
+          api.accountId = me.account_id;
+          setAccount(me.username || me.account_id);
+          setAuthOpen(false);
+          log(`身份已恢复：${me.username || me.account_id}`, "success");
+        } catch {
+          setAccount("");
+          setAuthMode("login");
+          setAuthOpen(true);
+        }
       } else {
         setAccount("本地试玩");
         setNotice(current => current.includes("X-Account-ID") ? "" : current);
@@ -126,14 +147,32 @@ export default function GameShell() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function authenticate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true);
+    event.preventDefault(); setBusy(true); setAuthError("");
     const data = new FormData(event.currentTarget);
     try {
-      const result = await api.auth(String(data.get("mode")) as "login" | "register", String(data.get("username")), String(data.get("password")));
+      const result = await api.auth(authMode, String(data.get("username")), String(data.get("password")));
       api.csrfToken = result.csrf_token; sessionStorage.setItem("qingjiang-csrf", result.csrf_token);
       api.accountId = result.account_id;
-      setAccount(result.account_id); setAuthOpen(false); log(`账号已登录：${result.account_id}`, "success"); setSessionOpen(true);
-    } catch (e) { fail(e); } finally { setBusy(false); }
+      setAccount(result.username || result.account_id); setAuthOpen(false); log(`账号已登录：${result.username || result.account_id}`, "success"); setSessionOpen(true);
+    } catch (error) {
+      const e = error as ApiError;
+      setAuthError(e?.message || "登录失败，请检查用户名和密码。");
+    } finally { setBusy(false); }
+  }
+
+  async function logoutAccount() {
+    setBusy(true); setAuthError("");
+    try {
+      await api.logout();
+      api.clearCsrf(csrfCookieName);
+      setAccount(""); setSessionId(""); setState({}); setCommands({}); setCursor(0); setPanel("scene"); setPanelData(null);
+      setLines([{ id: crypto.randomUUID(), kind: "system", text: "账号已安全退出，请重新登录。" }]);
+      setAuthMode("login");
+    } catch (error) {
+      const e = error as ApiError;
+      setAuthError(e?.message || "退出失败，请稍后重试。");
+      return;
+    } finally { setBusy(false); }
   }
 
   async function refresh(after = cursor, targetSession = sessionId) {
@@ -227,7 +266,7 @@ export default function GameShell() {
       <div className="brand"><span className="seal">清</span><div><h1>浊流之下<span>·</span>清江搬迁记</h1><p>县域治理情境模拟系统</p></div></div>
       <div className="top-status">
         <span className={connected ? "online" : "offline"}><i />{connected ? "后端在线" : "未连接"}</span>
-        <button onClick={() => setSessionOpen(true)}>{sessionId ? `存档 ${sessionId.slice(-8)}` : "进入游戏"}</button>
+        <button onClick={() => authRequired && !account ? setAuthOpen(true) : setSessionOpen(true)}>{sessionId ? `存档 ${sessionId.slice(-8)}` : authRequired && !account ? "登录 / 注册" : "进入游戏"}</button>
         <button className="avatar" onClick={() => setAuthOpen(true)} aria-label="账号">{account ? account.slice(0, 1).toUpperCase() : "?"}</button>
       </div>
     </header>
@@ -251,7 +290,7 @@ export default function GameShell() {
           <div className="window-bar"><div className="lights"><i/><i/><i/></div><span>qingjiang-governance — live</span><button onClick={() => refresh()} disabled={!sessionId || busy}>刷新</button></div>
           <div className="terminal-output" ref={terminalRef} aria-live="polite">
             {lines.map(line => <div className={`terminal-line ${line.kind}`} key={line.id}>{line.speaker && <b>{line.speaker}</b>}<span>{line.text}</span></div>)}
-            {!sessionId && <div className="welcome-block"><p>这里不是一份政策答卷。</p><h2>你有 90 天，处理一场正在失控的搬迁。</h2><p>每次会谈、批示、承诺和沉默，都会留下痕迹。</p><button onClick={() => setSessionOpen(true)}>建立治理档案 →</button></div>}
+            {!sessionId && <div className="welcome-block"><p>这里不是一份政策答卷。</p><h2>你有 90 天，处理一场正在失控的搬迁。</h2><p>每次会谈、批示、承诺和沉默，都会留下痕迹。</p><button onClick={() => authRequired && !account ? setAuthOpen(true) : setSessionOpen(true)}>{authRequired && !account ? "登录后建立治理档案 →" : "建立治理档案 →"}</button></div>}
             {pending && <div className="decision-block"><div className="eyebrow">必须决策 · {pending.decision_id}</div><h3>{pending.title || pending.prompt || pending.situation || "当前事项需要你的决定"}</h3>{pending.description && <p>{pending.description}</p>}{["sorting", "allocation"].includes(pending.input_kind) ? <StructuredDecision key={pending.decision_id} pending={pending} busy={busy} onSubmit={payload => perform(() => api.action(sessionId, { input_mode: "decision", client_action_id: api.key("decision"), state_version: state.state_version, decision_id: pending.decision_id, ...payload }), "决策已提交")} /> : <div className="decision-options">{options.map((option, index) => <button key={option.option_id || index} onClick={() => submitDecision(option)} disabled={busy || option.available === false}><span>{String.fromCharCode(65 + index)}</span><div><b>{option.text || option.label}</b>{option.description && <small>{option.description}</small>}</div><i>{option.available === false ? option.unavailable_reason || "不可选" : "选择"}</i></button>)}</div>}</div>}
           </div>
           <form className="command-bar" onSubmit={runCommand}><span>县长@清江</span><b>$</b><input value={commandInput} onChange={e => setCommandInput(e.target.value)} placeholder={get(state, "active_conversation.conversation_id") ? "输入你要对 NPC 说的话…" : "输入命令，或键入 help…"} disabled={!sessionId || busy} aria-label="终端命令"/><button disabled={!commandInput.trim() || busy}>执行 ↵</button></form>
@@ -274,7 +313,7 @@ export default function GameShell() {
 
     <footer><span>权威状态由后端结算 · 客户端不展示隐藏数值</span><span>{sessionId ? `state v${state.state_version ?? "—"}` : "未载入存档"}</span></footer>
 
-    {authOpen && <Modal title="账号入口" onClose={() => setAuthOpen(false)}><form className="stack-form" onSubmit={authenticate}><label>操作<select name="mode"><option value="login">登录已有账号</option><option value="register">注册新账号</option></select></label><label>用户名<input name="username" required autoFocus /></label><label>密码<input name="password" type="password" minLength={8} required /></label><button disabled={busy}>确认并进入</button></form></Modal>}
+    {authOpen && <Modal title={authRequired ? account ? "账号中心" : "登录清江治理系统" : "本地试玩"} onClose={() => setAuthOpen(false)}>{authRequired ? account ? <div className="account-card"><small>当前账号</small><strong>{account}</strong><p>存档绑定当前账号，可在重新登录后继续。</p>{authError && <div className="notice">{authError}</div>}<button onClick={logoutAccount} disabled={busy}>退出登录</button></div> : <form className="stack-form" onSubmit={authenticate}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>登录</button>{selfRegistration && <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>注册</button>}</div><p>{authMode === "login" ? "登录后可继续这个账号的历史存档。" : "创建新账号；用户名至少 3 个字符，密码至少 8 个字符。"}</p>{authError && <div className="notice">{authError}</div>}<label>用户名<input name="username" minLength={authMode === "register" ? 3 : 1} maxLength={32} autoComplete="username" required autoFocus /></label><label>密码<input name="password" type="password" minLength={authMode === "register" ? 8 : 1} maxLength={256} autoComplete={authMode === "register" ? "new-password" : "current-password"} required /></label><button disabled={busy}>{busy ? "处理中…" : authMode === "login" ? "登录并进入" : "注册并进入"}</button></form> : <div className="account-card"><small>当前身份</small><strong>本地试玩</strong><p>无需注册，存档仅绑定当前浏览器。使用普通 BEGIN.BAT 可切换为正式账号模式。</p></div>}</Modal>}
     {sessionOpen && <Modal title="进入清江县" onClose={() => setSessionOpen(false)}><div className="session-actions"><button onClick={() => openSession("new")}>开始新游戏<span>创建一条新的 90 天时间线</span></button><button onClick={() => openSession("latest")}>继续活动存档<span>恢复当前账号最近进度</span></button></div><form className="inline-form" onSubmit={e => { e.preventDefault(); openSession("load", String(new FormData(e.currentTarget).get("session"))); }}><input name="session" placeholder="输入 session_id" required/><button>载入指定存档</button></form></Modal>}
     {formOpen && <Modal title={formOpen.title} onClose={() => setFormOpen(null)}><ContextForm config={formOpen} state={state} api={api} sessionId={sessionId} onPerform={perform} /></Modal>}
   </main>;

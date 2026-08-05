@@ -33,6 +33,16 @@ test("the same-origin proxy repairs requests from stale clients without an accou
   assert.match(source, /responseHeaders\.append\("set-cookie"/);
 });
 
+test("supports account login, registration, CSRF restoration and logout", async () => {
+  const apiSource = await readFile(new URL("../app/lib/api.ts", import.meta.url), "utf8");
+  const shellSource = await readFile(new URL("../app/GameShell.tsx", import.meta.url), "utf8");
+  assert.match(apiSource, /restoreCsrf\(cookieName: string\)/);
+  assert.match(apiSource, /clearCsrf\(cookieName: string\)/);
+  assert.match(shellSource, /await api\.logout\(\)/);
+  assert.match(shellSource, /登录并进入/);
+  assert.match(shellSource, /注册并进入/);
+});
+
 test("provides player controls for sorting and allocation decisions", async () => {
   const source = await readFile(new URL("../app/GameShell.tsx", import.meta.url), "utf8");
   assert.match(source, /ordered_option_ids: order/);

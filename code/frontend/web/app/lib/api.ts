@@ -2,16 +2,22 @@ export type Json = null | boolean | number | string | Json[] | { [key: string]: 
 
 const SANDBOX_ACCOUNT_KEY = "qingjiang-sandbox-account";
 
-function browserSandboxAccountId() {
-  if (typeof window === "undefined") return "";
-  const cookieValue = document.cookie
+function browserCookieValue(name: string) {
+  if (typeof document === "undefined") return "";
+  const prefix = `${name}=`;
+  const value = document.cookie
     .split(";")
     .map(part => part.trim())
-    .find(part => part.startsWith(`${SANDBOX_ACCOUNT_KEY}=`))
-    ?.slice(SANDBOX_ACCOUNT_KEY.length + 1);
+    .find(part => part.startsWith(prefix))
+    ?.slice(prefix.length);
+  return value ? decodeURIComponent(value) : "";
+}
+
+function browserSandboxAccountId() {
+  if (typeof window === "undefined") return "";
   let accountId = "";
   try { accountId = localStorage.getItem(SANDBOX_ACCOUNT_KEY) || ""; } catch { /* storage may be disabled */ }
-  accountId ||= cookieValue ? decodeURIComponent(cookieValue) : "";
+  accountId ||= browserCookieValue(SANDBOX_ACCOUNT_KEY);
   accountId ||= `sandbox_web_${crypto.randomUUID().replaceAll("-", "")}`;
   try { localStorage.setItem(SANDBOX_ACCOUNT_KEY, accountId); } catch { /* cookie remains as fallback */ }
   document.cookie = `${SANDBOX_ACCOUNT_KEY}=${encodeURIComponent(accountId)}; Path=/; Max-Age=31536000; SameSite=Lax`;
@@ -45,6 +51,20 @@ export class GameApi {
     return `web-${prefix}-${crypto.randomUUID()}`;
   }
 
+  restoreCsrf(cookieName: string) {
+    const value = browserCookieValue(cookieName)
+      || (typeof sessionStorage === "undefined" ? "" : sessionStorage.getItem("qingjiang-csrf") || "");
+    this.csrfToken = value;
+    if (value && typeof sessionStorage !== "undefined") sessionStorage.setItem("qingjiang-csrf", value);
+    return value;
+  }
+
+  clearCsrf(cookieName: string) {
+    this.csrfToken = "";
+    if (typeof sessionStorage !== "undefined") sessionStorage.removeItem("qingjiang-csrf");
+    if (typeof document !== "undefined") document.cookie = `${cookieName}=; Path=/; Max-Age=0; SameSite=Lax`;
+  }
+
   async request<T = Record<string, unknown>>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json; charset=utf-8";
@@ -75,12 +95,12 @@ export class GameApi {
   }
 
   auth(mode: "login" | "register", username: string, password: string) {
-    return this.request<{ account_id: string; csrf_token: string }>("POST", `/api/auth/${mode}`, { username, password });
+    return this.request<{ account_id: string; username: string; csrf_token: string }>("POST", `/api/auth/${mode}`, { username, password });
   }
   logout() { return this.request("POST", "/api/auth/logout"); }
-  me() { return this.request("GET", "/api/auth/me"); }
+  me() { return this.request<{ account_id: string; username: string; roles: string[] }>("GET", "/api/auth/me"); }
   health() { return this.request<{ terminal_protocol_version?: string }>("GET", "/health/live"); }
-  ready() { return this.request<{ authentication_required?: boolean }>("GET", "/health/ready"); }
+  ready() { return this.request<{ authentication_required?: boolean; self_registration?: boolean; csrf_cookie_name?: string }>("GET", "/health/ready"); }
   origins() { return this.request<{ origins?: Record<string, unknown>[] }>("GET", "/api/game/origins"); }
   newSession(originId?: string) {
     return this.request<Record<string, unknown>>("POST", "/api/game/session", {

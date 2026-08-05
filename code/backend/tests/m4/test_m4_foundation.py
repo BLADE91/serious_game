@@ -244,6 +244,14 @@ class M4FoundationTests(unittest.TestCase):
             })
             self.assertEqual(201, registered.status_code, registered.text)
             self.assertEqual(["player"], registered.json()["roles"])
+            self.assertEqual("local-player", registered.json()["username"])
+            self.assertTrue(client.cookies.get("serious_game_session"))
+            self.assertEqual(
+                registered.json()["csrf_token"],
+                client.cookies.get("serious_game_session_csrf"),
+            )
+            me = client.get("/api/auth/me")
+            self.assertEqual("local-player", me.json()["username"])
             duplicate = TestClient(
                 create_app(settings), base_url="http://testserver"
             ).post("/api/auth/register", json={
@@ -261,11 +269,21 @@ class M4FoundationTests(unittest.TestCase):
             )
             self.assertEqual(201, allowed.status_code, allowed.text)
 
+            logged_out = client.post(
+                "/api/auth/logout",
+                headers={"X-CSRF-Token": registered.json()["csrf_token"]},
+            )
+            self.assertEqual(204, logged_out.status_code, logged_out.text)
+            self.assertIsNone(client.cookies.get("serious_game_session"))
+            self.assertIsNone(client.cookies.get("serious_game_session_csrf"))
+            self.assertEqual(401, client.get("/api/auth/me").status_code)
+
             restarted = TestClient(create_app(settings), base_url="http://testserver")
             login = restarted.post("/api/auth/login", json={
                 "username": "local-player", "password": "pass1234",
             })
             self.assertEqual(200, login.status_code, login.text)
+            self.assertEqual("local-player", login.json()["username"])
             latest = restarted.get("/api/game/session/latest-active")
             self.assertEqual(allowed.json()["session_id"], latest.json()["session_id"])
 

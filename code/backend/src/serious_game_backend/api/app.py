@@ -440,6 +440,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     @app.get("/health/ready")
     async def ready() -> dict:
         package = runtime.packages.get(effective_settings.default_package_id)
+        csrf_cookie_name = f"{effective_settings.auth_cookie_name}_csrf"
         return {
             "status": "ready" if package else "not_ready",
             "default_package_id": effective_settings.default_package_id,
@@ -448,6 +449,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "repository": effective_settings.repository,
             "authentication_required": authentication_enabled,
             "self_registration": effective_settings.allow_self_registration,
+            "csrf_cookie_name": csrf_cookie_name,
         }
 
     @app.post("/api/auth/login")
@@ -472,8 +474,19 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             max_age=effective_settings.auth_session_ttl_seconds,
             path="/",
         )
+        response.set_cookie(
+            key=f"{effective_settings.auth_cookie_name}_csrf",
+            value=csrf_token,
+            httponly=False,
+            secure=effective_settings.auth_cookie_secure,
+            samesite="lax",
+            max_age=effective_settings.auth_session_ttl_seconds,
+            path="/",
+        )
+        account = runtime.accounts.get_by_id(principal.account_id)
         return {
             "account_id": principal.account_id,
+            "username": account.username if account else principal.account_id,
             "roles": sorted(principal.roles),
             "csrf_token": csrf_token,
             "expires_at": expires_at,
@@ -506,6 +519,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             httponly=True,
             samesite="lax",
         )
+        response.delete_cookie(
+            f"{effective_settings.auth_cookie_name}_csrf",
+            path="/",
+            secure=effective_settings.auth_cookie_secure,
+            httponly=False,
+            samesite="lax",
+        )
         response.status_code = 204
         return response
 
@@ -513,8 +533,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def auth_me(x_account_id: str | None = Header(default=None)) -> dict:
         account_id = current_account_id(x_account_id)
         principal = _principal_context.get()
+        account = runtime.accounts.get_by_id(account_id)
         return {
             "account_id": account_id,
+            "username": account.username if account else account_id,
             "roles": sorted(principal.roles) if principal else ["sandbox"],
         }
 
