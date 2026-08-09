@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { actionPointCost, actionPointLabel, sceneAssetForState, toPlayerText } from "../app/lib/player-ui.ts";
+import { actionPointCost, actionPointLabel, toPlayerText } from "../app/lib/player-ui.ts";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,25 +20,19 @@ test("normalizes every supported action point cost shape including zero", () => 
   assert.equal(actionPointLabel({ cost_action_points: 2 }), "消耗 2 点精力");
 });
 
-test("selects only shipped scene assets and sanitizes player copy", async () => {
-  assert.equal(sceneAssetForState({}), "/scenes/arrival-liulin-village.webp");
-  assert.equal(sceneAssetForState({ session_id: "s", story: { beat_id: "C01_S01_arrival" } }), "/scenes/arrival-liulin-village.webp");
-  assert.equal(sceneAssetForState({ session_id: "s", story: { beat_id: "C01_S02_office" } }), "/scenes/county-office.webp");
+test("sanitizes player copy", async () => {
   assert.equal(toPlayerText("[BEAT_C01] NPC与玩家对应剧情节点"), "人物与你后续事态");
-  for (const file of ["arrival-liulin-village.webp", "county-office.webp"]) {
-    assert.ok((await stat(path.join(projectRoot, "public", "scenes", file))).size > 0);
-  }
 });
 
 test("keeps the visible conversation loop and removes the old terminal surface", async () => {
   const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
-  assert.match(source, /"继续会谈"/);
   assert.match(source, />结束会谈</);
   assert.match(source, /input_mode: "conversation_end"/);
-  assert.match(source, /data-testid="active-conversation-character"/);
+  assert.match(source, /"active-conversation-character"/);
   assert.match(source, /data-testid="active-conversation-compact"/);
   assert.match(source, /compactCharacter\?\.role/);
   assert.match(source, /actionPointLabel\(item\)/);
+  assert.match(source, /api\.loadSnapshot[\s\S]*"已载入所选存档", true/);
   assert.doesNotMatch(source, />WORKSPACE</);
   assert.doesNotMatch(source, /state v\{/);
   assert.doesNotMatch(source, /\[ERR\]/);

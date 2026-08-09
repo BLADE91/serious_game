@@ -9,7 +9,9 @@
     "dev": "vinext dev --hostname 127.0.0.1",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test",
+    "sync:assets": "node scripts/sync-scene-assets.mjs",
+    "validate:assets": "node scripts/validate-scene-assets.mjs",
+    "test": "npm run validate:assets && npm run build && node --test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

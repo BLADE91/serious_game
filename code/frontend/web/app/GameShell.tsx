@@ -3,13 +3,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError, GameApi } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
-import { actionPointLabel, sceneAssetForState, toPlayerText } from "./lib/player-ui";
+import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, type NarrativeItem } from "./lib/narrative-model";
+import { resolveSceneForView } from "./lib/scene-resolver";
+import { actionPointLabel, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
-type Line = { id: string; kind: string; speaker?: string; text: string };
+type Line = NarrativeItem;
 type PanelName = "scene" | "actions" | "opportunities" | "governance" | "desk" | "knowledge" | "map" | "review" | "night-dialogues" | "manual-saves";
 
 const NAV: { id: PanelName; label: string; hint: string }[] = [
@@ -62,7 +64,7 @@ const GOVERNANCE_ACTION_LABELS: Record<string, string> = {
 const get = (obj: Dict | null, path: string, fallback: any = undefined) => path.split(".").reduce((value, key) => value?.[key], obj) ?? fallback;
 const arr = (value: unknown): Dict[] => Array.isArray(value) ? value.filter(item => item && typeof item === "object") as Dict[] : [];
 const values = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
-const displayValue = (value: unknown, fallback: string | number = "—"): string | number => {
+const displayValue = (value: unknown, fallback: string | number = "待定"): string | number => {
   if (typeof value === "string" || typeof value === "number") return value;
   if (typeof value === "boolean") return value ? "是" : "否";
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -110,13 +112,6 @@ const isPlayerFacingLine = (line: Line) => {
   return !/^(SESSION\s|清江治理终端|正在等待连接|已连接\s+\/api|操作已提交$)/i.test(text)
     && !/游戏开局，玩家|玩家在到任第一天/.test(text);
 };
-const safeBeatTitle = (state: Dict) => {
-  const named = get(state, "story.beat_name");
-  if (typeof named === "string" && named && !/^(beat|ch|dp|ev)[_-]/i.test(named)) return named;
-  const chapter = displayValue(get(state, "story.chapter"), 1);
-  return `第 ${chapter} 章 · 今日事务`;
-};
-
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="modal"><div className="modal-head"><div><small>清江县政府</small><h2>{title}</h2></div><button className="icon-button" onClick={onClose} aria-label="关闭">×</button></div>{children}</div></div>;
 }
@@ -142,8 +137,7 @@ export default function GameShell() {
   const [sessionId, setSessionId] = useState("");
   const [state, setState] = useState<Dict>({});
   const [commands, setCommands] = useState<Dict>({});
-  const [cursor, setCursor] = useState(0);
-  const [lines, setLines] = useState<Line[]>([]);
+  const [narrative, dispatchNarrative] = useReducer(narrativeReducer, initialNarrativeState);
   const [showHistory, setShowHistory] = useState(false);
   const [panel, setPanel] = useState<PanelName>("scene");
   const [panelData, setPanelData] = useState<Dict | null>(null);
@@ -157,18 +151,12 @@ export default function GameShell() {
   const [savedSessionsError, setSavedSessionsError] = useState("");
   const [formOpen, setFormOpen] = useState<null | { title: string; kind: string; item?: Dict }>(null);
   const [conversationInput, setConversationInput] = useState("");
-  const storyRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const savedToken = sessionStorage.getItem("qingjiang-csrf");
     if (savedToken) api.setCsrfToken(savedToken);
   }, [api]);
-
-  useEffect(() => {
-    const story = storyRef.current;
-    if (story) story.scrollTop = story.scrollHeight;
-  }, [lines]);
 
   const fail = (error: unknown) => setNotice(playerErrorMessage(error));
 
@@ -226,13 +214,13 @@ export default function GameShell() {
     try {
       await api.logout();
       api.clearCsrf(csrfCookieName);
-      setAccount(""); setSessionId(""); setState({}); setCommands({}); setCursor(0); setPanel("scene"); setPanelData(null); setGovernance(null); setLines([]);
+      setAccount(""); setSessionId(""); setState({}); setCommands({}); dispatchNarrative({ type: "CLEAR" }); setPanel("scene"); setPanelData(null); setGovernance(null);
       setAuthMode("login"); setAuthOpen(false);
     } catch (error) { setAuthError(playerErrorMessage(error)); }
     finally { setBusy(false); }
   }
 
-  async function refresh(after = cursor, targetSession = sessionId, clearNotice = true) {
+  async function refresh(after = narrative.feedCursor, targetSession = sessionId, clearNotice = true, rebuild = false) {
     if (!targetSession) return;
     setBusy(true);
     if (clearNotice) setNotice("");
@@ -244,17 +232,19 @@ export default function GameShell() {
       const nextState = view.state || view.visible_state || view;
       setState(nextState); setCommands(view.commands || {});
       setGovernance(governanceOverview);
-      const feed = view.feed || {}; const incoming = arr(feed.items);
-      if (incoming.length) setLines(old => {
-        const known = new Set(old.map(line => line.id));
-        return [...old, ...incoming.map(item => ({
-          id: String(item.content_instance_id || item.cursor || crypto.randomUUID()),
-          kind: String(item.kind || "narrative"),
-          speaker: item.speaker ? String(item.speaker) : undefined,
-          text: playerText(item.text),
-        })).filter(line => !known.has(line.id))];
+      const feed = view.feed || {};
+      const incoming = arr(feed.items)
+        .map((item, index) => {
+          const line = narrativeItemFromFeed(item, `${targetSession}:${index}:${String(item.text || "")}`);
+          return { ...line, text: playerText(line.text) };
+        })
+        .filter(isPlayerFacingLine);
+      dispatchNarrative({
+        type: rebuild ? "SESSION_REBUILD" : "FEED_MERGE",
+        sessionId: targetSession,
+        items: incoming,
+        cursor: typeof feed.cursor === "number" ? feed.cursor : undefined,
       });
-      if (typeof feed.cursor === "number") setCursor(feed.cursor);
       setPanelData(nextState); setPanel("scene");
     } catch (error) { fail(error); }
     finally { setBusy(false); }
@@ -266,8 +256,8 @@ export default function GameShell() {
       const result = kind === "new" ? await api.newSession(value) : await api.session(value || "");
       const id = String(result.session_id || get(result, "state.session_id") || value || "");
       if (!id) throw new ApiError("没有找到可继续的游戏进度。", "SESSION_NOT_FOUND", 404);
-      setSessionId(id); setCursor(0); setLines([]); setShowHistory(false); setSessionOpen(false); setSavedSessionsOpen(false);
-      await refresh(0, id);
+      setSessionId(id); dispatchNarrative({ type: "SESSION_OPEN", sessionId: id }); setShowHistory(false); setSessionOpen(false); setSavedSessionsOpen(false);
+      await refresh(0, id, true, true);
     } catch (error) { fail(error); }
     finally { setBusy(false); }
   }
@@ -291,12 +281,12 @@ export default function GameShell() {
     finally { setBusy(false); revealOnMobile(); }
   }
 
-  async function perform(action: () => Promise<Dict>, success = "安排已落实") {
+  async function perform(action: () => Promise<Dict>, success = "安排已落实", rebuildNarrative = false) {
     setBusy(true); setNotice("");
-    try { await action(); setFormOpen(null); setConversationInput(""); await refresh(cursor, sessionId, false); setNotice(success); }
+    try { await action(); setFormOpen(null); setConversationInput(""); await refresh(rebuildNarrative ? 0 : narrative.feedCursor, sessionId, false, rebuildNarrative); setNotice(success); }
     catch (error) {
       if ((error as ApiError)?.status === 409) {
-        await refresh(cursor, sessionId, false);
+        await refresh(0, sessionId, false, true);
         setNotice("现场情况刚刚更新，请根据最新信息重新选择。");
       } else fail(error);
     }
@@ -415,12 +405,26 @@ export default function GameShell() {
   const pending = state.pending_decision || null; const options = arr(pending?.options);
   const signed = displayValue(get(ledger, "signed_households.signed", get(ledger, "signed_households", 0)), 0);
   const total = displayValue(get(ledger, "signed_households.total", 36), 36);
-  const actionPoints = displayValue(get(state, "action_points.remaining", get(ledger, "action_points.remaining", "—")));
+  const actionPoints = displayValue(get(state, "action_points.remaining", get(ledger, "action_points.remaining", "待定")));
   const dailyCap = displayValue(get(state, "action_points.daily_cap", get(ledger, "action_points.daily_cap", 8)), 8);
-  const budget = displayValue(get(ledger, "budget.available", get(ledger, "budget.remaining", "—")));
+  const budget = displayValue(get(ledger, "budget.available", get(ledger, "budget.remaining", "待定")));
   const publicTrust = displayValue(get(indicators, "public_trust.label", get(indicators, "public_trust", "未判定")), "未判定");
-  const playerLines = lines.filter(isPlayerFacingLine);
-  const visibleLines = showHistory ? playerLines : playerLines.slice(-10);
+  const playerLines = narrative.items;
+  const currentLine = playerLines[narrative.currentIndex] || null;
+  const currentScene = resolveSceneForView({
+    line: currentLine || undefined,
+    lines: playerLines,
+    currentIndex: narrative.currentIndex,
+    itemCount: playerLines.length,
+    currentStoryDay: story.day,
+    decisionId: pending?.decision_id,
+    mainEndingId: get(state, "ending.main_ending_id") || get(state, "ending_result.main_ending_id") || state.main_ending_id,
+    beatId: get(state, "story.beat_id") || get(state, "story.story_beat_id") || state.story_beat_id,
+  });
+  const lineCharacter = currentLine?.speaker ? resolveCharacter(currentLine.speaker) : null;
+  const lineIsPlayer = lineCharacter?.id === "player_li_zhiyuan" || /^(你|李致远|李县长)$/.test(currentLine?.speaker || "");
+  const stageCharacter = currentLine?.speaker && !lineIsPlayer ? lineCharacter : !currentLine && state.active_conversation ? activeConversationCharacter : null;
+  const stageSpeaker = currentLine?.speaker && !lineIsPlayer ? playerText(currentLine.speaker) : !currentLine && state.active_conversation ? activeConversationName : "";
   const activeConversation = state.active_conversation || state.active_group_conversation;
 
   return <main className="app-shell">
@@ -448,15 +452,25 @@ export default function GameShell() {
 
       <div className="main-grid">
         <section className="story-card">
-          <Image className="scene-backdrop" src={sceneAssetForState(state)} alt="" fill priority sizes="(max-width: 980px) 100vw, 70vw" unoptimized />
-          <div className="story-head"><div><small>县长手记 · 第 {displayValue(story.day, "—")} 日</small><h2>{sessionId ? safeBeatTitle(state) : "一纸调令，九十天限期"}</h2></div>{sessionId && <button className="refresh-button" onClick={() => refresh()} disabled={busy}>更新现场</button>}</div>
-          <div className="story-scroll" ref={storyRef} aria-live="polite">
+          <Image key={currentScene.asset} className="scene-backdrop" src={currentScene.asset} alt={currentScene.title} fill priority sizes="(max-width: 980px) 100vw, 70vw" unoptimized />
+          <div className="story-head"><div><small>县长手记 · 第 {displayValue(story.day, "待定")} 日</small><h2>{sessionId ? currentScene.title : "一纸调令，九十天限期"}</h2></div>{sessionId && <button className="refresh-button" onClick={() => refresh()} disabled={busy}>更新现场</button>}</div>
+          <div className="story-scroll" aria-live="polite" data-scene-match={currentScene.matchedBy}>
             {notice && <div className="notice" role="status"><b>案头提醒</b><span>{notice}</span></div>}
             {!sessionId && <div className="welcome-block"><span className="eyebrow">云溪县 · 柳林村搬迁专班</span><h2>你有九十天，处理一场正在失控的搬迁。</h2><p>三十六户人家、八千万元预算，还有一条没人愿意说透的旧账。你的每次会谈、批示、承诺和沉默，都会留下痕迹。</p><button onClick={() => authRequired && !account ? setAuthOpen(true) : setSessionOpen(true)}>{authRequired && !account ? "登录后赴任" : "接下调令，前往云溪"}</button></div>}
-            {state.active_conversation && <ConversationStage conversation={state.active_conversation} character={activeConversationCharacter} fallbackName={activeConversationName} />}
-            {sessionId && playerLines.length > 10 && <button className="history-toggle" onClick={() => setShowHistory(value => !value)}>{showHistory ? "收起此前记录" : `展开此前 ${playerLines.length - 10} 条记录`}</button>}
-            {visibleLines.map(line => <article className={line.speaker ? "story-line dialogue" : `story-line ${line.kind}`} key={line.id}>{line.speaker && <strong>{playerText(line.speaker)}</strong>}<p>{playerText(line.text)}</p></article>)}
-            {sessionId && !visibleLines.length && !pending && <div className="empty-state"><span>候</span><h3>案头暂时平静</h3><p>从右侧选择行动、会谈或卷宗，推进今天的工作。</p></div>}
+            {sessionId && <section className="gal-stage" data-testid={state.active_conversation ? "active-conversation-character" : undefined}>
+              {stageSpeaker && <div className="gal-portrait" aria-label={`${stageSpeaker}立绘`}><CharacterPortrait character={stageCharacter} fallbackName={stageSpeaker} priority /></div>}
+              <div className={stageSpeaker ? "gal-dialogue has-speaker" : "gal-dialogue narration"}>
+                <header><span>{stageSpeaker || (currentLine ? "县长手记" : "现场暂歇")}</span><small>{playerLines.length ? `${Math.max(1, narrative.currentIndex + 1)} / ${playerLines.length}` : "等待新消息"}</small></header>
+                <p>{currentLine ? playerText(currentLine.text) : pending ? "请阅读当前事项并作出决定。" : "案头暂时平静。可以从行动、会谈或卷宗继续推进。"}</p>
+                <nav className="narrative-controls" aria-label="剧情阅读控制">
+                  <button onClick={() => dispatchNarrative({ type: "PREVIOUS" })} disabled={narrative.currentIndex <= 0}>上一段</button>
+                  <button onClick={() => dispatchNarrative({ type: "NEXT" })} disabled={narrative.currentIndex >= playerLines.length - 1}>下一段</button>
+                  <button className="latest" onClick={() => dispatchNarrative({ type: "GO_LATEST" })} disabled={narrative.currentIndex >= playerLines.length - 1}>回到最新{narrative.unreadCount ? ` (${narrative.unreadCount})` : ""}</button>
+                  <button className="history-toggle" onClick={() => setShowHistory(value => !value)}>{showHistory ? "关闭回看" : "剧情回看"}</button>
+                </nav>
+              </div>
+            </section>}
+            {sessionId && showHistory && <section className="history-drawer" aria-label="剧情回看"><header><h3>剧情回看</h3><button onClick={() => setShowHistory(false)}>关闭</button></header><div>{playerLines.map((line, index) => <button className={index === narrative.currentIndex ? "current" : ""} key={line.id} onClick={() => dispatchNarrative({ type: "GO_TO", index })}><small>{line.speaker ? playerText(line.speaker) : "旁白"}</small><span>{playerText(line.text)}</span></button>)}</div></section>}
             {activeGovernanceAction && <GovernanceActionScene action={activeGovernanceAction} meeting={activeMeeting} overview={governance} />}
             {pending && <div className="decision-block"><div className="eyebrow">当前必须作出决定</div><h3>{playerText(pending.title || pending.prompt || pending.situation, "当前事项需要你的决定")}</h3>{pending.description && <p>{playerText(pending.description)}</p>}{["sorting", "allocation"].includes(pending.input_kind) ? <StructuredDecision key={pending.decision_id} pending={pending} busy={busy} onSubmit={payload => perform(() => api.action(sessionId, {
               input_mode: "decision", client_action_id: api.key("decision"), state_version: state.state_version, decision_id: pending.decision_id, ...payload,
@@ -498,17 +512,6 @@ export default function GameShell() {
   </main>;
 }
 
-function ConversationStage({ conversation, character, fallbackName }: { conversation: Dict; character: Character | null; fallbackName: string }) {
-  const name = character?.name || playerText(conversation.npc_name, fallbackName || "对方");
-  const role = character?.role || playerText(conversation.npc_title, "身份待确认");
-  const turns = Number(conversation.turn_count || conversation.turns_completed || 0);
-  return <section className="conversation-stage" data-testid="active-conversation-character">
-    <div className="conversation-portrait"><CharacterPortrait character={character} fallbackName={name} priority /></div>
-    <div className="conversation-identity"><small>正在会谈</small><h3>{name}</h3><p>{role}</p><span>已完成 {turns} 轮交流</span></div>
-    <div className="conversation-guidance"><b>把话说到具体处</b><p>可以追问事实、回应诉求，或说明你愿意承担的安排。结束前请确认没有遗漏关键问题。</p></div>
-  </section>;
-}
-
 function PlayerIdentityCard() {
   const player = resolveCharacter("player_li_zhiyuan");
   return <section className="player-identity-card" data-testid="player-identity-card"><div className="player-portrait"><CharacterPortrait character={player} fallbackName="李致远" /></div><div><small>你的身份</small><h3>{player?.name || "李致远"}</h3><p>{player?.role || "云溪县县长"}</p></div></section>;
@@ -525,7 +528,7 @@ function GovernanceActionScene({ action, meeting, overview }: { action: Dict; me
   const transcript = arr(meeting?.transcript || action.transcript);
   const title = GOVERNANCE_ACTION_LABELS[String(action.action_kind)] || "治理行动";
   return <section className="governance-scene">
-    <header><div><small>正在进行 · {title}</small><h3>{action.topic || (targets.length ? `与${targets.join("、")}当面沟通` : title)}</h3></div><span>第 {action.story_day || "—"} 日</span></header>
+    <header><div><small>正在进行 · {title}</small><h3>{action.topic || (targets.length ? `与${targets.join("、")}当面沟通` : title)}</h3></div><span>第 {action.story_day || "待定"} 日</span></header>
     {targets.length > 0 && <p className="scene-participants">在场：{targets.join("、")}</p>}
     {transcript.length ? <div className="scene-transcript">{transcript.map((entry, index) => <article className={entry.speaker_type === "player" ? "player" : "npc"} key={index}><strong>{entry.speaker_type === "player" ? "你" : entry.npc_name || "对方"}</strong><p>{entry.text || "对方暂未表态。"}</p></article>)}</div> : <div className="scene-opening"><span>启</span><p>{action.action_kind === "leadership_meeting" ? "人员已经到齐。先陈述问题与方案，听取各方意见后再形成决议。" : "你已经到达现场。先说明来意，再围绕事实、诉求与可行安排展开交流。"}</p></div>}
   </section>;
@@ -601,7 +604,7 @@ function GovernancePanel({ data }: { data: Dict | null }) {
     ["已形成文件", arr(data.documents).length], ["逐户合同", arr(data.contracts).length],
   ];
   const cash = get(data, "resources.cash_ledger");
-  return <div className="governance-panel"><div className="governance-grid">{stats.map(([label, value]) => <div key={String(label)}><strong>{value}</strong><span>{label}</span></div>)}</div>{cash && <section className="resource-card"><small>财政资源</small><h3>可安排 {displayValue(cash.available_unencumbered, "—")} 万元</h3><p>已承诺 {displayValue(cash.committed, 0)} 万元 · 已支付 {displayValue(cash.paid, 0)} 万元</p></section>}<PanelSection title="行动记录" items={actions.slice().reverse().slice(0, 6)} empty="尚未开展治理行动" render={(item) => <><div className="evidence-head"><h4>{GOVERNANCE_ACTION_LABELS[item.action_kind] || "治理行动"}</h4><span>{friendlyStatus(item.status)}</span></div><p>{playerText(item.topic, `第 ${item.story_day || "—"} 日开展`)}</p></>} /><PanelSection title="近期会议" items={arr(data.meetings)} empty="尚未召开正式会议" render={(item) => <><h4>{playerText(item.topic || item.title, "治理协调会")}</h4><p>第 {item.story_day || "—"} 日 · {friendlyStatus(item.status)}</p></>} /><PanelSection title="已形成文件" items={arr(data.documents)} empty="尚未形成新的正式文件" render={(item) => <><h4>{playerText(item.title || DOCUMENT_TYPE_LABELS[item.document_type], "治理文件")}</h4><p>{friendlyStatus(item.status)} · 第 {item.issued_day || item.story_day || "—"} 日</p></>} /></div>;
+  return <div className="governance-panel"><div className="governance-grid">{stats.map(([label, value]) => <div key={String(label)}><strong>{value}</strong><span>{label}</span></div>)}</div>{cash && <section className="resource-card"><small>财政资源</small><h3>可安排 {displayValue(cash.available_unencumbered, "待定")} 万元</h3><p>已承诺 {displayValue(cash.committed, 0)} 万元 · 已支付 {displayValue(cash.paid, 0)} 万元</p></section>}<PanelSection title="行动记录" items={actions.slice().reverse().slice(0, 6)} empty="尚未开展治理行动" render={(item) => <><div className="evidence-head"><h4>{GOVERNANCE_ACTION_LABELS[item.action_kind] || "治理行动"}</h4><span>{friendlyStatus(item.status)}</span></div><p>{playerText(item.topic, `第 ${item.story_day || "待定"} 日开展`)}</p></>} /><PanelSection title="近期会议" items={arr(data.meetings)} empty="尚未召开正式会议" render={(item) => <><h4>{playerText(item.topic || item.title, "治理协调会")}</h4><p>第 {item.story_day || "待定"} 日 · {friendlyStatus(item.status)}</p></>} /><PanelSection title="已形成文件" items={arr(data.documents)} empty="尚未形成新的正式文件" render={(item) => <><h4>{playerText(item.title || DOCUMENT_TYPE_LABELS[item.document_type], "治理文件")}</h4><p>{friendlyStatus(item.status)} · 第 {item.issued_day || item.story_day || "待定"} 日</p></>} /></div>;
 }
 
 function DeskPanel({ data }: { data: Dict | null }) {
@@ -640,20 +643,28 @@ function ReviewPanel({ data }: { data: Dict | null }) {
     }
     return playerText(item.title || item.name || item.summary || item.text, "已记录事项");
   };
-  return <div className="review-panel"><section className="review-summary"><small>当前进程</small><h3>{friendlyStatus(data.status)}</h3><p>这里只记录你已经经历的事件，不会提前透露尚未发生的剧情。</p></section><div className="timeline">{timelines.length ? timelines.map((item, index) => <article key={index}><time>第 {item.story_day || item.day || "—"} 日</time><div><small>{item.typeLabel}</small><h4>{timelineTitle(item)}</h4>{item.choice && <p>你的选择：{playerText(item.choice)}</p>}{item.summary && item.title && <p>{playerText(item.summary)}</p>}</div></article>) : <Empty text="还没有足够的经历可供复盘。"/>}</div></div>;
+  return <div className="review-panel"><section className="review-summary"><small>当前进程</small><h3>{friendlyStatus(data.status)}</h3><p>这里只记录你已经经历的事件，不会提前透露尚未发生的剧情。</p></section><div className="timeline">{timelines.length ? timelines.map((item, index) => <article key={index}><time>第 {item.story_day || item.day || "待定"} 日</time><div><small>{item.typeLabel}</small><h4>{timelineTitle(item)}</h4>{item.choice && <p>你的选择：{playerText(item.choice)}</p>}{item.summary && item.title && <p>{playerText(item.summary)}</p>}</div></article>) : <Empty text="还没有足够的经历可供复盘。"/>}</div></div>;
 }
 
 function NightPanel({ data }: { data: Dict | null }) {
   const nights = arr(data?.nights);
-  return <div className="night-panel">{nights.length ? nights.map((item, index) => <article key={index}><small>第 {item.story_day || item.day || "—"} 日夜间</small><h3>{playerText(item.title, "夜间动向")}</h3><p>{playerText(item.summary || item.text, "夜色里有人在行动，但完整影响仍有待观察。")}</p></article>) : <Empty text="目前还没有可公开的夜间纪要。结束一天后，这里会记录你已经知晓的动向。"/>}</div>;
+  return <div className="night-panel">{nights.length ? nights.map((item, index) => <article key={index}><small>第 {item.story_day || item.day || "待定"} 日夜间</small><h3>{playerText(item.title, "夜间动向")}</h3><p>{playerText(item.summary || item.text, "夜色里有人在行动，但完整影响仍有待观察。")}</p></article>) : <Empty text="目前还没有可公开的夜间纪要。结束一天后，这里会记录你已经知晓的动向。"/>}</div>;
 }
 
-function SavePanel({ data, state, api, sessionId, busy, onPerform }: { data: Dict | null; state: Dict; api: GameApi; sessionId: string; busy: boolean; onPerform: (action: () => Promise<Dict>, success?: string) => Promise<void> }) {
+function SavePanel({ data, state, api, sessionId, busy, onPerform }: { data: Dict | null; state: Dict; api: GameApi; sessionId: string; busy: boolean; onPerform: (action: () => Promise<Dict>, success?: string, rebuildNarrative?: boolean) => Promise<void> }) {
   const saves = arr(data?.manual_saves);
   const [slot, setSlot] = useState(1);
   const [name, setName] = useState(`第${get(state, "story.day", 1)}日进度`);
   const occupied = saves.some(item => Number(item.slot_number) === slot);
-  return <div className="save-panel"><section className="save-create"><small>另存一份进度</small><h3>保留关键节点</h3><p>日常行动会自动保存。手动存档适合在重要抉择前保留一份独立进度。</p><label>存档位置<select value={slot} onChange={event => setSlot(Number(event.target.value))}>{[1, 2, 3, 4, 5].map(value => <option key={value} value={value}>位置{chineseIndex(value - 1)}{saves.some(item => Number(item.slot_number) === value) ? "（已有存档）" : ""}</option>)}</select></label><label>存档名称<input value={name} maxLength={40} onChange={event => setName(event.target.value)} /></label><button disabled={busy || !name.trim()} onClick={() => { if (occupied && !window.confirm("这个位置已有存档，确认覆盖吗？")) return; void onPerform(() => api.manualSave(sessionId, { client_action_id: api.key("manual-save"), state_version: state.state_version, slot_number: slot, display_name: name.trim(), overwrite: occupied }), "手动存档已保存"); }}>{occupied ? "覆盖这个位置" : "保存当前进度"}</button></section><PanelSection title="手动存档" items={saves} empty="还没有手动存档" render={(item, index) => <div className="save-row"><div><h4>{item.display_name || `存档${chineseIndex(index)}`}</h4><p>第 {item.story_day || 1} 日 · {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "已保存"}</p></div><button disabled={busy} onClick={() => { if (!window.confirm("载入后，当前未另存的进度会被覆盖。确认继续吗？")) return; void onPerform(() => api.loadSnapshot(sessionId, { client_action_id: api.key("load-save"), state_version: state.state_version, snapshot_id: item.snapshot_id, confirmed: true }), "已载入所选存档"); }}>载入</button></div>} /></div>;
+  return <div className="save-panel">
+    <section className="save-create">
+      <small>另存一份进度</small><h3>保留关键节点</h3><p>日常行动会自动保存。手动存档适合在重要抉择前保留一份独立进度。</p>
+      <label>存档位置<select value={slot} onChange={event => setSlot(Number(event.target.value))}>{[1, 2, 3, 4, 5].map(value => <option key={value} value={value}>位置{chineseIndex(value - 1)}{saves.some(item => Number(item.slot_number) === value) ? "（已有存档）" : ""}</option>)}</select></label>
+      <label>存档名称<input value={name} maxLength={40} onChange={event => setName(event.target.value)} /></label>
+      <button disabled={busy || !name.trim()} onClick={() => { if (occupied && !window.confirm("这个位置已有存档，确认覆盖吗？")) return; void onPerform(() => api.manualSave(sessionId, { client_action_id: api.key("manual-save"), state_version: state.state_version, slot_number: slot, display_name: name.trim(), overwrite: occupied }), "手动存档已保存"); }}>{occupied ? "覆盖这个位置" : "保存当前进度"}</button>
+    </section>
+    <PanelSection title="手动存档" items={saves} empty="还没有手动存档" render={(item, index) => <div className="save-row"><div><h4>{item.display_name || `存档${chineseIndex(index)}`}</h4><p>第 {item.story_day || 1} 日 · {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "已保存"}</p></div><button disabled={busy} onClick={() => { if (!window.confirm("载入后，当前未另存的进度会被覆盖。确认继续吗？")) return; void onPerform(() => api.loadSnapshot(sessionId, { client_action_id: api.key("load-save"), state_version: state.state_version, snapshot_id: item.snapshot_id, confirmed: true }), "已载入所选存档", true); }}>载入</button></div>} />
+  </div>;
 }
 
 function PanelSection({ title, items, empty, render }: { title: string; items: Dict[]; empty: string; render: (item: Dict, index: number) => React.ReactNode }) {

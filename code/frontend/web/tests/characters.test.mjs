@@ -49,7 +49,7 @@ test("keeps portrait rendering in the requested UI surfaces with a text fallback
   const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
   assert.match(source, /function CharacterPortrait/);
   assert.match(source, /onError=\{\(\) => setFailedPath\(character\.portraitPath\)\}/);
-  assert.match(source, /data-testid="active-conversation-character"/);
+  assert.match(source, /"active-conversation-character"/);
   assert.match(source, /conversation\.turn_count \|\| conversation\.turns_completed/);
   assert.match(source, /data-testid="player-identity-card"/);
   assert.match(source, /resolveCharacter\(item\.npc_id, item\.target_npc_id, item\.npc_name\)/);

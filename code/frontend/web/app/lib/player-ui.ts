@@ -1,6 +1,6 @@
 export type PlayerRecord = Record<string, unknown>;
 
-const INTERNAL_PREFIX = /^\s*(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+\s*[·:：—-]\s*)/i;
+const INTERNAL_PREFIX = /^\s*(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+\s*[·:：\u2014-]\s*)/i;
 const INTERNAL_BRACKET = /[【\[](?:突发[·:：-])?(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+)[】\]]\s*/gi;
 
 export function toPlayerText(value: unknown, fallback = ""): string {
@@ -37,13 +37,4 @@ export function actionPointCost(item: PlayerRecord | null | undefined): number |
 export function actionPointLabel(item: PlayerRecord | null | undefined): string {
   const cost = actionPointCost(item);
   return cost === null ? "消耗待确认" : cost === 0 ? "不消耗精力" : `消耗 ${cost} 点精力`;
-}
-
-export function sceneAssetForState(state: PlayerRecord | null | undefined): string {
-  if (!state || !state.session_id) return "/scenes/arrival-liulin-village.webp";
-  const story = state.story && typeof state.story === "object" && !Array.isArray(state.story) ? state.story as PlayerRecord : {};
-  const source = `${story.beat_id ?? ""} ${story.beat_name ?? ""}`.toLowerCase();
-  return /c01_s01|抵达|到任|柳林村/.test(source)
-    ? "/scenes/arrival-liulin-village.webp"
-    : "/scenes/county-office.webp";
 }
