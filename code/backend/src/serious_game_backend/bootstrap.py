@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import os
 
 from serious_game_backend.application.action_service import ActionService
@@ -12,6 +13,14 @@ from serious_game_backend.application.end_day_service import EndDayService
 from serious_game_backend.application.ending_service import EndingAxisProjector, EndingService
 from serious_game_backend.application.event_service import EventService
 from serious_game_backend.application.game_session_service import GameSessionService
+from serious_game_backend.application.group_conversation_service import (
+    GroupConversationService,
+)
+from serious_game_backend.application.governance_service import GovernanceService
+from serious_game_backend.application.gameplay_governance_service import (
+    GameplayGovernanceService,
+)
+from serious_game_backend.application.input_review_service import InputReviewService
 from serious_game_backend.application.interaction_opportunity_service import (
     InteractionOpportunityService,
 )
@@ -21,12 +30,14 @@ from serious_game_backend.application.package_validation_service import (
     PackageValidationService,
 )
 from serious_game_backend.application.review_service import ReviewService
+from serious_game_backend.application.save_service import SaveService
 from serious_game_backend.application.npc_turn_service import NPCTurnService
 from serious_game_backend.application.npc_memory_service import NPCMemoryService
 from serious_game_backend.application.ports import (
     GameSessionRepository,
     OperationRepository,
     SessionRequestRepository,
+    SnapshotRepository,
 )
 from serious_game_backend.application.scripted_delta_resolver import ScriptedDeltaResolver
 from serious_game_backend.application.scripted_effect_service import ScriptedEffectService
@@ -43,7 +54,6 @@ from serious_game_backend.application.experiment_assignment_service import (
 from serious_game_backend.application.research_projection_service import (
     ResearchProjectionService,
 )
-from serious_game_backend.application.governance_service import GovernanceService
 from serious_game_backend.application.research_outbox_service import ResearchOutboxService
 from serious_game_backend.config import Settings
 from serious_game_backend.infrastructure.llm.fake import FakeRoleLLMGateway
@@ -62,6 +72,7 @@ from serious_game_backend.infrastructure.repositories.memory import (
     InMemoryExperimentAssignmentRepository,
     InMemoryResearchEventRepository,
     InMemoryResearchIdentityRepository,
+    InMemorySnapshotRepository,
 )
 from serious_game_backend.infrastructure.repositories.sqlite import (
     SqliteGameSessionRepository,
@@ -77,6 +88,7 @@ from serious_game_backend.infrastructure.repositories.sqlite import (
     SqliteExperimentAssignmentRepository,
     SqliteResearchEventRepository,
     SqliteResearchIdentityRepository,
+    SqliteSnapshotRepository,
 )
 from serious_game_backend.infrastructure.script_packages.file_loader import FileScriptPackageLoader
 from serious_game_backend.infrastructure.privacy import PIIRedactor
@@ -95,6 +107,7 @@ from serious_game_backend.infrastructure.repositories.mysql import (
     MySQLRuntimeStore,
     MySQLRuntimeTransactionRepository,
     MySQLSessionRequestRepository,
+    MySQLSnapshotRepository,
 )
 from serious_game_backend.infrastructure.crypto import FieldCipher
 from serious_game_backend.infrastructure.research_mysql_store import MySQLResearchStore
@@ -114,17 +127,21 @@ class Container:
     sessions: GameSessionRepository
     operations: OperationRepository
     session_requests: SessionRequestRepository
+    snapshots: SnapshotRepository
     packages: InMemoryScriptPackageRepository
     projector: VisibleStateProjector
     game_sessions: GameSessionService
     actions: ActionService
     action_quotes: ActionQuoteService
     end_days: EndDayService
+    group_conversations: GroupConversationService
+    gameplay_governance: GameplayGovernanceService
     npc_turns: NPCTurnService
     opportunities: InteractionOpportunityService
     story_flow: StoryFlowService
     map_service: MapService
     review_service: ReviewService
+    saves: SaveService
     package_validation: PackageValidationService
     endings: EndingService
     llm_audits: object
@@ -170,6 +187,7 @@ def build_container(settings: Settings) -> Container:
         sessions = MySQLGameSessionRepository(store)
         operations = MySQLOperationRepository(store)
         session_requests = MySQLSessionRequestRepository(store)
+        snapshots = MySQLSnapshotRepository(store)
         transactions = MySQLRuntimeTransactionRepository(store)
         llm_audits = MySQLLLMCallAuditRepository(store)
         memory_repository = MySQLNPCMemoryRepository(store)
@@ -186,6 +204,7 @@ def build_container(settings: Settings) -> Container:
         sessions = SqliteGameSessionRepository(store)
         operations = SqliteOperationRepository(store)
         session_requests = SqliteSessionRequestRepository(store)
+        snapshots = SqliteSnapshotRepository(store)
         transactions = SqliteRuntimeTransactionRepository(store)
         llm_audits = SqliteLLMCallAuditRepository(store)
         memory_repository = SqliteNPCMemoryRepository(store)
@@ -201,6 +220,7 @@ def build_container(settings: Settings) -> Container:
         sessions = InMemoryGameSessionRepository()
         operations = InMemoryOperationRepository()
         session_requests = InMemorySessionRequestRepository()
+        snapshots = InMemorySnapshotRepository(sessions, operations)
         llm_audits = InMemoryLLMCallAuditRepository()
         memory_repository = InMemoryNPCMemoryRepository()
         accounts = InMemoryAccountRepository()
@@ -212,8 +232,13 @@ def build_container(settings: Settings) -> Container:
         governance_repository = InMemoryGovernanceRepository(research_events)
         outbox_repository = NullResearchOutboxRepository()
         transactions = InMemoryRuntimeTransactionRepository(
-            sessions, operations, session_requests, research_events
+            sessions, operations, session_requests, research_events, snapshots
         )
+    stale_before = (
+        datetime.now(timezone.utc)
+        - timedelta(seconds=settings.operation_lease_seconds)
+    ).isoformat()
+    transactions.recover_stale_operations(stale_before)
     packages = InMemoryScriptPackageRepository(package_values)
     projector = VisibleStateProjector()
     event_service = EventService()
@@ -235,9 +260,13 @@ def build_container(settings: Settings) -> Container:
     disclosure_gate = DisclosureGateService()
     action_quotes = ActionQuoteService()
     action_handlers = ActionHandlerRegistry(scripted_effects)
-    nights = NightSimulationService(scripted_effects, trust_derivation)
+    nights = NightSimulationService(scripted_effects, trust_derivation, role_llm)
     endings = EndingService(EndingAxisProjector())
     npc_turns = NPCTurnService(role_llm, validator)
+    input_review = InputReviewService(role_llm)
+    gameplay_governance = GameplayGovernanceService(
+        sessions, packages, role_llm, npc_turns, projector, input_review
+    )
     npc_memories = NPCMemoryService(memory_repository)
     auth = AuthService(
         accounts, auth_sessions,
@@ -281,6 +310,7 @@ def build_container(settings: Settings) -> Container:
         sessions=sessions,
         operations=operations,
         session_requests=session_requests,
+        snapshots=snapshots,
         packages=packages,
         projector=projector,
         game_sessions=GameSessionService(
@@ -326,12 +356,18 @@ def build_container(settings: Settings) -> Container:
             endings,
             projector,
             story_flow,
+            gameplay_governance,
         ),
+        group_conversations=GroupConversationService(
+            sessions, packages, role_llm, projector, input_review
+        ),
+        gameplay_governance=gameplay_governance,
         npc_turns=npc_turns,
         opportunities=opportunities,
         story_flow=story_flow,
         map_service=MapService(opportunities),
         review_service=ReviewService(projector),
+        saves=SaveService(sessions, operations, snapshots),
         package_validation=PackageValidationService(),
         endings=endings,
         llm_audits=llm_audits,

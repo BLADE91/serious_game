@@ -70,7 +70,32 @@ class ReviewService:
             "decision_timeline": decisions,
             "action_timeline": actions,
             "conversation_timeline": conversations,
-            "night_timeline": list(session.night_logs),
+            "group_conversation_timeline": [
+                {
+                    "conversation_id": item.get("conversation_id"),
+                    "conversation_type": item.get("conversation_type"),
+                    "initiator_npc_id": item.get("initiator_npc_id"),
+                    "participant_ids": list(item.get("participant_ids", ())),
+                    "agenda": item.get("agenda"),
+                    "demands": list(item.get("demands", ())),
+                    "turn_count": item.get("turn_count", 0),
+                    "transcript": list(item.get("transcript", ())),
+                }
+                for item in session.completed_group_conversations
+            ],
+            "night_timeline": [
+                {
+                    key: value
+                    for key, value in item.items()
+                    if key not in {
+                        "agent_exchanges",
+                        "contact_selections",
+                        "contact_responses",
+                        "followup_decisions",
+                    }
+                }
+                for item in session.night_logs
+            ],
             "visible_events": state["visible_events"],
             "known_facts": [
                 {

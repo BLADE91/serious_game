@@ -1,0 +1,8 @@
+Use case: historical-scene
+Asset type: serious narrative game scene background
+
+Scene: an immaculately organized office of a powerful long-serving county executive deputy. South-facing warm late-afternoon light, polished but period-appropriate dark wood desk, mountain-spring tea set already poured for two, a framed Chinese calligraphy sheet with marks too blurred to read, a restrained antique display shelf with a few old ceramics, perfectly aligned files, clean terrazzo floor. Quiet control and understated authority, not ostentatious luxury. No people. Leave one empty visitor chair in foreground.
+
+Style: photorealistic environmental concept art for a serious Chinese county-governance narrative game, inland mountainous county along the Qingjiang River, approximately 2008–2015. 16:9 landscape, player-eye observational viewpoint, natural 28–35mm lens, restrained documentary realism, readable midtones.
+
+Constraints: no clearly identifiable protagonist face, no readable text, no logos, no watermark, no interface, no English. Avoid futuristic devices, skyscrapers, neon, horror and fantasy.

@@ -46,56 +46,6 @@
           "text": "柳林村是一姓独大的村子。三十六户里，姓周的十一户抱成一团，住在村子中心的高地上，村里的集体事、分配事、红白事，话语权大半攥在周氏手里；村支书周大山又是周氏这一辈的族长，官身族身合在一人身上。姓刘、姓吴、姓杨的散姓被挤在村边和河湾下游，散户、困难户、外来户夹在中间，声音传不到台面上。这层结构，你上任头几天还看不真切，只觉得这村子静得反常，静得像一锅没烧开却在冒暗泡的水。"
         },
         {
-          "block_id": "d01_origin_intro",
-          "kind": "narration",
-          "text": "你的来路，决定了云溪县第一眼怎么打量你。这一层底色因人而异，往下的路却是同一条。"
-        },
-        {
-          "block_id": "d01_origin_technical",
-          "kind": "narration",
-          "origin_ids": [
-            "technical"
-          ],
-          "text": "若你是技术派出身，你是经济学博士，从省里的研究机构下来。笔头硬，数据熟，一套搬迁测算模型做得滴水不漏。头一回上班子会，你就把柳林村三十六户的补偿测算、工期分解、财政腾挪，用一张图铺在众人面前，条分缕析，讲得清清楚楚。有人听得暗自点头，敬你这份学问。也有人端着茶杯不吭声，散了会才在走廊里嘀咕，说你那本账是拿计算器敲出来的，柳林村的泥腿子账未必认你那套公式。纸上算得再漂亮，下了村，那是另一本经。"
-        },
-        {
-          "block_id": "d01_origin_grassroots",
-          "kind": "narration",
-          "origin_ids": [
-            "grassroots"
-          ],
-          "text": "若你是基层派出身，你从乡镇一级一步一个脚印上来。蹲过田埂，调解过地界，为催一季公粮，跟老农在晒谷场上磨过整宿的嘴皮子。农村这本经你门儿清，谁家的难处、谁家的算盘，一搭眼就能看出七八分。可云溪不是你的旧地盘。在这里，你那身接地气的本事使得出，那张能托人情、能递话的老关系网却一根线都搭不上。生面孔就是生面孔，村口的黄狗见了都要多吠两声。"
-        },
-        {
-          "block_id": "d01_origin_integrity",
-          "kind": "narration",
-          "origin_ids": [
-            "integrity"
-          ],
-          "text": "若你是清流派出身，你在纪检系统待过几年。眼里揉不得沙子，作风上一清二白，来云溪之前，较真的名声就先一步传到了。这名声是把双刃剑。想走歪路的人见了你，先自矮了三分，办事都收着劲儿。可本地那张盘根错节的关系网，也早早对你竖起了防备，把该藏的账、该掖的事捂得比谁都严实。你还没开口，一堵看不见的墙已经在四下里悄悄砌了起来。"
-        },
-        {
-          "block_id": "d01_origin_parachute",
-          "kind": "narration",
-          "origin_ids": [
-            "parachute"
-          ],
-          "text": "若你是空降派出身，你是上级直接下派来啃硬骨头的。背后有人，手里有令，来意明摆着，就是把宏达这个项目稳稳拿下。本地干部看你，第一眼看的不是本事，是你身后那只手能伸多长、能护你多久。有人忙着往前凑，想搭这趟快车。有人冷眼旁观，等着看这条过江龙会不会水土不服。这份来自上头的分量压得住场面，却压不出人心。真到了要人替你卖命的时候，还得一寸一寸自己去挣。"
-        },
-        {
-          "block_id": "d01_origin_young",
-          "kind": "narration",
-          "origin_ids": [
-            "young"
-          ],
-          "text": "若你是少壮派出身，你年纪轻，升得快，有闯劲，是本届班子里最年轻的一张面孔。年轻是本钱，也是把柄。会上，老同志们客客气气地敬你一声，那声调里却透着一丝不易察觉的迁就，像长辈纵着一个急于证明自己的后生。他们嘴上不说，心里都揣着一本账，等着看这个少年得志的新官会在柳林村这道坎上栽个什么样的跟头。你听得出那份客气底下的分量，你也知道，自己没有输一次的余地。"
-        },
-        {
-          "block_id": "d01_origin_outro",
-          "kind": "narration",
-          "text": "无论哪一种来路，摆在你面前的账本是同一本，难关也是同一道。你要在履新不足一月、根基未稳的处境里，把一村人的祖屋、祖坟、猪圈、果树，和一个几百工人饭碗、两个亿年税的大厂，硬生生调到一张桌子上谈。第一天的欢迎，来得比你想的还快。"
-        },
-        {
           "block_id": "d01_briefing_office",
           "kind": "narration",
           "text": "县政府办公楼三层最东头那间是你的办公室。门开着。一个三十出头的男人站在窗边，手里捧着一摞卷宗，见你进来，先把卷宗放下，才伸出手。"
@@ -773,14 +723,14 @@
       "story_day": 24,
       "chapter": 2,
       "day_mode": "simulated",
-      "title": "第二十四日，你到柳林村去。村小已经废了四年，教室的窗户用木板钉着。吴秀英",
+      "title": "第二十四日，你再次到柳林村拜访吴秀英",
       "allow_actions": false,
       "allow_end_day": true,
       "opening_blocks": [
         {
           "block_id": "d24_source_opening",
           "kind": "narration",
-          "text": "第二十四日，你到柳林村去。村小已经废了四年，教室的窗户用木板钉着。吴秀英住在村小后面的两间平房里，她在村小教了三十年书，退休六年。"
+          "text": "第二十四日，你再次到柳林村拜访吴秀英。这一次不是坡道上的偶遇，而是带着前几日摸到的村情专程登门。废弃村小的窗户仍用木板钉着，她住在后面的两间平房里；你们已经认识，所以她没有再问你是谁，只把院门打开，让你进来把没有谈完的话谈清楚。"
         }
       ],
       "night_blocks": [],
@@ -920,61 +870,6 @@
         "dp2_10"
       ],
       "night_conditional_effects": [
-        {
-          "forbidden_flags": [
-            "与钱伟撕破脸"
-          ],
-          "effects": {
-            "metric_deltas": {
-              "corruption_evidence": [
-                3,
-                8
-              ]
-            },
-            "ledger_deltas": {},
-            "open_flags": [
-              "攻守同盟已成"
-            ],
-            "close_flags": []
-          }
-        },
-        {
-          "required_flags": [
-            "与钱伟撕破脸"
-          ],
-          "effects": {
-            "metric_deltas": {
-              "corruption_evidence": [
-                0,
-                3
-              ]
-            },
-            "ledger_deltas": {},
-            "open_flags": [
-              "钱赵生隙"
-            ],
-            "close_flags": []
-          }
-        },
-        {
-          "required_any_flags": [
-            "已立项审计",
-            "秘密摸底"
-          ],
-          "effects": {
-            "metric_deltas": {
-              "corruption_evidence": [
-                -8,
-                -3
-              ]
-            },
-            "ledger_deltas": {},
-            "open_flags": [
-              "原件缺失"
-            ],
-            "close_flags": []
-          }
-        },
         {
           "required_flags": [
             "砸钱普涨"
@@ -1190,7 +1085,13 @@
       "title": "第四十二日",
       "allow_actions": false,
       "allow_end_day": true,
-      "opening_blocks": [],
+      "opening_blocks": [
+        {
+          "block_id": "d42_he_tiezhu_known",
+          "kind": "narration",
+          "text": "第四十二日下午，罗健带来一张县医院化验单。柳林村何铁柱七岁的孙子血铅二百八十七微克每升，远高于干预线。何铁柱本人还没有露面，但这个名字和这个家庭第一次进入了你的案头。"
+        }
+      ],
       "night_blocks": [],
       "night_effects": {},
       "decision_ids": [],
@@ -1438,10 +1339,16 @@
       "story_day": 51,
       "chapter": 4,
       "day_mode": "simulated",
-      "title": "第五十一日",
+      "title": "第五十一日·祠堂里的周奎元",
       "allow_actions": false,
       "allow_end_day": true,
-      "opening_blocks": [],
+      "opening_blocks": [
+        {
+          "block_id": "d51_zhou_kuiyuan_intro",
+          "kind": "narration",
+          "text": "第五十一日，你为周家剩下的五户再次来到祠堂。周大山把你领进正堂，对坐在香案旁的老人叫了一声“奎元叔”。这是周奎元第一次出现在你面前：他管着族里的礼仪和祖坟事务，要谈的不是补偿数字，而是人搬走以后香火、坟地和周家身份怎样延续。"
+        }
+      ],
       "night_blocks": [],
       "night_effects": {},
       "decision_ids": [
@@ -1498,10 +1405,16 @@
       "story_day": 54,
       "chapter": 4,
       "day_mode": "simulated",
-      "title": "第五十四日",
+      "title": "第五十四日·吴秀英引见杨波",
       "allow_actions": false,
       "allow_end_day": true,
-      "opening_blocks": [],
+      "opening_blocks": [
+        {
+          "block_id": "d54_yang_bo_intro",
+          "kind": "narration",
+          "text": "第五十四日，吴秀英把返乡青年杨波带到安置方案公示栏前。杨波一头连着村里，一头连着外面的网络舆论场。他没有先问补偿多少钱，而是指着创业扶持、孩子入学和网络配套三栏，问这些承诺敢不敢让全村逐项核验。经吴秀英引见，你第一次有了正式联系他的渠道。"
+        }
+      ],
       "night_blocks": [],
       "night_effects": {},
       "decision_ids": [],
@@ -1532,10 +1445,16 @@
       "story_day": 56,
       "chapter": 4,
       "day_mode": "simulated",
-      "title": "第五十六日",
+      "title": "第五十六日·何铁柱上楼",
       "allow_actions": false,
       "allow_end_day": true,
-      "opening_blocks": [],
+      "opening_blocks": [
+        {
+          "block_id": "d56_he_tiezhu_intro",
+          "kind": "narration",
+          "text": "第五十六日，何铁柱自己上了县政府的楼。他把孙子血铅二百八十七的检测单拍在你桌上，又用一张年轻时的军装照压住纸角。他没有喊，只问三年前那次体检为什么没人告诉他。从这一刻起，何铁柱不再只是化验单上的受害家庭，而是可以当面回应、也会当面追责的人。"
+        }
+      ],
       "night_blocks": [],
       "night_effects": {},
       "decision_ids": [
@@ -1604,14 +1523,14 @@
       "story_day": 59,
       "chapter": 4,
       "day_mode": "playable",
-      "title": "台历翻到新的一页。检查组进云溪的日子定在第五十九日，从今天数过去还隔着十",
+      "title": "第五十九日·市生态环境局迎检组进驻",
       "allow_actions": true,
       "allow_end_day": true,
       "opening_blocks": [
         {
           "block_id": "d59_source_opening",
           "kind": "narration",
-          "text": "台历翻到新的一页。检查组进云溪的日子定在第五十九日，从今天数过去还隔着十三天。这十三天是眼前这道坎。柳林村三十六户人家，签了字的名单还压在秘书那本台账里，短得一眼能看到底。"
+          "text": "第五十九日上午，市生态环境局迎检组的车准时驶进云溪。组长顾克明下车后没有先听汇报，只让人把验收清单、现场采样安排和整改闭环材料摆到同一张桌上。从这一刻起，他正式进入你的工作关系：只认现场、数据和能够复核的记录。"
         }
       ],
       "night_blocks": [],
@@ -1923,7 +1842,7 @@
         {
           "block_id": "d74_source_opening",
           "kind": "narration",
-          "text": "第七十四日早上七点四十，你把车停在县医院家属楼后面的空地上。三楼走廊尽头，何铁柱坐在儿科病房门口，没有起身。"
+          "text": "第七十四日早上七点四十，你再次去见何铁柱。自第五十六日他带着孙子的检测单上楼后，你们已经当面谈过一次；这回地点换到县医院家属楼，三楼走廊尽头，他守在儿科病房门口，等你把此前答应核实的治疗和补偿问题补成一笔实账。"
         }
       ],
       "night_blocks": [],
@@ -1968,7 +1887,7 @@
             "马长顺待自然触发"
           ],
           "forbidden_flags": [
-            "马长顺已入账",
+            "马长顺核心矛盾已缓解",
             "进度榜已上墙"
           ],
           "minimum_ledger_values": {
@@ -1983,7 +1902,7 @@
               ]
             },
             "open_flags": [
-              "马长顺已入账"
+              "马长顺核心矛盾已缓解"
             ],
             "close_flags": [
               "马长顺待自然触发"
@@ -1996,7 +1915,7 @@
             "进度榜已上墙"
           ],
           "forbidden_flags": [
-            "马长顺已入账"
+            "马长顺核心矛盾已缓解"
           ],
           "minimum_ledger_values": {
             "signed_households": 1
@@ -2010,7 +1929,7 @@
               ]
             },
             "open_flags": [
-              "马长顺已入账"
+              "马长顺核心矛盾已缓解"
             ],
             "close_flags": [
               "马长顺待自然触发"
@@ -2046,14 +1965,14 @@
       "story_day": 77,
       "chapter": 6,
       "day_mode": "simulated",
-      "title": "第七十七日",
+      "title": "第七十七日·老倔头来看真房",
       "allow_actions": false,
       "allow_end_day": true,
       "opening_blocks": [
         {
           "block_id": "d77_source_opening",
           "kind": "narration",
-          "text": "第七十七日"
+          "text": "第七十七日，老倔头没有坐工作组的车，自己骑了一个多小时来到安置小区。他把自行车靠在铁门上，站在毛坯楼前，只说要看的不是照片，是房。此前他只是未决名册上那个不开门的人；从亲眼核验安置房开始，他才真正愿意让你把话说下去。"
         }
       ],
       "night_blocks": [],
@@ -2196,14 +2115,14 @@
       "story_day": 84,
       "chapter": 6,
       "day_mode": "simulated",
-      "title": "第八十四日 · 清单",
+      "title": "第八十四日·整改清单与邓守本",
       "allow_actions": false,
       "allow_end_day": true,
       "opening_blocks": [
         {
           "block_id": "d84_source_opening",
           "kind": "narration",
-          "text": "第八十四日 · 清单"
+          "text": "第八十四日上午，巡察整改反馈函送到县政府。若你把安置房交付和医疗兜底排在首位，清单会同时落实独居老人搬运、晚年照护和本人见证签署，邓守本才会被请到现场逐项确认。此前他只是未决名册上的最后一户；只有这些安排真正落地，才形成与他继续谈祖屋和安置的正当入口。"
         }
       ],
       "night_blocks": [],
@@ -2264,7 +2183,7 @@
             "空头承诺已出口"
           ],
           "forbidden_flags": [
-            "何铁柱已入账"
+            "何铁柱核心矛盾已缓解"
           ]
         },
         {
@@ -2275,7 +2194,7 @@
             "周大山肯等"
           ],
           "forbidden_flags": [
-            "周大山归心已入账",
+            "周大山核心矛盾已缓解",
             "祖坟被冒犯"
           ]
         }
@@ -2293,7 +2212,7 @@
             "空头承诺已出口"
           ],
           "forbidden_flags": [
-            "何铁柱已入账"
+            "何铁柱核心矛盾已缓解"
           ],
           "effects": {
             "metric_deltas": {
@@ -2309,18 +2228,18 @@
               ]
             },
             "open_flags": [
-              "何铁柱已入账"
+              "何铁柱核心矛盾已缓解"
             ],
             "close_flags": []
           }
         },
         {
           "required_flags": [
-            "周大山预付已入账",
+            "周大山预付条件已核验",
             "周大山肯等"
           ],
           "forbidden_flags": [
-            "周大山归心已入账",
+            "周大山核心矛盾已缓解",
             "祖坟被冒犯"
           ],
           "effects": {
@@ -2341,8 +2260,8 @@
               ]
             },
             "open_flags": [
-              "周大山归心已入账",
-              "周大山补账已入账",
+              "周大山核心矛盾已缓解",
+              "周大山补账已核验",
               "祠堂地块批文已签发"
             ],
             "close_flags": [
@@ -2355,8 +2274,8 @@
             "周大山肯等"
           ],
           "forbidden_flags": [
-            "周大山预付已入账",
-            "周大山归心已入账",
+            "周大山预付条件已核验",
+            "周大山核心矛盾已缓解",
             "祖坟被冒犯"
           ],
           "effects": {
@@ -2377,8 +2296,8 @@
               ]
             },
             "open_flags": [
-              "周大山归心已入账",
-              "周大山补账已入账",
+              "周大山核心矛盾已缓解",
+              "周大山补账已核验",
               "祠堂地块批文已签发"
             ],
             "close_flags": [

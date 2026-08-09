@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>《流域抉择》全剧本场景图库</title>
+  <style>
+    :root{color-scheme:light;--ink:#153b32;--paper:#f2f0e7;--card:#fffdf7;--gold:#a9823f;--line:#d8d6ca}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:#26322e;font-family:"Microsoft YaHei","Noto Sans SC",sans-serif}
+    header{position:sticky;top:0;z-index:2;padding:22px clamp(18px,4vw,58px);background:rgba(21,59,50,.96);color:#fffdf1;box-shadow:0 7px 30px rgba(20,39,33,.14)}
+    h1{margin:0 0 7px;font-size:clamp(24px,3vw,38px);font-family:"STSong","SimSun",serif;font-weight:700}header p{margin:0;color:#d9e4dc;font-size:16px}
+    nav{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}button{border:1px solid rgba(255,255,255,.32);border-radius:999px;padding:9px 17px;background:transparent;color:#fff;font-size:16px;cursor:pointer}
+    button:hover,button[aria-pressed="true"]{background:#f5edcf;color:var(--ink);border-color:#f5edcf}
+    main{padding:32px clamp(18px,4vw,58px) 64px}.chapter{margin:0 0 38px}.chapter h2{display:flex;align-items:center;gap:12px;margin:0 0 16px;color:var(--ink);font-size:24px}
+    .chapter h2::after{content:"";height:1px;background:var(--line);flex:1}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+    figure{margin:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card);box-shadow:0 8px 22px rgba(36,53,47,.07)}
+    img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#d9ddd6}figcaption{padding:13px 15px 14px;font-size:17px;color:#263a33}
+    .code{display:block;margin-top:3px;color:#7b826f;font-size:14px}footer{padding:24px;text-align:center;color:#68726e;border-top:1px solid var(--line)}
+    [hidden]{display:none!important}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>《流域抉择》全剧本场景图库</h1>
+    <p>正文 48 张 · 主结局 24 张 · 共 72 张</p>
+    <nav aria-label="场景筛选">
+      <button type="button" data-filter="全部" aria-pressed="true">全部</button>
+      <button type="button" data-filter="正文" aria-pressed="false">正文</button>
+      <button type="button" data-filter="结局" aria-pressed="false">结局</button>
+    </nav>
+  </header>
+  <main id="gallery"></main>
+  <footer>点击任一缩略图可查看完整尺寸；游戏接入建议优先使用同名网页格式文件。</footer>
+  <script>
+    const groups = [
+      ["正文","第一章 · 迷雾初现","../01_第一章_迷雾初现",[
+        "C01_S01_雨后抵达柳林村","C01_S02_县政府办公室","C01_S03_接风宴","C01_S04_县委书记办公室","C01_S05_柳林村委会","C01_S06_渡口镇专班会议室","C01_S07_袁桂兰旧瓦房","C01_S08_赵建国办公室","C01_S09_首轮签约","C01_S10_渡口堵路","C01_S11_三盏灯"
+      ]],
+      ["正文","第二章 · 暗流涌动","../02_第二章_暗流涌动",[
+        "C02_S01_晨间三张纸与茶叶盒","C02_S02_三张连号发票","C02_S03_废弃粮站","C02_S04_三年不变的数据","C02_S05_吴秀英红圈名册","C02_S06_台阶上的状纸","C02_S07_红头文件","C02_S08_烟盒纸"
+      ]],
+      ["正文","第三章 · 风暴前夕","../03_第三章_风暴前夕",[
+        "C03_S01_巡察组进城","C03_S02_档案库房","C03_S03_雨夜叩门","C03_S04_医院血铅急诊","C03_S05_个别谈话室","C03_S06_巡察组下村"
+      ]],
+      ["正文","第四章 · 真相与谎言","../04_第四章_真相与谎言",[
+        "C04_S01_一百零七份体检单","C04_S02_台阶上的账本","C04_S03_果篮与信封","C04_S04_夜间祠堂","C04_S05_拥挤门诊楼","C04_S06_铁盒第二本账","C04_S07_拂晓迎检材料"
+      ]],
+      ["正文","第五章 · 最后冲刺","../05_第五章_最后冲刺",[
+        "C05_S01_三十天倒计时","C05_S02_白日祠堂","C05_S03_后山坟地控制线","C05_S04_周满仓院落账本","C05_S05_四十一年未签字","C05_S06_小卖部账本","C05_S07_儿科走廊补偿信封"
+      ]],
+      ["正文","第六章 · 验收之日","../06_第六章_验收之日",[
+        "C06_S01_招待所深夜审账","C06_S02_铁盒证物","C06_S03_第二波舆情","C06_S04_记者的稿子","C06_S05_十一项整改","C06_S06_搬迁后的空村","C06_S07_会前的门","C06_S08_常委会","C06_S09_第九十日县礼堂"
+      ]],
+      ["结局","主结局","../07_结局",[
+        "E01_铁窗之内","E02_一票否决","E03_强手收场","E04_祠堂封门","E05_掩耳盗铃","E06_全线溃败","E07_悲壮的失守","E08_功亏一篑","E09_串供过关","E10_粉饰太平","E11_报喜不报忧","E12_一手遮天","E13_弃车保帅","E14_捂住的账","E15_铁腕的代价","E16_人走心散","E17_独木难支","E18_记者的沉默","E19_巡察组的档案","E20_无知者的功劳","E21_揭而未治","E22_山河可鉴","E23_清白收官","E24_尘埃落定"
+      ]]
+    ];
+    const gallery = document.querySelector("#gallery");
+    groups.forEach(([kind,title,folder,items]) => {
+      const section = document.createElement("section");
+      section.className = "chapter";
+      section.dataset.kind = kind;
+      section.innerHTML = `<h2>${title} <small>(${items.length} 张)</small></h2><div class="grid"></div>`;
+      const grid = section.querySelector(".grid");
+      items.forEach(name => {
+        const cut = name.indexOf("_",name.indexOf("_")+1);
+        const code = cut > 0 ? name.slice(0,cut) : name.split("_")[0];
+        const label = cut > 0 ? name.slice(cut+1) : name.slice(name.indexOf("_")+1);
+        const figure = document.createElement("figure");
+        figure.innerHTML = `<a href="${folder}/${name}.png" target="_blank"><img src="${folder}/${name}.webp" alt="${label}" loading="lazy"></a><figcaption>${label}<span class="code">${code}</span></figcaption>`;
+        grid.append(figure);
+      });
+      gallery.append(section);
+    });
+    document.querySelectorAll("button[data-filter]").forEach(button => {
+      button.addEventListener("click", () => {
+        const filter = button.dataset.filter;
+        document.querySelectorAll("button[data-filter]").forEach(item => item.setAttribute("aria-pressed",String(item===button)));
+        document.querySelectorAll(".chapter").forEach(section => section.hidden = filter !== "全部" && section.dataset.kind !== filter);
+      });
+    });
+  </script>
+</body>
+</html>

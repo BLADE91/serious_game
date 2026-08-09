@@ -3,9 +3,17 @@ from __future__ import annotations
 from typing import Protocol
 
 from serious_game_backend.domain.game_session import GameSession
-from serious_game_backend.domain.llm import RoleTurnContext, RoleTurnResult
+from serious_game_backend.domain.llm import (
+    GovernanceLLMContext,
+    GovernanceLLMResult,
+    NightAgentContext,
+    NightAgentResult,
+    RoleTurnContext,
+    RoleTurnResult,
+)
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
 from serious_game_backend.domain.operation import OperationRecord
+from serious_game_backend.domain.snapshots import GameSnapshot, ManualSaveSlot
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.consent import ConsentDocument, ConsentRecord
 from serious_game_backend.domain.identity import Account, AuthSession
@@ -54,6 +62,8 @@ class SessionRequestRepository(Protocol):
 
 
 class RuntimeTransactionRepository(Protocol):
+    def recover_stale_operations(self, stale_before: str) -> int: ...
+
     def reserve_operation(
         self,
         session: GameSession,
@@ -79,12 +89,57 @@ class RuntimeTransactionRepository(Protocol):
     ) -> None: ...
 
 
+class SnapshotRepository(Protocol):
+    def get_owned(
+        self, account_id: str, session_id: str, snapshot_id: str
+    ) -> GameSnapshot | None: ...
+
+    def current_for_session(
+        self, session: GameSession
+    ) -> GameSnapshot | None: ...
+
+    def list_manual_slots(
+        self, account_id: str, session_id: str
+    ) -> tuple[tuple[ManualSaveSlot, GameSnapshot], ...]: ...
+
+    def list_history(
+        self, account_id: str, session_id: str, *, limit: int = 20
+    ) -> tuple[GameSnapshot, ...]: ...
+
+    def create_manual_save(
+        self,
+        session: GameSession,
+        *,
+        slot_number: int,
+        display_name: str,
+        overwrite: bool,
+        operation: OperationRecord,
+    ) -> tuple[ManualSaveSlot, GameSnapshot]: ...
+
+    def commit_load(
+        self,
+        current: GameSession,
+        restored: GameSession,
+        *,
+        expected_version: int,
+        source_snapshot: GameSnapshot,
+        result_snapshot: GameSnapshot,
+        operation: OperationRecord,
+    ) -> None: ...
+
+
 class ScriptPackageRepository(Protocol):
     def get(self, package_id: str) -> ScriptPackage | None: ...
 
 
 class RoleLLMGateway(Protocol):
     def run_turn(self, context: RoleTurnContext) -> RoleTurnResult: ...
+
+    def run_night_turn(self, context: NightAgentContext) -> NightAgentResult: ...
+
+    def run_governance_task(
+        self, context: GovernanceLLMContext
+    ) -> GovernanceLLMResult: ...
 
 
 class LLMCallAuditRepository(Protocol):

@@ -22,7 +22,8 @@ class ApiTests(unittest.TestCase):
             repository="memory",
             role_llm_provider="fake",
         )
-        self.client = TestClient(create_app(settings, build_container(settings)))
+        self.runtime = build_container(settings)
+        self.client = TestClient(create_app(settings, self.runtime))
         self.headers = {"X-Account-ID": "acct_api"}
 
     def _new_session(self) -> dict:
@@ -52,12 +53,13 @@ class ApiTests(unittest.TestCase):
             result["pending_decision"]["decision_id"],
         )
         self.assertEqual(4, len(result["pending_decision"]["options"]))
-        self.assertEqual("technical", result["story"]["origin"]["origin_id"])
+        self.assertEqual("mayor", result["story"]["origin"]["origin_id"])
         self.assertNotIn("env_clue", result)
 
         origins = self.client.get("/api/game/origins", headers=self.headers)
         self.assertEqual(200, origins.status_code, origins.text)
-        self.assertEqual(5, len(origins.json()["origins"]))
+        self.assertFalse(origins.json()["selection_required"])
+        self.assertEqual([], origins.json()["origins"])
 
         desk = self.client.get(
             f"/api/game/session/{result['session_id']}/desk", headers=self.headers
@@ -65,12 +67,20 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(200, desk.status_code, desk.text)
         desk_body = desk.json()
         self.assertEqual(5, len(desk_body["dossiers"]))
-        self.assertEqual(31, len(desk_body["tools"]))
+        self.assertEqual(
+            {
+                "household_visit",
+                "cadre_interview",
+                "leadership_meeting",
+                "inspect_archives",
+            },
+            {item["action_id"] for item in desk_body["tools"]},
+        )
         budget = desk_body["compensation_policy"]["current_budget"]
         self.assertEqual(7800, budget["remaining"])
         self.assertEqual(8000, budget["base_authorized"])
         self.assertEqual(200, budget["precoord_suspense"])
-        self.assertIn("具体计价参数待正式细则补全", desk_body["compensation_policy"]["status"])
+        self.assertIn("已签发", desk_body["compensation_policy"]["status"])
         self.assertTrue(all("description" in item for item in desk_body["tools"]))
 
     def test_llm_action_endpoint_runs_outside_event_loop(self) -> None:
@@ -104,6 +114,163 @@ class ApiTests(unittest.TestCase):
 
         other = self.client.get(
             f"/api/game/session/{session_id}", headers={"X-Account-ID": "acct_other"}
+        )
+        self.assertEqual(404, other.status_code)
+
+    def test_manual_save_history_and_timeline_load(self) -> None:
+        session = self._new_session()
+        session_id = session["session_id"]
+
+        initial = self.client.get(
+            f"/api/game/session/{session_id}/manual-saves",
+            headers=self.headers,
+        )
+        self.assertEqual(200, initial.status_code, initial.text)
+        self.assertEqual(1, len(initial.json()["recent_snapshots"]))
+        initial_timeline = initial.json()["timeline_id"]
+
+        first_save = self.client.post(
+            f"/api/game/session/{session_id}/manual-saves",
+            json={
+                "client_action_id": "api-manual-save-slot-1",
+                "state_version": 1,
+                "slot_number": 1,
+                "display_name": "开局",
+                "overwrite": False,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, first_save.status_code, first_save.text)
+        initial_snapshot_id = first_save.json()["snapshot_id"]
+        replay = self.client.post(
+            f"/api/game/session/{session_id}/manual-saves",
+            json={
+                "client_action_id": "api-manual-save-slot-1",
+                "state_version": 1,
+                "slot_number": 1,
+                "display_name": "开局",
+                "overwrite": False,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(first_save.json(), replay.json())
+        self.assertEqual(
+            1,
+            len(self.runtime.snapshots.list_history("acct_api", session_id)),
+        )
+
+        action = self.client.post(
+            f"/api/game/session/{session_id}/action",
+            json={
+                "input_mode": "decision",
+                "client_action_id": "api-save-action-0001",
+                "state_version": 1,
+                "decision_id": "ev1_01_reception_bag",
+                "option_id": "a_reject_on_site",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, action.status_code, action.text)
+        self.assertEqual(
+            2,
+            len(self.runtime.snapshots.list_history("acct_api", session_id)),
+        )
+
+        conflict = self.client.post(
+            f"/api/game/session/{session_id}/manual-saves",
+            json={
+                "client_action_id": "api-manual-save-conflict",
+                "state_version": 2,
+                "slot_number": 1,
+                "display_name": "行动后",
+                "overwrite": False,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(409, conflict.status_code, conflict.text)
+
+        overwritten = self.client.post(
+            f"/api/game/session/{session_id}/manual-saves",
+            json={
+                "client_action_id": "api-manual-save-overwrite",
+                "state_version": 2,
+                "slot_number": 1,
+                "display_name": "行动后",
+                "overwrite": True,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, overwritten.status_code, overwritten.text)
+        self.assertNotEqual(initial_snapshot_id, overwritten.json()["snapshot_id"])
+        self.assertIsNotNone(
+            self.runtime.snapshots.get_owned(
+                "acct_api", session_id, initial_snapshot_id
+            )
+        )
+
+        unconfirmed = self.client.post(
+            f"/api/game/session/{session_id}/load-snapshot",
+            json={
+                "client_action_id": "api-load-unconfirmed",
+                "state_version": 2,
+                "snapshot_id": initial_snapshot_id,
+                "confirmed": False,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(422, unconfirmed.status_code, unconfirmed.text)
+
+        loaded = self.client.post(
+            f"/api/game/session/{session_id}/load-snapshot",
+            json={
+                "client_action_id": "api-load-snapshot-0001",
+                "state_version": 2,
+                "snapshot_id": initial_snapshot_id,
+                "confirmed": True,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, loaded.status_code, loaded.text)
+        self.assertEqual(3, loaded.json()["state_version"])
+        self.assertNotEqual(initial_timeline, loaded.json()["timeline_id"])
+        self.assertEqual(initial_snapshot_id, loaded.json()["loaded_from_snapshot_id"])
+        self.assertEqual(
+            3,
+            len(self.runtime.snapshots.list_history("acct_api", session_id)),
+        )
+
+        stale = self.client.post(
+            f"/api/game/session/{session_id}/action",
+            json={
+                "input_mode": "decision",
+                "client_action_id": "api-stale-after-load",
+                "state_version": 2,
+                "decision_id": "ev1_01_reception_bag",
+                "option_id": "a_reject_on_site",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(409, stale.status_code, stale.text)
+        self.assertEqual(
+            3,
+            len(self.runtime.snapshots.list_history("acct_api", session_id)),
+        )
+
+        loaded_replay = self.client.post(
+            f"/api/game/session/{session_id}/load-snapshot",
+            json={
+                "client_action_id": "api-load-snapshot-0001",
+                "state_version": 2,
+                "snapshot_id": initial_snapshot_id,
+                "confirmed": True,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(loaded.json(), loaded_replay.json())
+
+        other = self.client.get(
+            f"/api/game/session/{session_id}/manual-saves",
+            headers={"X-Account-ID": "acct_other"},
         )
         self.assertEqual(404, other.status_code)
 
@@ -274,6 +441,25 @@ class ApiTests(unittest.TestCase):
         )
         self.assertIn("night", [item["kind"] for item in day_two_body["feed"]["items"]])
         self.assertIn("morning", [item["kind"] for item in day_two_body["feed"]["items"]])
+        night_texts = {
+            item["text"]
+            for item in day_two_body["feed"]["items"]
+            if item["kind"] == "night"
+        }
+        morning_texts = {
+            item["text"]
+            for item in day_two_body["feed"]["items"]
+            if item["kind"] == "morning_card"
+        }
+        self.assertFalse(night_texts & morning_texts)
+        structured_items = [
+            item
+            for item in day_two_body["feed"]["items"]
+            if item["kind"] in {"night", "morning_card", "narration", "dialogue"}
+        ]
+        self.assertTrue(
+            all(item["content_instance_id"] for item in structured_items)
+        )
 
         taskforce = self.client.post(
             f"/api/game/session/{session_id}/action",
@@ -293,21 +479,24 @@ class ApiTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(200, opportunities.status_code, opportunities.text)
-        self.assertEqual(
-            ["opp_d02_wu_xiuying_first_talk"],
-            [
+        self.assertIn(
+            "opp_d02_wu_xiuying_first_talk",
+            {
                 item["opportunity_id"]
                 for item in opportunities.json()["opportunities"]
-            ],
+            },
         )
-        first_opportunity = opportunities.json()["opportunities"][0]
+        first_opportunity = next(
+            item for item in opportunities.json()["opportunities"]
+            if item["opportunity_id"] == "opp_d02_wu_xiuying_first_talk"
+        )
         self.assertEqual("吴秀英", first_opportunity["npc_name"])
         self.assertEqual("村民代表，退休教师", first_opportunity["npc_title"])
         self.assertIn("退休教师", first_opportunity["npc_introduction"])
         self.assertEqual("入户走访", first_opportunity["action_name"])
         self.assertIn("剧情后续交谈", first_opportunity["conversation_context"])
         self.assertEqual(
-            ["清江搬迁补偿政策底册"],
+            ["云溪县柳林村整体搬迁补偿安置方案"],
             [item["title"] for item in first_opportunity["related_materials"]],
         )
 
@@ -356,7 +545,7 @@ class ApiTests(unittest.TestCase):
             f"/api/game/session/{session_id}/opportunities", headers=self.headers
         ).json()["opportunities"][0]
         self.assertEqual(
-            ["柳林村宗族权力图", "清江搬迁补偿政策底册"],
+            ["柳林村宗族权力图", "云溪县柳林村整体搬迁补偿安置方案"],
             [item["title"] for item in active_opportunity["related_materials"]],
         )
 

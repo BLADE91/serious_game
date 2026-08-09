@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
@@ -10,6 +10,9 @@ from typing import Iterator
 from serious_game_backend.domain.errors import StateVersionConflictError
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.operation import OperationRecord
+from serious_game_backend.domain.enums import OperationStatus
+from serious_game_backend.domain.errors import ActionUnavailableError
+from serious_game_backend.domain.snapshots import GameSnapshot, ManualSaveSlot
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
 from serious_game_backend.domain.consent import ConsentDocument, ConsentRecord
 from serious_game_backend.domain.identity import Account, AuthSession
@@ -26,6 +29,7 @@ from serious_game_backend.infrastructure.repositories.codec import (
     encode_session,
 )
 from serious_game_backend.infrastructure.migrations import SqliteMigrationRunner
+from serious_game_backend.infrastructure.repositories.snapshot_codec import build_snapshot
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
@@ -58,6 +62,321 @@ class SqliteRuntimeStore:
         SqliteMigrationRunner(
             self.path, BACKEND_ROOT / "migrations" / "sqlite"
         ).migrate()
+        self._backfill_current_snapshots()
+
+    def _backfill_current_snapshots(self) -> None:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                select s.payload_json
+                from runtime_game_sessions s
+                where not exists (
+                  select 1 from runtime_game_snapshots p
+                  where p.session_id = s.session_id
+                )
+                """
+            ).fetchall()
+            for row in rows:
+                session = decode_session(json.loads(row["payload_json"]))
+                _insert_snapshot(
+                    connection,
+                    build_snapshot(
+                        session,
+                        snapshot_type="checkpoint",
+                        reason="migration_backfill",
+                    ),
+                )
+
+
+def _snapshot_from_row(row: sqlite3.Row) -> GameSnapshot:
+    return GameSnapshot(
+        snapshot_id=str(row["snapshot_id"]),
+        session_id=str(row["session_id"]),
+        account_id=str(row["account_id"]),
+        timeline_id=str(row["timeline_id"]),
+        snapshot_type=str(row["snapshot_type"]),
+        reason=str(row["reason"]),
+        story_day=int(row["story_day"]),
+        state_version=int(row["state_version"]),
+        package_id=str(row["package_id"]),
+        package_version=str(row["package_version"]),
+        package_content_hash=str(row["package_content_hash"]),
+        snapshot_hash=str(row["snapshot_hash"]),
+        parent_snapshot_id=row["parent_snapshot_id"],
+        created_at=str(row["created_at"]),
+        session_payload=json.loads(row["payload_json"]),
+    )
+
+
+def _insert_snapshot(
+    connection: sqlite3.Connection, snapshot: GameSnapshot
+) -> None:
+    connection.execute(
+        """
+        insert into runtime_game_snapshots(
+          snapshot_id, session_id, account_id, timeline_id, snapshot_type,
+          reason, story_day, state_version, package_id, package_version,
+          package_content_hash, snapshot_hash, parent_snapshot_id,
+          created_at, payload_json
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            snapshot.snapshot_id,
+            snapshot.session_id,
+            snapshot.account_id,
+            snapshot.timeline_id,
+            snapshot.snapshot_type,
+            snapshot.reason,
+            snapshot.story_day,
+            snapshot.state_version,
+            snapshot.package_id,
+            snapshot.package_version,
+            snapshot.package_content_hash,
+            snapshot.snapshot_hash,
+            snapshot.parent_snapshot_id,
+            snapshot.created_at,
+            dumps(snapshot.session_payload),
+        ),
+    )
+
+
+class SqliteSnapshotRepository:
+    def __init__(self, store: SqliteRuntimeStore) -> None:
+        self._store = store
+
+    def get_owned(
+        self, account_id: str, session_id: str, snapshot_id: str
+    ) -> GameSnapshot | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                """
+                select * from runtime_game_snapshots
+                where account_id = ? and session_id = ? and snapshot_id = ?
+                """,
+                (account_id, session_id, snapshot_id),
+            ).fetchone()
+        return _snapshot_from_row(row) if row is not None else None
+
+    def current_for_session(self, session: GameSession) -> GameSnapshot | None:
+        with self._store.connect() as connection:
+            row = connection.execute(
+                """
+                select * from runtime_game_snapshots
+                where account_id = ? and session_id = ? and timeline_id = ?
+                  and state_version = ?
+                """,
+                (
+                    session.account_id,
+                    session.session_id,
+                    session.timeline_id,
+                    session.state_version,
+                ),
+            ).fetchone()
+        return _snapshot_from_row(row) if row is not None else None
+
+    def list_manual_slots(
+        self, account_id: str, session_id: str
+    ) -> tuple[tuple[ManualSaveSlot, GameSnapshot], ...]:
+        with self._store.connect() as connection:
+            rows = connection.execute(
+                """
+                select s.account_id as slot_account_id,
+                       s.session_id as slot_session_id,
+                       s.slot_number, s.snapshot_id as slot_snapshot_id,
+                       s.display_name, s.updated_at as slot_updated_at,
+                       p.*
+                from runtime_manual_save_slots s
+                join runtime_game_snapshots p on p.snapshot_id = s.snapshot_id
+                where s.account_id = ? and s.session_id = ?
+                order by s.slot_number
+                """,
+                (account_id, session_id),
+            ).fetchall()
+        return tuple(
+            (
+                ManualSaveSlot(
+                    account_id=str(row["slot_account_id"]),
+                    session_id=str(row["slot_session_id"]),
+                    slot_number=int(row["slot_number"]),
+                    snapshot_id=str(row["slot_snapshot_id"]),
+                    display_name=str(row["display_name"]),
+                    updated_at=str(row["slot_updated_at"]),
+                ),
+                _snapshot_from_row(row),
+            )
+            for row in rows
+        )
+
+    def list_history(
+        self, account_id: str, session_id: str, *, limit: int = 20
+    ) -> tuple[GameSnapshot, ...]:
+        with self._store.connect() as connection:
+            rows = connection.execute(
+                """
+                select * from runtime_game_snapshots
+                where account_id = ? and session_id = ?
+                order by created_at desc, state_version desc limit ?
+                """,
+                (account_id, session_id, limit),
+            ).fetchall()
+        return tuple(_snapshot_from_row(row) for row in rows)
+
+    def create_manual_save(
+        self,
+        session: GameSession,
+        *,
+        slot_number: int,
+        display_name: str,
+        overwrite: bool,
+        operation: OperationRecord,
+    ) -> tuple[ManualSaveSlot, GameSnapshot]:
+        with self._store.connect() as connection:
+            state_row = connection.execute(
+                """
+                select state_version, processing_action_id
+                from runtime_game_sessions
+                where account_id = ? and session_id = ?
+                """,
+                (session.account_id, session.session_id),
+            ).fetchone()
+            if (
+                state_row is None
+                or int(state_row["state_version"]) != session.state_version
+                or state_row["processing_action_id"] is not None
+            ):
+                raise StateVersionConflictError("状态版本已变化或游戏正在处理操作")
+            snapshot_row = connection.execute(
+                """
+                select * from runtime_game_snapshots
+                where account_id = ? and session_id = ? and timeline_id = ?
+                  and state_version = ?
+                """,
+                (
+                    session.account_id,
+                    session.session_id,
+                    session.timeline_id,
+                    session.state_version,
+                ),
+            ).fetchone()
+            if snapshot_row is None:
+                raise StateVersionConflictError("当前稳定状态缺少历史快照")
+            existing = connection.execute(
+                """
+                select snapshot_id from runtime_manual_save_slots
+                where account_id = ? and session_id = ? and slot_number = ?
+                """,
+                (session.account_id, session.session_id, slot_number),
+            ).fetchone()
+            if existing is not None and not overwrite:
+                raise ActionUnavailableError("手动存档槽位已存在，覆盖前必须确认")
+            snapshot = _snapshot_from_row(snapshot_row)
+            if existing is None:
+                connection.execute(
+                    """
+                    insert into runtime_manual_save_slots(
+                      account_id, session_id, slot_number, snapshot_id,
+                      display_name, updated_at
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session.account_id,
+                        session.session_id,
+                        slot_number,
+                        snapshot.snapshot_id,
+                        display_name,
+                        operation.updated_at,
+                    ),
+                )
+            else:
+                connection.execute(
+                    """
+                    update runtime_manual_save_slots
+                    set snapshot_id = ?, display_name = ?, updated_at = ?
+                    where account_id = ? and session_id = ? and slot_number = ?
+                    """,
+                    (
+                        snapshot.snapshot_id,
+                        display_name,
+                        operation.updated_at,
+                        session.account_id,
+                        session.session_id,
+                        slot_number,
+                    ),
+                )
+            connection.execute(
+                """
+                insert into runtime_operations(
+                  operation_id, account_id, session_id, client_action_id,
+                  status, payload_json
+                ) values (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    operation.operation_id,
+                    operation.account_id,
+                    operation.session_id,
+                    operation.client_action_id,
+                    operation.status.value,
+                    dumps(encode_operation(operation)),
+                ),
+            )
+        slot = ManualSaveSlot(
+            account_id=session.account_id,
+            session_id=session.session_id,
+            slot_number=slot_number,
+            snapshot_id=snapshot.snapshot_id,
+            display_name=display_name,
+            updated_at=operation.updated_at,
+        )
+        return slot, snapshot
+
+    def commit_load(
+        self,
+        current: GameSession,
+        restored: GameSession,
+        *,
+        expected_version: int,
+        source_snapshot: GameSnapshot,
+        result_snapshot: GameSnapshot,
+        operation: OperationRecord,
+    ) -> None:
+        with self._store.connect() as connection:
+            cursor = connection.execute(
+                """
+                update runtime_game_sessions
+                set status = ?, state_version = ?, processing_action_id = null,
+                    updated_at = ?, payload_json = ?
+                where session_id = ? and account_id = ? and state_version = ?
+                  and processing_action_id is null
+                """,
+                (
+                    restored.status.value,
+                    restored.state_version,
+                    restored.updated_at,
+                    dumps(encode_session(restored)),
+                    current.session_id,
+                    current.account_id,
+                    expected_version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise StateVersionConflictError("加载存档时状态版本已变化")
+            _insert_snapshot(connection, result_snapshot)
+            connection.execute(
+                """
+                insert into runtime_operations(
+                  operation_id, account_id, session_id, client_action_id,
+                  status, payload_json
+                ) values (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    operation.operation_id,
+                    operation.account_id,
+                    operation.session_id,
+                    operation.client_action_id,
+                    operation.status.value,
+                    dumps(encode_operation(operation)),
+                ),
+            )
 
 
 class SqliteLLMCallAuditRepository:
@@ -367,6 +686,71 @@ class SqliteRuntimeTransactionRepository:
     def __init__(self, store: SqliteRuntimeStore) -> None:
         self._store = store
 
+    def recover_stale_operations(self, stale_before: str) -> int:
+        recovered = 0
+        with self._store.connect() as connection:
+            rows = connection.execute(
+                """
+                select payload_json from runtime_operations
+                where status = 'processing'
+                """
+            ).fetchall()
+            for row in rows:
+                operation = decode_operation(json.loads(row["payload_json"]))
+                if (
+                    operation.updated_at > stale_before
+                    or operation.session_id is None
+                ):
+                    continue
+                session_row = connection.execute(
+                    """
+                    select payload_json from runtime_game_sessions
+                    where session_id = ? and account_id = ?
+                      and processing_action_id = ?
+                    """,
+                    (
+                        operation.session_id,
+                        operation.account_id,
+                        operation.operation_id,
+                    ),
+                ).fetchone()
+                if session_row is None:
+                    continue
+                session = decode_session(json.loads(session_row["payload_json"]))
+                session.processing_action_id = None
+                session.touch()
+                failed = replace(
+                    operation,
+                    status=OperationStatus.FAILED_RETRYABLE,
+                    error={
+                        "code": "OPERATION_LEASE_EXPIRED",
+                        "message": "操作进程中断，已释放占用；请显式重试",
+                        "details": {},
+                        "http_status": 409,
+                    },
+                    updated_at=session.updated_at,
+                )
+                cursor = connection.execute(
+                    """
+                    update runtime_game_sessions
+                    set processing_action_id = null, updated_at = ?, payload_json = ?
+                    where session_id = ? and account_id = ?
+                      and processing_action_id = ?
+                    """,
+                    (
+                        session.updated_at,
+                        dumps(encode_session(session)),
+                        session.session_id,
+                        session.account_id,
+                        operation.operation_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    continue
+                self._update_operation(connection, failed)
+                recovered += 1
+        return recovered
+
     def reserve_operation(
         self,
         session: GameSession,
@@ -431,6 +815,29 @@ class SqliteRuntimeTransactionRepository:
             if cursor.rowcount != 1:
                 raise StateVersionConflictError("动作预留已失效或状态版本冲突")
             self._update_operation(connection, operation)
+            if (
+                operation.status is OperationStatus.SUCCEEDED
+                and session.state_version > expected_version
+            ):
+                parent = connection.execute(
+                    """
+                    select snapshot_id from runtime_game_snapshots
+                    where session_id = ? and account_id = ? and timeline_id = ?
+                    order by state_version desc limit 1
+                    """,
+                    (session.session_id, session.account_id, session.timeline_id),
+                ).fetchone()
+                _insert_snapshot(
+                    connection,
+                    build_snapshot(
+                        session,
+                        snapshot_type="auto",
+                        reason="operation_committed",
+                        parent_snapshot_id=(
+                            str(parent["snapshot_id"]) if parent is not None else None
+                        ),
+                    ),
+                )
             if research_event is not None:
                 connection.execute(
                     """
@@ -487,6 +894,14 @@ class SqliteRuntimeTransactionRepository:
                 )
                 if cursor.rowcount != 1:
                     raise ValueError("session request does not exist or is completed")
+                _insert_snapshot(
+                    connection,
+                    build_snapshot(
+                        session,
+                        snapshot_type="checkpoint",
+                        reason="session_started",
+                    ),
+                )
         except sqlite3.IntegrityError as exc:
             raise ValueError("duplicate session_id") from exc
 

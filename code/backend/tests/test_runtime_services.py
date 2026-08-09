@@ -162,8 +162,29 @@ class RuntimeServiceTests(unittest.TestCase):
         self.assertGreater(len(self.session.narrative_feed), 0)
         self.assertEqual("technical", self.session.origin_id)
         opening_text = "\n".join(item.text for item in self.session.narrative_feed)
-        self.assertIn("若你是技术派出身", opening_text)
+        self.assertNotIn("若你是", opening_text)
         self.assertNotIn("若你是基层派出身", opening_text)
+
+    def test_structured_story_blocks_have_stable_ids_and_are_not_appended_twice(self) -> None:
+        package = self.packages.get("pkg_backend_dev_v1")
+        original_count = len(self.session.narrative_feed)
+        original_cursor = self.session.next_feed_cursor
+        self.assertTrue(
+            all(
+                item.content_instance_id
+                for item in self.session.narrative_feed
+            )
+        )
+        self.assertEqual(
+            len(self.session.rendered_content_ids),
+            len(self.session.narrative_feed),
+        )
+
+        self.story_flow.enter_current_day(self.session, package)
+        self.story_flow.enter_current_day(self.session, package)
+
+        self.assertEqual(original_count, len(self.session.narrative_feed))
+        self.assertEqual(original_cursor, self.session.next_feed_cursor)
 
     def test_ownership_query_does_not_leak_session(self) -> None:
         with self.assertRaises(NotFoundError):

@@ -14,6 +14,9 @@ from serious_game_backend.application.ports import (
     SessionRequestRepository,
 )
 from serious_game_backend.application.story_flow_service import StoryFlowService
+from serious_game_backend.application.governance_initializer import (
+    initialize_governance_state,
+)
 from serious_game_backend.application.experiment_assignment_service import (
     ExperimentAssignmentService,
 )
@@ -149,6 +152,7 @@ class GameSessionService:
             random_seed=secrets.token_hex(32),
             game_state=GameState.new_game(package.initial_state),
             origin_id=origin_id,
+            timeline_id=f"timeline_{secrets.token_hex(16)}",
             environment=self._environment,
             consent_record_id=(consent.consent_record_id if consent else None),
             research_subject_id=(
@@ -163,6 +167,7 @@ class GameSessionService:
                 (package.origin_npc_attitude_modifiers or {}).get(origin_id, {}),
             ),
         )
+        initialize_governance_state(session, package)
         self._events.trigger_fixed_events(session, package)
         self._story_flow.initialize(session, package)
         now = utc_now_iso()

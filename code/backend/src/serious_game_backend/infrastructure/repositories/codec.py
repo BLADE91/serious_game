@@ -16,11 +16,24 @@ from serious_game_backend.domain.events import (
     VisibleEvent,
 )
 from serious_game_backend.domain.game_session import GameSession
-from serious_game_backend.domain.conversation import ActiveConversation
+from serious_game_backend.domain.conversation import (
+    ActiveConversation,
+    ForcedGroupConversation,
+)
 from serious_game_backend.domain.game_state import GameState
 from serious_game_backend.domain.household_settlement import (
     D75SettlementSnapshot,
     HouseholdSettlementEntry,
+)
+from serious_game_backend.domain.gameplay_governance import (
+    AdministrativeDocument,
+    ArchiveRecord,
+    ContractBatch,
+    ContractVersion,
+    GovernanceActionRecord,
+    HouseholdContract,
+    MeetingRecord,
+    ResourceReservation,
 )
 from serious_game_backend.domain.npc_state import NPCState
 from serious_game_backend.domain.operation import OperationRecord
@@ -55,7 +68,7 @@ def encode_session(session: GameSession) -> dict:
             "context": session.pending_decision.context,
         }
     return {
-        "schema_version": 4,
+        "schema_version": 9,
         "session_id": session.session_id,
         "account_id": session.account_id,
         "package_id": session.package_id,
@@ -63,6 +76,8 @@ def encode_session(session: GameSession) -> dict:
         "package_content_hash": session.package_content_hash,
         "random_seed": session.random_seed,
         "origin_id": session.origin_id,
+        "timeline_id": session.timeline_id,
+        "loaded_from_snapshot_id": session.loaded_from_snapshot_id,
         "environment": session.environment,
         "consent_record_id": session.consent_record_id,
         "research_subject_id": session.research_subject_id,
@@ -99,6 +114,7 @@ def encode_session(session: GameSession) -> dict:
         "visible_events": [asdict(item) for item in session.visible_events],
         "story_beat_id": session.story_beat_id,
         "narrative_feed": [asdict(item) for item in session.narrative_feed],
+        "rendered_content_ids": sorted(session.rendered_content_ids),
         "next_feed_cursor": session.next_feed_cursor,
         "known_fact_ids": sorted(session.known_fact_ids),
         "night_logs": session.night_logs,
@@ -108,6 +124,14 @@ def encode_session(session: GameSession) -> dict:
             asdict(session.active_conversation)
             if session.active_conversation is not None else None
         ),
+        "active_group_conversation": (
+            asdict(session.active_group_conversation)
+            if session.active_group_conversation is not None else None
+        ),
+        "group_conversation_queue": [
+            asdict(item) for item in session.group_conversation_queue
+        ],
+        "completed_group_conversations": session.completed_group_conversations,
         "d75_settlement_snapshot": (
             asdict(session.d75_settlement_snapshot)
             if session.d75_settlement_snapshot is not None else None
@@ -115,6 +139,29 @@ def encode_session(session: GameSession) -> dict:
         "household_settlement_entries": [
             asdict(item) for item in session.household_settlement_entries
         ],
+        "governance_actions": {
+            key: asdict(item) for key, item in session.governance_actions.items()
+        },
+        "archive_records": {
+            key: asdict(item) for key, item in session.archive_records.items()
+        },
+        "meetings": {
+            key: asdict(item) for key, item in session.meetings.items()
+        },
+        "administrative_documents": {
+            key: asdict(item)
+            for key, item in session.administrative_documents.items()
+        },
+        "contract_batches": {
+            key: asdict(item) for key, item in session.contract_batches.items()
+        },
+        "household_contracts": {
+            key: asdict(item) for key, item in session.household_contracts.items()
+        },
+        "resource_reservations": [
+            asdict(item) for item in session.resource_reservations
+        ],
+        "resource_ledger_entries": session.resource_ledger_entries,
         "logs": session.logs,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
@@ -152,6 +199,10 @@ def decode_session(value: dict) -> GameSession:
         random_seed=str(value["random_seed"]),
         game_state=GameState(**value["game_state"]),
         origin_id=str(value["origin_id"]),
+        timeline_id=str(
+            value.get("timeline_id") or f"timeline_{value['session_id']}"
+        ),
+        loaded_from_snapshot_id=value.get("loaded_from_snapshot_id"),
         environment=str(value.get("environment", "sandbox")),
         consent_record_id=value.get("consent_record_id"),
         research_subject_id=value.get("research_subject_id"),
@@ -200,6 +251,7 @@ def decode_session(value: dict) -> GameSession:
             VisibleNarrativeEntry(**item)
             for item in value.get("narrative_feed", [])
         ],
+        rendered_content_ids=set(value.get("rendered_content_ids", [])),
         next_feed_cursor=int(value.get("next_feed_cursor", 1)),
         known_fact_ids=set(value.get("known_fact_ids", [])),
         night_logs=list(value.get("night_logs", [])),
@@ -209,6 +261,31 @@ def decode_session(value: dict) -> GameSession:
             ActiveConversation(**value["active_conversation"])
             if value.get("active_conversation") is not None else None
         ),
+        active_group_conversation=(
+            ForcedGroupConversation(**{
+                **value["active_group_conversation"],
+                "participant_ids": tuple(
+                    value["active_group_conversation"].get(
+                        "participant_ids", ()
+                    )
+                ),
+                "demands": tuple(
+                    value["active_group_conversation"].get("demands", ())
+                ),
+            })
+            if value.get("active_group_conversation") is not None else None
+        ),
+        group_conversation_queue=[
+            ForcedGroupConversation(**{
+                **item,
+                "participant_ids": tuple(item.get("participant_ids", ())),
+                "demands": tuple(item.get("demands", ())),
+            })
+            for item in value.get("group_conversation_queue", [])
+        ],
+        completed_group_conversations=list(
+            value.get("completed_group_conversations", [])
+        ),
         d75_settlement_snapshot=(
             D75SettlementSnapshot(**value["d75_settlement_snapshot"])
             if value.get("d75_settlement_snapshot") is not None
@@ -217,6 +294,70 @@ def decode_session(value: dict) -> GameSession:
         household_settlement_entries=[
             HouseholdSettlementEntry(**item)
             for item in value.get("household_settlement_entries", [])
+        ],
+        governance_actions={
+            key: GovernanceActionRecord(**{
+                **item,
+                "target_ids": tuple(item.get("target_ids", ())),
+                "required_permissions": tuple(
+                    item.get("required_permissions", ())
+                ),
+                "archive_ids": tuple(item.get("archive_ids", ())),
+            })
+            for key, item in value.get("governance_actions", {}).items()
+        },
+        archive_records={
+            key: ArchiveRecord(**{
+                **item,
+                "related_npc_ids": tuple(item.get("related_npc_ids", ())),
+            })
+            for key, item in value.get("archive_records", {}).items()
+        },
+        meetings={
+            key: MeetingRecord(**{
+                **item,
+                "participant_ids": tuple(item.get("participant_ids", ())),
+            })
+            for key, item in value.get("meetings", {}).items()
+        },
+        administrative_documents={
+            key: AdministrativeDocument(**{
+                **item,
+                "required_countersign_ids": tuple(
+                    item.get("required_countersign_ids", ())
+                ),
+                "countersigned_by": tuple(item.get("countersigned_by", ())),
+                "public_scope": tuple(item.get("public_scope", ())),
+            })
+            for key, item in value.get("administrative_documents", {}).items()
+        },
+        contract_batches={
+            key: ContractBatch(**{
+                **item,
+                "household_ids": tuple(item.get("household_ids", ())),
+                "contract_ids": tuple(item.get("contract_ids", ())),
+            })
+            for key, item in value.get("contract_batches", {}).items()
+        },
+        household_contracts={
+            key: HouseholdContract(**{
+                **item,
+                "versions": [
+                    ContractVersion(**{
+                        **version,
+                        "warnings": tuple(version.get("warnings", ())),
+                    })
+                    for version in item.get("versions", [])
+                ],
+            })
+            for key, item in value.get("household_contracts", {}).items()
+        },
+        resource_reservations=[
+            ResourceReservation(**item)
+            for item in value.get("resource_reservations", [])
+        ],
+        resource_ledger_entries=[
+            dict(item) for item in value.get("resource_ledger_entries", [])
         ],
         logs=list(value.get("logs", [])),
         created_at=str(value["created_at"]),

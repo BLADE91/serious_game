@@ -1,0 +1,1057 @@
+{
+  "title": "《流域抉择》全剧本人物立绘库",
+  "source_script": "C:/Users/章钊林/Desktop/严肃游戏/严肃游戏/serious_game_code/最终剧本.md",
+  "generated_by": "00_build_character_library.py",
+  "style_baseline": "明亮温暖的叙事像素风，带手绘纸张质感；人物半写实比例但保留像素块面，透明背景 PNG 为母版，WebP/缩略图供前端加载。",
+  "characters": [
+    {
+      "name": "赵建国",
+      "group": "推进搬迁/县内权力",
+      "role": "常务副县长",
+      "age": "56岁",
+      "short": "本土派老干部",
+      "use": "班子掣肘者，贪腐线和环评隐瞒关键人物",
+      "visual": "深色行政夹克，手持茶杯或文件，面上和气、眼神精明",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "赵建国.png",
+        "webp": "webp/赵建国.webp",
+        "thumb": "thumbs/赵建国.webp"
+      },
+      "qa": {
+        "name": "赵建国",
+        "status": "ok",
+        "width": 377,
+        "height": 871,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          345,
+          839
+        ],
+        "transparent_corners": true,
+        "png_bytes": 296043,
+        "webp_bytes": 45380,
+        "thumb_bytes": 19708
+      }
+    },
+    {
+      "name": "郑向东",
+      "group": "推进搬迁/县内权力",
+      "role": "县长秘书",
+      "age": "36岁",
+      "short": "办公室出身",
+      "use": "玩家身边的信息漏斗和风险镜子",
+      "visual": "浅灰衬衫，抱笔记本/文件夹，谨慎克制",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "郑向东.png",
+        "webp": "webp/郑向东.webp",
+        "thumb": "thumbs/郑向东.webp"
+      },
+      "qa": {
+        "name": "郑向东",
+        "status": "ok",
+        "width": 350,
+        "height": 831,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          318,
+          799
+        ],
+        "transparent_corners": true,
+        "png_bytes": 224153,
+        "webp_bytes": 36546,
+        "thumb_bytes": 18714
+      }
+    },
+    {
+      "name": "冯敬之",
+      "group": "推进搬迁/县内权力",
+      "role": "县财政局长",
+      "age": "51岁",
+      "short": "账本型干部",
+      "use": "预算、程序与财政底线的闸口",
+      "visual": "眼镜，深色马甲或规整衬衫，拿硬壳账本",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "冯敬之.png",
+        "webp": "webp/冯敬之.webp",
+        "thumb": "thumbs/冯敬之.webp"
+      },
+      "qa": {
+        "name": "冯敬之",
+        "status": "ok",
+        "width": 381,
+        "height": 864,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          349,
+          832
+        ],
+        "transparent_corners": true,
+        "png_bytes": 277427,
+        "webp_bytes": 43660,
+        "thumb_bytes": 20146
+      }
+    },
+    {
+      "name": "贺兴邦",
+      "group": "推进搬迁/县内权力",
+      "role": "县卫健局副局长",
+      "age": "48岁",
+      "short": "医疗兜底递交者",
+      "use": "血铅名册与医疗兜底线的关键递交者",
+      "visual": "白衬衫加旧外套，怀抱体检名册，疲惫焦虑",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "贺兴邦.png",
+        "webp": "webp/贺兴邦.webp",
+        "thumb": "thumbs/贺兴邦.webp"
+      },
+      "qa": {
+        "name": "贺兴邦",
+        "status": "ok",
+        "width": 371,
+        "height": 854,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          339,
+          822
+        ],
+        "transparent_corners": true,
+        "png_bytes": 319604,
+        "webp_bytes": 55584,
+        "thumb_bytes": 22492
+      }
+    },
+    {
+      "name": "柯启年",
+      "group": "推进搬迁/县内权力",
+      "role": "县环保站站长",
+      "age": "48岁",
+      "short": "环保台账守门人",
+      "use": "环保台账、监测点位变更与隐瞒线的闸门",
+      "visual": "褪色环保站工装，胸牌，旧监测仪/台账",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "柯启年.png",
+        "webp": "webp/柯启年.webp",
+        "thumb": "thumbs/柯启年.webp"
+      },
+      "qa": {
+        "name": "柯启年",
+        "status": "ok",
+        "width": 395,
+        "height": 844,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          363,
+          812
+        ],
+        "transparent_corners": true,
+        "png_bytes": 326646,
+        "webp_bytes": 57358,
+        "thumb_bytes": 23614
+      }
+    },
+    {
+      "name": "钱伟",
+      "group": "推进搬迁/企业",
+      "role": "宏达化工法人代表",
+      "age": "48岁",
+      "short": "企业利益代言人",
+      "use": "企业利益和行贿线主动出手者",
+      "visual": "西装革履，名片夹或烟盒，笑容圆滑",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "钱伟.png",
+        "webp": "webp/钱伟.webp",
+        "thumb": "thumbs/钱伟.webp"
+      },
+      "qa": {
+        "name": "钱伟",
+        "status": "ok",
+        "width": 365,
+        "height": 883,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          333,
+          851
+        ],
+        "transparent_corners": true,
+        "png_bytes": 280908,
+        "webp_bytes": 47618,
+        "thumb_bytes": 20074
+      }
+    },
+    {
+      "name": "孙强",
+      "group": "推进搬迁/基层",
+      "role": "渡口镇党委书记",
+      "age": "45岁",
+      "short": "夹心层干部",
+      "use": "基层执行主力，承接县里与村里的双重压力",
+      "visual": "镇干部夹克，手拿手机和材料，疲惫有压力",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "孙强.png",
+        "webp": "webp/孙强.webp",
+        "thumb": "thumbs/孙强.webp"
+      },
+      "qa": {
+        "name": "孙强",
+        "status": "ok",
+        "width": 368,
+        "height": 847,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          336,
+          815
+        ],
+        "transparent_corners": true,
+        "png_bytes": 278951,
+        "webp_bytes": 44626,
+        "thumb_bytes": 20306
+      }
+    },
+    {
+      "name": "张立",
+      "group": "外部压力",
+      "role": "市委巡察组组长",
+      "age": "50岁左右",
+      "short": "上级监督压力",
+      "use": "人事线执棋人，巡察与问责压力来源",
+      "visual": "深色正装，手持卷宗，站姿笔直，冷面少表情",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "张立.png",
+        "webp": "webp/张立.webp",
+        "thumb": "thumbs/张立.webp"
+      },
+      "qa": {
+        "name": "张立",
+        "status": "ok",
+        "width": 381,
+        "height": 851,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          349,
+          819
+        ],
+        "transparent_corners": true,
+        "png_bytes": 267804,
+        "webp_bytes": 39630,
+        "thumb_bytes": 18472
+      }
+    },
+    {
+      "name": "顾克明",
+      "group": "外部压力",
+      "role": "市生态环境局副局长",
+      "age": "55岁",
+      "short": "环保验收判词",
+      "use": "环保验收判词，事实函数",
+      "visual": "风衣或环保系统夹克，采样瓶/报告夹，沉稳不接烟",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "顾克明.png",
+        "webp": "webp/顾克明.webp",
+        "thumb": "thumbs/顾克明.webp"
+      },
+      "qa": {
+        "name": "顾克明",
+        "status": "ok",
+        "width": 387,
+        "height": 863,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          355,
+          831
+        ],
+        "transparent_corners": true,
+        "png_bytes": 292893,
+        "webp_bytes": 44854,
+        "thumb_bytes": 19998
+      }
+    },
+    {
+      "name": "陈默",
+      "group": "外部压力",
+      "role": "独立调查记者",
+      "age": "30多岁",
+      "short": "舆论导火索",
+      "use": "偷排视频与体检单持有者，推动舆论压力",
+      "visual": "户外夹克，背包，相机/手机，眼神锐利",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "陈默.png",
+        "webp": "webp/陈默.webp",
+        "thumb": "thumbs/陈默.webp"
+      },
+      "qa": {
+        "name": "陈默",
+        "status": "ok",
+        "width": 393,
+        "height": 867,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          361,
+          835
+        ],
+        "transparent_corners": true,
+        "png_bytes": 350263,
+        "webp_bytes": 64480,
+        "thumb_bytes": 26232
+      }
+    },
+    {
+      "name": "王芳",
+      "group": "外部压力",
+      "role": "县电视台记者",
+      "age": "30多岁",
+      "short": "官方舆论阀门",
+      "use": "官方舆论阀门，也可能倒向事实与陈默",
+      "visual": "利落职业装，话筒或采访本，笑容克制",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "王芳.png",
+        "webp": "webp/王芳.webp",
+        "thumb": "thumbs/王芳.webp"
+      },
+      "qa": {
+        "name": "王芳",
+        "status": "ok",
+        "width": 293,
+        "height": 856,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          261,
+          824
+        ],
+        "transparent_corners": true,
+        "png_bytes": 223221,
+        "webp_bytes": 37360,
+        "thumb_bytes": 17970
+      }
+    },
+    {
+      "name": "周大山",
+      "group": "柳林村/村庄核心",
+      "role": "村支书兼主任",
+      "age": "67岁",
+      "short": "周氏族长",
+      "use": "宗族核心、村庄阻力与村账黑洞",
+      "visual": "深棕夹克或老式干部装，茶缸/手杖，族长气场",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "周大山.png",
+        "webp": "webp/周大山.webp",
+        "thumb": "thumbs/周大山.webp"
+      },
+      "qa": {
+        "name": "周大山",
+        "status": "ok",
+        "width": 405,
+        "height": 843,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          373,
+          811
+        ],
+        "transparent_corners": true,
+        "png_bytes": 323881,
+        "webp_bytes": 50828,
+        "thumb_bytes": 22608
+      }
+    },
+    {
+      "name": "刘三",
+      "group": "柳林村/村庄核心",
+      "role": "村会计",
+      "age": "40岁",
+      "short": "散姓会计",
+      "use": "私账和行贿细节钥匙，最不稳定的倒戈者",
+      "visual": "瘦小，旧衬衫，夹账本或钥匙，眼神游移",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "刘三.png",
+        "webp": "webp/刘三.webp",
+        "thumb": "thumbs/刘三.webp"
+      },
+      "qa": {
+        "name": "刘三",
+        "status": "ok",
+        "width": 326,
+        "height": 811,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          294,
+          779
+        ],
+        "transparent_corners": true,
+        "png_bytes": 287162,
+        "webp_bytes": 53164,
+        "thumb_bytes": 22890
+      }
+    },
+    {
+      "name": "吴秀英",
+      "group": "柳林村/村庄核心",
+      "role": "退休教师",
+      "age": "60多岁",
+      "short": "村民代表",
+      "use": "散户意见领袖，公平补偿和祖坟诉求的关键人物",
+      "visual": "灰蓝布衫或针织开衫，银发，手拿旧契约/教案",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "吴秀英.png",
+        "webp": "webp/吴秀英.webp",
+        "thumb": "thumbs/吴秀英.webp"
+      },
+      "qa": {
+        "name": "吴秀英",
+        "status": "ok",
+        "width": 340,
+        "height": 826,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          308,
+          794
+        ],
+        "transparent_corners": true,
+        "png_bytes": 270802,
+        "webp_bytes": 44406,
+        "thumb_bytes": 20190
+      }
+    },
+    {
+      "name": "何铁柱",
+      "group": "柳林村/村庄核心",
+      "role": "退伍军人",
+      "age": "61岁",
+      "short": "钉子户",
+      "use": "血铅旧案引信，强硬谈判对象",
+      "visual": "旧军绿色外套，短硬白发，军章/搪瓷杯，拍桌气势",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "何铁柱.png",
+        "webp": "webp/何铁柱.webp",
+        "thumb": "thumbs/何铁柱.webp"
+      },
+      "qa": {
+        "name": "何铁柱",
+        "status": "ok",
+        "width": 476,
+        "height": 867,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          444,
+          835
+        ],
+        "transparent_corners": true,
+        "png_bytes": 384494,
+        "webp_bytes": 67798,
+        "thumb_bytes": 27322
+      }
+    },
+    {
+      "name": "袁桂兰",
+      "group": "柳林村/村庄核心",
+      "role": "困难户",
+      "age": "40多岁",
+      "short": "低保户、残疾人家属",
+      "use": "弱势户试金石，牵动民心和舆情",
+      "visual": "旧花布衣、围裙，攥药单/低保证，怯弱疲惫",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "袁桂兰.png",
+        "webp": "webp/袁桂兰.webp",
+        "thumb": "thumbs/袁桂兰.webp"
+      },
+      "qa": {
+        "name": "袁桂兰",
+        "status": "ok",
+        "width": 392,
+        "height": 828,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          360,
+          772
+        ],
+        "transparent_corners": true,
+        "png_bytes": 302912,
+        "webp_bytes": 57708,
+        "thumb_bytes": 25528
+      }
+    },
+    {
+      "name": "马长顺",
+      "group": "柳林村/村庄核心",
+      "role": "小卖部老板",
+      "age": "40多岁",
+      "short": "流言放大器",
+      "use": "从众效应、攀比心理和村内流言的放大器",
+      "visual": "围裙或旧夹克，账本/香烟盒，圆滑小老板感",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "马长顺.png",
+        "webp": "webp/马长顺.webp",
+        "thumb": "thumbs/马长顺.webp"
+      },
+      "qa": {
+        "name": "马长顺",
+        "status": "ok",
+        "width": 407,
+        "height": 874,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          375,
+          842
+        ],
+        "transparent_corners": true,
+        "png_bytes": 366468,
+        "webp_bytes": 63454,
+        "thumb_bytes": 24146
+      }
+    },
+    {
+      "name": "宁德海",
+      "group": "柳林村/村庄核心",
+      "role": "退休老党员",
+      "age": "73岁",
+      "short": "体制内关联户",
+      "use": "党员带头样板，程序合规风向",
+      "visual": "深蓝中山装，党员徽章，老花镜/协议，稳重体面",
+      "script_note": "正文常称“宁老”，与宁德海为同一人。",
+      "aliases": [
+        "宁老"
+      ],
+      "ui_priority": "主要",
+      "files": {
+        "png": "宁德海.png",
+        "webp": "webp/宁德海.webp",
+        "thumb": "thumbs/宁德海.webp"
+      },
+      "qa": {
+        "name": "宁德海",
+        "status": "ok",
+        "width": 362,
+        "height": 856,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          330,
+          824
+        ],
+        "transparent_corners": true,
+        "png_bytes": 273569,
+        "webp_bytes": 39460,
+        "thumb_bytes": 18658
+      }
+    },
+    {
+      "name": "谭老六",
+      "group": "柳林村/村庄核心",
+      "role": "老上访户",
+      "age": "50多岁",
+      "short": "仇怨户",
+      "use": "历史瑕疵与舆情雷点",
+      "visual": "旧棉袄或皱夹克，手机录像，斜挎材料包，脸色尖刻",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "谭老六.png",
+        "webp": "webp/谭老六.webp",
+        "thumb": "thumbs/谭老六.webp"
+      },
+      "qa": {
+        "name": "谭老六",
+        "status": "ok",
+        "width": 712,
+        "height": 1440,
+        "mode": "RGBA",
+        "trim_bbox": [
+          48,
+          48,
+          664,
+          1392
+        ],
+        "transparent_corners": true,
+        "png_bytes": 976178,
+        "webp_bytes": 152066,
+        "thumb_bytes": 26866
+      }
+    },
+    {
+      "name": "杨波",
+      "group": "柳林村/扩展户群",
+      "role": "返乡青年",
+      "age": "30岁上下",
+      "short": "摇摆户",
+      "use": "网络出口、年轻一代代表",
+      "visual": "休闲卫衣/工装裤，智能手机、耳机或快递袋",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "杨波.png",
+        "webp": "webp/杨波.webp",
+        "thumb": "thumbs/杨波.webp"
+      },
+      "qa": {
+        "name": "杨波",
+        "status": "ok",
+        "width": 465,
+        "height": 889,
+        "mode": "RGBA",
+        "trim_bbox": [
+          74,
+          44,
+          421,
+          845
+        ],
+        "transparent_corners": true,
+        "png_bytes": 356201,
+        "webp_bytes": 61152,
+        "thumb_bytes": 25712
+      }
+    },
+    {
+      "name": "周奎元",
+      "group": "柳林村/扩展户群",
+      "role": "周氏宗族执事",
+      "age": "71岁",
+      "short": "祖坟线闸门",
+      "use": "祖坟与祠堂三户的闸门",
+      "visual": "黑布衫，腰挂祠堂钥匙，族谱/木杖，古板庄重",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "周奎元.png",
+        "webp": "webp/周奎元.webp",
+        "thumb": "thumbs/周奎元.webp"
+      },
+      "qa": {
+        "name": "周奎元",
+        "status": "ok",
+        "width": 364,
+        "height": 808,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          332,
+          776
+        ],
+        "transparent_corners": true,
+        "png_bytes": 300117,
+        "webp_bytes": 52518,
+        "thumb_bytes": 23422
+      }
+    },
+    {
+      "name": "周满仓",
+      "group": "柳林村/扩展户群",
+      "role": "周氏族人",
+      "age": "54岁",
+      "short": "算账派",
+      "use": "明账服人的触发者，刘三账线引信",
+      "visual": "劳动布衣，算盘/皱纸账单，眼神较真",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "周满仓.png",
+        "webp": "webp/周满仓.webp",
+        "thumb": "thumbs/周满仓.webp"
+      },
+      "qa": {
+        "name": "周满仓",
+        "status": "ok",
+        "width": 393,
+        "height": 818,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          361,
+          786
+        ],
+        "transparent_corners": true,
+        "png_bytes": 320246,
+        "webp_bytes": 59464,
+        "thumb_bytes": 25278
+      }
+    },
+    {
+      "name": "石文斌",
+      "group": "柳林村/扩展户群",
+      "role": "县环保站职工",
+      "age": "39岁",
+      "short": "柳林村人",
+      "use": "偷排优盘持有者，隐瞒线增量",
+      "visual": "旧环保工装，背包，攥U盘，紧张回头",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "主要",
+      "files": {
+        "png": "石文斌.png",
+        "webp": "webp/石文斌.webp",
+        "thumb": "thumbs/石文斌.webp"
+      },
+      "qa": {
+        "name": "石文斌",
+        "status": "ok",
+        "width": 358,
+        "height": 812,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          326,
+          780
+        ],
+        "transparent_corners": true,
+        "png_bytes": 287297,
+        "webp_bytes": 53660,
+        "thumb_bytes": 23248
+      }
+    },
+    {
+      "name": "李致远",
+      "group": "玩家/权力中心",
+      "role": "新任县长",
+      "age": "42岁",
+      "short": "玩家身份",
+      "use": "玩家代入位；用于档案封面、教程剪影或关系图中心",
+      "visual": "干净白衬衫或深色行政外套，背影/半侧脸，避免固定玩家性格",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "特殊",
+      "files": {
+        "png": "李致远.png",
+        "webp": "webp/李致远.webp",
+        "thumb": "thumbs/李致远.webp"
+      },
+      "qa": {
+        "name": "李致远",
+        "status": "ok",
+        "width": 332,
+        "height": 837,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          300,
+          805
+        ],
+        "transparent_corners": true,
+        "png_bytes": 262287,
+        "webp_bytes": 43956,
+        "thumb_bytes": 19826
+      }
+    },
+    {
+      "name": "蒋崇岳",
+      "group": "玩家/权力中心",
+      "role": "县委书记",
+      "age": "52岁",
+      "short": "云溪权力中心",
+      "use": "常委会轴心与玩家上级，给玩家划线的人",
+      "visual": "深色书记夹克，老花镜，县域地图前的压迫感",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "特殊",
+      "files": {
+        "png": "蒋崇岳.png",
+        "webp": "webp/蒋崇岳.webp",
+        "thumb": "thumbs/蒋崇岳.webp"
+      },
+      "qa": {
+        "name": "蒋崇岳",
+        "status": "ok",
+        "width": 422,
+        "height": 834,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          390,
+          802
+        ],
+        "transparent_corners": true,
+        "png_bytes": 279694,
+        "webp_bytes": 43434,
+        "thumb_bytes": 21404
+      }
+    },
+    {
+      "name": "邓守本",
+      "group": "功能配角",
+      "role": "柳林村独身老汉",
+      "age": "老人",
+      "short": "最后一户",
+      "use": "争的是祖屋与根；最后一户兜底节点",
+      "visual": "干瘦老人，旧棉袄，抱门框或旧屋钥匙",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "配角",
+      "files": {
+        "png": "邓守本.png",
+        "webp": "webp/邓守本.webp",
+        "thumb": "thumbs/邓守本.webp"
+      },
+      "qa": {
+        "name": "邓守本",
+        "status": "ok",
+        "width": 369,
+        "height": 781,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          337,
+          749
+        ],
+        "transparent_corners": true,
+        "png_bytes": 332860,
+        "webp_bytes": 61726,
+        "thumb_bytes": 28026
+      }
+    },
+    {
+      "name": "苗喜旺",
+      "group": "功能配角",
+      "role": "柳林村早签户",
+      "age": "中年",
+      "short": "早期高补偿源头",
+      "use": "旧政策高补偿源头，需要重签讲清",
+      "visual": "略得意又心虚，手拿早期协议",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "配角",
+      "files": {
+        "png": "苗喜旺.png",
+        "webp": "webp/苗喜旺.webp",
+        "thumb": "thumbs/苗喜旺.webp"
+      },
+      "qa": {
+        "name": "苗喜旺",
+        "status": "ok",
+        "width": 383,
+        "height": 785,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          351,
+          753
+        ],
+        "transparent_corners": true,
+        "png_bytes": 316158,
+        "webp_bytes": 56430,
+        "thumb_bytes": 24810
+      }
+    },
+    {
+      "name": "老倔头",
+      "group": "功能配角",
+      "role": "铁心不签的老人",
+      "age": "老人",
+      "short": "沉默犟户",
+      "use": "被吴秀英劝松的犟户",
+      "visual": "烟锅、布鞋、沉默坐姿",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "配角",
+      "files": {
+        "png": "老倔头.png",
+        "webp": "webp/老倔头.webp",
+        "thumb": "thumbs/老倔头.webp"
+      },
+      "qa": {
+        "name": "老倔头",
+        "status": "ok",
+        "width": 386,
+        "height": 627,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          354,
+          595
+        ],
+        "transparent_corners": true,
+        "png_bytes": 249118,
+        "webp_bytes": 42882,
+        "thumb_bytes": 27784
+      }
+    },
+    {
+      "name": "罗健",
+      "group": "功能配角",
+      "role": "县卫生院防疫科",
+      "age": "青年",
+      "short": "血铅传真递送者",
+      "use": "第一时间递出血铅传真，推动危机转入明线",
+      "visual": "白大褂/防疫科工牌，抱传真纸奔跑",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "配角",
+      "files": {
+        "png": "罗健.png",
+        "webp": "webp/罗健.webp",
+        "thumb": "thumbs/罗健.webp"
+      },
+      "qa": {
+        "name": "罗健",
+        "status": "ok",
+        "width": 428,
+        "height": 783,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          396,
+          751
+        ],
+        "transparent_corners": true,
+        "png_bytes": 329467,
+        "webp_bytes": 61216,
+        "thumb_bytes": 27748
+      }
+    },
+    {
+      "name": "崔广林",
+      "group": "功能配角",
+      "role": "信访办卷宗室老同志",
+      "age": "快退休",
+      "short": "卷宗守门人",
+      "use": "卷宗问到就说，不主动揭",
+      "visual": "袖套，守档案柜，快退休老干部气质",
+      "script_note": "",
+      "aliases": [],
+      "ui_priority": "配角",
+      "files": {
+        "png": "崔广林.png",
+        "webp": "webp/崔广林.webp",
+        "thumb": "thumbs/崔广林.webp"
+      },
+      "qa": {
+        "name": "崔广林",
+        "status": "ok",
+        "width": 397,
+        "height": 798,
+        "mode": "RGBA",
+        "trim_bbox": [
+          32,
+          32,
+          365,
+          766
+        ],
+        "transparent_corners": true,
+        "png_bytes": 340690,
+        "webp_bytes": 60660,
+        "thumb_bytes": 27248
+      }
+    }
+  ],
+  "offscreen_or_text_only": [
+    {
+      "name": "市委书记顾成",
+      "type": "幕后/文本人物",
+      "reason": "作为更高层政治压力和关系网存在，当前试玩不建议单独出立绘，除非后续做市级会见场景。"
+    },
+    {
+      "name": "陈默妻子林微",
+      "type": "幕后/文本人物",
+      "reason": "作为陈默个人线背景出现，不参与玩家正面对话，当前用文字材料表达更合适。"
+    },
+    {
+      "name": "何铁柱孙子/血铅儿童群体",
+      "type": "事件人物",
+      "reason": "是血铅旧案情绪核心，不建议做单个可交互立绘，可在医院/病历/照片道具中表现。"
+    },
+    {
+      "name": "宁德海儿子",
+      "type": "关系人物",
+      "reason": "只作为宁德海顾虑与市局关系的压力源，不另立角色卡。"
+    },
+    {
+      "name": "中裕集团/省里领导等泛称",
+      "type": "背景力量",
+      "reason": "属于权力结构和项目背景，建议以公文、电话、会议记录呈现。"
+    }
+  ]
+}

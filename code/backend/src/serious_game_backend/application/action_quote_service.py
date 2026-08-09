@@ -10,6 +10,9 @@ from serious_game_backend.domain.errors import (
 )
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
+from serious_game_backend.application.resource_availability import (
+    unencumbered_budget,
+)
 
 
 class ActionQuoteService:
@@ -70,12 +73,14 @@ class ActionQuoteService:
                 "当日行动点不足",
                 details={"required": cost, "remaining": state.action_points},
             )
-        if state.budget_remaining < definition.budget_cost:
+        spendable_budget = unencumbered_budget(session)
+        if spendable_budget < definition.budget_cost:
             raise ActionUnavailableError(
-                "当前可安排预算不足",
+                "当前未被合同或文件占用的预算不足",
                 details={
                     "required": definition.budget_cost,
-                    "remaining": state.budget_remaining,
+                    "remaining": spendable_budget,
+                    "ledger_remaining": state.budget_remaining,
                 },
             )
         canonical = {

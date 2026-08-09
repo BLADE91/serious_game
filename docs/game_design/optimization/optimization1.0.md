@@ -30,8 +30,8 @@
 参考材料：
 
 - `最终剧本.md`
-- `code/backend/docs/gameplay_flow_audit.md`
-- `code/backend/docs/compensation_policy_inputs.md`
+- `code/backend/docs/01_玩法与行动/02_玩法全流程审计.md`
+- `code/backend/docs/01_玩法与行动/01_补偿政策待确认数字.md`
 - `policy_adjustment_integrated_report_v2.md`
 - `docs/game_design/optimization/D75_补签冲突定稿.md`
 
@@ -43,7 +43,7 @@
 
 1. 《最终剧本》是人物、剧情、固定决策、硬结算和结局条件的内容权威。
 2. 本文件记录已经确认的优化口径、当前技术闭环、剩余内容缺口和统一验收状态。
-3. `gameplay_flow_audit.md` 保留为审计取证与修复前缺陷依据；若其历史描述与本文件的当前状态冲突，以本文件更新时间更晚的状态表为准。
+3. `code/backend/docs/01_玩法与行动/02_玩法全流程审计.md` 保留为审计取证与修复前缺陷依据；若其历史描述与本文件的当前状态冲突，以本文件更新时间更晚的状态表为准。
 4. 本文件不是新的完整剧本，不能替代《最终剧本》。
 5. 已确认条款必须同步进入新的不可变剧本包版本，不得覆盖既有已发布包。
 6. 未经确认的政策数字、人物关系和剧情后果不得由开发人员或 LLM 猜测补写。
@@ -187,7 +187,7 @@ budget_available = budget_base_authorized
 
 ## 五、玩法审计问题与当前处理状态
 
-下表把 `gameplay_flow_audit.md` 的缺陷依据转换为当前统一状态。原审计中的“只有 10 个可行动日”“21 项工具无入口”等表述是修复前证据，不再代表当前实现。
+下表把 `code/backend/docs/01_玩法与行动/02_玩法全流程审计.md` 的缺陷依据转换为当前统一状态。原审计中的“只有 10 个可行动日”“21 项工具无入口”等表述是修复前证据，不再代表当前实现。
 
 | 编号 | 原问题 | 当前状态 | 已完成 | 尚未完成或外部依赖 |
 |---|---|---|---|---|
@@ -415,7 +415,7 @@ ending_resolved
 
 ### 8.1 补偿政策数字
 
-`code/backend/docs/compensation_policy_inputs.md` 中 P01–P18 仍需正式确认，包括：
+`code/backend/docs/01_玩法与行动/01_补偿政策待确认数字.md` 中 P01–P18 仍需正式确认，包括：
 
 - 房屋、土地和附属物；
 - 搬家、过渡和停产；

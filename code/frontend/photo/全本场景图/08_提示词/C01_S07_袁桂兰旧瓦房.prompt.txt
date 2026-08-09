@@ -1,0 +1,8 @@
+Use case: historical-scene
+Asset type: serious narrative game scene background
+
+Scene: inside a poor but carefully kept three-room old tile-roof farmhouse on a hillside above Liulin Village. Dim natural window light, leaking roof stains, rough plaster, a simple sickbed partly visible behind a cloth curtain, stacks of medicine boxes, a child's worn schoolbag, a folded quilt, a chipped enamel basin. Compassionate, dignified, never exploitative. No people. A rainy gray-green hillside and old village roofs visible through the small window. Leave usable negative space for UI.
+
+Style: photorealistic environmental concept art for a serious Chinese county-governance narrative game, inland mountainous county along the Qingjiang River, approximately 2008–2015. 16:9 landscape, player-eye observational viewpoint, natural 28–35mm lens, restrained documentary realism, readable midtones, Qingjiang green and weathered warm-brown palette.
+
+Constraints: no clearly identifiable protagonist face, no readable text, no logos, no watermark, no interface, no English. Avoid exaggerated poverty spectacle, modern luxury, futuristic devices, neon, horror and fantasy.

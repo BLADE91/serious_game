@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from serious_game_backend.application.ports import RoleLLMGateway
 from serious_game_backend.application.state_delta_validator import StateDeltaValidator
 from serious_game_backend.domain.llm import RoleTurnContext, ValidatedRoleTurn
@@ -27,6 +29,25 @@ class NPCTurnService:
             raise RoleLLMUnavailableError("角色模型暂时不可用") from exc
         if result.npc_id != context.npc_id:
             raise RoleLLMResponseError("角色模型返回了错误的 npc_id")
+        if result.input_relevance not in {"relevant", "irrelevant"}:
+            raise RoleLLMResponseError("角色模型返回了非法的输入相关性")
+        if result.input_relevance == "irrelevant":
+            result = replace(
+                result,
+                dialogue="请输入与本游戏相关的话语",
+                portrait_state="neutral",
+                attitude_direction="none",
+                attitude_band="none",
+                anxiety_direction="none",
+                anxiety_band="none",
+                disclosure_id=None,
+                flag_candidates=(),
+                will_share_with=(),
+                memory_candidate=None,
+                risk_notes=(),
+                conversation_state="continue",
+                exit_narrative=None,
+            )
         if not result.dialogue.strip() or len(result.dialogue) > 1000:
             raise RoleLLMResponseError("角色模型返回了空白或过长回复")
         if result.portrait_state not in {"neutral", "warm", "guarded", "anxious"}:

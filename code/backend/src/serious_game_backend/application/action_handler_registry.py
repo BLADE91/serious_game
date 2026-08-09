@@ -24,6 +24,8 @@ class ActionHandlerRegistry:
         package: ScriptPackage,
         definition: ResourceActionDefinition,
         quote: ActionQuote,
+        *,
+        source_reference: str,
     ) -> str:
         if definition.executor_kind not in self.SUPPORTED:
             raise ContentValidationError(
@@ -35,12 +37,31 @@ class ActionHandlerRegistry:
                 state,
                 budget_remaining=state.budget_remaining - quote.budget_cost,
                 budget_committed=state.budget_committed + quote.budget_cost,
+                budget_paid=state.budget_paid + quote.budget_cost,
             )
+            session.resource_ledger_entries.append({
+                "entry_id": (
+                    f"resource:{state.story_day}:"
+                    f"{len(session.resource_ledger_entries) + 1}"
+                ),
+                "story_day": state.story_day,
+                "change_kind": "payment",
+                "source_type": "player_action",
+                "source_id": source_reference,
+                "action_id": definition.action_id,
+                "resource_id": "budget_remaining",
+                "delta": -quote.budget_cost,
+                "before": state.budget_remaining,
+                "after": state.budget_remaining - quote.budget_cost,
+                "payment_status": "paid",
+            })
         self._scripted_effects.apply(
             session,
             package,
             definition.effects,
             source_id=f"resource_action:{definition.action_id}",
+            resource_authority="player_action",
+            resource_reference=source_reference,
         )
         newly_learned = definition.result_fact_ids - session.known_fact_ids
         session.known_fact_ids.update(definition.result_fact_ids)

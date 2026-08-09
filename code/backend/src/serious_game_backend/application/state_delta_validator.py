@@ -41,6 +41,7 @@ class StateDeltaValidator:
             portrait_state=result.portrait_state,
             attitude_delta=attitude,
             anxiety_delta=anxiety,
+            input_relevance=result.input_relevance,
             disclosure_id=result.disclosure_id,
             memory_candidate=result.memory_candidate,
             will_share_with=result.will_share_with,

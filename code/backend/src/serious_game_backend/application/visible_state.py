@@ -100,6 +100,36 @@ class VisibleStateProjector:
                 }
                 if session.active_conversation is not None else None
             ),
+            "active_group_conversation": (
+                {
+                    "conversation_id": (
+                        session.active_group_conversation.conversation_id
+                    ),
+                    "conversation_type": (
+                        session.active_group_conversation.conversation_type
+                    ),
+                    "initiator_npc_id": (
+                        session.active_group_conversation.initiator_npc_id
+                    ),
+                    "participant_ids": list(
+                        session.active_group_conversation.participant_ids
+                    ),
+                    "agenda": session.active_group_conversation.agenda,
+                    "demands": list(
+                        session.active_group_conversation.demands
+                    ),
+                    "urgency": session.active_group_conversation.urgency,
+                    "turn_count": (
+                        session.active_group_conversation.turn_count
+                    ),
+                    "max_turns": session.active_group_conversation.max_turns,
+                    "transcript": list(
+                        session.active_group_conversation.transcript
+                    ),
+                    "queued_count": len(session.group_conversation_queue),
+                }
+                if session.active_group_conversation is not None else None
+            ),
             "visible_events": [
                 {
                     "event_id": item.event_id,

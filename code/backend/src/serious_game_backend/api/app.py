@@ -13,9 +13,25 @@ from serious_game_backend.api.schemas import (
     ConsentWithdrawRequest,
     EndDayRequest,
     LoginRequest,
+    LoadSnapshotRequest,
+    ManualSaveRequest,
     RegisterRequest,
     ExportRequestBody,
     GovernancePurposeBody,
+    GroupConversationTurnRequest,
+    GovernanceActionStartRequest,
+    GovernanceFinishRequest,
+    GovernanceTurnRequest,
+    MeetingResolutionRequest,
+    MeetingTurnRequest,
+    DocumentEditRequest,
+    DocumentCountersignRequest,
+    DocumentPublishRequest,
+    ContractBatchConfirmRequest,
+    ContractTermsRequest,
+    ContractEditRequest,
+    ContractStateRequest,
+    ContractSignRequest,
     RetentionRunBody,
     SubjectRequestBody,
     StartSessionRequest,
@@ -159,6 +175,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     def command_gate(session, package) -> dict:
         pending = session.pending_decision is not None
         conversing = session.active_conversation is not None
+        group_conversing = session.active_group_conversation is not None
+        governance_active = any(
+            item.status == "active"
+            for item in session.governance_actions.values()
+        )
         busy = session.processing_action_id is not None
         beat = package.story_day(session.game_state.story_day)
         active = session.status.value == "active"
@@ -184,15 +205,31 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             action_blocked_reason = "上一操作仍在处理中，请等待原操作完成"
         elif pending:
             action_blocked_reason = "必须先处理当前决策"
+        elif group_conversing:
+            action_blocked_reason = "必须先完成NPC发起的群组会谈"
+        elif governance_active:
+            action_blocked_reason = "基础行动场景正在进行，请先继续或结束"
         elif conversing:
             action_blocked_reason = "会谈正在进行，请先继续或结束当前会谈"
         elif not allow_actions:
             action_blocked_reason = "当前剧情节点不开放自主行动"
         return {
-            "can_choose": active and not busy and pending and not conversing,
-            "can_act": active and not busy and not pending and not conversing and allow_actions,
-            "can_talk": active and not busy and not pending and (conversing or allow_actions),
-            "can_end_day": active and not busy and not pending and not conversing and allow_end_day,
+            "can_choose": (
+                active and not busy and pending
+                and not conversing and not group_conversing
+            ),
+            "can_act": (
+                active and not busy and not pending and not conversing
+                and not group_conversing and not governance_active and allow_actions
+            ),
+            "can_talk": (
+                active and not busy and not pending and not group_conversing
+                and not governance_active and (conversing or allow_actions)
+            ),
+            "can_end_day": (
+                active and not busy and not pending and not conversing
+                and not group_conversing and not governance_active and allow_end_day
+            ),
             "action_blocked_reason": action_blocked_reason,
         }
 
@@ -200,6 +237,35 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         state = session.game_state
         tier = package.action_cost_tier(state.story_day)
         gate = command_gate(session, package)
+        if package.gameplay_schema_version >= 2 and package.governance_config:
+            active = any(
+                item.status == "active"
+                for item in session.governance_actions.values()
+            )
+            values = []
+            for item in package.governance_config.get("base_actions", []):
+                cost = int(item["cost"])
+                available = (
+                    gate["can_act"]
+                    and not active
+                    and state.action_points >= cost
+                )
+                values.append({
+                    "action_id": item["action_id"],
+                    "name": item["name"],
+                    "category": "基础行动",
+                    "cost": cost,
+                    "available": available,
+                    "unavailable_reason": (
+                        gate["action_blocked_reason"]
+                        if not available else None
+                    ),
+                    "execution_mode": "governance",
+                    "description": item["description"],
+                    "permissions": item["permissions"],
+                    "target_kind": item["target_kind"],
+                })
+            return tier.value, values
         available_opportunities = (
             runtime.opportunities.list_available(session, package)
             if gate["can_act"] else ()
@@ -573,7 +639,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             account_id=account_id,
             package_id=package_id,
             client_request_id=body.client_request_id,
-            origin_id=body.origin_id,
+            origin_id="mayor",
         )
         package = require_locked_package(runtime.packages, session)
         return runtime.projector.project(session, package)
@@ -588,14 +654,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             raise NotFoundError("默认剧本包不存在")
         return {
             "package_id": package.package_id,
-            "origins": [
-                {
-                    "origin_id": item.origin_id,
-                    "title": item.title,
-                    "description": item.description,
-                }
-                for item in package.origins.values()
-            ],
+            "selection_required": False,
+            "origins": [],
         }
 
     @app.get("/api/game/package/validation")
@@ -699,12 +759,21 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         tools = [
             {
                 **item,
-                "description": guidance[item["action_id"]]["description"],
-                "availability_note": guidance[item["action_id"]]["availability_note"],
+                "description": guidance.get(item["action_id"], {}).get(
+                    "description", item.get("description", "")
+                ),
+                "availability_note": guidance.get(item["action_id"], {}).get(
+                    "availability_note", "四项基础行动在当天剧情允许行动时可用。"
+                ),
             }
             for item in actions
         ]
         state = session.game_state
+        npc_names = {item.npc_id: item.name for item in package.npc_profiles}
+        limited_signatory_names = {
+            item.household_id: item.name
+            for item in package.limited_household_signatories
+        }
         known = [
             package.facts[item]
             for item in sorted(session.known_fact_ids)
@@ -733,6 +802,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "household_registry": [
                 {
                     "household_id": item.household_id,
+                    "signatory_name": limited_signatory_names.get(
+                        item.household_id,
+                        npc_names[item.representative_npc],
+                    ),
                     "registered_population": item.registered_population,
                     "actual_residents": item.actual_residents,
                     "resettlement_population": item.resettlement_population,
@@ -779,6 +852,82 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         package = require_locked_package(runtime.packages, session)
         return runtime.review_service.build(session, package)
 
+    @app.get("/api/game/session/{session_id}/night-dialogues")
+    async def get_night_dialogues(
+        session_id: str,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        session = runtime.game_sessions.get_owned(session_id, account_id)
+        require_locked_package(runtime.packages, session)
+        return {
+            "session_id": session.session_id,
+            "nights": [
+                {
+                    "story_day": item.get("story_day"),
+                    "contact_selections": list(
+                        item.get("contact_selections", ())
+                    ),
+                    "contact_responses": list(
+                        item.get("contact_responses", ())
+                    ),
+                    "followup_decisions": list(
+                        item.get("followup_decisions", ())
+                    ),
+                    "agent_exchanges": list(item.get("agent_exchanges", ())),
+                }
+                for item in session.night_logs
+                if item.get("contact_selections")
+                or item.get("contact_responses")
+                or item.get("followup_decisions")
+                or item.get("agent_exchanges")
+            ],
+        }
+
+    @app.get("/api/game/session/{session_id}/manual-saves")
+    async def list_manual_saves(
+        session_id: str,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        return runtime.saves.list_manual_saves(
+            account_id=account_id,
+            session_id=session_id,
+        )
+
+    @app.post("/api/game/session/{session_id}/manual-saves")
+    async def create_manual_save(
+        session_id: str,
+        body: ManualSaveRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        return runtime.saves.create_manual_save(
+            account_id=account_id,
+            session_id=session_id,
+            client_action_id=body.client_action_id,
+            state_version=body.state_version,
+            slot_number=body.slot_number,
+            display_name=body.display_name,
+            overwrite=body.overwrite,
+        )
+
+    @app.post("/api/game/session/{session_id}/load-snapshot")
+    async def load_snapshot(
+        session_id: str,
+        body: LoadSnapshotRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        return runtime.saves.load_snapshot(
+            account_id=account_id,
+            session_id=session_id,
+            client_action_id=body.client_action_id,
+            state_version=body.state_version,
+            snapshot_id=body.snapshot_id,
+            confirmed=body.confirmed,
+        )
+
     @app.get("/api/game/session/{session_id}/actions")
     async def list_actions(
         session_id: str,
@@ -789,6 +938,269 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         package = require_locked_package(runtime.packages, session)
         tier, result = action_entries(session, package)
         return {"state_version": session.state_version, "cost_tier": tier, "actions": result}
+
+    @app.get("/api/game/session/{session_id}/governance")
+    async def governance_overview(
+        session_id: str,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.overview(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+        )
+
+    @app.post("/api/game/session/{session_id}/governance/actions", status_code=201)
+    def start_governance_action(
+        session_id: str,
+        body: GovernanceActionStartRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.start_action(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            action_kind=body.action_kind,
+            target_ids=tuple(body.target_ids),
+            topic=body.topic,
+            archive_ids=tuple(body.archive_ids),
+            proposed_document_type=body.proposed_document_type,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/actions/{action_instance_id}/turn"
+    )
+    def turn_governance_action(
+        session_id: str,
+        action_instance_id: str,
+        body: GovernanceTurnRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.action_turn(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            action_instance_id=action_instance_id,
+            player_text=body.player_text,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/actions/{action_instance_id}/finish"
+    )
+    async def finish_governance_action(
+        session_id: str,
+        action_instance_id: str,
+        body: GovernanceFinishRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.finish_action(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            action_instance_id=action_instance_id,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/actions/{action_instance_id}/cancel"
+    )
+    async def cancel_governance_action(
+        session_id: str,
+        action_instance_id: str,
+        body: GovernanceFinishRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.cancel_action(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            action_instance_id=action_instance_id,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/meetings/{meeting_id}/turn"
+    )
+    def turn_governance_meeting(
+        session_id: str,
+        meeting_id: str,
+        body: MeetingTurnRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.meeting_turn(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            meeting_id=meeting_id,
+            player_text=body.player_text,
+            addressed_npc_id=body.addressed_npc_id,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/meetings/{meeting_id}/resolve"
+    )
+    def resolve_governance_meeting(
+        session_id: str,
+        meeting_id: str,
+        body: MeetingResolutionRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.resolve_meeting(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            meeting_id=meeting_id,
+            adopt=body.adopt,
+            resolution=body.resolution,
+        )
+
+    @app.put(
+        "/api/game/session/{session_id}/governance/documents/{document_id}"
+    )
+    async def edit_governance_document(
+        session_id: str,
+        document_id: str,
+        body: DocumentEditRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.edit_document(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            document_id=document_id,
+            content=body.content,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/documents/{document_id}/countersign"
+    )
+    def countersign_governance_document(
+        session_id: str,
+        document_id: str,
+        body: DocumentCountersignRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.countersign_document(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            document_id=document_id,
+            npc_id=body.npc_id,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/documents/{document_id}/issue"
+    )
+    async def issue_governance_document(
+        session_id: str,
+        document_id: str,
+        body: ContractStateRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.issue_document(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            document_id=document_id,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/documents/{document_id}/publish"
+    )
+    async def publish_governance_document(
+        session_id: str,
+        document_id: str,
+        body: DocumentPublishRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.publish_document(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            document_id=document_id,
+            scope=tuple(body.scope),
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/contract-batches/{batch_id}/confirm"
+    )
+    async def confirm_contract_batch(
+        session_id: str,
+        batch_id: str,
+        body: ContractBatchConfirmRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.confirm_contract_batch(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            batch_id=batch_id,
+            confirmed=body.confirmed,
+        )
+
+    @app.put(
+        "/api/game/session/{session_id}/governance/contracts/{contract_id}/terms"
+    )
+    def set_contract_terms(
+        session_id: str,
+        contract_id: str,
+        body: ContractTermsRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.set_contract_terms(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            contract_id=contract_id,
+            term_sheet=body.term_sheet(),
+        )
+
+    @app.put(
+        "/api/game/session/{session_id}/governance/contracts/{contract_id}/text"
+    )
+    async def edit_contract_text(
+        session_id: str,
+        contract_id: str,
+        body: ContractEditRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.edit_contract(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            contract_id=contract_id,
+            text=body.text,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/contracts/{contract_id}/review"
+    )
+    def review_contract(
+        session_id: str,
+        contract_id: str,
+        body: ContractStateRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.submit_contract_review(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            contract_id=contract_id,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/contracts/{contract_id}/sign"
+    )
+    async def sign_contract(
+        session_id: str,
+        contract_id: str,
+        body: ContractSignRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.sign_contract(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            contract_id=contract_id,
+            confirmed=body.confirmed,
+        )
 
     @app.get("/api/game/session/{session_id}/opportunities")
     async def list_opportunities(
@@ -926,11 +1338,25 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             session_id=session_id,
             client_action_id=body.client_action_id,
             state_version=body.state_version,
-            active_rest=body.active_rest,
+            retry=body.retry,
         )
         if result.get("status") == "processing":
             return JSONResponse(status_code=202, content=result)
         return result
+
+    @app.post("/api/game/session/{session_id}/group-conversation/turn")
+    async def reply_group_conversation(
+        session_id: str,
+        body: GroupConversationTurnRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        return runtime.group_conversations.reply(
+            account_id=account_id,
+            session_id=session_id,
+            state_version=body.state_version,
+            player_text=body.player_text,
+        )
 
     @app.get("/api/game/session/{session_id}/operations/{client_action_id}")
     async def get_operation(

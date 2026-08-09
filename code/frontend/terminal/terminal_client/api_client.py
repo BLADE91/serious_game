@@ -36,11 +36,13 @@ class ApiClient:
         account_id: str,
         *,
         timeout: float = 15.0,
+        conversation_timeout: float = 35.0,
         opener: Callable[..., Any] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.account_id = account_id.strip()
         self.timeout = timeout
+        self.conversation_timeout = conversation_timeout
         self._cookie_jar = CookieJar()
         self._opener = opener or build_opener(
             HTTPCookieProcessor(self._cookie_jar)
@@ -98,13 +100,12 @@ class ApiClient:
     def new_session(
         self,
         *,
-        origin_id: str,
+        origin_id: str | None = None,
         package_id: str | None = None,
         client_request_id: str | None = None,
     ) -> dict:
         payload: dict[str, Any] = {
             "client_request_id": client_request_id or self.new_key("new"),
-            "origin_id": origin_id,
         }
         if package_id:
             payload["package_id"] = package_id
@@ -144,6 +145,27 @@ class ApiClient:
 
     def get_review(self, session_id: str) -> dict:
         return self._request("GET", f"{self._session_path(session_id)}/review")
+
+    def get_night_dialogues(self, session_id: str) -> dict:
+        return self._request(
+            "GET", f"{self._session_path(session_id)}/night-dialogues"
+        )
+
+    def reply_group_conversation(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+        player_text: str,
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/group-conversation/turn",
+            {
+                "state_version": state_version,
+                "player_text": player_text,
+            },
+        )
 
     def get_package_validation(self) -> dict:
         return self._request("GET", "/api/game/package/validation")
@@ -243,6 +265,279 @@ class ApiClient:
             },
         )
 
+    def get_governance(self, session_id: str) -> dict:
+        return self._request(
+            "GET", f"{self._session_path(session_id)}/governance"
+        )
+
+    def start_governance_action(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+        action_kind: str,
+        target_ids: list[str],
+        topic: str = "",
+        archive_ids: list[str] | None = None,
+        proposed_document_type: str | None = None,
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/governance/actions",
+            {
+                "state_version": state_version,
+                "action_kind": action_kind,
+                "target_ids": target_ids,
+                "topic": topic,
+                "archive_ids": archive_ids or [],
+                "proposed_document_type": proposed_document_type,
+            },
+        )
+
+    def governance_action_turn(
+        self,
+        session_id: str,
+        action_instance_id: str,
+        *,
+        state_version: int,
+        player_text: str,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/actions/"
+                f"{quote(action_instance_id, safe='')}/turn"
+            ),
+            {"state_version": state_version, "player_text": player_text},
+        )
+
+    def finish_governance_action(
+        self,
+        session_id: str,
+        action_instance_id: str,
+        *,
+        state_version: int,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/actions/"
+                f"{quote(action_instance_id, safe='')}/finish"
+            ),
+            {"state_version": state_version},
+        )
+
+    def cancel_governance_action(
+        self,
+        session_id: str,
+        action_instance_id: str,
+        *,
+        state_version: int,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/actions/"
+                f"{quote(action_instance_id, safe='')}/cancel"
+            ),
+            {"state_version": state_version},
+        )
+
+    def governance_meeting_turn(
+        self,
+        session_id: str,
+        meeting_id: str,
+        *,
+        state_version: int,
+        player_text: str,
+        addressed_npc_id: str | None = None,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/meetings/"
+                f"{quote(meeting_id, safe='')}/turn"
+            ),
+            {
+                "state_version": state_version,
+                "player_text": player_text,
+                "addressed_npc_id": addressed_npc_id,
+            },
+        )
+
+    def resolve_governance_meeting(
+        self,
+        session_id: str,
+        meeting_id: str,
+        *,
+        state_version: int,
+        adopt: bool,
+        resolution: dict[str, Any],
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/meetings/"
+                f"{quote(meeting_id, safe='')}/resolve"
+            ),
+            {
+                "state_version": state_version,
+                "adopt": adopt,
+                "resolution": resolution,
+            },
+        )
+
+    def confirm_contract_batch(
+        self,
+        session_id: str,
+        batch_id: str,
+        *,
+        state_version: int,
+        confirmed: bool,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/"
+                f"contract-batches/{quote(batch_id, safe='')}/confirm"
+            ),
+            {"state_version": state_version, "confirmed": confirmed},
+        )
+
+    def set_contract_terms(
+        self,
+        session_id: str,
+        contract_id: str,
+        *,
+        state_version: int,
+        term_sheet: dict[str, Any],
+    ) -> dict:
+        return self._request(
+            "PUT",
+            (
+                f"{self._session_path(session_id)}/governance/contracts/"
+                f"{quote(contract_id, safe='')}/terms"
+            ),
+            {"state_version": state_version, **term_sheet},
+        )
+
+    def edit_contract_text(
+        self,
+        session_id: str,
+        contract_id: str,
+        *,
+        state_version: int,
+        text: str,
+    ) -> dict:
+        return self._request(
+            "PUT",
+            (
+                f"{self._session_path(session_id)}/governance/contracts/"
+                f"{quote(contract_id, safe='')}/text"
+            ),
+            {"state_version": state_version, "text": text},
+        )
+
+    def review_contract(
+        self,
+        session_id: str,
+        contract_id: str,
+        *,
+        state_version: int,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/contracts/"
+                f"{quote(contract_id, safe='')}/review"
+            ),
+            {"state_version": state_version},
+        )
+
+    def sign_contract(
+        self,
+        session_id: str,
+        contract_id: str,
+        *,
+        state_version: int,
+        confirmed: bool,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/contracts/"
+                f"{quote(contract_id, safe='')}/sign"
+            ),
+            {"state_version": state_version, "confirmed": confirmed},
+        )
+
+    def countersign_document(
+        self,
+        session_id: str,
+        document_id: str,
+        *,
+        state_version: int,
+        npc_id: str,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/documents/"
+                f"{quote(document_id, safe='')}/countersign"
+            ),
+            {"state_version": state_version, "npc_id": npc_id},
+        )
+
+    def edit_document(
+        self,
+        session_id: str,
+        document_id: str,
+        *,
+        state_version: int,
+        content: str,
+    ) -> dict:
+        return self._request(
+            "PUT",
+            (
+                f"{self._session_path(session_id)}/governance/documents/"
+                f"{quote(document_id, safe='')}"
+            ),
+            {"state_version": state_version, "content": content},
+        )
+
+    def issue_document(
+        self,
+        session_id: str,
+        document_id: str,
+        *,
+        state_version: int,
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/documents/"
+                f"{quote(document_id, safe='')}/issue"
+            ),
+            {"state_version": state_version},
+        )
+
+    def publish_document(
+        self,
+        session_id: str,
+        document_id: str,
+        *,
+        state_version: int,
+        scope: list[str],
+    ) -> dict:
+        return self._request(
+            "POST",
+            (
+                f"{self._session_path(session_id)}/governance/documents/"
+                f"{quote(document_id, safe='')}/publish"
+            ),
+            {"state_version": state_version, "scope": scope},
+        )
+
     def request_overtime(
         self,
         session_id: str,
@@ -285,6 +580,7 @@ class ApiClient:
                 "conversation_id": conversation_id,
                 "player_text": player_text,
             },
+            timeout=self.conversation_timeout,
         )
 
     def start_conversation(
@@ -332,7 +628,6 @@ class ApiClient:
         session_id: str,
         *,
         state_version: int,
-        active_rest: bool = False,
         client_action_id: str | None = None,
     ) -> dict:
         return self._request(
@@ -341,7 +636,6 @@ class ApiClient:
             {
                 "client_action_id": client_action_id or self.new_key("end"),
                 "state_version": state_version,
-                "active_rest": active_rest,
             },
         )
 
@@ -359,6 +653,8 @@ class ApiClient:
         method: str,
         path: str,
         payload: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
     ) -> dict:
         data = None
         if payload is not None:
@@ -377,7 +673,8 @@ class ApiClient:
             headers=headers,
         )
         try:
-            with self._opener(request, timeout=self.timeout) as response:
+            request_timeout = self.timeout if timeout is None else timeout
+            with self._opener(request, timeout=request_timeout) as response:
                 raw = response.read()
         except HTTPError as exc:
             raw = exc.read()

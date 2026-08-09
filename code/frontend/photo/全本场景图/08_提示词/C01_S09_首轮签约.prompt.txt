@@ -1,0 +1,8 @@
+Use case: historical-scene
+Asset type: serious narrative game scene background
+
+A temporary signing room inside Dukuo township government. A long worn wooden table faces the open doorway. On the table: several blank relocation agreements, one vivid red ink pad in the exact center, a brush pen, enamel mugs, and an untouched stack of forms. Outside the doorway, a small group of rural villagers wait and hesitate, visible only as natural distant figures without identifiable faces; no one crosses the threshold. A faded red cloth banner hangs high but contains no readable characters. The tension comes from the empty chair and unpressed red ink pad. Leave upper-right negative space.
+
+Photorealistic Chinese county documentary realism, 2008–2015, 16:9, readable natural daylight. No readable text, no logo, no watermark, no interface, no English.
+
+Human anatomy constraint: use six separated adult rural men outside the doorway, seen from the back or distant three-quarter view. Every person has two anatomically correct arms, hands and legs; keep clear spacing and unambiguous limb ownership. Use only natural restrained poses such as arms relaxed at the sides, hands in jacket pockets, or one person loosely clasping both hands behind his back. No merged limbs, duplicated arms, missing forearms, twisted wrists, fused bodies or impossible overlaps.

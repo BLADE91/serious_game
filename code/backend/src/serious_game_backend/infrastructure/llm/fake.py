@@ -1,12 +1,28 @@
 from __future__ import annotations
 
-from serious_game_backend.domain.llm import RoleTurnContext, RoleTurnResult
+from serious_game_backend.domain.llm import (
+    GovernanceLLMContext,
+    GovernanceLLMResult,
+    NightAgentContext,
+    NightAgentResult,
+    RoleTurnContext,
+    RoleTurnResult,
+)
 
 
 class FakeRoleLLMGateway:
     """确定性契约替身；只为垂直切片生成可重复的受限角色回合。"""
 
     def run_turn(self, context: RoleTurnContext) -> RoleTurnResult:
+        if any(
+            phrase in context.player_text
+            for phrase in ("写一段代码", "讲个笑话", "股票行情", "一加一等于几")
+        ):
+            return RoleTurnResult(
+                npc_id=context.npc_id,
+                dialogue="无关输入",
+                input_relevance="irrelevant",
+            )
         if context.npc_id == "npc_wu_xiuying":
             forceful = any(
                 phrase in context.player_text
@@ -51,3 +67,247 @@ class FakeRoleLLMGateway:
             dialogue="对方沉默片刻，只说这件事还要再想一想。",
             portrait_state="neutral",
         )
+
+    def run_night_turn(self, context: NightAgentContext) -> NightAgentResult:
+        model_id = context.model_id or "fake-role-v1"
+        if context.phase == "contact_selection":
+            preferred = {
+                "npc_qian_wei": "npc_zhao_jianguo",
+                "npc_zhao_jianguo": "npc_qian_wei",
+            }.get(context.npc_id)
+            contacts = (
+                (preferred,)
+                if preferred in context.counterpart_ids and context.max_contacts > 0
+                else ()
+            )
+            return NightAgentResult(
+                npc_id=context.npc_id,
+                model_id=model_id,
+                contact_ids=contacts,
+                rationale=(
+                    "当前风险需要与利益直接相关者核对口径。"
+                    if contacts else "今晚没有必须主动联系的对象。"
+                ),
+            )
+        if context.phase in {"contact_response", "followup_response"}:
+            return NightAgentResult(
+                npc_id=context.npc_id,
+                model_id=model_id,
+                contact_response="accept",
+                rationale="对方提出的会面与当前风险直接相关，我决定回应。",
+            )
+        if context.phase == "followup_initiation":
+            return NightAgentResult(
+                npc_id=context.npc_id,
+                model_id=model_id,
+                initiate_followup=False,
+                rationale="当前还没有形成必须立即找县长处理的共同议题。",
+            )
+        if context.phase == "player_group_dialogue":
+            return NightAgentResult(
+                npc_id=context.npc_id,
+                model_id=model_id,
+                dialogue=(
+                    f"关于“{context.scene_goal}”，我们需要县里给出明确、"
+                    "能够落实的答复。"
+                ),
+            )
+        if context.phase == "dialogue":
+            other = context.counterpart_ids[0] if context.counterpart_ids else "对方"
+            line = (
+                f"我先把底线说清楚。{context.scene_goal}"
+                if context.round_index == 1
+                else f"我听见了，但还要防着局势反噬；你我必须各自留一条退路。"
+            )
+            return NightAgentResult(
+                npc_id=context.npc_id,
+                model_id=model_id,
+                dialogue=f"{line}（对{other}）",
+            )
+        allowed = [item["action_id"] for item in context.allowed_actions]
+        preferred = (
+            "night_unify_story"
+            if "night_unify_story" in allowed
+            else (allowed[0] if allowed else None)
+        )
+        selected = next(
+            (
+                item for item in context.allowed_actions
+                if item["action_id"] == preferred
+            ),
+            {},
+        )
+        allowed_targets = set(selected.get("allowed_target_ids", ()))
+        targets = tuple(
+            item for item in context.counterpart_ids if item in allowed_targets
+        )[:1]
+        return NightAgentResult(
+            npc_id=context.npc_id,
+            model_id=model_id,
+            action_id=preferred,
+            target_ids=targets,
+            rationale="结合刚才的交谈，我选择当前风险最低且符合自身利益的方案。",
+        )
+
+    def run_governance_task(
+        self, context: GovernanceLLMContext
+    ) -> GovernanceLLMResult:
+        task = context.task
+        payload = context.payload
+        if task == "review_input":
+            text = str(payload.get("player_text", "")).strip()
+            unrelated_markers = (
+                "写代码", "写一段代码", "Python", "python", "Java", "javascript",
+                "天气预报", "股票", "彩票", "翻译成英文", "写一首诗",
+                "做数学题", "量子力学",
+            )
+            relevant = not any(marker in text for marker in unrelated_markers)
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "relevant": relevant,
+                    "reason": (
+                        "发言可用于当前游戏场景。"
+                        if relevant
+                        else "发言与当前治理游戏及场景目标无关。"
+                    ),
+                },
+                model_id="fake-governance-v1",
+            )
+        if task == "detect_contract_intent":
+            text = str(payload.get("player_text", ""))
+            detected = any(word in text for word in ("签约", "签合同", "拟合同", "发合同"))
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "intent": "request_contract_batch" if detected else "none",
+                    "reason": (
+                        "玩家明确要求进入逐户合同流程。"
+                        if detected else "玩家没有明确提出签约或合同。"
+                    ),
+                },
+                model_id="fake-governance-v1",
+            )
+        if task == "draft_contract":
+            terms = dict(payload["term_sheet"])
+            allocations = terms.get("service_allocations", {})
+            housing = terms.get("housing_resource_id") or "无"
+            text = (
+                f"《柳林村搬迁补偿安置合同》\n"
+                f"合同编号：{payload['contract_id']}\n"
+                f"家庭编号：{payload['household_id']}\n"
+                f"签约人：{payload['signatory_name']}\n"
+                f"政策依据：{terms['policy_document_id']}\n"
+                f"现金权益：{terms['cash_amount']}万元；预算信封：{terms['budget_envelope']}。\n"
+                f"安置房资源：{housing}。\n"
+                f"服务资源：{allocations}。\n"
+                f"付款日：D{terms['payment_day']}；搬离日：D{terms['move_out_day']}；"
+                f"交房日：D{terms['housing_delivery_day']}。\n"
+                "双方确认：所有资源以本合同结构化附件为准，任何口头承诺均不改变附件。"
+            )
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "contract_text": text,
+                    "clause_index": {
+                        "身份": 2,
+                        "政策依据": 5,
+                        "现金权益": 6,
+                        "非现金权益": 7,
+                        "履行期限": 9,
+                    },
+                    "term_references": terms,
+                    "warnings": [],
+                },
+                model_id="fake-governance-v1",
+            )
+        if task == "audit_contract":
+            text = str(payload.get("contract_text", ""))
+            risky_markers = (
+                "另行追加", "额外支付", "再额外", "另行提供",
+                "专项补助", "另补",
+            )
+            marker = next(
+                (item for item in risky_markers if item in text),
+                None,
+            )
+            issues = []
+            if marker is not None:
+                line = next(
+                    (
+                        value.strip()
+                        for value in text.splitlines()
+                        if marker in value
+                    ),
+                    marker,
+                )
+                issues.append({
+                    "issue_id": "AUDIT-SEMANTIC-001",
+                    "severity": "error",
+                    "category": "unstructured_commitment",
+                    "term_field": None,
+                    "message": "正文包含结构化附件之外的额外承诺表述。",
+                    "text_quote": line,
+                    "suggestion": "删除额外承诺，或先修改结构化资源条款后重新生成合同。",
+                })
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "status": "reject" if issues else "pass",
+                    "summary": (
+                        "发现正文与结构化条款可能不一致。"
+                        if issues else "合同正文与结构化条款一致。"
+                    ),
+                    "detected_commitments": [],
+                    "issues": issues,
+                },
+                model_id="fake-contract-auditor-v1",
+            )
+        if task == "review_contract":
+            allowed = list(payload.get("allowed_decisions", ()))
+            decision = "accept" if "accept" in allowed else (
+                "explain" if "explain" in allowed else allowed[0]
+            )
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "decision": decision,
+                    "reason": (
+                        "合同已经把本户关心的资源、期限和责任写清楚。"
+                        if decision == "accept"
+                        else "本户的必要条件尚未完整写入合同。"
+                    ),
+                    "counteroffer": {},
+                },
+                model_id="fake-governance-v1",
+            )
+        if task == "draft_document":
+            resolution = dict(payload["resolution"])
+            text = (
+                f"{payload['title']}\n"
+                f"文种：{payload['document_type']}\n"
+                f"依据会议：{payload['meeting_id']}\n"
+                f"决定事项：{resolution.get('decision', '')}\n"
+                f"适用对象：{resolution.get('target_scope', '')}\n"
+                f"资源模式：{resolution.get('resource_mode', 'authorization_ceiling')}\n"
+                f"资源授权上限：{resolution.get('resource_authorization_limits', {})}\n"
+                f"依据档案：{resolution.get('evidence_archive_ids', [])}\n"
+                f"责任单位：{resolution.get('responsible_ids', [])}\n"
+                f"完成期限：D{resolution.get('deadline_day')}。\n"
+                f"公开范围：{resolution.get('public_scope', [])}。"
+            )
+            return GovernanceLLMResult(
+                task=task,
+                data={"document_text": text, "warnings": []},
+                model_id="fake-governance-v1",
+            )
+        if task == "meeting_position":
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "position": "approve",
+                    "reason": "材料和权限边界明确，可以按会议决议推进。",
+                },
+                model_id="fake-governance-v1",
+            )
+        raise ValueError(f"unsupported governance task: {task}")

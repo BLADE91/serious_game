@@ -1,0 +1,8 @@
+Use case: historical-scene
+Asset type: serious narrative game scene background
+
+Scene: a modest old township-government meeting room in rural China, long dark wooden conference table, mismatched chairs, enamel mugs, kraft-paper household files, a blank handwritten roster sheet, an old ceiling fan, faded lime plaster, barred windows looking toward damp mountain streets. The room has just been vacated after a tense coordination meeting; chairs are slightly displaced, one thermos remains open. No people. Leave clean upper-left negative space for web UI.
+
+Style: photorealistic environmental concept art for a serious Chinese county-governance narrative game, inland mountainous county along the Qingjiang River, approximately 2008–2015. 16:9 landscape, player-eye observational viewpoint, natural 28–35mm lens, restrained documentary realism, readable midtones, Qingjiang green and weathered warm-brown palette.
+
+Constraints: no clearly identifiable protagonist face, no readable text, no logos, no watermark, no interface, no English. Avoid modern luxury, futuristic devices, skyscrapers, neon, horror and fantasy.

@@ -89,7 +89,15 @@ class StoryFlowService:
 
     @staticmethod
     def feed_since(session: GameSession, after: int) -> dict:
-        items = [item for item in session.narrative_feed if item.cursor > after]
+        items = []
+        seen_content_ids: set[str] = set()
+        for item in session.narrative_feed:
+            if item.content_instance_id is not None:
+                if item.content_instance_id in seen_content_ids:
+                    continue
+                seen_content_ids.add(item.content_instance_id)
+            if item.cursor > after:
+                items.append(item)
         return {
             "after": after,
             "cursor": session.next_feed_cursor - 1,
@@ -100,6 +108,7 @@ class StoryFlowService:
                     "kind": item.kind,
                     "speaker": item.speaker,
                     "text": item.text,
+                    "content_instance_id": item.content_instance_id,
                 }
                 for item in items
             ],
@@ -138,6 +147,7 @@ class StoryFlowService:
                 kind=block.kind,
                 text=StoryFlowService.public_text(block.text),
                 speaker=block.speaker,
+                content_instance_id=f"block:{block.block_id}",
             )
 
     @staticmethod
