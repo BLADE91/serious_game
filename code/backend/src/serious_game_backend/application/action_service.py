@@ -701,6 +701,14 @@ class ActionService:
                 session.append_narrative(
                     story_day=session.game_state.story_day,
                     kind="conversation_opening",
+                    speaker=next(
+                        (
+                            item.name
+                            for item in package.npc_profiles
+                            if item.npc_id == draft["npc_id"]
+                        ),
+                        draft["npc_id"],
+                    ),
                     text=opportunity.opening_narrative,
                 )
                 log["type"] = "conversation_started"

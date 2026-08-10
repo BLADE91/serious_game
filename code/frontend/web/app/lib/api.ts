@@ -122,7 +122,23 @@ export class GameApi {
     });
   }
   latest() { return this.request<Record<string, unknown>>("GET", "/api/game/session/latest-active"); }
-  sessions() { return this.request<{ sessions: Record<string, unknown>[] }>("GET", "/api/game/sessions"); }
+  async sessions() {
+    try {
+      return await this.request<{ sessions: Record<string, unknown>[] }>("GET", "/api/game/sessions");
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404) throw error;
+      const latest = await this.latest();
+      const story = latest.story as Record<string, unknown> | undefined;
+      return {
+        sessions: latest.session_id ? [{
+          session_id: latest.session_id,
+          story_day: story?.day || 1,
+          status: latest.status || "active",
+          updated_at: latest.updated_at || "",
+        }] : [],
+      };
+    }
+  }
   view(sessionId: string, after = 0) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}/view?after=${after}`); }
   session(sessionId: string) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}`); }
   panel(sessionId: string, name: string) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}/${name}`); }

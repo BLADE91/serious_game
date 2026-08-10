@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer } from "../app/lib/narrative-model.ts";
+import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady } from "../app/lib/narrative-model.ts";
 
 const line = (id, cursor, text = id) => ({ id, cursor, kind: "narrative", text, contentInstanceId: `block:${id}` });
 
@@ -41,6 +41,23 @@ test("resets for another save and rebuilds authoritative feed after a 409", () =
   assert.deepEqual(state.items.map(item => item.id), ["fresh"]);
   assert.equal(state.currentIndex, 0);
   assert.equal(state.rebuildCount, 1);
+});
+
+test("starts a brand-new game at the first story entry while restores stay latest", () => {
+  const items = [line("arrival", 1), line("office", 2), line("phone", 3)];
+  const started = narrativeReducer(initialNarrativeState, { type: "SESSION_REBUILD", sessionId: "new-game", items, cursor: 3, position: "start" });
+  const restored = narrativeReducer(initialNarrativeState, { type: "SESSION_REBUILD", sessionId: "saved-game", items, cursor: 3, position: "latest" });
+  assert.equal(started.currentIndex, 0);
+  assert.equal(started.items[started.currentIndex].id, "arrival");
+  assert.equal(restored.currentIndex, 2);
+  assert.equal(restored.items[restored.currentIndex].id, "phone");
+});
+
+test("reveals a pending decision only after its current narrative has been read", () => {
+  assert.equal(pendingDecisionIsReady(0, 32), false);
+  assert.equal(pendingDecisionIsReady(30, 32), false);
+  assert.equal(pendingDecisionIsReady(31, 32), true);
+  assert.equal(pendingDecisionIsReady(-1, 0), true);
 });
 
 test("keeps optional feed metadata for compatibility and stable scene matching", () => {

@@ -753,12 +753,23 @@ class GameplayGovernanceService:
         text = content.strip()
         if not text:
             raise ActionUnavailableError("文件正文不能为空")
-        self._validate_document_consistency(document, text, package)
         document.content = text
         document.version += 1
         document.status = "draft"
         document.countersigned_by = ()
         document.updated_at = governance_now_iso()
+        self._record_document_version(
+            document,
+            created_by="player",
+            model_id="player-edit",
+            change_summary="玩家提交行政文件修订稿。",
+        )
+        self._review_and_revise_document(
+            session,
+            package,
+            document,
+            review_stage="manual_edit_review",
+        )
         self._commit(session, state_version)
         return {
             "state_version": session.state_version,
@@ -784,6 +795,23 @@ class GameplayGovernanceService:
             raise PermissionDeniedError("该NPC不是本文件的必要会签人")
         if npc_id in document.countersigned_by:
             raise ActionUnavailableError("该NPC已经完成会签")
+        if document.review_status != "pass":
+            self._review_and_revise_document(
+                session,
+                package,
+                document,
+                review_stage="pre_countersign_review",
+            )
+        if document.review_status != "pass":
+            document.status = "draft"
+            document.updated_at = governance_now_iso()
+            self._commit(session, state_version)
+            return {
+                "state_version": session.state_version,
+                "accepted": False,
+                "reason": "行政文书审校尚未通过，不能进入会签。",
+                "document": self._public_document(document),
+            }
         profile = next(
             item for item in package.npc_profiles if item.npc_id == npc_id
         )
@@ -847,6 +875,14 @@ class GameplayGovernanceService:
         document = self._document(session, document_id)
         if document.status != "approved":
             raise ActionUnavailableError("文件尚未完成必要会签")
+        if document.review_status != "pass":
+            raise ActionUnavailableError(
+                "行政文书审校尚未通过，不能正式印发",
+                details={
+                    "review_status": document.review_status,
+                    "review_summary": document.review_summary,
+                },
+            )
         self._validate_document_consistency(
             document, document.content, _package
         )
@@ -1898,11 +1934,258 @@ class GameplayGovernanceService:
             ),
             public_scope=tuple(meeting.resolution.get("public_scope", ())),
         )
-        self._validate_document_consistency(
-            document, document.content, package
+        self._record_document_version(
+            document,
+            created_by="document_writer",
+            model_id=result.model_id,
+            change_summary="根据已通过的会议决议形成行政文件初稿。",
+        )
+        self._review_and_revise_document(
+            session,
+            package,
+            document,
+            review_stage="draft_review",
         )
         session.administrative_documents[document_id] = document
         return document
+
+    @classmethod
+    def _structured_document_content(
+        cls,
+        *,
+        title: str,
+        resolution: dict,
+    ) -> str:
+        """Render a safe administrative draft from validated fields only."""
+        resources = (
+            resolution.get("resource_allocations")
+            or resolution.get("resource_authorization_limits")
+            or {}
+        )
+        lines = [
+            title,
+            f"决议事项：{resolution.get('decision', '')}",
+            f"适用范围：{resolution.get('target_scope', '')}",
+            "责任主体：" + "、".join(
+                str(item) for item in resolution.get("responsible_ids", ())
+            ),
+            f"办理期限：D{resolution.get('deadline_day', '')}",
+            "公开范围：" + "、".join(
+                str(item) for item in resolution.get("public_scope", ())
+            ),
+        ]
+        if resources:
+            lines.append("资源授权上限：" + "；".join(
+                f"{resource_id}={amount}"
+                for resource_id, amount in sorted(resources.items())
+            ))
+        lines.append(cls._RESOURCE_AUTHORITY_CLAUSE)
+        return "\n".join(item for item in lines if item.strip())
+
+    def _review_and_revise_document(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        document: AdministrativeDocument,
+        *,
+        review_stage: str,
+    ) -> None:
+        if not document.version_history:
+            self._record_document_version(
+                document,
+                created_by="legacy_document",
+                model_id="legacy-import",
+                change_summary="纳入行政文书审校链的既有文本。",
+            )
+        review = self._audit_document(
+            session, package, document, stage=review_stage
+        )
+        if review["status"] == "pass":
+            return
+        revision = self._gateway.run_governance_task(
+            GovernanceLLMContext(
+                session_id=session.session_id,
+                account_id=session.account_id,
+                operation_id=(
+                    f"{document.document_id}:revise:v{document.version}:"
+                    f"review-{len(document.review_history)}"
+                ),
+                story_day=session.game_state.story_day,
+                task="revise_document",
+                actor_id="document_reviser",
+                actor_name="行政文书自动修订模型",
+                actor_profile=(
+                    "只处理独立审校已经指出的问题，不改变会议决议。"
+                ),
+                prompt_version="administrative-document-revision-v1",
+                payload={
+                    "document_id": document.document_id,
+                    "document_type": document.document_type,
+                    "title": document.title,
+                    "document_text": document.content,
+                    "resolution": document.resolution_snapshot,
+                    "review": review,
+                    "safe_reference_text": self._structured_document_content(
+                        title=document.title,
+                        resolution=document.resolution_snapshot,
+                    ),
+                },
+            )
+        )
+        revised_text = str(revision.data["document_text"]).strip()
+        if self._RESOURCE_AUTHORITY_CLAUSE not in revised_text:
+            revised_text = (
+                f"{revised_text}\n{self._RESOURCE_AUTHORITY_CLAUSE}"
+            )
+        previous_version = document.version
+        document.version += 1
+        document.content = revised_text
+        document.updated_at = governance_now_iso()
+        document.revision_history.append({
+            "from_version": previous_version,
+            "to_version": document.version,
+            "model_id": revision.model_id,
+            "change_summary": str(revision.data["change_summary"]),
+            "addressed_issue_ids": list(
+                revision.data.get("addressed_issue_ids", ())
+            ),
+            "revised_at": governance_now_iso(),
+        })
+        self._record_document_version(
+            document,
+            created_by="document_revision_agent",
+            model_id=revision.model_id,
+            change_summary=str(revision.data["change_summary"]),
+        )
+        post_revision = self._audit_document(
+            session, package, document, stage="post_revision_review"
+        )
+        if post_revision["status"] == "pass":
+            return
+        fallback = self._structured_document_content(
+            title=document.title,
+            resolution=document.resolution_snapshot,
+        )
+        if fallback != document.content:
+            previous_version = document.version
+            document.version += 1
+            document.content = fallback
+            document.updated_at = governance_now_iso()
+            document.revision_history.append({
+                "from_version": previous_version,
+                "to_version": document.version,
+                "model_id": "deterministic-safety-renderer-v1",
+                "change_summary": (
+                    "自动修订稿仍未通过审校，已回到会议决议安全文本。"
+                ),
+                "addressed_issue_ids": [
+                    str(item.get("issue_id"))
+                    for item in post_revision.get("issues", ())
+                ],
+                "revised_at": governance_now_iso(),
+            })
+            self._record_document_version(
+                document,
+                created_by="deterministic_safety_renderer",
+                model_id="deterministic-safety-renderer-v1",
+                change_summary="根据会议决议生成最终安全文本。",
+            )
+        self._audit_document(
+            session, package, document, stage="safety_fallback_review"
+        )
+
+    def _audit_document(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        document: AdministrativeDocument,
+        *,
+        stage: str,
+    ) -> dict:
+        result = self._gateway.run_governance_task(
+            GovernanceLLMContext(
+                session_id=session.session_id,
+                account_id=session.account_id,
+                operation_id=(
+                    f"{document.document_id}:audit:v{document.version}:"
+                    f"{self._hash(document.content)}"
+                ),
+                story_day=session.game_state.story_day,
+                task="audit_document",
+                actor_id="document_reviewer",
+                actor_name="行政文书独立审校模型",
+                actor_profile=(
+                    "独立审校行政文件，只定位问题，不替代修订模型。"
+                ),
+                prompt_version="administrative-document-audit-v1",
+                payload={
+                    "document_id": document.document_id,
+                    "document_type": document.document_type,
+                    "title": document.title,
+                    "document_text": document.content,
+                    "resolution": document.resolution_snapshot,
+                    "resource_authority_clause": (
+                        self._RESOURCE_AUTHORITY_CLAUSE
+                    ),
+                },
+            )
+        )
+        issues = [dict(item) for item in result.data.get("issues", ())]
+        try:
+            self._validate_document_consistency(
+                document, document.content, package
+            )
+        except ActionUnavailableError as exc:
+            issues.append({
+                "issue_id": "DOC-AUDIT-DETERMINISTIC-001",
+                "severity": "error",
+                "category": "resolution_consistency",
+                "message": exc.message,
+                "text_quote": document.content[:120] or "（正文为空）",
+                "suggestion": (
+                    "严格按会议决议、结构化资源上限和权限条款修订。"
+                ),
+                "details": exc.details,
+            })
+        status = str(result.data["status"])
+        summary = str(result.data["summary"])
+        if issues and status == "pass":
+            status = "needs_revision"
+            summary = "文书存在必须修订的一致性或权限问题。"
+        reviewed_at = governance_now_iso()
+        review = {
+            "version": document.version,
+            "stage": stage,
+            "status": status,
+            "summary": summary,
+            "issues": issues,
+            "model_id": result.model_id,
+            "reviewed_at": reviewed_at,
+        }
+        document.review_status = status
+        document.review_summary = summary
+        document.review_model_id = result.model_id
+        document.reviewed_at = reviewed_at
+        document.review_history.append(review)
+        return review
+
+    def _record_document_version(
+        self,
+        document: AdministrativeDocument,
+        *,
+        created_by: str,
+        model_id: str,
+        change_summary: str,
+    ) -> None:
+        document.version_history.append({
+            "version": document.version,
+            "content": document.content,
+            "content_hash": self._hash(document.content),
+            "created_by": created_by,
+            "model_id": model_id,
+            "change_summary": change_summary,
+            "created_at": governance_now_iso(),
+        })
 
     def _validate_document_consistency(
         self,
@@ -3141,6 +3424,23 @@ class GameplayGovernanceService:
             "content_hash": value.content_hash,
             "issued_day": value.issued_day,
             "archive_id": value.archive_id,
+            "review_status": value.review_status,
+            "review_summary": value.review_summary,
+            "review_model_id": value.review_model_id,
+            "reviewed_at": value.reviewed_at,
+            "review_history": value.review_history,
+            "revision_history": value.revision_history,
+            "version_history": [
+                {
+                    key: item[key]
+                    for key in (
+                        "version", "content_hash", "created_by", "model_id",
+                        "change_summary", "created_at",
+                    )
+                    if key in item
+                }
+                for item in value.version_history
+            ],
         }
         limits = {
             str(resource_id): int(amount)

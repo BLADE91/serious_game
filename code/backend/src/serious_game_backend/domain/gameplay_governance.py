@@ -86,6 +86,13 @@ class AdministrativeDocument:
     content_hash: str | None = None
     issued_day: int | None = None
     archive_id: str | None = None
+    review_status: str = "not_reviewed"
+    review_summary: str = ""
+    review_model_id: str | None = None
+    reviewed_at: str | None = None
+    review_history: list[dict] = field(default_factory=list)
+    revision_history: list[dict] = field(default_factory=list)
+    version_history: list[dict] = field(default_factory=list)
     created_at: str = field(default_factory=governance_now_iso)
     updated_at: str = field(default_factory=governance_now_iso)
 

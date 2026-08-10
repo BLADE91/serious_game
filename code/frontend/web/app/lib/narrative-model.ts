@@ -24,7 +24,7 @@ export type NarrativeState = {
 export type NarrativeAction =
   | { type: "SESSION_OPEN"; sessionId: string }
   | { type: "FEED_MERGE"; sessionId: string; items: NarrativeItem[]; cursor?: number }
-  | { type: "SESSION_REBUILD"; sessionId: string; items: NarrativeItem[]; cursor?: number }
+  | { type: "SESSION_REBUILD"; sessionId: string; items: NarrativeItem[]; cursor?: number; position?: "start" | "latest" }
   | { type: "PREVIOUS" }
   | { type: "NEXT" }
   | { type: "GO_TO"; index: number }
@@ -39,6 +39,10 @@ export const initialNarrativeState: NarrativeState = {
   feedCursor: 0,
   rebuildCount: 0,
 };
+
+export function pendingDecisionIsReady(currentIndex: number, itemCount: number): boolean {
+  return itemCount === 0 || currentIndex >= itemCount - 1;
+}
 
 const keyFor = (item: NarrativeItem) => item.contentInstanceId
   ? `content:${item.contentInstanceId}`
@@ -69,7 +73,7 @@ export function narrativeReducer(state: NarrativeState, action: NarrativeAction)
       return {
         sessionId: action.sessionId,
         items,
-        currentIndex: items.length - 1,
+        currentIndex: items.length ? action.position === "start" ? 0 : items.length - 1 : -1,
         unreadCount: 0,
         feedCursor: action.cursor ?? Math.max(0, ...items.map(item => item.cursor || 0)),
         rebuildCount: state.rebuildCount + 1,

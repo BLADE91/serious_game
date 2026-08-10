@@ -226,6 +226,14 @@ class M4FoundationTests(unittest.TestCase):
         )
         self.assertEqual(201, allowed.status_code, allowed.text)
 
+        # Logout is an idempotent recovery boundary: an expired or already
+        # revoked cookie must still be cleared instead of trapping the client
+        # behind authentication middleware.
+        runtime.auth.logout(client.cookies.get(production_view.auth_cookie_name))
+        logged_out = client.post("/api/auth/logout")
+        self.assertEqual(204, logged_out.status_code, logged_out.text)
+        self.assertIsNone(client.cookies.get(production_view.auth_cookie_name))
+
     def test_local_sqlite_registration_login_and_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             settings = Settings(

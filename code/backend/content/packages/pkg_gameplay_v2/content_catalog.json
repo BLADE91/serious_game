@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "source_file": "最终剧本.md",
-  "source_sha256": "sha256:dfb71566e90a3982edaef75396f84c6c8c5f8e2f65958a28841cefc372984204",
+  "source_sha256": "sha256:d5bad0af0b6f1e9997dac7f525ee40fd611febacbc96433cd308aa4c7fbf734f",
   "decisions": [
     {
       "content_id": "DP1-01",

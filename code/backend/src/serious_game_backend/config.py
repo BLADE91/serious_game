@@ -59,6 +59,7 @@ class Settings:
     role_llm_provider: str = "fake"
     role_llm_base_url: str = "https://api.qianzhang-ai.cn/v1"
     role_llm_model: str = "qwen3.6-plus"
+    document_audit_llm_model: str = "qwen3.6-plus"
     contract_audit_llm_model: str = "qwen3.6-plus"
     role_llm_api_key_env: str = "DASHSCOPE_API_KEY"
     role_llm_timeout_seconds: float = 30.0
@@ -157,6 +158,10 @@ class Settings:
                 "https://api.qianzhang-ai.cn/v1",
             ).strip().rstrip("/"),
             role_llm_model=os.getenv("ROLE_LLM_MODEL", "qwen3.6-plus").strip(),
+            document_audit_llm_model=os.getenv(
+                "DOCUMENT_AUDIT_LLM_MODEL",
+                os.getenv("ROLE_LLM_MODEL", "qwen3.6-plus"),
+            ).strip(),
             contract_audit_llm_model=os.getenv(
                 "CONTRACT_AUDIT_LLM_MODEL",
                 os.getenv("ROLE_LLM_MODEL", "qwen3.6-plus"),
@@ -241,6 +246,7 @@ class Settings:
                 raise ValueError("ROLE_LLM_BASE_URL must use https")
             if (
                 not self.role_llm_model
+                or not self.document_audit_llm_model
                 or not self.contract_audit_llm_model
                 or not self.role_llm_api_key_env
             ):

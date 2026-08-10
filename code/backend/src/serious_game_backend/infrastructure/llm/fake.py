@@ -301,6 +301,52 @@ class FakeRoleLLMGateway:
                 data={"document_text": text, "warnings": []},
                 model_id="fake-governance-v1",
             )
+        if task == "audit_document":
+            text = str(payload.get("document_text", ""))
+            marker = next(
+                (
+                    item for item in (
+                        "另行追加", "额外支付", "再额外", "另行提供"
+                    )
+                    if item in text
+                ),
+                None,
+            )
+            issues = []
+            if marker is not None:
+                issues.append({
+                    "issue_id": "DOC-AUDIT-SEMANTIC-001",
+                    "severity": "error",
+                    "category": "authority_expansion",
+                    "message": "正文包含会议决议之外的新增承诺。",
+                    "text_quote": marker,
+                    "suggestion": "删除新增承诺，只保留已通过的会议决议。",
+                })
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "status": "needs_revision" if issues else "pass",
+                    "summary": (
+                        "发现需要修订的越权表述。"
+                        if issues else "文书与会议决议、权限边界一致。"
+                    ),
+                    "issues": issues,
+                },
+                model_id="fake-document-reviewer-v1",
+            )
+        if task == "revise_document":
+            issues = list(payload.get("review", {}).get("issues", ()))
+            return GovernanceLLMResult(
+                task=task,
+                data={
+                    "document_text": str(payload["safe_reference_text"]),
+                    "change_summary": "按审校意见删除越权表述并恢复决议原意。",
+                    "addressed_issue_ids": [
+                        str(item.get("issue_id")) for item in issues
+                    ],
+                },
+                model_id="fake-document-reviser-v1",
+            )
         if task == "meeting_position":
             return GovernanceLLMResult(
                 task=task,

@@ -221,6 +221,74 @@ class M3LLMRuntimeTests(unittest.TestCase):
                 },
             ))
 
+    def test_administrative_document_review_and_revision_contracts(self) -> None:
+        responses = [
+            {
+                "status": "needs_revision",
+                "summary": "正文扩大了会议授权。",
+                "issues": [{
+                    "issue_id": "DOC-001",
+                    "severity": "error",
+                    "category": "authority_expansion",
+                    "message": "出现会议决议之外的补助。",
+                    "text_quote": "另行追加补助",
+                    "suggestion": "删除未获授权的补助表述。",
+                }],
+            },
+            {
+                "document_text": "按会议决议执行，不新增资源承诺。",
+                "change_summary": "删除未获授权的补助表述。",
+                "addressed_issue_ids": ["DOC-001"],
+            },
+        ]
+        calls: list[dict] = []
+
+        def transport(_base_url, _api_key, body, _timeout):
+            calls.append(body)
+            return {
+                "choices": [{"message": {"content": __import__(
+                    "json"
+                ).dumps(responses[len(calls) - 1], ensure_ascii=False)}}],
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(
+                role_llm_model="role-model",
+                document_audit_llm_model="document-review-model",
+                contract_audit_llm_model="professional-review-model",
+            ),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        )
+        reviewed = gateway.run_governance_task(GovernanceLLMContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="audit:document:1",
+            story_day=3,
+            task="audit_document",
+            actor_id="document_reviewer",
+            actor_name="行政文书独立审校模型",
+            actor_profile="独立审校行政文书。",
+            payload={"document_text": "另行追加补助"},
+        ))
+        revised = gateway.run_governance_task(GovernanceLLMContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="revise:document:1",
+            story_day=3,
+            task="revise_document",
+            actor_id="document_reviser",
+            actor_name="行政文书自动修订模型",
+            actor_profile="按审校意见修订行政文书。",
+            payload={"review": reviewed.data},
+        ))
+
+        self.assertEqual("document-review-model", calls[0]["model"])
+        self.assertEqual("role-model", calls[1]["model"])
+        self.assertEqual("needs_revision", reviewed.data["status"])
+        self.assertEqual(["DOC-001"], revised.data["addressed_issue_ids"])
+
     def test_invalid_cached_contract_audit_is_ignored_and_refreshed(self) -> None:
         calls: list[dict] = []
 
@@ -379,6 +447,50 @@ class M3LLMRuntimeTests(unittest.TestCase):
 
         self.assertEqual("reject", result.contact_response)
         self.assertIsNone(result.dialogue)
+
+    def test_group_dialogue_accepts_provider_zero_for_inactive_urgency(self) -> None:
+        def transport(_base_url, _api_key, _body, _timeout):
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "npc_id": "npc_qian_wei",
+                    "dialogue": "先核清户数和资金来源，财政才能安排分期拨付。",
+                    "action_id": "",
+                    "contact_ids": [],
+                    "contact_response": "",
+                    "initiate_followup": False,
+                    "followup_type": "",
+                    "participant_ids": [],
+                    "agenda": "",
+                    "demands": [],
+                    "urgency": 0,
+                    "target_ids": [],
+                    "rationale": "",
+                }, ensure_ascii=False)}}],
+            }
+
+        result = OpenAICompatibleRoleLLMGateway(
+            self.settings(role_llm_fallback_to_fake=False),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=transport,
+        ).run_night_turn(NightAgentContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="meeting:group-dialogue:qian",
+            story_day=1,
+            scene_id="meeting_1",
+            phase="player_group_dialogue",
+            npc_id="npc_qian_wei",
+            npc_name="钱伟",
+            role_setting="财政负责人，重视预算纪律。",
+            big_five={},
+            counterpart_ids=("npc_zhao_jianguo",),
+            scene_goal="讨论补偿安置标准",
+            player_text="请提出可执行条件。",
+        ))
+
+        self.assertEqual("qwen3.6-plus", result.model_id)
+        self.assertIn("财政", result.dialogue or "")
 
     def test_night_agent_repairs_common_json_wrapper_and_null_defaults(self) -> None:
         def transport(_base_url, _api_key, _body, _timeout):

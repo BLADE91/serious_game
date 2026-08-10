@@ -133,6 +133,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             return await call_next(request)
         public_paths = {
             "/health/live", "/health/ready", "/api/auth/login", "/api/auth/register",
+            # Logout must remain idempotent when the authentication cookie has
+            # already expired or been revoked. The route only revokes the
+            # presented cookie and clears it from the response.
+            "/api/auth/logout",
             "/docs", "/openapi.json", "/redoc",
         }
         if request.url.path in public_paths:
@@ -859,12 +863,57 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     ) -> dict:
         account_id = current_account_id(x_account_id)
         session = runtime.game_sessions.get_owned(session_id, account_id)
-        require_locked_package(runtime.packages, session)
+        package = require_locked_package(runtime.packages, session)
+        scene_catalog = {
+            str(item.get("scene_id")): item
+            for item in package.night_agent_scenes
+            if item.get("scene_id")
+        }
+        action_catalog = package.night_agent_actions or {}
+
+        def public_exchange(exchange: dict) -> dict:
+            scene = scene_catalog.get(str(exchange.get("scene_id")), {})
+            executed = [
+                {
+                    "action_id": action_id,
+                    "name": str(
+                        action_catalog.get(str(action_id), {}).get(
+                            "name", "夜间行动"
+                        )
+                    ),
+                    "summary": str(
+                        action_catalog.get(str(action_id), {}).get(
+                            "public_direction_summary", ""
+                        )
+                    ),
+                }
+                for action_id in exchange.get("executed_action_ids", ())
+            ]
+            return {
+                "scene_id": exchange.get("scene_id"),
+                "scene_goal": str(scene.get("scene_goal", "")),
+                "group_index": exchange.get("group_index"),
+                "participant_ids": list(exchange.get("participant_ids", ())),
+                "transcript": list(exchange.get("transcript", ())),
+                "executed_actions": executed,
+                "public_summary": str(exchange.get("public_summary", "")),
+            }
+
         return {
             "session_id": session.session_id,
             "nights": [
                 {
                     "story_day": item.get("story_day"),
+                    "beat_id": item.get("beat_id"),
+                    "summary": str(item.get("summary", "")),
+                    "narrative_lines": list(item.get("lines", ())),
+                    "morning_brief": list(item.get("morning_card", ())),
+                    "has_agent_activity": bool(
+                        item.get("contact_selections")
+                        or item.get("contact_responses")
+                        or item.get("followup_decisions")
+                        or item.get("agent_exchanges")
+                    ),
                     "contact_selections": list(
                         item.get("contact_selections", ())
                     ),
@@ -874,13 +923,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     "followup_decisions": list(
                         item.get("followup_decisions", ())
                     ),
-                    "agent_exchanges": list(item.get("agent_exchanges", ())),
+                    "agent_exchanges": [
+                        public_exchange(exchange)
+                        for exchange in item.get("agent_exchanges", ())
+                    ],
                 }
                 for item in session.night_logs
-                if item.get("contact_selections")
-                or item.get("contact_responses")
-                or item.get("followup_decisions")
-                or item.get("agent_exchanges")
             ],
         }
 

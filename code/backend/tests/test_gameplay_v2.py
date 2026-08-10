@@ -189,6 +189,30 @@ class GameplayV2Tests(unittest.TestCase):
         )
         self.assertEqual(409, blocked.status_code, blocked.text)
 
+    def test_night_dialogues_keeps_scripted_night_and_morning_brief(self) -> None:
+        self.resolve_d1()
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/end-day",
+            json={
+                "client_action_id": "gameplay-v2-night-brief-0001",
+                "state_version": self.state["state_version"],
+                "active_rest": False,
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        night_response = self.client.get(
+            f"/api/game/session/{self.session_id}/night-dialogues",
+            headers=self.headers,
+        )
+        self.assertEqual(200, night_response.status_code, night_response.text)
+        nights = night_response.json()["nights"]
+        self.assertEqual(1, len(nights))
+        self.assertFalse(nights[0]["has_agent_activity"])
+        self.assertTrue(nights[0]["narrative_lines"])
+        self.assertTrue(nights[0]["morning_brief"])
+        self.assertEqual([], nights[0]["agent_exchanges"])
+
     def test_unrelated_player_text_is_rejected_without_advancing_conversation(self) -> None:
         self.reach_d2_open()
         started = self.action({

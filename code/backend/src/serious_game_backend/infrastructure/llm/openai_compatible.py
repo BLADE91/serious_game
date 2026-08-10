@@ -252,7 +252,11 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         elif context.phase == "player_group_dialogue":
             contract = (
                 "玩家正在回应当前角色参与的强制群组会话。本回合只输出当前角色实际说出的"
-                "dialogue；其他决策字段保持空值。必须回应当前议题和玩家原话，不得替其他NPC发言。"
+                "dialogue；必须回应当前议题和玩家原话，不得替其他NPC发言。"
+                "其他字段必须使用以下空值：action_id=null、contact_ids=[]、"
+                "contact_response=null、initiate_followup=false、followup_type=null、"
+                "participant_ids=[]、agenda=\"\"、demands=[]、urgency=\"none\"、"
+                "target_ids=[]、rationale=\"\"。"
             )
         elif context.phase == "dialogue":
             contract = (
@@ -519,6 +523,18 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 "把已经通过的会议决议转写为行政文件，不得扩大对象、资源、权限或期限。"
                 "只返回 document_text 和 warnings。"
             ),
+            "audit_document": (
+                "你是独立于起草模型的行政文书审校人员。逐项核对正文、会议决议、"
+                "适用对象、权限边界、资源上限、办理期限、公开范围和行文完整性。"
+                "只定位问题，不直接修改正文。只返回 status、summary、issues；"
+                "status只能是pass、reject、needs_revision。每个问题必须包含"
+                "issue_id、severity、category、message、text_quote、suggestion。"
+            ),
+            "revise_document": (
+                "你是行政文书修订人员。只能依据审校问题、会议决议和安全参考文本"
+                "修订原稿，不得新增对象、资源、金额、权限或期限。只返回"
+                "document_text、change_summary、addressed_issue_ids。"
+            ),
             "meeting_position": (
                 "以当前参会人身份对会议议案表态。只返回 position 和 reason；"
                 "position 只能是 approve、conditional、oppose、abstain。"
@@ -539,11 +555,12 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             "只返回一个JSON对象，不要代码块，不要解释系统规则。",
         ))
         user = json.dumps(context.payload, ensure_ascii=False, sort_keys=True)
-        model_id = (
-            self._settings.contract_audit_llm_model
-            if context.task == "audit_contract"
-            else self._settings.role_llm_model
-        )
+        if context.task == "audit_document":
+            model_id = self._settings.document_audit_llm_model
+        elif context.task == "audit_contract":
+            model_id = self._settings.contract_audit_llm_model
+        else:
+            model_id = self._settings.role_llm_model
         request_document = {
             "model": model_id,
             "messages": [
@@ -665,6 +682,10 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             },
             "review_contract": {"decision", "reason", "counteroffer"},
             "draft_document": {"document_text", "warnings"},
+            "audit_document": {"status", "summary", "issues"},
+            "revise_document": {
+                "document_text", "change_summary", "addressed_issue_ids",
+            },
             "meeting_position": {"position", "reason"},
         }[task]
         if set(data) != expected:
@@ -707,6 +728,33 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 ):
                     if not isinstance(issue[key], str) or not issue[key].strip():
                         raise RoleLLMResponseError("合同审校问题说明不能为空")
+        if task == "audit_document":
+            if data["status"] not in {"pass", "reject", "needs_revision"}:
+                raise RoleLLMResponseError("行政文书审校状态枚举非法")
+            if not isinstance(data["issues"], list):
+                raise RoleLLMResponseError("行政文书审校问题必须是数组")
+            if data["status"] != "pass" and not data["issues"]:
+                raise RoleLLMResponseError("未通过的行政文书审校必须给出问题")
+            for issue in data["issues"]:
+                if not isinstance(issue, dict) or set(issue) != {
+                    "issue_id", "severity", "category", "message",
+                    "text_quote", "suggestion",
+                }:
+                    raise RoleLLMResponseError("行政文书审校问题字段不完整")
+                if issue["severity"] not in {"error", "warning"}:
+                    raise RoleLLMResponseError("行政文书审校问题级别非法")
+                for key in (
+                    "issue_id", "category", "message",
+                    "text_quote", "suggestion",
+                ):
+                    if not isinstance(issue[key], str) or not issue[key].strip():
+                        raise RoleLLMResponseError("行政文书审校问题说明不能为空")
+        if task == "revise_document":
+            if not isinstance(data["addressed_issue_ids"], list) or not all(
+                isinstance(item, str) and item.strip()
+                for item in data["addressed_issue_ids"]
+            ):
+                raise RoleLLMResponseError("行政文书修订问题编号非法")
         if task == "review_contract" and data["decision"] not in set(
             payload.get("allowed_decisions", ())
         ):
@@ -722,6 +770,8 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             "audit_contract": ("summary",),
             "review_contract": ("reason",),
             "draft_document": ("document_text",),
+            "audit_document": ("summary",),
+            "revise_document": ("document_text", "change_summary"),
             "meeting_position": ("reason",),
         }[task]
         if any(not isinstance(data.get(key), str) or not data[key].strip()
@@ -940,6 +990,14 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         for key in ("agenda", "rationale"):
             if document.get(key) is None:
                 document[key] = ""
+        # Some OpenAI-compatible providers encode an inactive enum as JSON 0.
+        # It carries the same meaning as "none" only when the follow-up switch is off;
+        # non-empty/active values remain subject to the strict phase validation below.
+        if (
+            document.get("urgency") in {None, "", 0, False}
+            and not document.get("initiate_followup", False)
+        ):
+            document["urgency"] = "none"
         for key in ("dialogue", "action_id", "contact_response", "followup_type"):
             if document.get(key) == "":
                 document[key] = None

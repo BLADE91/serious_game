@@ -19,6 +19,7 @@ from serious_game_backend.application.scripted_effect_service import (
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.errors import ActionUnavailableError
+from serious_game_backend.domain.llm import GovernanceLLMResult
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.infrastructure.repositories.codec import (
     decode_session,
@@ -259,6 +260,13 @@ class GameplayGovernanceTests(unittest.TestCase):
         document = resolved["document"]
         self.assertTrue(resolved["passed"])
         self.assertEqual("draft", document["status"])
+        self.assertEqual("pass", document["review_status"])
+        self.assertEqual(
+            "fake-document-reviewer-v1", document["review_model_id"]
+        )
+        self.assertEqual(1, len(document["review_history"]))
+        self.assertEqual("draft_review", document["review_history"][0]["stage"])
+        self.assertEqual(1, len(document["version_history"]))
         reserved_overview = self.client.get(
             f"/api/game/session/{self.session_id}/governance",
             headers=self.headers,
@@ -282,6 +290,16 @@ class GameplayGovernanceTests(unittest.TestCase):
             {"state_version": signed["state_version"]},
         )
         self.assertEqual("issued", issued["document"]["status"])
+        persisted = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        restored = decode_session(encode_session(persisted))
+        restored_document = restored.administrative_documents[
+            document["document_id"]
+        ]
+        self.assertEqual("pass", restored_document.review_status)
+        self.assertEqual(1, len(restored_document.review_history))
+        self.assertEqual(1, len(restored_document.version_history))
         issued_overview = self.client.get(
             f"/api/game/session/{self.session_id}/governance",
             headers=self.headers,
@@ -423,7 +441,7 @@ class GameplayGovernanceTests(unittest.TestCase):
         self.assertEqual(409, response.status_code, response.text)
         self.assertIn("只能形成资源授权上限", response.text)
 
-    def test_document_rejects_unstructured_resource_promises(self) -> None:
+    def test_document_review_agent_repairs_unstructured_promises(self) -> None:
         self._resolve_opening()
         resolved = self._create_authorization_document()
         document = resolved["document"]
@@ -441,8 +459,68 @@ class GameplayGovernanceTests(unittest.TestCase):
                 ),
             },
         )
-        self.assertEqual(409, response.status_code, response.text)
-        self.assertIn("结构化附件之外", response.text)
+        self.assertEqual(200, response.status_code, response.text)
+        repaired = response.json()["document"]
+        self.assertEqual("pass", repaired["review_status"])
+        self.assertNotIn("housing_d1_140", repaired["content"])
+        self.assertNotIn("999", repaired["content"])
+        self.assertEqual(3, repaired["version"])
+        self.assertEqual(
+            ["needs_revision", "pass"],
+            [
+                item["status"]
+                for item in repaired["review_history"][-2:]
+            ],
+        )
+        self.assertEqual(
+            "document_revision_agent",
+            repaired["version_history"][-1]["created_by"],
+        )
+        self.assertIn(
+            "DOC-AUDIT-DETERMINISTIC-001",
+            repaired["revision_history"][-1]["addressed_issue_ids"],
+        )
+
+    def test_invalid_model_document_is_repaired_from_resolution(self) -> None:
+        delegate = self.runtime.gameplay_governance._gateway
+
+        class ExtraPromiseGateway:
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+            def run_governance_task(self, context):
+                result = delegate.run_governance_task(context)
+                if context.task != "draft_document":
+                    return result
+                return GovernanceLLMResult(
+                    task=result.task,
+                    data={
+                        **result.data,
+                        "document_text": (
+                            str(result.data["document_text"])
+                            + "\n另行追加999万元。"
+                        ),
+                    },
+                    model_id=result.model_id,
+                )
+
+        self.runtime.gameplay_governance._gateway = ExtraPromiseGateway()
+        self._resolve_opening()
+        resolved = self._create_authorization_document()
+
+        self.assertTrue(resolved["passed"])
+        self.assertNotIn("999", resolved["document"]["content"])
+        self.assertIn(
+            "housing_d1_120=2", resolved["document"]["content"]
+        )
+        self.assertEqual("pass", resolved["document"]["review_status"])
+        self.assertGreaterEqual(
+            len(resolved["document"]["review_history"]), 2
+        )
+        self.assertEqual(
+            "document_revision_agent",
+            resolved["document"]["version_history"][-1]["created_by"],
+        )
 
     def test_unrelated_household_input_has_no_side_effect_and_can_cancel(
         self,
