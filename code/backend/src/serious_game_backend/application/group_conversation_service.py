@@ -5,7 +5,7 @@ from dataclasses import asdict
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.input_review_service import (
     InputReviewService,
-    UNRELATED_INPUT_MESSAGE,
+    input_rejection_message,
 )
 from serious_game_backend.application.ports import (
     GameSessionRepository,
@@ -88,7 +88,7 @@ class GroupConversationService:
                 "state_version": session.state_version,
                 "completed": False,
                 "input_rejected": True,
-                "message": UNRELATED_INPUT_MESSAGE,
+                "message": input_rejection_message(review_reason),
                 "turn_dialogues": [],
                 "visible_state": self._projector.project(session, package),
             }

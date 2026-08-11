@@ -6,6 +6,18 @@ from serious_game_backend.domain.llm import GovernanceLLMContext
 
 
 UNRELATED_INPUT_MESSAGE = "请输入与本游戏相关的话语"
+INVALID_INPUT_REASON = "玩家输入没有包含可交流的文字。"
+INVALID_INPUT_MESSAGE = "这句话没有形成有效发言，请说明你想询问的事实、诉求或方案。"
+
+
+def input_rejection_message(review_reason: str) -> str:
+    if review_reason == INVALID_INPUT_REASON:
+        return INVALID_INPUT_MESSAGE
+    return UNRELATED_INPUT_MESSAGE
+
+SOCIAL_OPENINGS = frozenset({
+    "你好", "您好", "大家好", "在吗", "打扰了", "辛苦了", "请坐",
+})
 
 
 class InputReviewService:
@@ -22,6 +34,16 @@ class InputReviewService:
         player_text: str,
         scene_goal: str,
     ) -> tuple[bool, str]:
+        normalized = "".join(player_text.strip().split()).strip("，。！？!?、；;：:")
+        if not normalized or not any(character.isalnum() for character in normalized):
+            return False, INVALID_INPUT_REASON
+        if normalized in SOCIAL_OPENINGS or (
+            len(normalized) <= 16 and normalized.endswith(("你好", "您好"))
+        ) or any(
+            normalized.startswith(prefix) and len(normalized) <= 16
+            for prefix in ("你好", "您好", "大家好", "打扰了")
+        ):
+            return True, "面对面交流中的正常问候。"
         result = self._gateway.run_governance_task(
             GovernanceLLMContext(
                 session_id=session.session_id,

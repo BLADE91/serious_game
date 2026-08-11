@@ -14,6 +14,15 @@ VISIBLE_INDICATORS = (
     "cadre_discontent",
 )
 
+STRUCTURED_DECISION_LABELS = {
+    "dp2_08": {
+        "a": "A·签约攻坚线：人手、资金和时间优先用于逐户协商。",
+        "b": "B·反腐查案线：追查发票、关联公司与工程款去向。",
+        "c": "C·环评真相线：复核三年数据并调查上游冶炼厂。",
+        "d": "D·民生维稳线：优先处理信访、体检和安置诉求。",
+    },
+}
+
 
 class VisibleStateProjector:
     def project(self, session: GameSession, package: ScriptPackage) -> dict:
@@ -24,6 +33,10 @@ class VisibleStateProjector:
         }
         pending = None
         if session.pending_decision is not None:
+            input_schema = dict(session.pending_decision.input_schema or {})
+            labels = STRUCTURED_DECISION_LABELS.get(session.pending_decision.decision_id)
+            if labels:
+                input_schema["labels"] = labels
             pending = {
                 "event_instance_id": session.pending_decision.event_instance_id,
                 "decision_id": session.pending_decision.decision_id,
@@ -40,7 +53,7 @@ class VisibleStateProjector:
                 "title": session.pending_decision.visible_title,
                 "text": session.pending_decision.visible_text,
                 "input_kind": session.pending_decision.input_kind,
-                "input_schema": session.pending_decision.input_schema,
+                "input_schema": input_schema or None,
             }
         return {
             "session_id": session.session_id,

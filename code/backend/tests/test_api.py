@@ -83,6 +83,26 @@ class ApiTests(unittest.TestCase):
         self.assertIn("已签发", desk_body["compensation_policy"]["status"])
         self.assertTrue(all("description" in item for item in desk_body["tools"]))
 
+    def test_lists_all_account_sessions_in_recent_first_order(self) -> None:
+        created = []
+        for suffix in ("first", "second"):
+            response = self.client.post(
+                "/api/game/session",
+                json={"client_request_id": f"api-session-list-{suffix}"},
+                headers=self.headers,
+            )
+            self.assertEqual(201, response.status_code, response.text)
+            created.append(response.json()["session_id"])
+
+        response = self.client.get("/api/game/sessions", headers=self.headers)
+        self.assertEqual(200, response.status_code, response.text)
+        sessions = response.json()["sessions"]
+        self.assertEqual(set(created), {item["session_id"] for item in sessions})
+        self.assertEqual(created[-1], sessions[0]["session_id"])
+        self.assertTrue(all(item["story_day"] == 1 for item in sessions))
+        self.assertTrue(all(item["loadable"] is True for item in sessions))
+        self.assertTrue(all(item["unavailable_reason"] is None for item in sessions))
+
     def test_llm_action_endpoint_runs_outside_event_loop(self) -> None:
         route = next(
             item for item in self.client.app.routes

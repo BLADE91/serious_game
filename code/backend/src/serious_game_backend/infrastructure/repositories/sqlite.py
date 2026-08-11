@@ -534,6 +534,17 @@ class SqliteGameSessionRepository:
             ).fetchone()
         return decode_session(json.loads(row["payload_json"])) if row else None
 
+    def list_for_account(self, account_id: str) -> tuple[GameSession, ...]:
+        with self._store.connect() as connection:
+            rows = connection.execute(
+                """
+                select payload_json from runtime_game_sessions
+                where account_id = ? order by updated_at desc
+                """,
+                (account_id,),
+            ).fetchall()
+        return tuple(decode_session(json.loads(row["payload_json"])) for row in rows)
+
     def save(self, session: GameSession, *, expected_version: int) -> None:
         reservation_guard = ""
         parameters: list[object] = [

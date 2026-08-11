@@ -78,7 +78,7 @@ powershell.exe -NoProfile -Command "$limit=(Get-Date).AddSeconds(45); do { try {
 if errorlevel 1 goto :backend_failed
 
 echo [4/4] Starting the web client with hot reload...
-powershell.exe -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -Uri '%WEB_URL%' -TimeoutSec 2; if ($r.StatusCode -eq 200 -and $r.Content -match '浊流之下') { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
+powershell.exe -NoProfile -Command "try { $r=Invoke-WebRequest -UseBasicParsing -Uri '%WEB_URL%' -TimeoutSec 2; if ($r.StatusCode -eq 200 -and $r.Content -match '浊流之上') { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
 set "WEB_STATUS=%ERRORLEVEL%"
 if "%WEB_STATUS%"=="2" goto :wrong_web
 if not "%WEB_STATUS%"=="0" (
@@ -86,7 +86,7 @@ if not "%WEB_STATUS%"=="0" (
 )
 
 echo Waiting for the web client...
-powershell.exe -NoProfile -Command "$limit=(Get-Date).AddSeconds(60); do { try { $r=Invoke-WebRequest -UseBasicParsing -Uri '%WEB_URL%' -TimeoutSec 3; if ($r.StatusCode -eq 200 -and $r.Content -match '浊流之下') { exit 0 } } catch {}; Start-Sleep -Milliseconds 500 } while ((Get-Date) -lt $limit); exit 1" >nul 2>&1
+powershell.exe -NoProfile -Command "$limit=(Get-Date).AddSeconds(60); do { try { $r=Invoke-WebRequest -UseBasicParsing -Uri '%WEB_URL%' -TimeoutSec 3; if ($r.StatusCode -eq 200 -and $r.Content -match '浊流之上') { exit 0 } } catch {}; Start-Sleep -Milliseconds 500 } while ((Get-Date) -lt $limit); exit 1" >nul 2>&1
 if errorlevel 1 goto :web_failed
 
 echo.

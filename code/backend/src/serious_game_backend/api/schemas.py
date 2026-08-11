@@ -179,6 +179,7 @@ class GovernanceActionStartRequest(BaseModel):
     proposed_document_type: str | None = Field(
         default=None, min_length=1, max_length=128
     )
+    lead_npc_id: str | None = Field(default=None, max_length=128)
 
     @model_validator(mode="after")
     def unique_governance_targets(self) -> "GovernanceActionStartRequest":

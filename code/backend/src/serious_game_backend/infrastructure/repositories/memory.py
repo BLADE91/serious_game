@@ -52,6 +52,15 @@ class InMemoryGameSessionRepository:
                 return None
             return deepcopy(max(values, key=lambda item: item.updated_at))
 
+    def list_for_account(self, account_id: str) -> tuple[GameSession, ...]:
+        with self._lock:
+            values = sorted(
+                (item for item in self._items.values() if item.account_id == account_id),
+                key=lambda item: item.updated_at,
+                reverse=True,
+            )
+            return tuple(deepcopy(item) for item in values)
+
     def save(self, session: GameSession, *, expected_version: int) -> None:
         with self._lock:
             current = self._items.get(session.session_id)

@@ -46,6 +46,22 @@
       "description": "阅读已经取得的背景、业务、线索、文件和合同档案；不会凭空取得尚未解锁的材料。"
     }
   ],
+  "initial_visible_npc_ids": [
+    "npc_zhou_dashan",
+    "npc_wu_xiuying",
+    "npc_zhao_jianguo",
+    "npc_zheng_xiangdong",
+    "npc_feng_jingzhi"
+  ],
+  "leadership_meeting_npc_ids": [
+    "npc_zhao_jianguo",
+    "npc_jiang_chongyue",
+    "npc_sun_qiang",
+    "npc_feng_jingzhi",
+    "npc_he_xingbang",
+    "npc_ke_qinian",
+    "npc_gu_keming"
+  ],
   "household_representative_npc_ids": [
     "npc_zhou_dashan",
     "npc_zhou_kuiyuan",

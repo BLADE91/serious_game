@@ -8,7 +8,7 @@ import sys
 
 
 def main() -> None:
-    parser = ArgumentParser(description="浊流之下·清江搬迁记后端")
+    parser = ArgumentParser(description="浊流之上后端")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8100)
     parser.add_argument("--reload", action="store_true")

@@ -12,7 +12,7 @@ from serious_game_backend.application.governance_initializer import (
 )
 from serious_game_backend.application.input_review_service import (
     InputReviewService,
-    UNRELATED_INPUT_MESSAGE,
+    input_rejection_message,
 )
 from serious_game_backend.application.npc_turn_service import NPCTurnService
 from serious_game_backend.application.package_lock import require_locked_package
@@ -26,7 +26,7 @@ from serious_game_backend.application.ports import (
     ScriptPackageRepository,
 )
 from serious_game_backend.application.visible_state import VisibleStateProjector
-from serious_game_backend.domain.enums import SessionStatus
+from serious_game_backend.domain.enums import AvailabilityMode, SessionStatus
 from serious_game_backend.domain.errors import (
     ActionUnavailableError,
     InsufficientActionPointsError,
@@ -93,6 +93,9 @@ class GameplayGovernanceService:
         sync_known_facts_to_archives(session, package)
         config = package.governance_config or {}
         profiles = {item.npc_id: item for item in package.npc_profiles}
+        visible_npc_ids = self._visible_governance_npc_ids(session, package)
+        meeting_npc_ids = set(config.get("leadership_meeting_npc_ids", ()))
+        meeting_npc_ids &= visible_npc_ids
         return {
             "state_version": session.state_version,
             "permissions": config.get("permissions", {}),
@@ -110,7 +113,7 @@ class GameplayGovernanceService:
                     for npc_id in config.get(
                         "household_representative_npc_ids", ()
                     )
-                    if npc_id in profiles
+                    if npc_id in profiles and npc_id in visible_npc_ids
                 ],
                 "cadre": [
                     {
@@ -118,7 +121,7 @@ class GameplayGovernanceService:
                         "label": profiles[npc_id].name,
                     }
                     for npc_id in config.get("cadre_npc_ids", ())
-                    if npc_id in profiles
+                    if npc_id in profiles and npc_id in visible_npc_ids
                 ],
                 "meeting_participants": [
                     {
@@ -126,6 +129,7 @@ class GameplayGovernanceService:
                         "label": item.name,
                     }
                     for item in package.npc_profiles
+                    if item.npc_id in meeting_npc_ids
                 ],
             },
             "document_types": [
@@ -136,6 +140,9 @@ class GameplayGovernanceService:
                 for document_type, rules in config.get(
                     "document_rules", {}
                 ).items()
+                if set(rules.get("required_countersign_ids", ())).issubset(
+                    meeting_npc_ids
+                )
             ],
             "archives": [
                 self._public_archive(item)
@@ -160,6 +167,40 @@ class GameplayGovernanceService:
             "resource_ledger": list(session.resource_ledger_entries),
         }
 
+    def archive_detail(
+        self,
+        *,
+        account_id: str,
+        session_id: str,
+        archive_id: str,
+    ) -> dict:
+        """Return the full text of an acquired archive after it has been read."""
+        session, package = self._load(account_id, session_id)
+        sync_known_facts_to_archives(session, package)
+        archive = session.archive_records.get(archive_id)
+        if archive is None or archive.status != "available":
+            raise NotFoundError("档案不存在或尚未取得")
+        if not archive.read_at_days:
+            raise ActionUnavailableError("请先通过查阅档案行动阅读这份材料")
+        return {
+            "state_version": session.state_version,
+            "archive": self._public_archive(archive, include_content=True),
+        }
+
+    def contract_detail(
+        self,
+        *,
+        account_id: str,
+        session_id: str,
+        contract_id: str,
+    ) -> dict:
+        session, _package = self._load(account_id, session_id)
+        contract = self._contract(session, contract_id)
+        return {
+            "state_version": session.state_version,
+            "contract": self._public_contract(contract, include_text=True),
+        }
+
     def start_action(
         self,
         *,
@@ -171,6 +212,7 @@ class GameplayGovernanceService:
         topic: str = "",
         archive_ids: tuple[str, ...] = (),
         proposed_document_type: str | None = None,
+        lead_npc_id: str | None = None,
     ) -> dict:
         session, package = self._load_mutable(
             account_id, session_id, state_version
@@ -217,6 +259,7 @@ class GameplayGovernanceService:
             archive_ids=archive_ids,
             topic=topic,
             proposed_document_type=proposed_document_type,
+            lead_npc_id=lead_npc_id,
             session=session,
         )
         action_instance_id = f"govact_{secrets.token_hex(10)}"
@@ -261,11 +304,15 @@ class GameplayGovernanceService:
                 topic=topic.strip(),
                 participant_ids=target_ids,
                 decision_mode=decision_mode,
+                lead_npc_id=str(lead_npc_id),
                 proposed_document_type=proposed_document_type,
             )
             session.meetings[meeting_id] = meeting
             action.result_ids.append(meeting_id)
             result["meeting"] = self._public_meeting(meeting)
+        # Some action kinds (notably archive inspection) complete immediately.
+        # Serialize only after their authoritative status/result IDs are final.
+        result["action"] = asdict(action)
         self._commit(session, state_version)
         result["state_version"] = session.state_version
         result["visible_state"] = self._projector.project(session, package)
@@ -315,7 +362,7 @@ class GameplayGovernanceService:
             return {
                 "state_version": session.state_version,
                 "input_rejected": True,
-                "message": UNRELATED_INPUT_MESSAGE,
+                "message": input_rejection_message(review_reason),
                 "replies": [],
                 "acquired_archive_ids": [],
                 "contract_batch_proposal": None,
@@ -410,7 +457,7 @@ class GameplayGovernanceService:
             return {
                 "state_version": session.state_version,
                 "input_rejected": True,
-                "message": UNRELATED_INPUT_MESSAGE,
+                "message": input_rejection_message(review_reason),
                 "replies": [],
                 "acquired_archive_ids": [],
                 "contract_batch_proposal": None,
@@ -577,7 +624,7 @@ class GameplayGovernanceService:
                 "state_version": session.state_version,
                 "meeting_id": meeting_id,
                 "input_rejected": True,
-                "message": UNRELATED_INPUT_MESSAGE,
+                "message": input_rejection_message(review_reason),
                 "replies": [],
                 "transcript": meeting.transcript,
             }
@@ -588,13 +635,18 @@ class GameplayGovernanceService:
             "addressed_npc_id": addressed_npc_id,
             "visible_to": list(meeting.participant_ids),
         })
-        ordered = list(meeting.participant_ids)
-        if addressed_npc_id:
-            ordered.remove(addressed_npc_id)
-            ordered.insert(0, addressed_npc_id)
+        ordered = [meeting.lead_npc_id, *(
+            npc_id for npc_id in meeting.participant_ids
+            if npc_id != meeting.lead_npc_id
+        )]
         replies = []
-        for npc_id in ordered:
+        for order_index, npc_id in enumerate(ordered):
             profile = profiles[npc_id]
+            meeting_role = (
+                "分管或牵头领导：先汇报事实、依据、方案和风险"
+                if order_index == 0
+                else "参会领导：在分管领导汇报后明确表示同意、反对或提出修改意见"
+            )
             result = self._gateway.run_night_turn(NightAgentContext(
                 session_id=session.session_id,
                 account_id=session.account_id,
@@ -618,7 +670,7 @@ class GameplayGovernanceService:
                     item.get("speaker_type") == "player"
                     for item in meeting.transcript
                 ),
-                scene_goal=meeting.topic,
+                scene_goal=f"{meeting.topic}。你的会议角色：{meeting_role}。",
                 player_text=text,
             ))
             if result.dialogue:
@@ -628,6 +680,7 @@ class GameplayGovernanceService:
                     "npc_name": profile.name,
                     "text": result.dialogue,
                     "model_id": result.model_id,
+                    "meeting_role": "lead_report" if order_index == 0 else "member_position",
                 }
                 meeting.transcript.append(reply)
                 replies.append(reply)
@@ -658,6 +711,13 @@ class GameplayGovernanceService:
             raise ActionUnavailableError("会议已经形成结果")
         if not meeting.transcript:
             raise ActionUnavailableError("会议尚未进行公开讨论")
+        npc_response_ids = {
+            str(item.get("npc_id"))
+            for item in meeting.transcript
+            if item.get("speaker_type") == "npc" and item.get("npc_id")
+        }
+        if not set(meeting.participant_ids).issubset(npc_response_ids):
+            raise ActionUnavailableError("分管领导汇报和其他参会领导表态尚未完成")
         normalized = self._validate_resolution(
             session, package, meeting, resolution
         )
@@ -1533,25 +1593,33 @@ class GameplayGovernanceService:
         archive_ids: tuple[str, ...],
         topic: str,
         proposed_document_type: str | None,
+        lead_npc_id: str | None,
         session: GameSession,
     ) -> None:
         config = package.governance_config or {}
+        visible_npc_ids = self._visible_governance_npc_ids(session, package)
         if action_kind == "household_visit":
-            allowed = set(config.get("household_representative_npc_ids", ()))
+            allowed = (
+                set(config.get("household_representative_npc_ids", ()))
+                & visible_npc_ids
+            )
             if len(target_ids) != 1 or target_ids[0] not in allowed:
                 raise ActionUnavailableError("入户走访必须选择一名家庭代表")
         elif action_kind == "cadre_interview":
-            allowed = set(config.get("cadre_npc_ids", ()))
+            allowed = set(config.get("cadre_npc_ids", ())) & visible_npc_ids
             if not 1 <= len(target_ids) <= 3 or not set(target_ids).issubset(allowed):
                 raise ActionUnavailableError("干部访谈必须选择1至3名已登记干部")
         elif action_kind == "leadership_meeting":
-            profile_ids = {item.npc_id for item in package.npc_profiles}
+            eligible = set(config.get("leadership_meeting_npc_ids", ()))
+            eligible &= visible_npc_ids
             if not 2 <= len(target_ids) <= 8:
-                raise ActionUnavailableError("班子会议必须有2至8名NPC参会")
+                raise ActionUnavailableError("班子会议必须有2至8名领导干部参会")
             if len(set(target_ids)) != len(target_ids) or not set(
                 target_ids
-            ).issubset(profile_ids):
-                raise ActionUnavailableError("班子会议参会人无效或重复")
+            ).issubset(eligible):
+                raise ActionUnavailableError("班子会议只能邀请已公开的领导干部")
+            if not lead_npc_id or lead_npc_id not in target_ids:
+                raise ActionUnavailableError("必须从参会领导中指定一名分管或牵头领导")
             if not topic.strip():
                 raise ActionUnavailableError("班子会议必须填写具体议题")
             if proposed_document_type:
@@ -1618,6 +1686,33 @@ class GameplayGovernanceService:
                     "所选档案尚未通过剧情或行为取得",
                     details={"archive_ids": missing},
                 )
+
+    @staticmethod
+    def _visible_governance_npc_ids(
+        session: GameSession,
+        package: ScriptPackage,
+    ) -> set[str]:
+        """Return NPCs whose identities have been introduced to the player.
+
+        Visibility deliberately ignores an opportunity's day_max and completion
+        state: once a person has entered the story, their public identity remains
+        known. The opening whitelist covers officials and village representatives
+        whose identities are public before the first scripted encounter.
+        """
+        config = package.governance_config or {}
+        visible = set(config.get("initial_visible_npc_ids", ()))
+        day = session.game_state.story_day
+        for opportunity in package.interaction_opportunities:
+            if opportunity.availability_mode is AvailabilityMode.CLOSED:
+                continue
+            if day < opportunity.day_min:
+                continue
+            if not opportunity.requires_flags.issubset(session.flags):
+                continue
+            if not opportunity.requires_events.issubset(session.triggered_events):
+                continue
+            visible.add(opportunity.npc_id)
+        return visible
 
     def _detect_and_create_contract_batch(
         self,
@@ -3472,6 +3567,14 @@ class GameplayGovernanceService:
             "story_day": value.story_day,
             "topic": value.topic,
             "participant_ids": list(value.participant_ids),
+            "lead_npc_id": value.lead_npc_id,
+            "speaking_order": [
+                value.lead_npc_id,
+                *(
+                    npc_id for npc_id in value.participant_ids
+                    if npc_id != value.lead_npc_id
+                ),
+            ],
             "decision_mode": value.decision_mode,
             "proposed_document_type": value.proposed_document_type,
             "transcript": value.transcript,

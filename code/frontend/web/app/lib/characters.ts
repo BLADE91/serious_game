@@ -10,7 +10,7 @@ const character = (id: string, name: string, role: string, aliases: readonly str
   id,
   name,
   role,
-  portraitPath: `/characters/${id}.webp`,
+  portraitPath: `/characters/${id}.png`,
   aliases,
 });
 

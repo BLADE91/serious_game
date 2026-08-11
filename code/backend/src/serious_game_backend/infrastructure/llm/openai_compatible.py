@@ -611,25 +611,77 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             estimated_input,
             excluded_audit_ids=invalid_cached_audit_ids,
         )
-        started = time.perf_counter()
-        try:
-            response = self._transport(
-                self._settings.role_llm_base_url,
-                self._api_key,
-                request_document,
-                self._settings.role_llm_timeout_seconds,
-            )
-            content = response["choices"][0]["message"]["content"]
-            if not isinstance(content, str) or content.strip().startswith("```"):
-                raise ValueError("content is not a bare JSON object")
-            data = json.loads(content)
-            self._validate_governance_data(context.task, data, context.payload)
-            result = GovernanceLLMResult(
-                task=context.task,
-                data=data,
-                model_id=model_id,
-            )
-            usage = response.get("usage", {}) or {}
+        last_error: Exception | None = None
+        for attempt in range(self._settings.role_llm_max_retries + 1):
+            started = time.perf_counter()
+            try:
+                response = self._transport(
+                    self._settings.role_llm_base_url,
+                    self._api_key,
+                    request_document,
+                    self._settings.role_llm_timeout_seconds,
+                )
+                content = response["choices"][0]["message"]["content"]
+                if (
+                    not isinstance(content, str)
+                    or content.strip().startswith("```")
+                ):
+                    raise RoleLLMResponseError(
+                        "治理文书模型必须返回裸 JSON 对象"
+                    )
+                data = json.loads(content)
+                self._validate_governance_data(
+                    context.task, data, context.payload
+                )
+                result = GovernanceLLMResult(
+                    task=context.task,
+                    data=data,
+                    model_id=model_id,
+                )
+                usage = response.get("usage", {}) or {}
+                self._audits.save(LLMCallAudit(
+                    audit_id=f"llm_{secrets.token_hex(12)}",
+                    session_id=context.session_id,
+                    account_id=context.account_id,
+                    operation_id=context.operation_id,
+                    story_day=context.story_day,
+                    npc_id=context.actor_id or "governance",
+                    provider="openai_compatible",
+                    model_id=model_id,
+                    prompt_version=context.prompt_version,
+                    request_hash=request_hash,
+                    status="succeeded",
+                    input_tokens=int(
+                        usage.get("prompt_tokens", estimated_input)
+                    ),
+                    output_tokens=int(usage.get(
+                        "completion_tokens", self._estimate_tokens(content)
+                    )),
+                    latency_ms=int(
+                        (time.perf_counter() - started) * 1000
+                    ),
+                    retry_count=attempt,
+                    response_hash=self._hash(content),
+                    validated_result={
+                        "task": result.task,
+                        "data": result.data,
+                        "model_id": result.model_id,
+                    },
+                ))
+                return result
+            except RoleLLMConfigurationError as exc:
+                normalized: Exception = exc
+            except RoleLLMUnavailableError as exc:
+                normalized = exc
+            except (
+                KeyError, IndexError, TypeError, ValueError,
+                json.JSONDecodeError, RoleLLMResponseError,
+            ) as exc:
+                normalized = RoleLLMResponseError(
+                    "治理文书模型未返回合法结构化响应"
+                )
+                normalized.__cause__ = exc
+            last_error = normalized
             self._audits.save(LLMCallAudit(
                 audit_id=f"llm_{secrets.token_hex(12)}",
                 session_id=context.session_id,
@@ -641,29 +693,61 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 model_id=model_id,
                 prompt_version=context.prompt_version,
                 request_hash=request_hash,
-                status="succeeded",
-                input_tokens=int(usage.get("prompt_tokens", estimated_input)),
-                output_tokens=int(usage.get(
-                    "completion_tokens", self._estimate_tokens(content)
-                )),
+                status="failed",
+                input_tokens=estimated_input,
                 latency_ms=int((time.perf_counter() - started) * 1000),
-                response_hash=self._hash(content),
+                retry_count=attempt,
+                error_code=getattr(
+                    normalized, "code", type(normalized).__name__
+                ),
+            ))
+            if isinstance(normalized, RoleLLMConfigurationError):
+                raise normalized
+            if attempt < self._settings.role_llm_max_retries:
+                if isinstance(normalized, RoleLLMResponseError):
+                    request_document["messages"] = [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                        {
+                            "role": "system",
+                            "content": (
+                                "上一次输出未通过结构校验。请重新生成，"
+                                "严格遵守字段和枚举，只返回 JSON 对象。"
+                            ),
+                        },
+                    ]
+                continue
+        if (
+            self._fallback is not None
+            and self._settings.role_llm_fallback_to_fake
+        ):
+            result = self._fallback.run_governance_task(context)
+            self._audits.save(LLMCallAudit(
+                audit_id=f"llm_{secrets.token_hex(12)}",
+                session_id=context.session_id,
+                account_id=context.account_id,
+                operation_id=context.operation_id,
+                story_day=context.story_day,
+                npc_id=context.actor_id or "governance",
+                provider="fake_fallback",
+                model_id=result.model_id,
+                prompt_version=context.prompt_version,
+                request_hash=request_hash,
+                status="succeeded",
+                retry_count=self._settings.role_llm_max_retries,
                 validated_result={
                     "task": result.task,
                     "data": result.data,
                     "model_id": result.model_id,
                 },
+                error_code=getattr(
+                    last_error, "code", type(last_error).__name__
+                ),
             ))
             return result
-        except (
-            KeyError, IndexError, TypeError, ValueError,
-            json.JSONDecodeError, RoleLLMResponseError,
-        ) as exc:
-            if self._fallback is not None and self._settings.role_llm_fallback_to_fake:
-                return self._fallback.run_governance_task(context)
-            raise RoleLLMResponseError(
-                "治理文书模型未返回合法结构化响应"
-            ) from exc
+        raise last_error or RoleLLMUnavailableError(
+            "治理文书模型暂时不可用"
+        )
 
     @staticmethod
     def _validate_governance_data(
@@ -759,6 +843,10 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             payload.get("allowed_decisions", ())
         ):
             raise RoleLLMResponseError("签约人返回了规则层未开放的决定")
+        if task == "review_contract" and not isinstance(
+            data["counteroffer"], dict
+        ):
+            raise RoleLLMResponseError("签约人反报价必须是结构化对象")
         if task == "meeting_position" and data["position"] not in {
             "approve", "conditional", "oppose", "abstain",
         }:

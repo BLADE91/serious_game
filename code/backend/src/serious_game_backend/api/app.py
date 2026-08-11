@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from contextvars import ContextVar
+import json
 import secrets
 
 from fastapi import FastAPI, Header, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from serious_game_backend.api.schemas import (
     ActionRequest,
@@ -107,7 +110,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     effective_settings = settings or Settings.from_env()
     runtime = container or build_container(effective_settings)
     app = FastAPI(
-        title="浊流之下·清江搬迁记后端",
+        title="浊流之上后端",
         version="0.1.0",
         description="游戏权威运行时；前端通过玩家 API 与其交互。",
     )
@@ -169,6 +172,56 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         if not value:
             raise DomainError("沙盒请求必须提供 X-Account-ID")
         return value
+
+    def npc_reply_items(result: dict) -> list[dict]:
+        reply = result.get("npc_reply")
+        if isinstance(reply, dict) and reply.get("text"):
+            return [reply]
+        for key in ("replies", "turn_dialogues"):
+            values = result.get(key)
+            if isinstance(values, list):
+                return [
+                    item for item in values
+                    if isinstance(item, dict) and item.get("text")
+                ]
+        return []
+
+    async def npc_stream(result: dict):
+        yield json.dumps(
+            {"type": "stream_start"}, ensure_ascii=False
+        ) + "\n"
+        for index, reply in enumerate(npc_reply_items(result)):
+            stream_id = f"{reply.get('npc_id', 'npc')}:{index}"
+            yield json.dumps({
+                "type": "npc_start",
+                "stream_id": stream_id,
+                "npc_id": reply.get("npc_id", ""),
+                "npc_name": reply.get("npc_name", ""),
+            }, ensure_ascii=False) + "\n"
+            text = str(reply["text"])
+            for offset in range(0, len(text), 4):
+                yield json.dumps({
+                    "type": "npc_delta",
+                    "stream_id": stream_id,
+                    "delta": text[offset:offset + 4],
+                }, ensure_ascii=False) + "\n"
+                await asyncio.sleep(0.028)
+            yield json.dumps({
+                "type": "npc_end", "stream_id": stream_id,
+            }, ensure_ascii=False) + "\n"
+        yield json.dumps(
+            {"type": "complete", "result": result}, ensure_ascii=False
+        ) + "\n"
+
+    def npc_stream_response(result: dict) -> StreamingResponse:
+        return StreamingResponse(
+            npc_stream(result),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     def privileged_principal() -> Principal:
         principal = _principal_context.get()
@@ -452,6 +505,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "repository": effective_settings.repository,
             "authentication_required": authentication_enabled,
             "self_registration": effective_settings.allow_self_registration,
+            "model_consent_required": effective_settings.require_model_consent,
         }
 
     @app.post("/api/auth/login")
@@ -533,6 +587,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "document_hash": effective_settings.consent_document_hash,
             "model_provider": effective_settings.consent_model_provider,
             "processing_region": effective_settings.consent_processing_region,
+            "retention_days_raw_text": effective_settings.raw_text_retention_days,
+            "model_consent_required": effective_settings.require_model_consent,
             "record": ({
                 "consent_record_id": record.consent_record_id,
                 "consent_version": record.consent_version,
@@ -680,6 +736,32 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         session = runtime.game_sessions.latest_active(account_id)
         package = require_locked_package(runtime.packages, session)
         return runtime.projector.project(session, package)
+
+    @app.get("/api/game/sessions")
+    async def list_game_sessions(
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        def summary(session) -> dict:
+            package = runtime.packages.get(session.package_id)
+            loadable = bool(
+                package
+                and package.package_version == session.package_version
+                and package.content_hash == session.package_content_hash
+            )
+            return {
+                "session_id": session.session_id,
+                "story_day": session.game_state.story_day,
+                "status": session.status.value,
+                "state_version": session.state_version,
+                "created_at": session.created_at,
+                "updated_at": session.updated_at,
+                "loadable": loadable,
+                "unavailable_reason": None if loadable else "该进度使用旧版剧本内容，当前版本无法安全载入",
+            }
+        return {
+            "sessions": [summary(session) for session in runtime.sessions.list_for_account(account_id)]
+        }
 
     @app.get("/api/game/session/{session_id}")
     async def get_session(session_id: str, x_account_id: str | None = Header(default=None)) -> dict:
@@ -997,6 +1079,20 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             session_id=session_id,
         )
 
+    @app.get(
+        "/api/game/session/{session_id}/governance/archives/{archive_id}"
+    )
+    async def governance_archive_detail(
+        session_id: str,
+        archive_id: str,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.archive_detail(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            archive_id=archive_id,
+        )
+
     @app.post("/api/game/session/{session_id}/governance/actions", status_code=201)
     def start_governance_action(
         session_id: str,
@@ -1012,6 +1108,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             topic=body.topic,
             archive_ids=tuple(body.archive_ids),
             proposed_document_type=body.proposed_document_type,
+            lead_npc_id=body.lead_npc_id,
         )
 
     @app.post(
@@ -1030,6 +1127,27 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             action_instance_id=action_instance_id,
             player_text=body.player_text,
         )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/actions/"
+        "{action_instance_id}/turn/stream"
+    )
+    async def stream_governance_action_turn(
+        session_id: str,
+        action_instance_id: str,
+        body: GovernanceTurnRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        account_id = current_account_id(x_account_id)
+        result = await run_in_threadpool(
+            runtime.gameplay_governance.action_turn,
+            account_id=account_id,
+            session_id=session_id,
+            state_version=body.state_version,
+            action_instance_id=action_instance_id,
+            player_text=body.player_text,
+        )
+        return npc_stream_response(result)
 
     @app.post(
         "/api/game/session/{session_id}/governance/actions/{action_instance_id}/finish"
@@ -1080,6 +1198,28 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             player_text=body.player_text,
             addressed_npc_id=body.addressed_npc_id,
         )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/meetings/"
+        "{meeting_id}/turn/stream"
+    )
+    async def stream_governance_meeting_turn(
+        session_id: str,
+        meeting_id: str,
+        body: MeetingTurnRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        account_id = current_account_id(x_account_id)
+        result = await run_in_threadpool(
+            runtime.gameplay_governance.meeting_turn,
+            account_id=account_id,
+            session_id=session_id,
+            state_version=body.state_version,
+            meeting_id=meeting_id,
+            player_text=body.player_text,
+            addressed_npc_id=body.addressed_npc_id,
+        )
+        return npc_stream_response(result)
 
     @app.post(
         "/api/game/session/{session_id}/governance/meetings/{meeting_id}/resolve"
@@ -1181,6 +1321,20 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             state_version=body.state_version,
             batch_id=batch_id,
             confirmed=body.confirmed,
+        )
+
+    @app.get(
+        "/api/game/session/{session_id}/governance/contracts/{contract_id}"
+    )
+    async def get_governance_contract(
+        session_id: str,
+        contract_id: str,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.contract_detail(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            contract_id=contract_id,
         )
 
     @app.put(
@@ -1327,6 +1481,21 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             ],
         }
 
+    @app.post("/api/game/session/{session_id}/action/stream")
+    async def stream_action(
+        session_id: str,
+        body: ActionRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        account_id = current_account_id(x_account_id)
+        result = await run_in_threadpool(
+            runtime.actions.execute,
+            account_id=account_id,
+            session_id=session_id,
+            command=body.to_command(),
+        )
+        return npc_stream_response(result)
+
     @app.post("/api/game/session/{session_id}/action")
     def execute_action(
         session_id: str,
@@ -1405,6 +1574,22 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             state_version=body.state_version,
             player_text=body.player_text,
         )
+
+    @app.post("/api/game/session/{session_id}/group-conversation/turn/stream")
+    async def stream_group_conversation_turn(
+        session_id: str,
+        body: GroupConversationTurnRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        account_id = current_account_id(x_account_id)
+        result = await run_in_threadpool(
+            runtime.group_conversations.reply,
+            account_id=account_id,
+            session_id=session_id,
+            state_version=body.state_version,
+            player_text=body.player_text,
+        )
+        return npc_stream_response(result)
 
     @app.get("/api/game/session/{session_id}/operations/{client_action_id}")
     async def get_operation(

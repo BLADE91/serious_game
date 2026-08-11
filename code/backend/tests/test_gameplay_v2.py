@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
 import unittest
 
@@ -22,7 +23,10 @@ from serious_game_backend.application.trust_derivation_service import TrustDeriv
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.enums import ActionInputMode
-from serious_game_backend.domain.errors import ContentValidationError
+from serious_game_backend.domain.errors import (
+    ContentValidationError,
+    RoleLLMResponseError,
+)
 from serious_game_backend.domain.llm import NightAgentResult
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.infrastructure.repositories.codec import (
@@ -188,6 +192,46 @@ class GameplayV2Tests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(409, blocked.status_code, blocked.text)
+
+    def test_single_npc_conversation_streams_and_commits_once(self) -> None:
+        self.reach_d2_open()
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "gameplay-v2-stream-start-0001",
+            "state_version": self.state["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        with self.client.stream(
+            "POST",
+            f"/api/game/session/{self.session_id}/action/stream",
+            headers=self.headers,
+            json={
+                "input_mode": "free_text",
+                "client_action_id": "gameplay-v2-stream-turn-0001",
+                "state_version": started["state_version"],
+                "conversation_id": started["conversation"]["conversation_id"],
+                "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                "target_npc_id": "npc_wu_xiuying",
+                "player_text": "我会先核对公开底账，请告诉我你最担心的问题。",
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            events = [json.loads(line) for line in response.iter_lines() if line]
+        self.assertEqual(
+            ["stream_start", "npc_start"],
+            [item["type"] for item in events[:2]],
+        )
+        self.assertEqual("npc_end", events[-2]["type"])
+        self.assertEqual("complete", events[-1]["type"])
+        deltas = [item["delta"] for item in events if item["type"] == "npc_delta"]
+        result = events[-1]["result"]
+        self.assertEqual(result["npc_reply"]["text"], "".join(deltas))
+        self.assertEqual(started["state_version"] + 1, result["state_version"])
+        stored = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertEqual(1, stored.active_conversation.turn_count)
 
     def test_night_dialogues_keeps_scripted_night_and_morning_brief(self) -> None:
         self.resolve_d1()
@@ -605,6 +649,124 @@ class GameplayV2Tests(unittest.TestCase):
         )
         self.assertEqual(404, forbidden.status_code)
 
+    def test_d29_night_agent_invalid_responses_do_not_block_settlement(self) -> None:
+        class InvalidNightGateway:
+            def __init__(self) -> None:
+                self.calls: dict[str, int] = {}
+
+            def run_night_turn(self, context):
+                self.calls[context.operation_id] = (
+                    self.calls.get(context.operation_id, 0) + 1
+                )
+                raise RoleLLMResponseError("测试用非法夜间响应")
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        package = self.container.packages.get("pkg_gameplay_v2")
+        session.pending_decision = None
+        session.game_state = replace(
+            session.game_state,
+            story_day=29,
+            days_left=62,
+        )
+        gateway = InvalidNightGateway()
+        service = NightSimulationService(
+            ScriptedEffectService(ScriptedDeltaResolver()),
+            night_llm=gateway,
+        )
+
+        record = service.run_night(session, package)
+
+        self.assertEqual(29, record["story_day"])
+        self.assertEqual([], record["agent_exchanges"])
+        self.assertEqual(4, len(record["contact_selections"]))
+        self.assertTrue(all(
+            not item["accepted"]
+            for item in record["contact_selections"]
+        ))
+        self.assertEqual(4, len(record["agent_failures"]))
+        self.assertTrue(all(
+            item["attempts"] == 2
+            and item["error_code"] == "ROLE_LLM_INVALID_RESPONSE"
+            for item in record["agent_failures"]
+        ))
+        self.assertTrue(all(count == 2 for count in gateway.calls.values()))
+        self.assertEqual(1, len(session.night_logs))
+
+    def test_d29_end_day_advances_when_all_night_agent_calls_fail(self) -> None:
+        class InvalidNightGateway:
+            def run_night_turn(self, context):
+                raise RoleLLMResponseError("测试用非法夜间响应")
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        session.pending_decision = None
+        session.story_beat_id = "beat_d29_m2"
+        session.game_state = replace(
+            session.game_state,
+            story_day=29,
+            days_left=62,
+        )
+        self.container.sessions.save(
+            session, expected_version=session.state_version
+        )
+        self.container.end_days._nights = NightSimulationService(
+            ScriptedEffectService(ScriptedDeltaResolver()),
+            night_llm=InvalidNightGateway(),
+        )
+
+        result = self.container.end_days.end_day(
+            account_id="acct_gameplay_v2",
+            session_id=self.session_id,
+            client_action_id="test-d29-invalid-night-end-day",
+            state_version=session.state_version,
+        )
+
+        self.assertEqual("succeeded", result["status"])
+        self.assertEqual(30, result["visible_state"]["story"]["day"])
+        stored = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertEqual(30, stored.game_state.story_day)
+        self.assertEqual(1, len(stored.night_logs))
+        self.assertEqual(4, len(stored.night_logs[0]["agent_failures"]))
+
+    def test_d29_night_agent_transient_invalid_response_retries_once(self) -> None:
+        class RecoveringGateway(FakeRoleLLMGateway):
+            def __init__(self) -> None:
+                super().__init__()
+                self.calls: dict[str, int] = {}
+
+            def run_night_turn(self, context):
+                count = self.calls.get(context.operation_id, 0) + 1
+                self.calls[context.operation_id] = count
+                if count == 1:
+                    raise RoleLLMResponseError("首次响应非法")
+                return super().run_night_turn(context)
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        package = self.container.packages.get("pkg_gameplay_v2")
+        session.pending_decision = None
+        session.game_state = replace(
+            session.game_state,
+            story_day=29,
+            days_left=62,
+        )
+        gateway = RecoveringGateway()
+
+        record = NightSimulationService(
+            ScriptedEffectService(ScriptedDeltaResolver()),
+            night_llm=gateway,
+        ).run_night(session, package)
+
+        self.assertEqual([], record["agent_failures"])
+        self.assertTrue(record["agent_exchanges"])
+        self.assertTrue(all(count == 2 for count in gateway.calls.values()))
+
     def test_d29_npc_can_choose_zero_to_multiple_contacts(self) -> None:
         class MultiContactGateway(FakeRoleLLMGateway):
             def run_night_turn(self, context):
@@ -792,12 +954,35 @@ class GameplayV2Tests(unittest.TestCase):
         self.assertEqual(0, session.active_group_conversation.turn_count)
 
         for turn in range(3):
-            result = self.container.group_conversations.reply(
-                account_id="acct_gameplay_v2",
-                session_id=self.session_id,
-                state_version=rejected["state_version"] + turn,
-                player_text=f"这是县长对第{turn + 1}轮议题的正式回应。",
-            )
+            if turn == 0:
+                with self.client.stream(
+                    "POST",
+                    (
+                        f"/api/game/session/{self.session_id}/"
+                        "group-conversation/turn/stream"
+                    ),
+                    headers=self.headers,
+                    json={
+                        "state_version": rejected["state_version"],
+                        "player_text": "这是县长对第1轮议题的正式回应。",
+                    },
+                ) as response:
+                    self.assertEqual(200, response.status_code)
+                    events = [
+                        json.loads(line)
+                        for line in response.iter_lines() if line
+                    ]
+                self.assertEqual(2, sum(
+                    item["type"] == "npc_start" for item in events
+                ))
+                result = events[-1]["result"]
+            else:
+                result = self.container.group_conversations.reply(
+                    account_id="acct_gameplay_v2",
+                    session_id=self.session_id,
+                    state_version=rejected["state_version"] + turn,
+                    player_text=f"这是县长对第{turn + 1}轮议题的正式回应。",
+                )
             self.assertEqual(turn == 2, result["completed"])
             self.assertEqual(2, len(result["turn_dialogues"]))
 

@@ -1,4 +1,12 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+export type NpcStreamEvent = {
+  type: "stream_start" | "npc_start" | "npc_delta" | "npc_end" | "complete";
+  stream_id?: string;
+  npc_id?: string;
+  npc_name?: string;
+  delta?: string;
+  result?: Record<string, unknown>;
+};
 
 const SANDBOX_ACCOUNT_KEY = "qingjiang-sandbox-account";
 
@@ -107,13 +115,78 @@ export class GameApi {
     return data as T;
   }
 
+  async streamWrite(
+    sessionId: string,
+    suffix: string,
+    body: Record<string, unknown>,
+    onEvent: (event: NpcStreamEvent) => void,
+  ) {
+    const headers: Record<string, string> = {
+      Accept: "application/x-ndjson",
+      "Content-Type": "application/json; charset=utf-8",
+    };
+    if (this.accountId) headers["X-Account-ID"] = this.accountId;
+    if (this.csrfToken) headers["X-CSRF-Token"] = this.csrfToken;
+    let response: Response;
+    try {
+      response = await fetch(
+        `${this.baseUrl}/api/game/session/${encodeURIComponent(sessionId)}${suffix}`,
+        { method: "POST", headers, credentials: "include", body: JSON.stringify(body) },
+      );
+    } catch {
+      throw new ApiError("游戏服务暂时无法连接，请稍后重试。", "CLIENT_CONNECTION_ERROR");
+    }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const error = (data as { error?: Record<string, unknown> }).error ?? {};
+      throw new ApiError(
+        String(error.message ?? "这项操作暂时无法完成，请稍后重试。"),
+        String(error.code ?? "CLIENT_HTTP_ERROR"),
+        response.status,
+        (error.details as Record<string, unknown>) ?? {},
+      );
+    }
+    if (!response.body) throw new ApiError("NPC 回应流未建立。", "CLIENT_STREAM_UNAVAILABLE");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = "";
+    let result: Record<string, unknown> | null = null;
+    const consume = (line: string) => {
+      if (!line.trim()) return;
+      const event = JSON.parse(line) as NpcStreamEvent;
+      onEvent(event);
+      if (event.type === "complete" && event.result) result = event.result;
+    };
+    while (true) {
+      const { done, value } = await reader.read();
+      pending += decoder.decode(value, { stream: !done });
+      const lines = pending.split("\n");
+      pending = lines.pop() || "";
+      lines.forEach(consume);
+      if (done) break;
+    }
+    consume(pending);
+    if (!result) throw new ApiError("NPC 回应流提前结束。", "CLIENT_STREAM_INCOMPLETE");
+    return result;
+  }
+
   auth(mode: "login" | "register", username: string, password: string) {
     return this.request<{ account_id: string; username: string; csrf_token: string }>("POST", `/api/auth/${mode}`, { username, password });
   }
   logout() { return this.request("POST", "/api/auth/logout"); }
   me() { return this.request<{ account_id: string; username: string; roles: string[] }>("GET", "/api/auth/me"); }
   health() { return this.request<{ terminal_protocol_version?: string }>("GET", "/health/live"); }
-  ready() { return this.request<{ authentication_required?: boolean; self_registration?: boolean; csrf_cookie_name?: string }>("GET", "/health/ready"); }
+  ready() { return this.request<{ authentication_required?: boolean; self_registration?: boolean; csrf_cookie_name?: string; model_consent_required?: boolean }>("GET", "/health/ready"); }
+  consent() { return this.request<Record<string, unknown>>("GET", "/api/consent/current"); }
+  signConsent(consentVersion: string) {
+    return this.request<Record<string, unknown>>("POST", "/api/consent", {
+      consent_version: consentVersion,
+      scopes: ["service_storage", "third_party_model"],
+    });
+  }
+  withdrawConsent(reason = "玩家主动撤回模型处理授权") {
+    return this.request<Record<string, unknown>>("POST", "/api/consent/withdraw", { reason });
+  }
   origins() { return this.request<{ origins?: Record<string, unknown>[] }>("GET", "/api/game/origins"); }
   newSession(originId?: string) {
     return this.request<Record<string, unknown>>("POST", "/api/game/session", {
@@ -142,6 +215,18 @@ export class GameApi {
   view(sessionId: string, after = 0) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}/view?after=${after}`); }
   session(sessionId: string) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}`); }
   panel(sessionId: string, name: string) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}/${name}`); }
+  archiveDetail(sessionId: string, archiveId: string) {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      `/api/game/session/${encodeURIComponent(sessionId)}/governance/archives/${encodeURIComponent(archiveId)}`,
+    );
+  }
+  contractDetail(sessionId: string, contractId: string) {
+    return this.request<Record<string, unknown>>(
+      "GET",
+      `/api/game/session/${encodeURIComponent(sessionId)}/governance/contracts/${encodeURIComponent(contractId)}`,
+    );
+  }
   manualSave(sessionId: string, body: Record<string, unknown>) {
     return this.request<Record<string, unknown>>("POST", `/api/game/session/${encodeURIComponent(sessionId)}/manual-saves`, body);
   }

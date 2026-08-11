@@ -275,6 +275,23 @@ class MySQLGameSessionRepository:
             row["current_snapshot_json"], purpose="game_session"
         )) if row else None
 
+    def list_for_account(self, account_id: str) -> tuple[GameSession, ...]:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select current_snapshot_json from game_sessions
+                where account_id=%s order by updated_at desc
+                """,
+                (account_id,),
+            )
+            rows = cursor.fetchall()
+        return tuple(
+            decode_session(self._store.unprotect_json(
+                row["current_snapshot_json"], purpose="game_session"
+            ))
+            for row in rows
+        )
+
     def save(self, session: GameSession, *, expected_version: int) -> None:
         guard = " and processing_action_id is null" if session.processing_action_id else ""
         with self._store.connect() as connection, connection.cursor() as cursor:

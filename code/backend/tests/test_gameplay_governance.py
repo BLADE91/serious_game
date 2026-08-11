@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
 import unittest
 
@@ -128,6 +129,7 @@ class GameplayGovernanceTests(unittest.TestCase):
             "state_version": self.state["state_version"],
             "action_kind": "leadership_meeting",
             "target_ids": ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+            "lead_npc_id": "npc_feng_jingzhi",
             "topic": "专项房源授权",
             "archive_ids": ["archive:doc_compensation_policy_v1"],
             "proposed_document_type": "implementation_notice",
@@ -196,12 +198,162 @@ class GameplayGovernanceTests(unittest.TestCase):
             if item["category"] == "housing"
         ))
 
+    def test_archive_inspection_returns_content_and_supports_persisted_reread(
+        self,
+    ) -> None:
+        self._resolve_opening()
+        archive_id = "archive_project_brief"
+        before = self.client.get(
+            (
+                f"/api/game/session/{self.session_id}/governance/archives/"
+                f"{archive_id}"
+            ),
+            headers=self.headers,
+        )
+        self.assertEqual(409, before.status_code, before.text)
+
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "inspect_archives",
+            "archive_ids": [archive_id],
+        }, expected=201)
+
+        self.assertEqual(1, started["cost_action_points"])
+        self.assertEqual("completed", started["action"]["status"])
+        self.assertEqual(archive_id, started["archives"][0]["archive_id"])
+        self.assertTrue(started["archives"][0]["content"])
+        self.assertIn(1, started["archives"][0]["read_at_days"])
+
+        reread = self.client.get(
+            (
+                f"/api/game/session/{self.session_id}/governance/archives/"
+                f"{archive_id}"
+            ),
+            headers=self.headers,
+        )
+        self.assertEqual(200, reread.status_code, reread.text)
+        self.assertEqual(
+            started["archives"][0]["content"],
+            reread.json()["archive"]["content"],
+        )
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        self.assertEqual(7, stored.game_state.action_points)
+        self.assertEqual([1], stored.archive_records[archive_id].read_at_days)
+
+    def test_governance_npcs_unlock_with_story_progress(self) -> None:
+        def visible_ids(catalog: str) -> set[str]:
+            overview = self.client.get(
+                f"/api/game/session/{self.session_id}/governance",
+                headers=self.headers,
+            ).json()
+            return {
+                item["target_id"]
+                for item in overview["target_catalogs"][catalog]
+            }
+
+        initial_meeting_ids = visible_ids("meeting_participants")
+        self.assertNotIn("npc_zhou_dashan", initial_meeting_ids)
+        self.assertIn("npc_zhao_jianguo", initial_meeting_ids)
+        self.assertIn("npc_feng_jingzhi", initial_meeting_ids)
+        self.assertNotIn("npc_sun_qiang", initial_meeting_ids)
+        self.assertNotIn("npc_zhang_li", initial_meeting_ids)
+        self.assertNotIn("npc_he_tiezhu", initial_meeting_ids)
+
+        self._resolve_opening()
+        blocked = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": self.state["state_version"],
+                "action_kind": "cadre_interview",
+                "target_ids": ["npc_sun_qiang"],
+                "topic": "提前接触",
+            },
+        )
+        self.assertEqual(409, blocked.status_code, blocked.text)
+
+        ordinary_attendee = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": self.state["state_version"],
+                "action_kind": "leadership_meeting",
+                "target_ids": ["npc_zhou_dashan", "npc_zhao_jianguo"],
+                "lead_npc_id": "npc_zhao_jianguo",
+                "topic": "测试不合规参会名单",
+            },
+        )
+        self.assertEqual(409, ordinary_attendee.status_code, ordinary_attendee.text)
+
+        missing_lead = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": self.state["state_version"],
+                "action_kind": "leadership_meeting",
+                "target_ids": ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+                "topic": "测试缺少分管领导",
+            },
+        )
+        self.assertEqual(409, missing_lead.status_code, missing_lead.text)
+
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        session.game_state = replace(
+            session.game_state,
+            story_day=7,
+            days_left=84,
+        )
+        self.runtime.sessions.save(
+            session, expected_version=session.state_version
+        )
+        progressed_ids = visible_ids("meeting_participants")
+        self.assertIn("npc_sun_qiang", progressed_ids)
+        self.assertNotIn("npc_zhang_li", progressed_ids)
+
+    def test_cadre_interview_persists_real_turn_and_completion(self) -> None:
+        self._resolve_opening()
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "cadre_interview",
+            "target_ids": ["npc_zhao_jianguo"],
+            "topic": "核实补偿材料位置和办理责任",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+        turn = self._post(
+            f"/governance/actions/{action_id}/turn",
+            {
+                "state_version": started["state_version"],
+                "player_text": "请说明补偿底账由谁保管，并列出下一步核验程序。",
+            },
+        )
+        self.assertFalse(turn["input_rejected"])
+        self.assertTrue(turn["replies"])
+        finished = self._post(
+            f"/governance/actions/{action_id}/finish",
+            {"state_version": turn["state_version"]},
+        )
+        self.assertEqual("completed", finished["action"]["status"])
+        self.assertGreaterEqual(len(finished["action"]["transcript"]), 2)
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        self.assertEqual(6, stored.game_state.action_points)
+        self.assertEqual(
+            finished["action"]["transcript"],
+            stored.governance_actions[action_id].transcript,
+        )
+
     def test_meeting_creates_countersigned_archived_and_published_document(self) -> None:
         self._resolve_opening()
         started = self._post("/governance/actions", {
             "state_version": self.state["state_version"],
             "action_kind": "leadership_meeting",
             "target_ids": ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+            "lead_npc_id": "npc_feng_jingzhi",
             "topic": "首批安置房实施通知",
             "archive_ids": [
                 "archive:doc_compensation_policy_v1",
@@ -237,6 +389,16 @@ class GameplayGovernanceTests(unittest.TestCase):
             {"npc_feng_jingzhi", "npc_zhao_jianguo"},
             set(player_line["visible_to"]),
         )
+        npc_lines = [
+            item for item in turn["transcript"]
+            if item["speaker_type"] == "npc"
+        ]
+        self.assertEqual(
+            ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+            [item["npc_id"] for item in npc_lines],
+        )
+        self.assertEqual("lead_report", npc_lines[0]["meeting_role"])
+        self.assertEqual("member_position", npc_lines[1]["meeting_role"])
         resolved = self._post(
             f"/governance/meetings/{meeting['meeting_id']}/resolve",
             {
@@ -349,6 +511,7 @@ class GameplayGovernanceTests(unittest.TestCase):
             "state_version": self.state["state_version"],
             "action_kind": "leadership_meeting",
             "target_ids": ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+            "lead_npc_id": "npc_feng_jingzhi",
             "topic": "房源授权上限",
             "archive_ids": ["archive:doc_compensation_policy_v1"],
             "proposed_document_type": "implementation_notice",
@@ -403,6 +566,7 @@ class GameplayGovernanceTests(unittest.TestCase):
             "state_version": self.state["state_version"],
             "action_kind": "leadership_meeting",
             "target_ids": ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+            "lead_npc_id": "npc_feng_jingzhi",
             "topic": "专项房源安排",
             "archive_ids": ["archive:doc_compensation_policy_v1"],
             "proposed_document_type": "implementation_notice",
@@ -558,6 +722,74 @@ class GameplayGovernanceTests(unittest.TestCase):
         )
         self.assertEqual("cancelled", cancelled["action"]["status"])
 
+    def test_household_and_meeting_turns_stream_npc_deltas(self) -> None:
+        self._resolve_opening()
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "household_visit",
+            "target_ids": ["npc_zhou_dashan"],
+            "topic": "核实搬迁诉求",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+        with self.client.stream(
+            "POST",
+            (
+                f"/api/game/session/{self.session_id}/governance/actions/"
+                f"{action_id}/turn/stream"
+            ),
+            headers=self.headers,
+            json={
+                "state_version": started["state_version"],
+                "player_text": "请说明住房和补偿方面最需要解决的问题。",
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            events = [json.loads(line) for line in response.iter_lines() if line]
+        self.assertEqual("stream_start", events[0]["type"])
+        self.assertEqual("complete", events[-1]["type"])
+        self.assertEqual(1, sum(item["type"] == "npc_start" for item in events))
+        deltas = [item["delta"] for item in events if item["type"] == "npc_delta"]
+        self.assertGreater(len(deltas), 1)
+        result = events[-1]["result"]
+        self.assertEqual(result["replies"][0]["text"], "".join(deltas))
+
+        finished = self._post(
+            f"/governance/actions/{action_id}/finish",
+            {"state_version": result["state_version"]},
+        )
+        meeting_started = self._post("/governance/actions", {
+            "state_version": finished["state_version"],
+            "action_kind": "leadership_meeting",
+            "target_ids": ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+            "lead_npc_id": "npc_feng_jingzhi",
+            "topic": "明确补偿公开程序",
+        }, expected=201)
+        meeting = meeting_started["meeting"]
+        with self.client.stream(
+            "POST",
+            (
+                f"/api/game/session/{self.session_id}/governance/meetings/"
+                f"{meeting['meeting_id']}/turn/stream"
+            ),
+            headers=self.headers,
+            json={
+                "state_version": meeting_started["state_version"],
+                "player_text": "请分别说明责任分工和七日内可公开的材料。",
+                "addressed_npc_id": None,
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            meeting_events = [
+                json.loads(line) for line in response.iter_lines() if line
+            ]
+        self.assertEqual(2, sum(
+            item["type"] == "npc_start" for item in meeting_events
+        ))
+        self.assertEqual(2, sum(
+            item["type"] == "npc_end" for item in meeting_events
+        ))
+        self.assertEqual("complete", meeting_events[-1]["type"])
+
     def test_representative_request_creates_independent_contracts_and_settles_resources(self) -> None:
         self._resolve_opening()
         authorization = self._create_authorization_document()
@@ -611,6 +843,17 @@ class GameplayGovernanceTests(unittest.TestCase):
 
         contract = next(
             item for item in contracts if item["household_id"] == "ZDS-01"
+        )
+        detail = self.client.get(
+            (
+                f"/api/game/session/{self.session_id}/governance/"
+                f"contracts/{contract['contract_id']}"
+            ),
+            headers=self.headers,
+        )
+        self.assertEqual(200, detail.status_code)
+        self.assertEqual(
+            contract["contract_id"], detail.json()["contract"]["contract_id"]
         )
         term_payload = {
             "policy_document_id": "doc_compensation_policy_v1",

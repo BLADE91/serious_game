@@ -12,6 +12,11 @@ from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.application.trust_derivation_service import TrustDerivationService
 from serious_game_backend.application.story_flow_service import StoryFlowService
+from serious_game_backend.domain.errors import (
+    RoleLLMBudgetExceededError,
+    RoleLLMResponseError,
+    RoleLLMUnavailableError,
+)
 
 
 class NightSimulationService:
@@ -53,13 +58,14 @@ class NightSimulationService:
                         branch.effects,
                         source_id=f"night_d{day:02d}:branch_{index}",
                     )
+        agent_failures: list[dict] = []
         (
             agent_exchanges,
             contact_selections,
             contact_responses,
-        ) = self._run_agent_scenes(session, package)
+        ) = self._run_agent_scenes(session, package, agent_failures)
         followup_decisions = self._create_followup_conversations(
-            session, package, agent_exchanges
+            session, package, agent_exchanges, agent_failures
         )
         if day == 75:
             self._scripted_effects.freeze_d75_roster(session, package)
@@ -123,6 +129,7 @@ class NightSimulationService:
             "contact_selections": contact_selections,
             "contact_responses": contact_responses,
             "followup_decisions": followup_decisions,
+            "agent_failures": agent_failures,
         }
         session.night_logs.append(record)
         session.logs.append({
@@ -148,6 +155,7 @@ class NightSimulationService:
         session: GameSession,
         package: ScriptPackage,
         exchanges: list[dict],
+        failures: list[dict],
     ) -> list[dict]:
         if self._night_llm is None or not exchanges:
             return []
@@ -182,7 +190,7 @@ class NightSimulationService:
                 ))
                 if not eligible:
                     continue
-                result = self._night_llm.run_night_turn(NightAgentContext(
+                context = NightAgentContext(
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=(
@@ -207,7 +215,10 @@ class NightSimulationService:
                         else "决定是否需要在次日主动向县长汇报并会谈"
                     ),
                     allowed_followup_type=followup_type,
-                ))
+                )
+                result = self._safe_night_turn(context, failures)
+                if result is None:
+                    continue
                 proposal = {
                     "initiator_npc_id": npc_id,
                     "model_id": result.model_id,
@@ -237,8 +248,7 @@ class NightSimulationService:
                     if invited_id == npc_id:
                         continue
                     invited = profiles[invited_id]
-                    response = self._night_llm.run_night_turn(
-                        NightAgentContext(
+                    response_context = NightAgentContext(
                             session_id=session.session_id,
                             account_id=session.account_id,
                             operation_id=(
@@ -259,8 +269,18 @@ class NightSimulationService:
                             counterpart_ids=(npc_id,),
                             transcript=related_transcript,
                             scene_goal=result.agenda,
-                        )
                     )
+                    response = self._safe_night_turn(
+                        response_context, failures
+                    )
+                    if response is None:
+                        proposal["responses"].append({
+                            "npc_id": invited_id,
+                            "model_id": None,
+                            "response": "defer",
+                            "rationale": "夜间联系未能完成，留待次日处理。",
+                        })
+                        continue
                     proposal["responses"].append({
                         "npc_id": invited_id,
                         "model_id": response.model_id,
@@ -302,7 +322,10 @@ class NightSimulationService:
         return decisions
 
     def _run_agent_scenes(
-        self, session: GameSession, package: ScriptPackage
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        failures: list[dict],
     ) -> tuple[list[dict], list[dict], list[dict]]:
         if self._night_llm is None:
             return [], [], []
@@ -335,6 +358,7 @@ class NightSimulationService:
                     profiles,
                     selections,
                     responses,
+                    failures,
                 )
             else:
                 groups = [candidate_ids]
@@ -348,6 +372,7 @@ class NightSimulationService:
                     action_catalog,
                     group_index=group_index,
                     executed_global=executed_global,
+                    failures=failures,
                 ))
         return exchanges, selections, responses
 
@@ -359,6 +384,7 @@ class NightSimulationService:
         profiles: dict,
         selections: list[dict],
         responses: list[dict],
+        failures: list[dict],
     ) -> list[tuple[str, ...]]:
         max_contacts = max(0, int(scene.get("max_contacts_per_npc", 2)))
         groups: list[tuple[str, ...]] = []
@@ -366,7 +392,7 @@ class NightSimulationService:
         for npc_id in candidate_ids:
             profile = profiles[npc_id]
             candidates = tuple(item for item in candidate_ids if item != npc_id)
-            result = self._night_llm.run_night_turn(NightAgentContext(
+            context = NightAgentContext(
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(
@@ -387,7 +413,18 @@ class NightSimulationService:
                 ),
                 max_contacts=max_contacts,
                 model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
-            ))
+            )
+            result = self._safe_night_turn(context, failures)
+            if result is None:
+                selections.append({
+                    "scene_id": scene["scene_id"],
+                    "npc_id": npc_id,
+                    "model_id": None,
+                    "contact_ids": [],
+                    "rationale": "夜间联系选择未能完成。",
+                    "accepted": False,
+                })
+                continue
             contacts = tuple(dict.fromkeys(
                 item for item in result.contact_ids
                 if item in candidates
@@ -406,7 +443,7 @@ class NightSimulationService:
             accepted_contacts: list[str] = []
             for invited_id in contacts:
                 invited = profiles[invited_id]
-                response = self._night_llm.run_night_turn(NightAgentContext(
+                response_context = NightAgentContext(
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=(
@@ -431,7 +468,21 @@ class NightSimulationService:
                     model_id=str(
                         scene.get("model_ids", {}).get(invited_id, "")
                     ),
-                ))
+                )
+                response = self._safe_night_turn(
+                    response_context, failures
+                )
+                if response is None:
+                    responses.append({
+                        "scene_id": scene["scene_id"],
+                        "initiator_npc_id": npc_id,
+                        "invited_npc_id": invited_id,
+                        "model_id": None,
+                        "response": "defer",
+                        "rationale": "夜间邀请未能完成，默认延后处理。",
+                        "accepted": False,
+                    })
+                    continue
                 valid_response = (
                     response.npc_id == invited_id
                     and response.contact_response
@@ -482,6 +533,7 @@ class NightSimulationService:
         *,
         group_index: int,
         executed_global: set[str],
+        failures: list[dict],
     ) -> dict:
             allowed = [
                 action_catalog[action_id]
@@ -493,7 +545,7 @@ class NightSimulationService:
             for round_index in range(1, int(scene.get("rounds", 2)) + 1):
                 for npc_id in participants:
                     profile = profiles[npc_id]
-                    result = self._night_llm.run_night_turn(NightAgentContext(
+                    context = NightAgentContext(
                         session_id=session.session_id,
                         account_id=session.account_id,
                         operation_id=(
@@ -521,7 +573,10 @@ class NightSimulationService:
                         ),
                         allowed_actions=tuple(allowed),
                         model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
-                    ))
+                    )
+                    result = self._safe_night_turn(context, failures)
+                    if result is None:
+                        continue
                     if result.npc_id != npc_id or not result.dialogue:
                         continue
                     transcript.append({
@@ -539,7 +594,7 @@ class NightSimulationService:
                     item for item in allowed
                     if not item.get("actor_ids") or npc_id in item["actor_ids"]
                 )
-                result = self._night_llm.run_night_turn(NightAgentContext(
+                context = NightAgentContext(
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=(
@@ -561,7 +616,16 @@ class NightSimulationService:
                     ),
                     allowed_actions=actor_allowed,
                     model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
-                ))
+                )
+                result = self._safe_night_turn(context, failures)
+                if result is None:
+                    proposals.append({
+                        "npc_id": npc_id,
+                        "action_id": None,
+                        "accepted": False,
+                        "reason": "夜间行动生成失败，已安全跳过",
+                    })
+                    continue
                 action = next(
                     (
                         item for item in actor_allowed
@@ -633,6 +697,41 @@ class NightSimulationService:
                     action_catalog,
                 ),
             }
+
+    def _safe_night_turn(
+        self,
+        context: NightAgentContext,
+        failures: list[dict],
+    ):
+        """Retry transient night-agent failures without blocking day settlement."""
+        if self._night_llm is None:
+            return None
+        last_error: Exception | None = None
+        attempts = 0
+        for attempt in range(1, 3):
+            attempts = attempt
+            try:
+                return self._night_llm.run_night_turn(context)
+            except (
+                RoleLLMBudgetExceededError,
+                RoleLLMResponseError,
+                RoleLLMUnavailableError,
+            ) as exc:
+                last_error = exc
+                if not getattr(exc, "retryable", False):
+                    break
+        failures.append({
+            "scene_id": context.scene_id,
+            "phase": context.phase,
+            "npc_id": context.npc_id,
+            "operation_id": context.operation_id,
+            "attempts": attempts,
+            "error_code": getattr(
+                last_error, "code", type(last_error).__name__
+            ),
+            "message": str(last_error),
+        })
+        return None
 
     @staticmethod
     def _conditions_match(rule: dict, session: GameSession) -> bool:

@@ -14,8 +14,8 @@ test("renders the Qingjiang governance web client", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /<title>浊流之下 · 清江搬迁记<\/title>/);
-  assert.match(html, /清江搬迁记/);
+  assert.match(html, /<title>浊流之上<\/title>/);
+  assert.match(html, /浊流之上/);
   assert.match(html, /县域治理情境模拟/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/);
 });

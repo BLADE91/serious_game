@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "serious-game-backend"
 version = "0.1.0"
-description = "Authoritative backend runtime for 浊流之下·清江搬迁记"
+description = "Authoritative backend runtime for 浊流之上"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.116,<1",

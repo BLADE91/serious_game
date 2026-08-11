@@ -153,7 +153,7 @@ class TerminalApp:
         self.rendered_night_groups: set[str] = set()
 
     def run(self) -> int:
-        self.output("《浊流之下·清江搬迁记》文字测试客户端")
+        self.output("《浊流之上》文字测试客户端")
         try:
             readiness_call = getattr(self.api, "readiness", None)
             readiness = readiness_call() if readiness_call else {}

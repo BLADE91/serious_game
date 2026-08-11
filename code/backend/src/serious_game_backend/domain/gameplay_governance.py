@@ -58,6 +58,7 @@ class MeetingRecord:
     topic: str
     participant_ids: tuple[str, ...]
     decision_mode: str
+    lead_npc_id: str
     proposed_document_type: str | None = None
     transcript: list[dict] = field(default_factory=list)
     positions: dict[str, dict] = field(default_factory=dict)

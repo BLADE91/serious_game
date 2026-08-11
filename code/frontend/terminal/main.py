@@ -6,7 +6,7 @@ from terminal_client import ApiClient, ApiError, TerminalApp
 
 
 def main() -> int:
-    parser = ArgumentParser(description="浊流之下·清江搬迁记文字测试客户端")
+    parser = ArgumentParser(description="浊流之上文字测试客户端")
     parser.add_argument("--url", default="http://127.0.0.1:8100", help="后端基础地址")
     parser.add_argument(
         "--account-id",

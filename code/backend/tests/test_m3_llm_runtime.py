@@ -873,6 +873,94 @@ class M3LLMRuntimeTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
         self.assertEqual("failed", auth_audits.list_for_session("session_m3")[-1].status)
 
+    def test_governance_timeout_retries_then_uses_safe_fallback(self) -> None:
+        calls = []
+        audits = InMemoryLLMCallAuditRepository()
+
+        def timeout_transport(*args):
+            calls.append(1)
+            raise RoleLLMUnavailableError("timeout")
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(
+                role_llm_max_retries=1,
+                role_llm_fallback_to_fake=True,
+            ),
+            "test-key",
+            audits,
+            transport=timeout_transport,
+            fallback=FakeRoleLLMGateway(),
+        )
+        result = gateway.run_governance_task(GovernanceLLMContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="governance:timeout:fallback",
+            story_day=1,
+            task="detect_contract_intent",
+            actor_id="npc_zhou_dashan",
+            actor_name="周大山",
+            actor_profile="柳林村村支书。",
+            payload={"player_text": "请逐户签约。"},
+        ))
+
+        self.assertEqual(2, len(calls))
+        self.assertEqual("request_contract_batch", result.data["intent"])
+        saved = audits.list_for_session("session_m3")
+        self.assertEqual(
+            ["failed", "failed", "succeeded"],
+            [item.status for item in saved],
+        )
+        self.assertEqual("fake_fallback", saved[-1].provider)
+
+    def test_contract_review_text_counteroffer_is_retried_and_falls_back(self) -> None:
+        calls = []
+
+        def malformed_transport(*args):
+            calls.append(1)
+            return {
+                "choices": [{"message": {"content": __import__("json").dumps({
+                    "decision": "counteroffer",
+                    "reason": "需要调整。",
+                    "counteroffer": "请再谈一谈。",
+                }, ensure_ascii=False)}}],
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings(
+                role_llm_max_retries=1,
+                role_llm_fallback_to_fake=True,
+            ),
+            "test-key",
+            InMemoryLLMCallAuditRepository(),
+            transport=malformed_transport,
+            fallback=FakeRoleLLMGateway(),
+        )
+        result = gateway.run_governance_task(GovernanceLLMContext(
+            session_id="session_m3",
+            account_id="account_m3",
+            operation_id="contract:review:malformed-counteroffer",
+            story_day=1,
+            task="review_contract",
+            actor_id="npc_zhou_dashan",
+            actor_name="周大山",
+            actor_profile="柳林村村支书。",
+            payload={
+                "contract_id": "contract_test",
+                "contract_text": "合同正文",
+                "term_sheet": {},
+                "allowed_decisions": ["explain", "counteroffer", "reject"],
+                "missing_hard_conditions": ["材料未公开"],
+                "contract_memory": [],
+            },
+        ))
+
+        self.assertEqual(2, len(calls))
+        self.assertIsInstance(result.data["counteroffer"], dict)
+        self.assertIn(
+            result.data["decision"],
+            {"explain", "counteroffer", "reject"},
+        )
+
     def test_prompt_attack_and_forbidden_fact_leak_are_rejected(self) -> None:
         class AttackGateway:
             def run_turn(self, context):

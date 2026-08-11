@@ -317,6 +317,9 @@ def decode_session(value: dict) -> GameSession:
             key: MeetingRecord(**{
                 **item,
                 "participant_ids": tuple(item.get("participant_ids", ())),
+                "lead_npc_id": item.get("lead_npc_id") or next(
+                    iter(item.get("participant_ids", ())), ""
+                ),
             })
             for key, item in value.get("meetings", {}).items()
         },

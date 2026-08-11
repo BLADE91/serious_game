@@ -79,15 +79,8 @@ class MapService:
                 rule = package.action_rules.get(action_id)
                 if definition is None or rule is None:
                     continue
-                available_action = (
-                    definition.enabled
-                    and definition.executor_kind != "conversation"
-                    and definition.required_flags.issubset(session.flags)
-                    and (
-                        not definition.required_any_flags
-                        or bool(definition.required_any_flags & session.flags)
-                    )
-                    and not bool(definition.forbidden_flags & session.flags)
+                available_action, unavailable_reason = self._resource_availability(
+                    session, definition, rule
                 )
                 entry_cards.append({
                     "title": rule.name,
@@ -96,11 +89,11 @@ class MapService:
                     "cost_action_points": rule.cost_for(tier),
                     "direct_budget_cost": definition.budget_cost,
                     "available": available_action,
-                    "unavailable_reason": (
-                        None if available_action else
-                        definition.unavailable_reason or "程序条件尚未满足"
-                    ),
+                    "unavailable_reason": unavailable_reason,
                     "target_schema": definition.target_schema,
+                    "target_choices": self._target_choices(
+                        session, package, action_id
+                    ),
                     "parameter_schema": definition.parameter_schema,
                     "submit": {"action_id": action_id},
                 })
@@ -117,6 +110,68 @@ class MapService:
             "story_day": session.game_state.story_day,
             "locations": locations,
         }
+
+    @staticmethod
+    def _resource_availability(session, definition, rule) -> tuple[bool, str | None]:
+        state = session.game_state
+        if not definition.enabled:
+            return False, definition.unavailable_reason or "当前版本尚未开放"
+        if definition.executor_kind == "conversation":
+            return False, "请从人物会谈入口发起"
+        if not definition.required_flags.issubset(session.flags):
+            return False, definition.unavailable_reason or "必要程序条件尚未满足"
+        if definition.required_any_flags and not (
+            definition.required_any_flags & session.flags
+        ):
+            return False, definition.unavailable_reason or "必要程序条件尚未满足"
+        if definition.forbidden_flags & session.flags:
+            return False, definition.unavailable_reason or "当前状态不允许再次办理"
+        if rule.daily_cap is not None and (
+            state.daily_action_counts.get(rule.action_id, 0) >= rule.daily_cap
+        ):
+            return False, "今日次数已用尽"
+        if rule.half_day and state.half_day_action_used:
+            return False, "今日半日行程已占用"
+        if rule.hard_force and state.fatigue >= 75:
+            return False, "当前身心状态不能执行强制手段"
+        if rule.precondition_flags_any and not any(
+            flag in session.flags for flag in rule.precondition_flags_any
+        ):
+            return False, "行动前置条件尚未满足"
+        return True, None
+
+    @staticmethod
+    def _target_choices(session, package, action_id: str) -> list[dict]:
+        definition = package.resource_actions[action_id]
+        target_kind = str(definition.target_schema.get("target_kind", "npc"))
+        if target_kind == "household":
+            return [{
+                "target_id": item.household_id,
+                "label": (
+                    f"{item.household_id}｜{item.registered_population}人｜"
+                    f"住宅 {item.legal_residential_area_m2:g}㎡"
+                ),
+            } for item in package.households]
+        if target_kind == "fact" or action_id in {
+            "cross_validate_clues", "zheng_clue_summary",
+        }:
+            return [
+                {"target_id": fact_id, "label": package.facts[fact_id].title}
+                for fact_id in sorted(session.known_fact_ids)
+                if fact_id in package.facts
+            ]
+        if target_kind == "location" or action_id == "field_visit":
+            return [
+                {"target_id": item.location_id, "label": item.name}
+                for item in package.map_locations
+                if session.game_state.story_day >= item.unlock_day
+                and item.required_flags.issubset(session.flags)
+            ]
+        return [
+            {"target_id": item.npc_id, "label": item.name}
+            for item in package.npc_profiles
+            if item.npc_id in session.npc_states
+        ]
 
     @staticmethod
     def _default_location(npc_id: str) -> str:
