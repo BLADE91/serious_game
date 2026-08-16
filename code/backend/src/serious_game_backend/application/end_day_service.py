@@ -175,7 +175,6 @@ class EndDayService:
                 )
                 if current.game_state.story_day == previous_day:
                     break
-                self._story_flow.enter_current_day(current, package)
                 if self._gameplay_governance is not None:
                     expired_contract_reservations.extend(
                         self._gameplay_governance.expire_reservations(current)
@@ -193,7 +192,14 @@ class EndDayService:
                         content_instance_id=(
                             f"morning:{night_record.get('story_day')}:{index}"
                         ),
+                        beat_id=(
+                            package.story_day(current.game_state.story_day).beat_id
+                            if package.story_day(current.game_state.story_day)
+                            else None
+                        ),
+                        presentation_phase="morning",
                     )
+                self._story_flow.enter_current_day(current, package)
                 if current.game_state.story_day == 90:
                     self._endings.finalize(current, package)
                     break

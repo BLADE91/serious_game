@@ -201,6 +201,14 @@ class GovernanceFinishRequest(BaseModel):
     state_version: int = Field(ge=1)
 
 
+class NPCDemandDispositionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state_version: int = Field(ge=1)
+    transition: Literal[
+        "acknowledged", "committed", "satisfied", "lawfully_refused", "breached"
+    ]
+
+
 class MeetingTurnRequest(GovernanceTurnRequest):
     addressed_npc_id: str | None = Field(default=None, max_length=128)
 

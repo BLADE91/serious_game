@@ -511,7 +511,7 @@ class RuntimeServiceTests(unittest.TestCase):
         )
         conversation_id = started["conversation"]["conversation_id"]
         self.assertIn("菜", started["narrative"])
-        self.assertEqual(7, started["visible_state"]["ledger"]["action_points"]["remaining"])
+        self.assertEqual(8, started["visible_state"]["ledger"]["action_points"]["remaining"])
 
         wu_turn = ActionCommand(
             input_mode=ActionInputMode.FREE_TEXT,
@@ -528,6 +528,7 @@ class RuntimeServiceTests(unittest.TestCase):
             command=wu_turn,
         )
         self.assertEqual(6, wu_result["state_version"])
+        self.assertEqual(7, wu_result["visible_state"]["ledger"]["action_points"]["remaining"])
         self.assertIn("谁的话在谁面前好使", wu_result["npc_reply"]["text"])
         current = self.sessions.get_owned(self.session.session_id, "acct_a")
         self.assertNotIn("flag_wu_first_talk_completed", current.flags)

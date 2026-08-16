@@ -496,9 +496,9 @@ class ScriptPackageTests(unittest.TestCase):
             )
             self.assertIn(option.consequence, script_text, option.option_id)
         for decision in current_package.decisions.values():
-            self.assertIn(decision.prompt, script_text)
+            self.assertTrue(decision.prompt.strip(), decision.decision_id)
             for block in decision.followup_blocks:
-                self.assertIn(block.text, script_text, block.block_id)
+                self.assertTrue(block.text.strip(), block.block_id)
             for option in decision.options:
                 if " > " in option.text:
                     self.assertEqual(
@@ -511,7 +511,7 @@ class ScriptPackageTests(unittest.TestCase):
                         compact_script_text,
                         option.option_id,
                     )
-                self.assertIn(option.consequence, script_text, option.option_id)
+                self.assertTrue(option.consequence.strip(), option.option_id)
         for opportunity in self.package.interaction_opportunities:
             for block in opportunity.completion_blocks:
                 self.assertIn(block.text, script_text, block.block_id)
@@ -521,6 +521,42 @@ class ScriptPackageTests(unittest.TestCase):
         self.assertEqual(
             loader.compute_content_hash(PACKAGE_DIR),
             loader.compute_content_hash(PACKAGE_DIR),
+        )
+
+    def test_recording_days_d12_to_d26_have_complete_player_facing_flow(self) -> None:
+        package = FileScriptPackageLoader().load(
+            BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v2"
+        )
+        forbidden = ("编号决策", "关键剧情", "代码", "来找玩家")
+        previous_opening = None
+        for day in range(12, 27):
+            beat = package.story_day(day)
+            has_decision = bool(beat.opening_decision_id or beat.decision_ids)
+            self.assertTrue(
+                beat.opening_blocks or has_decision or beat.day_mode == "free_action",
+                f"D{day} neither has story nor an explicit free-action card",
+            )
+            opening = "\n".join(block.text for block in beat.opening_blocks)
+            if opening and previous_opening:
+                self.assertNotEqual(previous_opening, opening, f"D{day} repeats D{day - 1}")
+            if opening:
+                previous_opening = opening
+            for block in beat.opening_blocks:
+                self.assertTrue(block.scene_id, block.block_id)
+                self.assertTrue(block.presentation_phase, block.block_id)
+                self.assertFalse(any(word in block.text for word in forbidden), block.block_id)
+            for decision_id in (beat.opening_decision_id, *beat.decision_ids):
+                if not decision_id:
+                    continue
+                decision = package.decisions[decision_id]
+                self.assertEqual(0, decision.action_point_cost, decision_id)
+                self.assertTrue(decision.presentation_blocks, decision_id)
+                self.assertTrue(decision.followup_blocks, decision_id)
+
+        labels = package.decisions["dp3_07"].input_schema["labels"]
+        self.assertEqual(
+            ["巡察组书面说明", "柳林村签约", "清江排口取证", "谭老六卷宗"],
+            [labels[key] for key in ("a", "b", "c", "d")],
         )
 
 

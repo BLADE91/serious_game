@@ -24,7 +24,12 @@ class StoryFlowService:
         beat = package.story_day(session.game_state.story_day)
         if beat is None:
             return
-        self._append_blocks(session, beat.night_blocks)
+        self._append_blocks(
+            session,
+            beat.night_blocks,
+            beat_id=beat.beat_id,
+            presentation_phase="night",
+        )
 
     def enter_current_day(self, session: GameSession, package: ScriptPackage) -> None:
         self._enter_day(session, package, session.game_state.story_day)
@@ -51,8 +56,17 @@ class StoryFlowService:
             story_day=session.game_state.story_day,
             kind="consequence",
             text=self.public_text(option.consequence),
+            beat_id=session.story_beat_id,
+            decision_id=decision_id,
+            presentation_phase="consequence",
         )
-        self._append_blocks(session, decision.followup_blocks)
+        self._append_blocks(
+            session,
+            decision.followup_blocks,
+            beat_id=session.story_beat_id,
+            decision_id=decision_id,
+            presentation_phase="consequence",
+        )
         if complete:
             session.pending_decision = None
         return option
@@ -85,7 +99,11 @@ class StoryFlowService:
             return
 
     def append_blocks(self, session: GameSession, blocks) -> None:
-        self._append_blocks(session, blocks)
+        self._append_blocks(
+            session,
+            blocks,
+            beat_id=session.story_beat_id,
+        )
 
     @staticmethod
     def feed_since(session: GameSession, after: int) -> dict:
@@ -109,6 +127,13 @@ class StoryFlowService:
                     "speaker": item.speaker,
                     "text": item.text,
                     "content_instance_id": item.content_instance_id,
+                    "block_id": item.block_id,
+                    "beat_id": item.beat_id,
+                    "decision_id": item.decision_id,
+                    "scene_id": item.scene_id,
+                    "presentation_phase": item.presentation_phase,
+                    "day_sequence": item.day_sequence,
+                    "read_gate": item.read_gate,
                 }
                 for item in items
             ],
@@ -125,7 +150,27 @@ class StoryFlowService:
             session.story_beat_id = None
             return
         session.story_beat_id = beat.beat_id
-        self._append_blocks(session, beat.opening_blocks)
+        is_free_day = not beat.opening_blocks and not (
+            beat.opening_decision_id or beat.decision_ids
+        )
+        session.append_narrative(
+            story_day=story_day,
+            kind="day_intro",
+            text=(
+                f"第{story_day}日，今天没有必须处理的主线事项，可以自由安排行动。"
+                if is_free_day else f"第{story_day}日，{self.public_text(beat.title)}。"
+            ),
+            content_instance_id=f"day:{story_day}:intro",
+            beat_id=beat.beat_id,
+            presentation_phase="day_intro",
+            read_gate="free_action" if is_free_day else "advance",
+        )
+        self._append_blocks(
+            session,
+            beat.opening_blocks,
+            beat_id=beat.beat_id,
+            presentation_phase="scene",
+        )
         scheduled = list(beat.decision_ids)
         if beat.opening_decision_id and beat.opening_decision_id not in scheduled:
             scheduled.insert(0, beat.opening_decision_id)
@@ -138,7 +183,14 @@ class StoryFlowService:
         self.present_next_decision(session, package)
 
     @staticmethod
-    def _append_blocks(session: GameSession, blocks) -> None:
+    def _append_blocks(
+        session: GameSession,
+        blocks,
+        *,
+        beat_id: str | None = None,
+        decision_id: str | None = None,
+        presentation_phase: str = "scene",
+    ) -> None:
         for block in blocks:
             if not block.is_visible(origin_id=session.origin_id, flags=session.flags):
                 continue
@@ -148,6 +200,13 @@ class StoryFlowService:
                 text=StoryFlowService.public_text(block.text),
                 speaker=block.speaker,
                 content_instance_id=f"block:{block.block_id}",
+                block_id=block.block_id,
+                beat_id=beat_id,
+                decision_id=decision_id,
+                scene_id=block.scene_id,
+                presentation_phase=(
+                    block.presentation_phase or presentation_phase
+                ),
             )
 
     @staticmethod
@@ -202,8 +261,28 @@ class StoryFlowService:
         if not available_ids:
             raise ContentValidationError(f"当前决策没有可达选项：{decision_id}")
         self_context = dict(context)
+        event_instance_id = f"evt_{session.session_id}_{decision.decision_id}"
+        StoryFlowService._append_blocks(
+            session,
+            decision.presentation_blocks,
+            beat_id=session.story_beat_id,
+            decision_id=decision_id,
+            presentation_phase="decision_setup",
+        )
+        presentation_entry_id = f"decision:{event_instance_id}"
+        session.append_narrative(
+            story_day=session.game_state.story_day,
+            kind="decision",
+            text=StoryFlowService.public_text(decision.prompt),
+            content_instance_id=presentation_entry_id,
+            beat_id=session.story_beat_id,
+            decision_id=decision_id,
+            scene_id=decision.scene_id,
+            presentation_phase="decision",
+            read_gate="decision",
+        )
         session.pending_decision = PendingDecision(
-            event_instance_id=f"evt_{session.session_id}_{decision.decision_id}",
+            event_instance_id=event_instance_id,
             decision_id=decision.decision_id,
             option_ids=available_ids,
             presented_state_version=session.state_version,
@@ -223,8 +302,8 @@ class StoryFlowService:
             input_kind=decision.input_kind,
             input_schema=decision.input_schema or None,
             context=self_context,
+            presentation_entry_id=presentation_entry_id,
         )
-        StoryFlowService._append_blocks(session, decision.presentation_blocks)
         session.logs.append({
             "type": "decision_presented",
             "story_day": session.game_state.story_day,

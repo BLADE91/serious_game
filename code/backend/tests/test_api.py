@@ -428,7 +428,7 @@ class ApiTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(200, consequence.status_code, consequence.text)
-        self.assertEqual(["consequence"], [
+        self.assertEqual(["consequence", "narration"], [
             item["kind"] for item in consequence.json()["items"]
         ])
         consequence_cursor = consequence.json()["cursor"]
@@ -536,7 +536,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("菜", started.json()["narrative"])
         conversation_id = started.json()["conversation"]["conversation_id"]
         self.assertEqual(
-            7,
+            8,
             started.json()["visible_state"]["ledger"]["action_points"]["remaining"],
         )
 

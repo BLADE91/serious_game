@@ -5,7 +5,7 @@
       "decision_id": "ev1_01_reception_bag",
       "story_day": 1,
       "title": "廉政试炼·接风袋",
-      "prompt": "袋子不重，你能摸出里头的棱角。",
+      "prompt": "收还是不收，怎么收，第一个决策点就这么跳了出来。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -77,12 +77,31 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "ev1_01_reception_bag_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev1_01_reception_bag_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_01_taskforce_faction_map",
       "story_day": 2,
-      "title": "DP1-01·组建专班与摸派系图",
+      "title": "组建专班与摸派系图",
       "prompt": "请做出决定。",
       "action_point_cost": 0,
       "skippable": false,
@@ -201,20 +220,34 @@
         {
           "block_id": "d02_wu_bridge",
           "kind": "narration",
-          "text": "无论走哪一条，你在这一步都摸清了柳林村的骨架。周氏一姓独大，周大山一手遮天，散姓和困难户被压在底下。吴秀英在一次不经意的交谈里，替你点破了这层窗户纸。"
+          "text": "无论走哪一条，你在这一步都摸清了柳林村的骨架。周氏一姓独大，周大山一手遮天，散姓和困难户被压在底下。吴秀英在一次不经意的交谈里，替你点破了这层窗户纸。",
+          "scene_id": "C01_S06",
+          "presentation_phase": "consequence"
         },
         {
           "block_id": "d02_wu_encounter",
           "kind": "narration",
-          "text": "这句话你记了很久。那是你到村里走访时撞上的一幕。吴秀英拎着一篮子刚摘的青菜从坡上下来，见了你这个生面孔，既不趋奉也不躲避，只淡淡打了个招呼。旁人在这位老教师面前说话都客气三分，何杨两姓好几代人做过她的学生，就连周大山，当年也在她课堂上挨过戒尺。你起了心思，多聊了几句。老教师话不多，可句句都戳在点子上。"
+          "text": "这句话你记了很久。那是你到村里走访时撞上的一幕。吴秀英拎着一篮子刚摘的青菜从坡上下来，见了你这个生面孔，既不趋奉也不躲避，只淡淡打了个招呼。旁人在这位老教师面前说话都客气三分，何杨两姓好几代人做过她的学生，就连周大山，当年也在她课堂上挨过戒尺。你起了心思，多聊了几句。老教师话不多，可句句都戳在点子上。",
+          "scene_id": "C01_S06",
+          "presentation_phase": "consequence"
+        }
+      ],
+      "scene_id": "C01_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_01_taskforce_faction_map_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S06",
+          "presentation_phase": "decision_setup"
         }
       ]
     },
     {
       "decision_id": "dp1_02",
       "story_day": 3,
-      "title": "第四幕·识局第二步：补偿这道口子，怎么开",
-      "prompt": "本决定不消耗行动点。",
+      "title": "识局第二步：补偿这道口子，怎么开",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -321,13 +354,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_03",
       "story_day": 5,
-      "title": "第五幕·识局第三步：坡上那间旧瓦房，袁桂兰的一句话",
-      "prompt": "本决定不消耗行动点。",
+      "title": "识局第三步：坡上那间旧瓦房，袁桂兰的一句话",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -410,13 +462,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_04",
       "story_day": 7,
-      "title": "第六幕·识局第四步：调度会上，孙强递来的那记软钉子",
-      "prompt": "本决定不消耗行动点。",
+      "title": "识局第四步：调度会上，孙强递来的那记软钉子",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -520,13 +591,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_04_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_04_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_05",
       "story_day": 9,
-      "title": "第七幕·识局第五步：与赵建国的第一个回合",
-      "prompt": "本决定不消耗行动点。",
+      "title": "识局第五步：与赵建国的第一个回合",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -672,13 +762,32 @@
           ],
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S08",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_05_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S08",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_05_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S08",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_06",
       "story_day": 11,
-      "title": "第八幕·试水：首轮签约，谁肯按下第一个手印",
-      "prompt": "本决定不消耗行动点。",
+      "title": "试水：首轮签约，谁肯按下第一个手印",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -785,13 +894,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S09",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_06_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S09",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_06_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S09",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_07",
       "story_day": 12,
-      "title": "第九幕·程序红线：那一户填得含糊的协议",
-      "prompt": "本决定不消耗行动点。",
+      "title": "程序红线：那一户填得含糊的协议",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -867,13 +995,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S09",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_07_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S09",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_07_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S09",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_08",
       "story_day": 13,
-      "title": "DP1-08·编号决策",
-      "prompt": "本决定不消耗行动点。",
+      "title": "下村攻坚的先后",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -928,13 +1075,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S09",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_08_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S09",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_08_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S09",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp1_09",
       "story_day": 15,
-      "title": "DP1-09·编号决策",
-      "prompt": "本决定不消耗行动点。",
+      "title": "夜间串联的初兆",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1042,13 +1208,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S11",
+      "presentation_blocks": [
+        {
+          "block_id": "dp1_09_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S11",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp1_09_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S11",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev1_02",
       "story_day": 8,
       "title": "（一）渡口堵路",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1183,13 +1368,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S10",
+      "presentation_blocks": [
+        {
+          "block_id": "ev1_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S10",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev1_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S10",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev1_03",
       "story_day": 10,
       "title": "（二）病儿急送",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1295,13 +1499,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C01_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "ev1_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C01_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev1_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C01_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp2_01",
       "story_day": 17,
-      "title": "第二幕·三张纸",
-      "prompt": "本决定不消耗行动点。",
+      "title": "三张纸",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1405,13 +1628,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C02_S01",
+      "presentation_blocks": [
+        {
+          "block_id": "dp2_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S01",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp2_02",
       "story_day": 18,
-      "title": "第三幕·茶叶盒",
-      "prompt": "本决定不消耗行动点。",
+      "title": "茶叶盒",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1524,15 +1766,27 @@
           "text": "钱伟没有登门。电话由赵建国转进来，原本放在桌面的那条交易路径已经断了。",
           "required_flags": [
             "与钱伟撕破脸"
-          ]
+          ],
+          "scene_id": "C02_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "scene_id": "C02_S01",
+      "followup_blocks": [
+        {
+          "block_id": "dp2_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S01",
+          "presentation_phase": "consequence"
         }
       ]
     },
     {
       "decision_id": "dp2_03",
       "story_day": 20,
-      "title": "第四幕·粮站",
-      "prompt": "本决定不消耗行动点。",
+      "title": "粮站",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1610,13 +1864,32 @@
       "early_day": 19,
       "early_required_flags": [
         "压下账目"
+      ],
+      "scene_id": "C02_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "dp2_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp2_04",
       "story_day": 22,
-      "title": "第五幕·三年不变的数据",
-      "prompt": "本决定不消耗行动点。",
+      "title": "三年不变的数据",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1729,15 +2002,27 @@
           "text": "审计已经立项，石文斌比原定时间早一天到访，并提醒你三份报告背后的原始口径正在被人收走。",
           "required_flags": [
             "已立项审计"
-          ]
+          ],
+          "scene_id": "C02_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "scene_id": "C02_S04",
+      "followup_blocks": [
+        {
+          "block_id": "dp2_04_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S04",
+          "presentation_phase": "consequence"
         }
       ]
     },
     {
       "decision_id": "dp2_05",
       "story_day": 25,
-      "title": "关键剧情·吴秀英把那本旧名册摊开",
-      "prompt": "本决定不消耗行动点。",
+      "title": "三十六户怎么攻",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1852,13 +2137,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C02_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp2_05_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_05_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev2_01",
       "story_day": 26,
-      "title": "突发事件·谭老六堵了县政府的门",
-      "prompt": "本决定不消耗行动点。",
+      "title": "谭老六堵了县政府的门",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1975,13 +2279,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C02_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "ev2_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev2_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp2_06",
       "story_day": 26,
-      "title": "第八幕·楼道与小楼",
-      "prompt": "本决定不消耗行动点。",
+      "title": "楼道与小楼",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2085,13 +2408,47 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C02_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "d26_zhao_after_meeting",
+          "kind": "narration",
+          "text": "第二十六日下午，会散得很晚。赵建国等到最后一个人离开会议室，关上门，把椅子拉到你对面。",
+          "scene_id": "C02_S06",
+          "presentation_phase": "decision_setup"
+        },
+        {
+          "block_id": "d26_zhao_warning",
+          "kind": "dialogue",
+          "speaker": "赵建国",
+          "text": "搬迁的钱是市里拨的，工程是三年前定的。您往回翻，翻出来的每一笔，签字的人都还在这个班子里。把班子查散了，剩下的日子您带谁去搬那三十六户？",
+          "scene_id": "C02_S06",
+          "presentation_phase": "decision_setup"
+        },
+        {
+          "block_id": "d26_jiang_meeting",
+          "kind": "narration",
+          "text": "傍晚，蒋崇岳又把你叫到县委小楼。他只问了一句：搬迁和查案，两件事一起抓，你抓得住吗。公开查、暗中查、暂缓，还是借赵建国的路子推进，你必须选定自己的站位。",
+          "scene_id": "C02_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_06_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp2_07",
       "story_day": 27,
-      "title": "第九幕·红头文件",
-      "prompt": "本决定不消耗行动点。",
+      "title": "红头文件",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2172,20 +2529,39 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C02_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp2_07_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_07_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp2_08",
       "story_day": 28,
-      "title": "第十幕·四条战线",
-      "prompt": "本决定不消耗行动点。",
+      "title": "四条战线",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a_b_c_d",
           "text": "A > B > C > D",
-          "consequence": "排首位，财政预算 -50 到 -100 万元，第三章及以后的签约类说服判定难度下调一档，村民 NPC 的攻坚顺序按你排的这条线优先展开。",
+          "consequence": "你把签约攻坚排在最前，专班先把人手压到逐户协商上。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2212,7 +2588,7 @@
         {
           "option_id": "a_b_d_c",
           "text": "A > B > D > C",
-          "consequence": "排首位，财政预算 -50 到 -100 万元，第三章及以后的签约类说服判定难度下调一档，村民 NPC 的攻坚顺序按你排的这条线优先展开。",
+          "consequence": "你把签约攻坚排在最前，专班先把人手压到逐户协商上。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2239,7 +2615,7 @@
         {
           "option_id": "a_c_b_d",
           "text": "A > C > B > D",
-          "consequence": "排首位，财政预算 -50 到 -100 万元，第三章及以后的签约类说服判定难度下调一档，村民 NPC 的攻坚顺序按你排的这条线优先展开。",
+          "consequence": "你把签约攻坚排在最前，专班先把人手压到逐户协商上。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2266,7 +2642,7 @@
         {
           "option_id": "a_c_d_b",
           "text": "A > C > D > B",
-          "consequence": "排首位，财政预算 -50 到 -100 万元，第三章及以后的签约类说服判定难度下调一档，村民 NPC 的攻坚顺序按你排的这条线优先展开。",
+          "consequence": "你把签约攻坚排在最前，专班先把人手压到逐户协商上。",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -2289,7 +2665,7 @@
         {
           "option_id": "a_d_b_c",
           "text": "A > D > B > C",
-          "consequence": "排首位，财政预算 -50 到 -100 万元，第三章及以后的签约类说服判定难度下调一档，村民 NPC 的攻坚顺序按你排的这条线优先展开。",
+          "consequence": "你把签约攻坚排在最前，专班先把人手压到逐户协商上。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2316,7 +2692,7 @@
         {
           "option_id": "a_d_c_b",
           "text": "A > D > C > B",
-          "consequence": "排首位，财政预算 -50 到 -100 万元，第三章及以后的签约类说服判定难度下调一档，村民 NPC 的攻坚顺序按你排的这条线优先展开。",
+          "consequence": "你把签约攻坚排在最前，专班先把人手压到逐户协商上。",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -2339,7 +2715,7 @@
         {
           "option_id": "b_a_c_d",
           "text": "B > A > C > D",
-          "consequence": "排首位，政治资本 +3 到 +5，领导班子不满度 +5 到 +8。",
+          "consequence": "你把反腐查案排在最前，三张发票和关联公司的线索先进入核查。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2369,7 +2745,7 @@
         {
           "option_id": "b_a_d_c",
           "text": "B > A > D > C",
-          "consequence": "排首位，政治资本 +3 到 +5，领导班子不满度 +5 到 +8。",
+          "consequence": "你把反腐查案排在最前，三张发票和关联公司的线索先进入核查。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2399,7 +2775,7 @@
         {
           "option_id": "b_c_a_d",
           "text": "B > C > A > D",
-          "consequence": "排首位，政治资本 +3 到 +5，领导班子不满度 +5 到 +8。",
+          "consequence": "你把反腐查案排在最前，三张发票和关联公司的线索先进入核查。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2429,7 +2805,7 @@
         {
           "option_id": "b_c_d_a",
           "text": "B > C > D > A",
-          "consequence": "排首位，政治资本 +3 到 +5，领导班子不满度 +5 到 +8。",
+          "consequence": "你把反腐查案排在最前，三张发票和关联公司的线索先进入核查。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2455,7 +2831,7 @@
         {
           "option_id": "b_d_a_c",
           "text": "B > D > A > C",
-          "consequence": "排首位，政治资本 +3 到 +5，领导班子不满度 +5 到 +8。",
+          "consequence": "你把反腐查案排在最前，三张发票和关联公司的线索先进入核查。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2485,7 +2861,7 @@
         {
           "option_id": "b_d_c_a",
           "text": "B > D > C > A",
-          "consequence": "排首位，政治资本 +3 到 +5，领导班子不满度 +5 到 +8。",
+          "consequence": "你把反腐查案排在最前，三张发票和关联公司的线索先进入核查。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2511,7 +2887,7 @@
         {
           "option_id": "c_a_b_d",
           "text": "C > A > B > D",
-          "consequence": "排首位，环评线索 +5 到 +10，舆论压力 +3 到 +8。",
+          "consequence": "你把环评真相排在最前，清江水样和三年报告先被重新审视。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2537,7 +2913,7 @@
         {
           "option_id": "c_a_d_b",
           "text": "C > A > D > B",
-          "consequence": "排首位，环评线索 +5 到 +10，舆论压力 +3 到 +8。",
+          "consequence": "你把环评真相排在最前，清江水样和三年报告先被重新审视。",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -2563,7 +2939,7 @@
         {
           "option_id": "c_b_a_d",
           "text": "C > B > A > D",
-          "consequence": "排首位，环评线索 +5 到 +10，舆论压力 +3 到 +8。",
+          "consequence": "你把环评真相排在最前，清江水样和三年报告先被重新审视。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2589,7 +2965,7 @@
         {
           "option_id": "c_b_d_a",
           "text": "C > B > D > A",
-          "consequence": "排首位，环评线索 +5 到 +10，舆论压力 +3 到 +8。",
+          "consequence": "你把环评真相排在最前，清江水样和三年报告先被重新审视。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2615,7 +2991,7 @@
         {
           "option_id": "c_d_a_b",
           "text": "C > D > A > B",
-          "consequence": "排首位，环评线索 +5 到 +10，舆论压力 +3 到 +8。",
+          "consequence": "你把环评真相排在最前，清江水样和三年报告先被重新审视。",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -2641,7 +3017,7 @@
         {
           "option_id": "c_d_b_a",
           "text": "C > D > B > A",
-          "consequence": "排首位，环评线索 +5 到 +10，舆论压力 +3 到 +8。",
+          "consequence": "你把环评真相排在最前，清江水样和三年报告先被重新审视。",
           "effects": {
             "metric_deltas": {
               "social_stability": [
@@ -2667,7 +3043,7 @@
         {
           "option_id": "d_a_b_c",
           "text": "D > A > B > C",
-          "consequence": "排首位，民众信任度 +5 到 +10，社会稳定度 +3 到 +8。",
+          "consequence": "你把民生维稳排在最前，信访、体检和安置诉求先得到回应。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2693,7 +3069,7 @@
         {
           "option_id": "d_a_c_b",
           "text": "D > A > C > B",
-          "consequence": "排首位，民众信任度 +5 到 +10，社会稳定度 +3 到 +8。",
+          "consequence": "你把民生维稳排在最前，信访、体检和安置诉求先得到回应。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2719,7 +3095,7 @@
         {
           "option_id": "d_b_a_c",
           "text": "D > B > A > C",
-          "consequence": "排首位，民众信任度 +5 到 +10，社会稳定度 +3 到 +8。",
+          "consequence": "你把民生维稳排在最前，信访、体检和安置诉求先得到回应。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2745,7 +3121,7 @@
         {
           "option_id": "d_b_c_a",
           "text": "D > B > C > A",
-          "consequence": "排首位，民众信任度 +5 到 +10，社会稳定度 +3 到 +8。",
+          "consequence": "你把民生维稳排在最前，信访、体检和安置诉求先得到回应。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2767,7 +3143,7 @@
         {
           "option_id": "d_c_a_b",
           "text": "D > C > A > B",
-          "consequence": "排首位，民众信任度 +5 到 +10，社会稳定度 +3 到 +8。",
+          "consequence": "你把民生维稳排在最前，信访、体检和安置诉求先得到回应。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2793,7 +3169,7 @@
         {
           "option_id": "d_c_b_a",
           "text": "D > C > B > A",
-          "consequence": "排首位，民众信任度 +5 到 +10，社会稳定度 +3 到 +8。",
+          "consequence": "你把民生维稳排在最前，信访、体检和安置诉求先得到回应。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -2820,14 +3196,39 @@
           "b",
           "c",
           "d"
-        ]
-      }
+        ],
+        "labels": {
+          "a": "签约攻坚线",
+          "b": "反腐查案线",
+          "c": "环评真相线",
+          "d": "民生维稳线"
+        }
+      },
+      "scene_id": "C02_S08",
+      "presentation_blocks": [
+        {
+          "block_id": "dp2_08_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_08_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "consequence"
+        }
+      ]
     },
     {
       "decision_id": "dp2_09",
       "story_day": 28,
-      "title": "第十一幕·烟盒纸",
-      "prompt": "本决定不消耗行动点。",
+      "title": "烟盒纸",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2927,13 +3328,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C02_S08",
+      "presentation_blocks": [
+        {
+          "block_id": "dp2_09_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_09_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp2_10",
       "story_day": 29,
-      "title": "第十二幕·一百五十万",
-      "prompt": "本决定不消耗行动点。",
+      "title": "一百五十万",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2968,13 +3388,32 @@
           "environmental_retest": "环评复检",
           "emergency_stability": "应急维稳"
         }
-      }
+      },
+      "scene_id": "C02_S08",
+      "presentation_blocks": [
+        {
+          "block_id": "dp2_10_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp2_10_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "consequence"
+        }
+      ]
     },
     {
       "decision_id": "dp3_01",
       "story_day": 31,
-      "title": "决策点1·见面定调",
-      "prompt": "本决定不消耗行动点。",
+      "title": "见面定调",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3067,13 +3506,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S01",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S01",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_02",
       "story_day": 32,
-      "title": "决策点2·台账关",
-      "prompt": "本决定不消耗行动点。",
+      "title": "台账关",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3177,13 +3635,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_03",
       "story_day": 34,
-      "title": "决策点3·赵建国甩锅",
-      "prompt": "本决定不消耗行动点。",
+      "title": "赵建国甩锅",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3287,13 +3764,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_04",
       "story_day": 34,
-      "title": "决策点4·瞒报红线",
-      "prompt": "本决定不消耗行动点。",
+      "title": "瞒报红线",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3394,13 +3890,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_04_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_04_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_05",
       "story_day": 36,
-      "title": "决策点5·钱伟的条件",
-      "prompt": "本决定不消耗行动点。",
+      "title": "钱伟的条件",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3498,13 +4013,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_05_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_05_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_06",
       "story_day": 38,
-      "title": "决策点6·谭老六的状子",
-      "prompt": "本决定不消耗行动点。",
+      "title": "谭老六的状子",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3607,20 +4141,39 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_06_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_06_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_07",
       "story_day": 41,
-      "title": "决策点7·四桩事排先后",
-      "prompt": "本决定不消耗行动点。",
+      "title": "四桩事排先后",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a_b_c_d",
           "text": "A > B > C > D",
-          "consequence": "位次一：张立信任度上升 8 到 12。",
+          "consequence": "你把给巡察组的书面说明排在最前，先回应监督要求。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -3645,7 +4198,7 @@
         {
           "option_id": "a_b_d_c",
           "text": "A > B > D > C",
-          "consequence": "位次一：张立信任度上升 8 到 12。",
+          "consequence": "你把给巡察组的书面说明排在最前，先回应监督要求。",
           "effects": {
             "metric_deltas": {
               "cadre_discontent": [
@@ -3666,7 +4219,7 @@
         {
           "option_id": "a_c_b_d",
           "text": "A > C > B > D",
-          "consequence": "位次一：张立信任度上升 8 到 12。",
+          "consequence": "你把给巡察组的书面说明排在最前，先回应监督要求。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -3704,7 +4257,7 @@
         {
           "option_id": "a_c_d_b",
           "text": "A > C > D > B",
-          "consequence": "位次一：张立信任度上升 8 到 12。",
+          "consequence": "你把给巡察组的书面说明排在最前，先回应监督要求。",
           "effects": {
             "metric_deltas": {
               "env_clue": [
@@ -3737,7 +4290,7 @@
         {
           "option_id": "a_d_b_c",
           "text": "A > D > B > C",
-          "consequence": "位次一：张立信任度上升 8 到 12。",
+          "consequence": "你把给巡察组的书面说明排在最前，先回应监督要求。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -3766,7 +4319,7 @@
         {
           "option_id": "a_d_c_b",
           "text": "A > D > C > B",
-          "consequence": "位次一：张立信任度上升 8 到 12。",
+          "consequence": "你把给巡察组的书面说明排在最前，先回应监督要求。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -3793,7 +4346,7 @@
         {
           "option_id": "b_a_c_d",
           "text": "B > A > C > D",
-          "consequence": "位次一：政治资本上升 3 到 5。",
+          "consequence": "你把柳林村签约排在最前，专班先把有限人手压到村里。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -3818,7 +4371,7 @@
         {
           "option_id": "b_a_d_c",
           "text": "B > A > D > C",
-          "consequence": "位次一：政治资本上升 3 到 5。",
+          "consequence": "你把柳林村签约排在最前，专班先把有限人手压到村里。",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -3839,7 +4392,7 @@
         {
           "option_id": "b_c_a_d",
           "text": "B > C > A > D",
-          "consequence": "位次一：政治资本上升 3 到 5。",
+          "consequence": "你把柳林村签约排在最前，专班先把有限人手压到村里。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -3873,7 +4426,7 @@
         {
           "option_id": "b_c_d_a",
           "text": "B > C > D > A",
-          "consequence": "位次一：政治资本上升 3 到 5。",
+          "consequence": "你把柳林村签约排在最前，专班先把有限人手压到村里。",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -3903,7 +4456,7 @@
         {
           "option_id": "b_d_a_c",
           "text": "B > D > A > C",
-          "consequence": "位次一：政治资本上升 3 到 5。",
+          "consequence": "你把柳林村签约排在最前，专班先把有限人手压到村里。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -3928,7 +4481,7 @@
         {
           "option_id": "b_d_c_a",
           "text": "B > D > C > A",
-          "consequence": "位次一：政治资本上升 3 到 5。",
+          "consequence": "你把柳林村签约排在最前，专班先把有限人手压到村里。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -4147,7 +4700,7 @@
         {
           "option_id": "d_a_b_c",
           "text": "D > A > B > C",
-          "consequence": "位次一：民众信任度上升 10 到 15。",
+          "consequence": "你把谭老六卷宗排在最前，多年未结的旧账先进入核算。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -4172,7 +4725,7 @@
         {
           "option_id": "d_a_c_b",
           "text": "D > A > C > B",
-          "consequence": "位次一：民众信任度上升 10 到 15。",
+          "consequence": "你把谭老六卷宗排在最前，多年未结的旧账先进入核算。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -4199,7 +4752,7 @@
         {
           "option_id": "d_b_a_c",
           "text": "D > B > A > C",
-          "consequence": "位次一：民众信任度上升 10 到 15。",
+          "consequence": "你把谭老六卷宗排在最前，多年未结的旧账先进入核算。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -4220,7 +4773,7 @@
         {
           "option_id": "d_b_c_a",
           "text": "D > B > C > A",
-          "consequence": "位次一：民众信任度上升 10 到 15。",
+          "consequence": "你把谭老六卷宗排在最前，多年未结的旧账先进入核算。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -4241,7 +4794,7 @@
         {
           "option_id": "d_c_a_b",
           "text": "D > C > A > B",
-          "consequence": "位次一：民众信任度上升 10 到 15。",
+          "consequence": "你把谭老六卷宗排在最前，多年未结的旧账先进入核算。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -4278,7 +4831,7 @@
         {
           "option_id": "d_c_b_a",
           "text": "D > C > B > A",
-          "consequence": "位次一：民众信任度上升 10 到 15。",
+          "consequence": "你把谭老六卷宗排在最前，多年未结的旧账先进入核算。",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -4317,14 +4870,39 @@
           "b",
           "c",
           "d"
-        ]
-      }
+        ],
+        "labels": {
+          "a": "巡察组书面说明",
+          "b": "柳林村签约",
+          "c": "清江排口取证",
+          "d": "谭老六卷宗"
+        }
+      },
+      "scene_id": "C03_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_07_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_07_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S04",
+          "presentation_phase": "consequence"
+        }
+      ]
     },
     {
       "decision_id": "ev3_01",
       "story_day": 42,
       "title": "突发·血铅患儿曝光",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4464,13 +5042,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "ev3_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev3_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_tea_disposition",
       "story_day": 43,
       "title": "场景处置·两包茶叶",
-      "prompt": "门关上了。茶叶在桌角放着，两包。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4520,13 +5117,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_tea_disposition_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_tea_disposition_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_08",
       "story_day": 43,
-      "title": "决策点8·个别谈话",
-      "prompt": "本决定不消耗行动点。",
+      "title": "个别谈话",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4624,13 +5240,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_08_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_08_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_09",
       "story_day": 44,
-      "title": "决策点9·情况说明",
-      "prompt": "本决定不消耗行动点。",
+      "title": "情况说明",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4694,13 +5329,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_09_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_09_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp3_10",
       "story_day": 45,
-      "title": "决策点10·最后两日的定向",
-      "prompt": "本决定不消耗行动点。",
+      "title": "最后两日的定向",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4826,13 +5480,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C03_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "dp3_10_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp3_10_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_01",
       "story_day": 46,
       "title": "（二）单子往哪儿走",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4978,13 +5651,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S01",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S01",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_02",
       "story_day": 48,
       "title": "（二）通报的先后",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -9317,14 +10009,40 @@
           "c",
           "d",
           "e"
-        ]
-      }
+        ],
+        "labels": {
+          "a": "患儿家长",
+          "b": "市卫健委",
+          "c": "宏达化工",
+          "d": "张立",
+          "e": "王芳"
+        }
+      },
+      "scene_id": "C04_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S02",
+          "presentation_phase": "consequence"
+        }
+      ]
     },
     {
       "decision_id": "dp4_03",
       "story_day": 49,
       "title": "（二）棱",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -9442,13 +10160,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_04",
       "story_day": 51,
       "title": "（二）祠堂里的第二堵墙",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -9592,13 +10329,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_04_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_04_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_05",
       "story_day": 52,
       "title": "（二）祠堂那块地",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -9692,13 +10448,32 @@
       ],
       "required_flags": [
         "周氏松口"
+      ],
+      "scene_id": "C04_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_05_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_05_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_06",
       "story_day": 53,
       "title": "（二）压不住的六天",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -9836,13 +10611,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_06_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_06_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev4_01",
       "story_day": 55,
       "title": "（一）队伍排到了马路上",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -9943,13 +10737,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "ev4_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev4_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_07",
       "story_day": 56,
       "title": "（二）他要一份名册",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10148,13 +10961,32 @@
           ],
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_07_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_07_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_08",
       "story_day": 57,
       "title": "（一）一个七岁的孩子",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10421,13 +11253,32 @@
       ],
       "required_flags": [
         "掌握血铅"
+      ],
+      "scene_id": "C04_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_08_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_08_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev4_02",
       "story_day": 57,
       "title": "（三）深夜的敲门声",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10507,13 +11358,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "ev4_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev4_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_09",
       "story_day": 58,
       "title": "（三）【DP4-09】用途栏那四个字",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10705,13 +11575,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_09_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_09_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev4_03",
       "story_day": 58,
       "title": "（四）【突发·EV4-03】围堰漫了",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10821,13 +11710,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "ev4_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev4_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev4_04",
       "story_day": 59,
       "title": "（一）【突发·EV4-04】先遣先到",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10932,13 +11840,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "ev4_04_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev4_04_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_10",
       "story_day": 59,
       "title": "（二）【DP4-10】怎么见人",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11139,13 +12066,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_10_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_10_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_11",
       "story_day": 60,
       "title": "（三）【DP4-11】座谈桌上那句话",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11213,13 +12159,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C04_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_11_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_11_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_01",
       "story_day": 61,
-      "title": "第一幕·迎检之后",
-      "prompt": "本决定不消耗行动点。",
+      "title": "迎检之后",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11363,13 +12328,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S01",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S01",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_02",
       "story_day": 63,
-      "title": "第二幕·祖坟的规矩",
-      "prompt": "本决定不消耗行动点。",
+      "title": "祖坟的规矩",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11473,13 +12457,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_03",
       "story_day": 64,
       "title": "三·三 决策点",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11629,13 +12632,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev5_01",
       "story_day": 65,
       "title": "三·五 承接·掘坟之后",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11708,13 +12730,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "ev5_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev5_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_04",
       "story_day": 67,
       "title": "四·二 顺序",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11813,13 +12854,32 @@
       ],
       "required_flags": [
         "村账在手"
+      ],
+      "scene_id": "C05_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_04_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_04_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_05",
       "story_day": 68,
       "title": "四·三 第二环",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11944,13 +13004,32 @@
       ],
       "required_flags": [
         "村账已摊"
+      ],
+      "scene_id": "C05_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_05_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_05_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_06",
       "story_day": 71,
       "title": "五·二 第七十一日 · 那张表",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12180,13 +13259,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_06_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_06_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev5_02",
       "story_day": 72,
       "title": "六·一 第七十二日 · 门板上的复印件",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12266,13 +13364,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "ev5_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev5_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_07",
       "story_day": 73,
       "title": "六·二 第七十三日 · 那道坎",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12579,13 +13696,32 @@
           ],
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S06",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_07_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S06",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_07_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S06",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_08",
       "story_day": 74,
       "title": "场景二·把话说死",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12789,13 +13925,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_08_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_08_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_09",
       "story_day": 74,
       "title": "场景三·祠堂那块地",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -13091,13 +14246,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_09_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_09_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_10",
       "story_day": 75,
       "title": "场景二·你怎么开口",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -13300,13 +14474,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_10_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_10_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_11",
       "story_day": 75,
       "title": "场景二·联络员带来的话",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -13374,13 +14567,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_11_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_11_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_12",
       "story_day": 75,
       "title": "场景三·剩下十五天的次序",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17233,14 +18445,40 @@
           "c",
           "d",
           "e"
-        ]
-      }
+        ],
+        "labels": {
+          "a": "剩余散户签约",
+          "b": "叫停宏达设备",
+          "c": "公开环评",
+          "d": "廉政与干部线",
+          "e": "接通张立"
+        }
+      },
+      "scene_id": "C05_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_12_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_12_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "consequence"
+        }
+      ]
     },
     {
       "decision_id": "ev5_03",
       "story_day": 75,
       "title": "场景四·夜里那通电话",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17311,13 +18549,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C05_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "ev5_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev5_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_01",
       "story_day": 76,
       "title": "第七十六日",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17389,13 +18646,32 @@
           ],
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S01",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S01",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_02",
       "story_day": 77,
       "title": "第七十七日",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17502,13 +18778,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S01",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S01",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_03",
       "story_day": 78,
       "title": "第七十八日",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17600,13 +18895,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_03_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_03_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev6_01",
       "story_day": 79,
       "title": "第七十九日",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17677,13 +18991,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "ev6_01_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev6_01_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_04",
       "story_day": 80,
       "title": "第八十日",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17760,13 +19093,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_04_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_04_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_05",
       "story_day": 81,
       "title": "【自主行动窗口】第八十一日上午",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17852,13 +19204,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S02",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_05_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_05_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev6_02",
       "story_day": 82,
       "title": "第八十二日 · 第二波",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -17937,13 +19308,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S03",
+      "presentation_blocks": [
+        {
+          "block_id": "ev6_02_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S03",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev6_02_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S03",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_06",
       "story_day": 83,
       "title": "【自主行动窗口】第八十三日",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -18035,13 +19425,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_06_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_06_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_07",
       "story_day": 84,
       "title": "【自主行动窗口】第八十四日",
-      "prompt": "验收收口资源只能优先落实一项。排序首位的事项会在当天执行：若把 A（安置房与医疗兜底）列为首位，书面保障实际落实后，邓守本将现场确认并自愿签署协议。本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -20994,14 +22403,40 @@
           "c",
           "d",
           "e"
-        ]
-      }
+        ],
+        "labels": {
+          "a": "安置房与医疗",
+          "b": "环评重审与停污",
+          "c": "剩余签约",
+          "d": "干部问题移交巡察",
+          "e": "账本与材料"
+        }
+      },
+      "scene_id": "C06_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_07_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_07_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S05",
+          "presentation_phase": "consequence"
+        }
+      ]
     },
     {
       "decision_id": "dp6_08",
       "story_day": 85,
       "title": "【自主行动窗口】第八十五日",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -21039,13 +22474,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S05",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_08_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S05",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_08_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S05",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_09",
       "story_day": 87,
       "title": "第八十七日 · 会前的那道门",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -21132,13 +22586,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S07",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_09_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S07",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_09_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S07",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp6_10",
       "story_day": 89,
       "title": "第八十九日 · 常委会",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -21196,13 +22669,32 @@
           },
           "unavailable_reason": "条件不足"
         }
+      ],
+      "scene_id": "C06_S08",
+      "presentation_blocks": [
+        {
+          "block_id": "dp6_10_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C06_S08",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp6_10_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C06_S08",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "ev3_01_followup",
       "story_day": 43,
       "title": "突发·血铅患儿曝光·次日重选",
-      "prompt": "次日玩家须在选项A、B、C中重选一次，且此时各项代价均加重一档。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -21323,13 +22815,32 @@
       ],
       "required_flags": [
         "上交矛盾"
+      ],
+      "scene_id": "C03_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "ev3_01_followup_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C03_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "ev3_01_followup_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C03_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_04_recovery",
       "story_day": 69,
       "title": "周满仓·唯一一次重启",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -21428,13 +22939,32 @@
       ],
       "required_flags": [
         "周满仓重启已付费"
+      ],
+      "scene_id": "C05_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_04_recovery_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_04_recovery_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp5_05_recovery",
       "story_day": 69,
       "title": "四·三 第二环",
-      "prompt": "本决定不消耗行动点。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -21559,13 +23089,32 @@
       ],
       "required_flags": [
         "村账已摊"
+      ],
+      "scene_id": "C05_S04",
+      "presentation_blocks": [
+        {
+          "block_id": "dp5_05_recovery_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp5_05_recovery_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C05_S04",
+          "presentation_phase": "consequence"
+        }
       ]
     },
     {
       "decision_id": "dp4_roster_disposition",
       "story_day": 46,
       "title": "名册原件的下落",
-      "prompt": "这一沓原件此刻还锁在你办公室的柜子里。报送的口径已经定了，原件本身还得有个下落。",
+      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -21640,6 +23189,25 @@
               "lead_roster_disposition": "未获取"
             }
           }
+        }
+      ],
+      "scene_id": "C04_S01",
+      "presentation_blocks": [
+        {
+          "block_id": "dp4_roster_disposition_presentation",
+          "kind": "narration",
+          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "scene_id": "C04_S01",
+          "presentation_phase": "decision_setup"
+        }
+      ],
+      "followup_blocks": [
+        {
+          "block_id": "dp4_roster_disposition_followup",
+          "kind": "narration",
+          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "scene_id": "C04_S01",
+          "presentation_phase": "consequence"
         }
       ]
     }

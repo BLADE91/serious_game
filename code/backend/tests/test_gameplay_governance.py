@@ -122,6 +122,45 @@ class GameplayGovernanceTests(unittest.TestCase):
         })
         self.state = response["visible_state"]
 
+    def test_repeated_state_get_is_pure_and_does_not_persist_demand_sync(
+        self,
+    ) -> None:
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        demand_id = "demand_zheng_xiangdong"
+        stored.npc_demand_states[demand_id] = {
+            "npc_id": "npc_zheng_xiangdong",
+            "status": "unknown",
+            "updated_day": stored.game_state.story_day,
+            "history": [],
+        }
+        version = stored.state_version
+        self.runtime.sessions.save(stored, expected_version=version)
+        before = encode_session(stored)
+
+        first = self.client.get(
+            f"/api/game/session/{self.session_id}", headers=self.headers
+        )
+        second = self.client.get(
+            f"/api/game/session/{self.session_id}", headers=self.headers
+        )
+        self.assertEqual(200, first.status_code, first.text)
+        self.assertEqual(first.json(), second.json())
+        self.assertNotIn(
+            demand_id,
+            {item["demand_id"] for item in first.json()["npc_demands"]},
+        )
+        after = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        self.assertIsNotNone(after)
+        assert after is not None
+        self.assertEqual(before, encode_session(after))
+        self.assertEqual(version, after.state_version)
+
     def _create_authorization_document(
         self, *, deadline_day: int = 10
     ) -> dict:

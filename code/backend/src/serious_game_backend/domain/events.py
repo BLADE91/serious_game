@@ -27,6 +27,7 @@ class PendingDecision:
     input_kind: str = "choice"
     input_schema: dict | None = None
     context: dict = field(default_factory=dict)
+    presentation_entry_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

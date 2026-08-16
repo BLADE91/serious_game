@@ -183,6 +183,22 @@ class LimitedHouseholdSignatory:
 
 
 @dataclass(frozen=True, slots=True)
+class NPCDemandDefinition:
+    """NPC 的单一核心处置目标；资源和状态只能由权威服务改写。"""
+
+    demand_id: str
+    npc_id: str
+    title: str
+    category: str
+    description: str
+    legal_disposition: str
+    discover: dict
+    commit: dict
+    satisfy: dict
+    consequences: dict
+
+
+@dataclass(frozen=True, slots=True)
 class ScriptPackage:
     package_id: str
     package_version: str
@@ -203,6 +219,7 @@ class ScriptPackage:
     households: tuple[HouseholdDefinition, ...]
     initial_state: dict
     limited_household_signatories: tuple[LimitedHouseholdSignatory, ...] = ()
+    npc_demands: tuple[NPCDemandDefinition, ...] = ()
     governance_config: dict | None = None
     gameplay_schema_version: int = 1
     origin_npc_attitude_modifiers: dict[str, dict[str, int]] | None = None

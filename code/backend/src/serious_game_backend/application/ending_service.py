@@ -114,6 +114,17 @@ class EndingAxisProjector:
             - len(self.NEGATIVE_PEOPLE_FLAGS & flags)
             - 2 * len(self.HEAVY_PEOPLE_FLAGS & flags)
         )
+        demand_statuses = [
+            str(item.get("status", "unknown"))
+            for item in session.npc_demand_states.values()
+        ]
+        people_score += sum(
+            1 for value in demand_statuses
+            if value in {"satisfied", "lawfully_refused"}
+        ) // 4
+        people_score -= sum(
+            1 for value in demand_statuses if value in {"breached", "expired"}
+        )
         if people_score >= 5:
             axis_p = "归心"
         elif people_score >= 1:
@@ -236,6 +247,7 @@ class EndingService:
             "sub_text": rendered_sub_text,
             "axes": axes,
             "appendices": self._appendices(session, package),
+            "governance_obligations": self._governance_obligations(session),
         }
         session.ending_result = result
         session.status = SessionStatus.ENDED
@@ -253,6 +265,31 @@ class EndingService:
             content_instance_id="ending:final",
         )
         return result
+
+    @staticmethod
+    def _governance_obligations(session: GameSession) -> dict:
+        counts = {
+            status: sum(
+                1 for item in session.npc_demand_states.values()
+                if item.get("status") == status
+            )
+            for status in (
+                "discovered", "acknowledged", "committed", "satisfied",
+                "lawfully_refused", "breached", "expired",
+            )
+        }
+        resolved = counts["satisfied"] + counts["lawfully_refused"]
+        failed = counts["breached"] + counts["expired"]
+        return {
+            "counts": counts,
+            "resolved_public_obligations": resolved,
+            "failed_public_obligations": failed,
+            "assessment": (
+                "公共义务兑现稳健" if resolved >= 8 and failed == 0
+                else "公共义务存在明显缺口" if failed >= 3
+                else "公共义务部分兑现"
+            ),
+        }
 
     @staticmethod
     def _render_sub_text(text: str, signed_households: int) -> str:

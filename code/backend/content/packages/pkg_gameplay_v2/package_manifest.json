@@ -3,11 +3,11 @@
   "title": "浊流之上",
   "package_version": "1.2.0-gameplay-closure",
   "source_version": "最终剧本_20260723",
-  "content_hash": "sha256:e67f457879e1c8efc9fa168a63a50a30d64146d87ff48e01f792ebda2bf8e96a",
+  "content_hash": "sha256:bce34c2d1f7fedd42f1799e2a65e6a64ebb57e9f3901b3867e56010eccd9a172",
   "status": "draft",
   "gameplay_schema_version": 3,
   "script_schema_version": 2,
   "rules_schema_version": 3,
-  "notes": "每日玩法闭环 v2；补齐 D43 茶叶处置、张立显式信任结算、玩家可见文本清理与内部标记校验；保留 D75 首批冻结、D76-D89 限定补签及 D90 只读验收。",
-  "source_sha256": "sha256:d5bad0af0b6f1e9997dac7f525ee40fd611febacbc96433cd308aa4c7fbf734f"
+  "notes": "单一叙事舞台与当日未读队列；晨报、开场、决策门控和场景标识按玩家阅读顺序投影；补齐 D12-D26 及后续短缺剧情，剧情决定固定为零精力。",
+  "source_sha256": "sha256:594c907b5953a402cf22d8d6fe1d0a3c0dc302126b65d04e35bf3813fb62585e"
 }

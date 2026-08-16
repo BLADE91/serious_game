@@ -9,6 +9,8 @@ class NarrativeBlock:
     kind: str
     text: str
     speaker: str | None = None
+    scene_id: str | None = None
+    presentation_phase: str | None = None
     origin_ids: frozenset[str] = frozenset()
     required_flags: frozenset[str] = frozenset()
     required_any_flags: frozenset[str] = frozenset()
@@ -157,9 +159,11 @@ class DecisionDefinition:
     story_day: int
     title: str
     prompt: str
+    scene_id: str | None
     options: tuple[DecisionOptionDefinition, ...]
     followup_blocks: tuple[NarrativeBlock, ...] = ()
     action_point_cost: int = 0
+    cost_source: str = "interrupt"
     skippable: bool = False
     input_kind: str = "choice"
     input_schema: dict = field(default_factory=dict)
@@ -214,3 +218,10 @@ class VisibleNarrativeEntry:
     text: str
     speaker: str | None = None
     content_instance_id: str | None = None
+    block_id: str | None = None
+    beat_id: str | None = None
+    decision_id: str | None = None
+    scene_id: str | None = None
+    presentation_phase: str = "scene"
+    day_sequence: int = 1
+    read_gate: str = "advance"

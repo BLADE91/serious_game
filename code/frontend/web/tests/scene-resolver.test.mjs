@@ -37,20 +37,14 @@ test("uses different camera shots for blocks inside the same beat", () => {
 });
 
 test("keeps historical and current-state scene identifiers in separate time contexts", () => {
-  const oldLine = { contentInstanceId: "block:d30_source_opening", storyDay: 30 };
-  assert.equal(resolveSceneForView({ line: oldLine, currentIndex: 9, itemCount: 10, currentStoryDay: 31, decisionId: "dp3_01", beatId: "beat_d31_m2" }).id, "C03_S01");
-  assert.equal(resolveSceneForView({ line: oldLine, currentIndex: 4, itemCount: 10, currentStoryDay: 31, decisionId: "dp3_01", beatId: "beat_d31_m2" }).id, "C02_S08");
-  assert.equal(resolveSceneForView({ line: oldLine, currentIndex: 4, itemCount: 10, currentStoryDay: 90, mainEndingId: "ending_24", beatId: "beat_d90_m2" }).id, "C02_S08");
-  assert.equal(resolveSceneForView({ line: { contentInstanceId: "block:d18_source_opening", storyDay: 18 }, currentIndex: 9, itemCount: 10, currentStoryDay: 19, beatId: "beat_d19_m2" }).id, "C02_S02");
-  assert.equal(resolveSceneForView({ line: { contentInstanceId: "block:d90_source_opening", storyDay: 90 }, currentIndex: 9, itemCount: 10, currentStoryDay: 90, mainEndingId: "ending_24", beatId: "beat_d90_m2" }).id, "E24");
+  const oldLine = { sceneId: "C02_S08", storyDay: 30 };
+  assert.equal(resolveSceneForView({ line: oldLine, currentStoryDay: 31, decisionId: "dp3_01" }).id, "C02_S08");
+  assert.equal(resolveSceneForView({ line: { sceneId: "C02_S02", storyDay: 18 }, currentStoryDay: 19 }).id, "C02_S02");
+  assert.equal(resolveSceneForView({ currentStoryDay: 90, mainEndingId: "ending_24" }).id, "E24");
 });
 
-test("inherits the nearest same-day scene for dialogue without presentation identifiers", () => {
-  const lines = [
-    { contentInstanceId: "block:d01_reception_scene", storyDay: 1 },
-    { storyDay: 1 },
-  ];
-  assert.equal(resolveSceneForView({ line: lines[1], lines, currentIndex: 1, itemCount: 2, currentStoryDay: 1, beatId: "beat_d01_arrival_and_reception" }).id, "C01_S03");
+test("uses a neutral scene when the current record has no scene binding", () => {
+  assert.equal(resolveSceneForView({ line: { storyDay: 1 }, currentStoryDay: 1 }).id, "N00");
 });
 
 test("covers exactly 48 story scenes and all 24 real main endings", async () => {

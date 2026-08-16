@@ -116,6 +116,8 @@ class MapService:
         state = session.game_state
         if not definition.enabled:
             return False, definition.unavailable_reason or "当前版本尚未开放"
+        if state.story_day < definition.unlock_day:
+            return False, definition.unavailable_reason or f"第 {definition.unlock_day} 日后开放"
         if definition.executor_kind == "conversation":
             return False, "请从人物会谈入口发起"
         if not definition.required_flags.issubset(session.flags):

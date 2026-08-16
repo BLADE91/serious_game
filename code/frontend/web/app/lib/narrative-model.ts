@@ -10,11 +10,16 @@ export type NarrativeItem = {
   decisionId?: string;
   mainEndingId?: string;
   beatId?: string;
+  sceneId?: string;
+  presentationPhase?: string;
+  daySequence?: number;
+  readGate?: string;
 };
 
 export type NarrativeState = {
   sessionId: string;
   items: NarrativeItem[];
+  historyItems: NarrativeItem[];
   currentIndex: number;
   unreadCount: number;
   feedCursor: number;
@@ -24,7 +29,7 @@ export type NarrativeState = {
 export type NarrativeAction =
   | { type: "SESSION_OPEN"; sessionId: string }
   | { type: "FEED_MERGE"; sessionId: string; items: NarrativeItem[]; cursor?: number }
-  | { type: "SESSION_REBUILD"; sessionId: string; items: NarrativeItem[]; cursor?: number; position?: "start" | "latest" }
+  | { type: "SESSION_REBUILD"; sessionId: string; items: NarrativeItem[]; cursor?: number; position?: "start" | "latest" | number }
   | { type: "PREVIOUS" }
   | { type: "NEXT" }
   | { type: "GO_TO"; index: number }
@@ -34,14 +39,20 @@ export type NarrativeAction =
 export const initialNarrativeState: NarrativeState = {
   sessionId: "",
   items: [],
+  historyItems: [],
   currentIndex: -1,
   unreadCount: 0,
   feedCursor: 0,
   rebuildCount: 0,
 };
 
-export function pendingDecisionIsReady(currentIndex: number, itemCount: number): boolean {
-  return itemCount === 0 || currentIndex >= itemCount - 1;
+export function pendingDecisionIsReady(
+  currentItem: NarrativeItem | null | undefined,
+  presentationEntryId: unknown,
+): boolean {
+  const gateId = typeof presentationEntryId === "string" ? presentationEntryId : "";
+  return Boolean(currentItem && gateId && currentItem.contentInstanceId === gateId
+    && currentItem.presentationPhase === "decision");
 }
 
 const keyFor = (item: NarrativeItem) => item.contentInstanceId
@@ -60,6 +71,15 @@ export function dedupeNarrative(items: readonly NarrativeItem[]): NarrativeItem[
   });
 }
 
+function splitLatestDay(items: readonly NarrativeItem[]) {
+  const latestDay = Math.max(0, ...items.map(item => item.storyDay || 0));
+  return {
+    items: items.filter(item => (item.storyDay || latestDay) === latestDay),
+    historyItems: items.filter(item => (item.storyDay || latestDay) < latestDay),
+    latestDay,
+  };
+}
+
 export function narrativeReducer(state: NarrativeState, action: NarrativeAction): NarrativeState {
   switch (action.type) {
     case "CLEAR":
@@ -69,27 +89,42 @@ export function narrativeReducer(state: NarrativeState, action: NarrativeAction)
         ? state
         : { ...initialNarrativeState, sessionId: action.sessionId };
     case "SESSION_REBUILD": {
-      const items = dedupeNarrative(action.items);
+      const split = splitLatestDay(dedupeNarrative(action.items));
+      const items = split.items;
+      const currentIndex = items.length
+        ? typeof action.position === "number"
+          ? Math.max(0, Math.min(items.length - 1, Math.trunc(action.position)))
+          : action.position === "latest" ? items.length - 1 : 0
+        : -1;
       return {
         sessionId: action.sessionId,
         items,
-        currentIndex: items.length ? action.position === "start" ? 0 : items.length - 1 : -1,
-        unreadCount: 0,
-        feedCursor: action.cursor ?? Math.max(0, ...items.map(item => item.cursor || 0)),
+        historyItems: split.historyItems,
+        currentIndex,
+        unreadCount: Math.max(0, items.length - currentIndex - 1),
+        feedCursor: action.cursor ?? Math.max(0, ...action.items.map(item => item.cursor || 0)),
         rebuildCount: state.rebuildCount + 1,
       };
     }
     case "FEED_MERGE": {
       const base = action.sessionId === state.sessionId ? state : { ...initialNarrativeState, sessionId: action.sessionId };
-      const atLatest = base.currentIndex >= base.items.length - 1;
-      const before = base.items.length;
-      const items = dedupeNarrative([...base.items, ...action.items]);
-      const added = items.length - before;
+      const previousDay = Math.max(0, ...base.items.map(item => item.storyDay || 0));
+      const merged = dedupeNarrative([...base.historyItems, ...base.items, ...action.items]);
+      const split = splitLatestDay(merged);
+      const enteredNewDay = split.latestDay > previousDay;
+      const knownCurrentKeys = new Set(base.items.map(keyFor));
+      const firstAddedIndex = split.items.findIndex(item => !knownCurrentKeys.has(keyFor(item)));
+      const currentIndex = enteredNewDay
+        ? (split.items.length ? 0 : -1)
+        : firstAddedIndex >= 0 && base.currentIndex >= base.items.length - 1
+          ? firstAddedIndex
+          : Math.min(base.currentIndex, split.items.length - 1);
       return {
         ...base,
-        items,
-        currentIndex: atLatest ? items.length - 1 : base.currentIndex,
-        unreadCount: atLatest ? 0 : base.unreadCount + added,
+        items: split.items,
+        historyItems: split.historyItems,
+        currentIndex,
+        unreadCount: Math.max(0, split.items.length - currentIndex - 1),
         feedCursor: action.cursor ?? base.feedCursor,
       };
     }
@@ -98,13 +133,12 @@ export function narrativeReducer(state: NarrativeState, action: NarrativeAction)
     case "NEXT": {
       if (state.currentIndex >= state.items.length - 1) return state;
       const currentIndex = state.currentIndex + 1;
-      const atLatest = currentIndex === state.items.length - 1;
-      return { ...state, currentIndex, unreadCount: atLatest ? 0 : state.unreadCount };
+      return { ...state, currentIndex, unreadCount: Math.max(0, state.items.length - currentIndex - 1) };
     }
     case "GO_TO": {
       if (!state.items.length) return state;
       const currentIndex = Math.max(0, Math.min(state.items.length - 1, Math.trunc(action.index)));
-      return { ...state, currentIndex, unreadCount: currentIndex === state.items.length - 1 ? 0 : state.unreadCount };
+      return { ...state, currentIndex, unreadCount: Math.max(0, state.items.length - currentIndex - 1) };
     }
     case "GO_LATEST":
       return { ...state, currentIndex: state.items.length - 1, unreadCount: 0 };
@@ -126,5 +160,9 @@ export function narrativeItemFromFeed(value: Record<string, unknown>, fallbackId
     decisionId: typeof value.decision_id === "string" ? value.decision_id : undefined,
     mainEndingId: typeof value.main_ending_id === "string" ? value.main_ending_id : undefined,
     beatId: typeof value.beat_id === "string" ? value.beat_id : undefined,
+    sceneId: typeof value.scene_id === "string" ? value.scene_id : undefined,
+    presentationPhase: typeof value.presentation_phase === "string" ? value.presentation_phase : undefined,
+    daySequence: typeof value.day_sequence === "number" ? value.day_sequence : undefined,
+    readGate: typeof value.read_gate === "string" ? value.read_gate : undefined,
   };
 }

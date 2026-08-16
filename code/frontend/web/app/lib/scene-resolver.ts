@@ -4,6 +4,7 @@ export type SceneMatchedBy =
   | "decision_id"
   | "main_ending_id"
   | "beat_id"
+  | "scene_id"
   | "fallback";
 
 export type SceneDefinition = {
@@ -21,6 +22,7 @@ export type SceneResolveInput = {
   decisionId?: unknown;
   mainEndingId?: unknown;
   beatId?: unknown;
+  sceneId?: unknown;
 };
 
 export type SceneViewInput = {
@@ -59,7 +61,7 @@ const scene = (
 // precise camera position inside that beat.
 export const STORY_SCENES: readonly SceneDefinition[] = [
   scene("C01_S01", "雨后抵达柳林村", ["beat_d01_arrival_and_reception"], ["d01_opening", "d01_arrival_geography", "d01_arrival_economy", "d01_arrival_drive", "d01_arrival_factory", "d01_arrival_stop", "d01_arrival_structure"]),
-  scene("C01_S02", "县政府办公室", ["beat_d01_arrival_and_reception"], ["d01_briefing_office", "d01_briefing_greeting", "d01_briefing_files", "d01_briefing_intro", "d01_briefing_pause", "d01_briefing_dossier_digest", "d01_briefing_policy", "d01_briefing_actions", "d01_briefing_ledger", "d01_briefing_role", "d01_briefing_look", "d01_briefing_boundary"]),
+  scene("C01_S02", "县政府办公室", ["beat_d01_arrival_and_reception"], ["d01_briefing_office", "d01_briefing_greeting", "d01_briefing_files", "d01_briefing_intro", "d01_briefing_pause", "d01_briefing_dossier_1", "d01_briefing_dossier_2", "d01_briefing_dossier_3", "d01_briefing_dossier_4", "d01_briefing_dossier_5", "d01_briefing_policy", "d01_briefing_actions", "d01_briefing_ledger", "d01_briefing_role", "d01_briefing_look", "d01_briefing_boundary"]),
   scene("C01_S03", "接风宴", ["beat_d01_arrival_and_reception"], ["d01_reception_scene", "d01_reception_toast_intro", "d01_reception_toast", "d01_reception_turn", "d01_reception_qian_position", "d01_reception_zhao_intro", "d01_reception_zhao_position", "d01_reception_sun_intro", "d01_reception_sun_position", "d01_reception_pressure", "d01_reception_bag", "d01_qian_offer", "d01_bag_detail", "d01_night_qian_departure"], ["ev1_01_reception_bag"]),
   scene("C01_S04", "县委书记办公室", ["beat_d02_party_secretary"], ["d02_morning_call", "d02_morning_office", "d02_jiang_open", "d02_jiang_first", "d02_jiang_second", "d02_jiang_third", "d02_jiang_account"]),
   scene("C01_S05", "柳林村委会", ["beat_d03_faction_map_closure"], ["d03_compensation_storm"], ["dp1_02"]),
@@ -139,6 +141,7 @@ const firstIndex = (pairs: readonly (readonly [string, SceneDefinition])[]) => {
 const blockIndex = firstIndex(STORY_SCENES.flatMap(item => item.blockIds.map(id => [id, item] as const)));
 const decisionIndex = firstIndex(STORY_SCENES.flatMap(item => item.decisionIds.map(id => [id, item] as const)));
 const beatIndex = firstIndex(STORY_SCENES.flatMap(item => item.beatIds.map(id => [id, item] as const)));
+const sceneIndex = firstIndex(STORY_SCENES.map(item => [item.id, item] as const));
 const endingIndex = firstIndex(ENDING_SCENES.map((item, index) => [`ending_${String(index + 1).padStart(2, "0")}`, item] as const));
 
 const id = (value: unknown) => typeof value === "string" ? value.trim() : "";
@@ -153,6 +156,10 @@ export function blockIdFromContentInstance(value: unknown): string {
 }
 
 export function resolveScene(input: SceneResolveInput = {}): ResolvedScene {
+  const explicitSceneId = id(input.sceneId);
+  if (explicitSceneId && sceneIndex.has(explicitSceneId)) {
+    return result(sceneIndex.get(explicitSceneId)!, "scene_id", explicitSceneId);
+  }
   const contentBlockId = blockIdFromContentInstance(input.contentInstanceId);
   if (contentBlockId && blockIndex.has(contentBlockId)) {
     return result(blockIndex.get(contentBlockId)!, "content_instance_id", contentBlockId);
@@ -173,33 +180,23 @@ export function resolveScene(input: SceneResolveInput = {}): ResolvedScene {
   if (beatId && beatIndex.has(beatId)) {
     return result(beatIndex.get(beatId)!, "beat_id", beatId);
   }
-  return result(STORY_SCENES[0], "fallback", null);
+  return result({
+    id: "N00",
+    title: "县长办公室",
+    asset: "/scenes/c01-s02.webp",
+    beatIds: [],
+    blockIds: [],
+    decisionIds: [],
+  }, "fallback", null);
 }
 
 // Keep identifiers from one narrative moment together. A historical line must
 // not inherit today's decision/beat, while a new decision, ending, or day with
 // no opening block must not be masked by yesterday's final feed item.
 export function resolveSceneForView(input: SceneViewInput): ResolvedScene {
-  const atLatest = input.currentIndex >= input.itemCount - 1;
-  if (!atLatest) {
-    return nearestLineScene(input, Number(input.line?.storyDay)) || resolveScene(input.line || {});
-  }
-
   const mainEndingId = id(input.mainEndingId);
-  if (mainEndingId) return resolveScene({ mainEndingId });
-
-  const decisionId = id(input.decisionId);
-  if (decisionId) return resolveScene({ decisionId, beatId: input.beatId });
-
-  const lineDay = Number(input.line?.storyDay);
-  const currentDay = Number(input.currentStoryDay);
-  const lineBelongsToCurrentDay = !Number.isFinite(lineDay)
-    || !Number.isFinite(currentDay)
-    || lineDay === currentDay;
-  if (input.line && lineBelongsToCurrentDay) {
-    const inherited = nearestLineScene(input, currentDay);
-    if (inherited) return inherited;
-  }
+  if (mainEndingId && !input.line) return resolveScene({ mainEndingId });
+  if (input.line) return resolveScene(input.line);
   return resolveScene({ beatId: input.beatId });
 }
 

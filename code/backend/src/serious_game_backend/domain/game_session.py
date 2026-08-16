@@ -68,6 +68,7 @@ class GameSession:
     night_logs: list[dict] = field(default_factory=list)
     ending_result: dict | None = None
     decision_parameters: dict[str, dict] = field(default_factory=dict)
+    npc_demand_states: dict[str, dict] = field(default_factory=dict)
     active_conversation: ActiveConversation | None = None
     active_group_conversation: ForcedGroupConversation | None = None
     group_conversation_queue: list[ForcedGroupConversation] = field(
@@ -105,12 +106,21 @@ class GameSession:
         text: str,
         speaker: str | None = None,
         content_instance_id: str | None = None,
+        block_id: str | None = None,
+        beat_id: str | None = None,
+        decision_id: str | None = None,
+        scene_id: str | None = None,
+        presentation_phase: str = "scene",
+        read_gate: str = "advance",
     ) -> bool:
         if (
             content_instance_id is not None
             and content_instance_id in self.rendered_content_ids
         ):
             return False
+        day_sequence = 1 + sum(
+            1 for item in self.narrative_feed if item.story_day == story_day
+        )
         self.narrative_feed.append(VisibleNarrativeEntry(
             cursor=self.next_feed_cursor,
             story_day=story_day,
@@ -118,6 +128,13 @@ class GameSession:
             text=text,
             speaker=speaker,
             content_instance_id=content_instance_id,
+            block_id=block_id,
+            beat_id=beat_id,
+            decision_id=decision_id,
+            scene_id=scene_id,
+            presentation_phase=presentation_phase,
+            day_sequence=day_sequence,
+            read_gate=read_gate,
         ))
         if content_instance_id is not None:
             self.rendered_content_ids.add(content_instance_id)

@@ -66,9 +66,12 @@ def encode_session(session: GameSession) -> dict:
             "input_kind": session.pending_decision.input_kind,
             "input_schema": session.pending_decision.input_schema,
             "context": session.pending_decision.context,
+            "presentation_entry_id": (
+                session.pending_decision.presentation_entry_id
+            ),
         }
     return {
-        "schema_version": 9,
+        "schema_version": 11,
         "session_id": session.session_id,
         "account_id": session.account_id,
         "package_id": session.package_id,
@@ -120,6 +123,7 @@ def encode_session(session: GameSession) -> dict:
         "night_logs": session.night_logs,
         "ending_result": session.ending_result,
         "decision_parameters": session.decision_parameters,
+        "npc_demand_states": session.npc_demand_states,
         "active_conversation": (
             asdict(session.active_conversation)
             if session.active_conversation is not None else None
@@ -189,6 +193,7 @@ def decode_session(value: dict) -> GameSession:
             input_kind=str(pending_value.get("input_kind", "choice")),
             input_schema=pending_value.get("input_schema"),
             context=dict(pending_value.get("context", {})),
+            presentation_entry_id=pending_value.get("presentation_entry_id"),
         )
     return GameSession(
         session_id=str(value["session_id"]),
@@ -257,6 +262,10 @@ def decode_session(value: dict) -> GameSession:
         night_logs=list(value.get("night_logs", [])),
         ending_result=value.get("ending_result"),
         decision_parameters=dict(value.get("decision_parameters", {})),
+        npc_demand_states={
+            str(key): dict(item)
+            for key, item in value.get("npc_demand_states", {}).items()
+        },
         active_conversation=(
             ActiveConversation(**value["active_conversation"])
             if value.get("active_conversation") is not None else None

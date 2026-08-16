@@ -17,6 +17,7 @@
       "action_id": "household_visit",
       "name": "入户走访",
       "cost": 1,
+      "costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
       "permissions": ["1.1"],
       "target_kind": "household_representative",
       "description": "与一名家庭或户群代表进入私下场景，询问诉求、解释政策、出示档案并讨论逐户方案。"
@@ -25,6 +26,7 @@
       "action_id": "cadre_interview",
       "name": "干部访谈",
       "cost": 2,
+      "costs": {"normal": 2, "sensitive": 3, "acceptance": 4},
       "permissions": ["1.1", "1.3"],
       "target_kind": "cadre",
       "description": "与已公开身份的干部或公职人员核实职责、材料位置、程序和部门承诺。"
@@ -32,7 +34,8 @@
     {
       "action_id": "leadership_meeting",
       "name": "班子会议",
-      "cost": 2,
+      "cost": 3,
+      "costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
       "permissions": ["1.1", "1.2", "1.3", "1.4"],
       "target_kind": "meeting_participants",
       "description": "围绕具体议题召开多人会议，公开讨论并形成纪要、决议、资源安排或补充红头文件。"
@@ -41,6 +44,7 @@
       "action_id": "inspect_archives",
       "name": "查阅档案",
       "cost": 1,
+      "costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
       "permissions": ["1.3"],
       "target_kind": "archive",
       "description": "阅读已经取得的背景、业务、线索、文件和合同档案；不会凭空取得尚未解锁的材料。"
@@ -149,7 +153,15 @@
     {"resource_id": "training_slot", "name": "职业培训名额", "category": "employment", "capacity": 12, "available_day": 1, "attributes": {}},
     {"resource_id": "business_restart_package", "name": "小微经营恢复包", "category": "business", "capacity": 3, "available_day": 1, "attributes": {"cash_cap": 15}},
     {"resource_id": "startup_interest_slot", "name": "创业贴息名额", "category": "business", "capacity": 4, "available_day": 1, "attributes": {}},
-    {"resource_id": "grave_relocation_service", "name": "迁坟事务服务户次", "category": "grave", "capacity": 5, "available_day": 1, "attributes": {"unit": "household_case"}}
+    {"resource_id": "grave_relocation_service", "name": "迁坟事务服务户次", "category": "grave", "capacity": 5, "available_day": 1, "attributes": {"unit": "household_case"}},
+    {"resource_id": "temporary_protection_slot", "name": "临时保护与安置名额", "category": "administrative_capacity", "capacity": 2, "available_day": 1, "allocatable_scope": "npc_demand", "attributes": {"unit": "case"}},
+    {"resource_id": "third_party_test_slot", "name": "第三方独立检测批次", "category": "contract_service", "capacity": 4, "available_day": 1, "allocatable_scope": "npc_demand_or_contract", "attributes": {"unit": "batch"}},
+    {"resource_id": "legal_review_slot", "name": "合法性审查工时", "category": "administrative_capacity", "capacity": 8, "available_day": 1, "allocatable_scope": "npc_demand", "attributes": {"unit": "case"}},
+    {"resource_id": "audit_slot", "name": "审计核查工时", "category": "administrative_capacity", "capacity": 6, "available_day": 1, "allocatable_scope": "npc_demand", "attributes": {"unit": "case"}},
+    {"resource_id": "hearing_slot", "name": "公开听证场次", "category": "administrative_capacity", "capacity": 3, "available_day": 1, "allocatable_scope": "npc_demand", "attributes": {"unit": "session"}},
+    {"resource_id": "elder_support_slot", "name": "助老搬迁服务户次", "category": "contract_service", "capacity": 4, "available_day": 1, "allocatable_scope": "npc_demand_or_contract", "attributes": {"unit": "household_case"}},
+    {"resource_id": "broadband_transition_slot", "name": "宽带迁装服务户次", "category": "contract_service", "capacity": 4, "available_day": 1, "allocatable_scope": "npc_demand_or_contract", "attributes": {"unit": "household_case"}},
+    {"resource_id": "environmental_reinforcement_slot", "name": "环保执法增援批次", "category": "administrative_capacity", "capacity": 2, "available_day": 1, "allocatable_scope": "npc_demand", "attributes": {"unit": "batch"}}
   ],
   "document_rules": {
     "implementation_notice": {"decision_mode": "executive_decision", "required_evidence_level": "E1", "required_countersign_ids": ["npc_feng_jingzhi"]},

@@ -28,7 +28,7 @@ test("keeps every state-changing gameplay workflow connected to an API route", a
   }
 });
 
-test("surfaces forced group conversations and the complete contract lifecycle", async () => {
+test("surfaces forced group conversations and the complete contract lifecycle without private night traces", async () => {
   const shell = await readFile(shellPath, "utf8");
   assert.match(shell, /ForcedGroupConversationScene/);
   assert.match(shell, /发起人：/);
@@ -40,10 +40,9 @@ test("surfaces forced group conversations and the complete contract lifecycle", 
   assert.match(shell, /送交本户复核/);
   assert.match(shell, /正式签署并入账/);
   assert.match(shell, /group_conversation_timeline/);
-  assert.match(shell, /contact_selections/);
-  assert.match(shell, /contact_responses/);
-  assert.match(shell, /followup_decisions/);
-  assert.match(shell, /已发起强制会谈/);
+  assert.doesNotMatch(shell, /contact_selections/);
+  assert.doesNotMatch(shell, /contact_responses/);
+  assert.doesNotMatch(shell, /agent_exchanges/);
 });
 
 test("surfaces the backend overtime mechanism when daily energy reaches zero", async () => {
@@ -54,7 +53,7 @@ test("surfaces the backend overtime mechanism when daily energy reaches zero", a
   assert.match(shell, /parameters: \{ points \}/);
   assert.match(shell, /申请加班/);
   assert.match(shell, /fatigue\.label/);
-  assert.match(shell, /影响加班与行动/);
+  assert.match(shell, /新增精力会增加日终疲惫/);
   assert.doesNotMatch(shell, /active_rest:\s*true/);
 });
 
@@ -76,8 +75,8 @@ test("uses in-game confirmation panels instead of browser-native blocking dialog
   assert.doesNotMatch(shell, /window\.confirm/);
   assert.match(shell, /结束今日工作/);
   assert.match(shell, /进入夜间结算/);
-  assert.match(shell, /载入手动存档/);
-  assert.match(shell, /覆盖已有存档/);
+  assert.match(shell, /载入关键节点/);
+  assert.match(shell, /覆盖已有关键节点/);
 });
 
 test("lists all saves and makes version-locked incompatible progress explicit", async () => {

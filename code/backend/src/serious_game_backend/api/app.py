@@ -25,6 +25,7 @@ from serious_game_backend.api.schemas import (
     GovernanceActionStartRequest,
     GovernanceFinishRequest,
     GovernanceTurnRequest,
+    NPCDemandDispositionRequest,
     MeetingResolutionRequest,
     MeetingTurnRequest,
     DocumentEditRequest,
@@ -40,6 +41,7 @@ from serious_game_backend.api.schemas import (
     StartSessionRequest,
 )
 from serious_game_backend.application.package_lock import require_locked_package
+from serious_game_backend.application.action_cost_policy import quote_cost
 from serious_game_backend.bootstrap import Container, build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.errors import DomainError, NotFoundError
@@ -301,7 +303,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             )
             values = []
             for item in package.governance_config.get("base_actions", []):
-                cost = int(item["cost"])
+                base = int(item.get("costs", {}).get(tier.value, item["cost"]))
+                cost_result = quote_cost(
+                    session, str(item["action_id"]), base
+                )
+                cost = cost_result.final_cost
                 available = (
                     gate["can_act"]
                     and not active
@@ -312,6 +318,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     "name": item["name"],
                     "category": "基础行动",
                     "cost": cost,
+                    "cost_breakdown": {
+                        "base": cost_result.base_cost,
+                        "friction": cost_result.friction,
+                        "discount": cost_result.discount,
+                        "reasons": list(cost_result.reasons),
+                    },
                     "available": available,
                     "unavailable_reason": (
                         gate["action_blocked_reason"]
@@ -330,7 +342,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         npc_names = {item.npc_id: item.name for item in package.npc_profiles}
         result = []
         for rule in package.action_rules.values():
-            cost = rule.cost_for(tier)
+            cost_result = quote_cost(session, rule.action_id, rule.cost_for(tier))
+            cost = cost_result.final_cost
             opportunity_ids = [
                 item.opportunity_id for item in available_opportunities
                 if item.action_id == rule.action_id
@@ -342,6 +355,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             resource_available = bool(
                 definition
                 and definition.enabled
+                and state.story_day >= definition.unlock_day
                 and not conversation_only
                 and definition.required_flags.issubset(session.flags)
                 and (
@@ -387,6 +401,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "name": rule.name,
                 "category": rule.category,
                 "cost_action_points": cost,
+                "cost_breakdown": {
+                    "base": cost_result.base_cost,
+                    "friction": cost_result.friction,
+                    "discount": cost_result.discount,
+                    "reasons": list(cost_result.reasons),
+                },
                 "available": available,
                 "unavailable_reason": reason,
                 "opportunity_ids": opportunity_ids,
@@ -945,70 +965,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     ) -> dict:
         account_id = current_account_id(x_account_id)
         session = runtime.game_sessions.get_owned(session_id, account_id)
-        package = require_locked_package(runtime.packages, session)
-        scene_catalog = {
-            str(item.get("scene_id")): item
-            for item in package.night_agent_scenes
-            if item.get("scene_id")
-        }
-        action_catalog = package.night_agent_actions or {}
-
-        def public_exchange(exchange: dict) -> dict:
-            scene = scene_catalog.get(str(exchange.get("scene_id")), {})
-            executed = [
-                {
-                    "action_id": action_id,
-                    "name": str(
-                        action_catalog.get(str(action_id), {}).get(
-                            "name", "夜间行动"
-                        )
-                    ),
-                    "summary": str(
-                        action_catalog.get(str(action_id), {}).get(
-                            "public_direction_summary", ""
-                        )
-                    ),
-                }
-                for action_id in exchange.get("executed_action_ids", ())
-            ]
-            return {
-                "scene_id": exchange.get("scene_id"),
-                "scene_goal": str(scene.get("scene_goal", "")),
-                "group_index": exchange.get("group_index"),
-                "participant_ids": list(exchange.get("participant_ids", ())),
-                "transcript": list(exchange.get("transcript", ())),
-                "executed_actions": executed,
-                "public_summary": str(exchange.get("public_summary", "")),
-            }
-
+        require_locked_package(runtime.packages, session)
         return {
             "session_id": session.session_id,
             "nights": [
                 {
                     "story_day": item.get("story_day"),
-                    "beat_id": item.get("beat_id"),
-                    "summary": str(item.get("summary", "")),
-                    "narrative_lines": list(item.get("lines", ())),
-                    "morning_brief": list(item.get("morning_card", ())),
-                    "has_agent_activity": bool(
-                        item.get("contact_selections")
-                        or item.get("contact_responses")
-                        or item.get("followup_decisions")
-                        or item.get("agent_exchanges")
-                    ),
-                    "contact_selections": list(
-                        item.get("contact_selections", ())
-                    ),
-                    "contact_responses": list(
-                        item.get("contact_responses", ())
-                    ),
-                    "followup_decisions": list(
-                        item.get("followup_decisions", ())
-                    ),
-                    "agent_exchanges": [
-                        public_exchange(exchange)
-                        for exchange in item.get("agent_exchanges", ())
-                    ],
+                    "morning_brief": list(item.get("morning_card", ()))[:3],
                 }
                 for item in session.night_logs
             ],
@@ -1077,6 +1040,23 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         return runtime.gameplay_governance.overview(
             account_id=current_account_id(x_account_id),
             session_id=session_id,
+        )
+
+    @app.post(
+        "/api/game/session/{session_id}/governance/npc-demands/{demand_id}/dispose"
+    )
+    def dispose_npc_demand(
+        session_id: str,
+        demand_id: str,
+        body: NPCDemandDispositionRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.dispose_npc_demand(
+            account_id=current_account_id(x_account_id),
+            session_id=session_id,
+            state_version=body.state_version,
+            demand_id=demand_id,
+            transition=body.transition,
         )
 
     @app.get(

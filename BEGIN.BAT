@@ -8,6 +8,7 @@ set "LAUNCHER_DIR=%~dp0"
 set "BACKEND_DIR=%LAUNCHER_DIR%code\backend"
 set "WEB_DIR=%LAUNCHER_DIR%code\frontend\web"
 set "WEB_URL=http://127.0.0.1:3001"
+set "GAME_BACKEND_URL=http://127.0.0.1:8100"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 

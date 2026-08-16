@@ -31,6 +31,7 @@ class ResourceActionDefinition:
     executor_kind: str
     enabled: bool = True
     unavailable_reason: str | None = None
+    unlock_day: int = 1
     target_schema: dict[str, Any] = field(default_factory=dict)
     parameter_schema: dict[str, Any] = field(default_factory=dict)
     budget_cost: int = 0
@@ -56,6 +57,10 @@ class ActionQuote:
     budget_unit: str
     executor_kind: str
     resource_ids: tuple[str, ...]
+    cost_reasons: tuple[str, ...] = ()
+    base_action_point_cost: int = 0
+    friction_action_point_cost: int = 0
+    discount_action_point_cost: int = 0
 
 
 @dataclass(frozen=True, slots=True)

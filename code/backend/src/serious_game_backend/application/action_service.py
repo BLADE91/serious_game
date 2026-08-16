@@ -13,6 +13,7 @@ from serious_game_backend.application.interaction_opportunity_service import (
 )
 from serious_game_backend.application.npc_turn_service import NPCTurnService
 from serious_game_backend.application.npc_memory_service import NPCMemoryService
+from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.ports import (
     GameSessionRepository,
@@ -183,6 +184,7 @@ class ActionService:
                 resource_reference=command.client_action_id,
             )
             self._trust_derivation.apply(current, package)
+            NPCDemandService.sync(current, package)
             current.processing_action_id = None
             current.state_version += 1
             current.touch()
@@ -278,7 +280,9 @@ class ActionService:
             if opportunity.npc_id != command.target_npc_id:
                 raise ActionUnavailableError("目标 NPC 与互动机会不匹配")
             rule = package.action_rules[opportunity.action_id]
-            cost = self._validate_tool(session, package, rule)
+            cost = self._validate_tool(
+                session, package, rule, target_npc_ids=(opportunity.npc_id,)
+            )
             return {
                 "kind": "conversation_start",
                 "rule": rule,
@@ -343,7 +347,9 @@ class ActionService:
             rule = package.action_rules.get(command.action_id)
             if rule is None:
                 raise ActionUnavailableError("行动未在当前剧本包注册")
-            cost = self._validate_tool(session, package, rule)
+            cost = self._validate_tool(
+                session, package, rule, target_npc_ids=(opportunity.npc_id,)
+            )
             return {
                 "kind": "tool",
                 "rule": rule,
@@ -406,6 +412,7 @@ class ActionService:
                     decision_id=decision.decision_id,
                 ),
                 "parameters": parameters,
+                "cost": 0,
                 "narrative": self._story_flow.public_text(option.consequence),
             }
         if command.input_mode is ActionInputMode.OVERTIME:
@@ -581,7 +588,7 @@ class ActionService:
         return {
             "kind": "free_text",
             "rule": rule,
-            "cost": 0,
+            "cost": 0 if conversation.cost_charged else conversation.quoted_cost,
             "conversation_id": conversation.conversation_id,
             "player_text": command.player_text,
             "opportunity": opportunity,
@@ -605,7 +612,14 @@ class ActionService:
             } if prepared_input else None),
         }
 
-    def _validate_tool(self, session, package, rule: ActionRule) -> int:
+    def _validate_tool(
+        self,
+        session,
+        package,
+        rule: ActionRule,
+        *,
+        target_npc_ids: tuple[str, ...] = (),
+    ) -> int:
         state = session.game_state
         if rule.daily_cap is not None:
             used = state.daily_action_counts.get(rule.action_id, 0)
@@ -641,7 +655,9 @@ class ActionService:
             "overtime",
         }:
             rule: ActionRule | None = draft.get("rule")
-            if draft["kind"] in {"tool", "resource_action", "conversation_start"}:
+            if draft["kind"] in {"tool", "resource_action"} or (
+                draft["kind"] == "free_text" and draft["cost"] > 0
+            ):
                 assert rule is not None
                 session.game_state = session.game_state.spend_action_points(
                     rule.action_id,
@@ -662,7 +678,9 @@ class ActionService:
                 "type": draft["kind"],
                 "story_day": session.game_state.story_day,
                 "action_id": rule.action_id if rule is not None else None,
-                "cost_action_points": draft["cost"],
+                "cost_action_points": (
+                    0 if draft["kind"] == "conversation_start" else draft["cost"]
+                ),
                 "visible_to_player": True,
             }
             opportunity = draft.get("opportunity")
@@ -697,6 +715,8 @@ class ActionService:
                     opportunity_id=opportunity.opportunity_id,
                     npc_id=draft["npc_id"],
                     story_day=session.game_state.story_day,
+                    quoted_cost=draft["cost"],
+                    cost_charged=False,
                 )
                 session.append_narrative(
                     story_day=session.game_state.story_day,
@@ -719,6 +739,8 @@ class ActionService:
                 conversation = session.active_conversation
                 if conversation is None:
                     raise ActionUnavailableError("进行中的会谈已丢失")
+                if draft["cost"] > 0:
+                    conversation.cost_charged = True
                 npc_state = session.npc_states[draft["npc_id"]]
                 session.npc_states[draft["npc_id"]] = replace(
                     npc_state,
@@ -895,6 +917,7 @@ class ActionService:
                         pending_context.get("talk_money_count", 0)
                     ) + 1
                     repeat_decision = pending_context["talk_money_count"] < 3
+            decision_cost = 0
             option = self._story_flow.resolve_decision(
                 session,
                 package,
@@ -921,7 +944,7 @@ class ActionService:
                 "story_day": session.game_state.story_day,
                 "decision_id": draft["decision_id"],
                 "option_id": draft["option_id"],
-                "cost_action_points": 0,
+                "cost_action_points": decision_cost,
                 "visible_to_player": True,
                 **(
                     {"parameters": dict(draft["parameters"])}

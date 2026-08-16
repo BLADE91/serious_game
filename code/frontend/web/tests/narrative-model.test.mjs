@@ -3,32 +3,34 @@ import test from "node:test";
 
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady } from "../app/lib/narrative-model.ts";
 
-const line = (id, cursor, text = id) => ({ id, cursor, kind: "narrative", text, contentInstanceId: `block:${id}` });
+const line = (id, cursor, text = id, storyDay = 1) => ({ id, cursor, storyDay, kind: "narrative", text, contentInstanceId: `block:${id}` });
 
-test("merges incremental feeds, de-duplicates content and follows latest by default", () => {
+test("merges incremental feeds, de-duplicates content and stops at the first unread item", () => {
   let state = narrativeReducer(initialNarrativeState, { type: "SESSION_OPEN", sessionId: "s1" });
   state = narrativeReducer(state, { type: "FEED_MERGE", sessionId: "s1", items: [line("a", 1), line("b", 2)], cursor: 2 });
   assert.equal(state.items.length, 2);
-  assert.equal(state.currentIndex, 1);
-  assert.equal(state.unreadCount, 0);
+  assert.equal(state.currentIndex, 0);
+  assert.equal(state.unreadCount, 1);
 
   state = narrativeReducer(state, { type: "FEED_MERGE", sessionId: "s1", items: [line("b", 2), line("c", 3)], cursor: 3 });
   assert.deepEqual(state.items.map(item => item.id), ["a", "b", "c"]);
-  assert.equal(state.currentIndex, 2);
+  assert.equal(state.currentIndex, 0);
   assert.equal(state.feedCursor, 3);
 });
 
-test("preserves backlog position, counts unread additions and returns to latest", () => {
+test("keeps navigation inside the current day and separates prior days", () => {
   let state = narrativeReducer(initialNarrativeState, { type: "SESSION_REBUILD", sessionId: "s1", items: [line("a", 1), line("b", 2)], cursor: 2 });
   state = narrativeReducer(state, { type: "PREVIOUS" });
-  state = narrativeReducer(state, { type: "FEED_MERGE", sessionId: "s1", items: [line("c", 3)], cursor: 3 });
+  state = narrativeReducer(state, { type: "FEED_MERGE", sessionId: "s1", items: [line("c", 3, "c", 2), line("d", 4, "d", 2)], cursor: 4 });
   assert.equal(state.currentIndex, 0);
   assert.equal(state.unreadCount, 1);
+  assert.deepEqual(state.items.map(item => item.id), ["c", "d"]);
+  assert.deepEqual(state.historyItems.map(item => item.id), ["a", "b"]);
   state = narrativeReducer(state, { type: "NEXT" });
   assert.equal(state.currentIndex, 1);
-  assert.equal(state.unreadCount, 1);
+  assert.equal(state.unreadCount, 0);
   state = narrativeReducer(state, { type: "GO_LATEST" });
-  assert.equal(state.currentIndex, 2);
+  assert.equal(state.currentIndex, 1);
   assert.equal(state.unreadCount, 0);
 });
 
@@ -54,10 +56,12 @@ test("starts a brand-new game at the first story entry while restores stay lates
 });
 
 test("reveals a pending decision only after its current narrative has been read", () => {
-  assert.equal(pendingDecisionIsReady(0, 32), false);
-  assert.equal(pendingDecisionIsReady(30, 32), false);
-  assert.equal(pendingDecisionIsReady(31, 32), true);
-  assert.equal(pendingDecisionIsReady(-1, 0), true);
+  const setup = { contentInstanceId: "block:setup", presentationPhase: "decision_setup" };
+  const card = { contentInstanceId: "decision:event-1", presentationPhase: "decision" };
+  assert.equal(pendingDecisionIsReady(setup, "decision:event-1"), false);
+  assert.equal(pendingDecisionIsReady(card, "decision:event-1"), true);
+  assert.equal(pendingDecisionIsReady(card, "decision:event-2"), false);
+  assert.equal(pendingDecisionIsReady(null, "decision:event-1"), false);
 });
 
 test("keeps optional feed metadata for compatibility and stable scene matching", () => {
@@ -71,9 +75,15 @@ test("keeps optional feed metadata for compatibility and stable scene matching",
     block_id: "d01_briefing_files",
     decision_id: "dp1_01_taskforce_faction_map",
     beat_id: "beat_d01_arrival_and_reception",
+    scene_id: "C01_S02",
+    presentation_phase: "opening",
+    day_sequence: 2,
+    read_gate: "continue",
   }, "fallback");
   assert.equal(item.id, "block:d01_briefing_files");
   assert.equal(item.blockId, "d01_briefing_files");
   assert.equal(item.decisionId, "dp1_01_taskforce_faction_map");
   assert.equal(item.beatId, "beat_d01_arrival_and_reception");
+  assert.equal(item.sceneId, "C01_S02");
+  assert.equal(item.presentationPhase, "opening");
 });

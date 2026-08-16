@@ -37,6 +37,10 @@ class ActionQuoteService:
             raise ActionUnavailableError(
                 definition.unavailable_reason or "该工具当前不可执行"
             )
+        if session.game_state.story_day < definition.unlock_day:
+            raise ActionUnavailableError(
+                definition.unavailable_reason or f"第 {definition.unlock_day} 日后开放"
+            )
         if not definition.required_flags.issubset(session.flags):
             raise ActionUnavailableError("行动所需前置材料尚未齐备")
         if definition.required_any_flags and not (

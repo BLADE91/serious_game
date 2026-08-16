@@ -20,6 +20,8 @@ from serious_game_backend.application.resource_availability import (
     active_budget_holds,
     unencumbered_budget,
 )
+from serious_game_backend.application.action_cost_policy import quote_cost
+from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.ports import (
     GameSessionRepository,
     RoleLLMGateway,
@@ -165,6 +167,7 @@ class GameplayGovernanceService:
             ],
             "resources": self._resource_status(session, package),
             "resource_ledger": list(session.resource_ledger_entries),
+            "npc_demands": NPCDemandService.public(session, package),
         }
 
     def archive_detail(
@@ -200,6 +203,163 @@ class GameplayGovernanceService:
             "state_version": session.state_version,
             "contract": self._public_contract(contract, include_text=True),
         }
+
+    def dispose_npc_demand(
+        self,
+        *,
+        account_id: str,
+        session_id: str,
+        state_version: int,
+        demand_id: str,
+        transition: str,
+    ) -> dict:
+        """确认、预占和交付NPC核心诉求；全部资源变化在同一次提交完成。"""
+
+        session, package = self._load_mutable(
+            account_id, session_id, state_version
+        )
+        NPCDemandService.initialize(session, package)
+        demand = next(
+            (item for item in package.npc_demands if item.demand_id == demand_id),
+            None,
+        )
+        if demand is None:
+            raise NotFoundError("NPC核心诉求不存在")
+        current = str(session.npc_demand_states[demand_id]["status"])
+        can_fulfill = NPCDemandService.can_fulfill(session, package, demand)
+        allowed = NPCDemandService.allowed_transitions(
+            current,
+            demand.legal_disposition,
+            can_fulfill=can_fulfill,
+        )
+        if transition == "acknowledged" and not NPCDemandService._was_contacted(
+            session, demand.npc_id
+        ):
+            raise ActionUnavailableError("必须先通过会谈或治理行动正式接触该人物")
+        if transition == "satisfied" and current == "committed" and not can_fulfill:
+            raise ActionUnavailableError(
+                "尚无可核验的履约事实，不能确认诉求已经交付"
+            )
+        if transition not in allowed:
+            raise ActionUnavailableError(
+                "当前诉求状态不允许这项处置",
+                details={"status": current, "allowed_transitions": allowed},
+            )
+        if transition == "committed":
+            self._commit_demand_resources(session, package, demand)
+        elif transition == "satisfied":
+            reservations = [
+                item for item in session.resource_reservations
+                if item.owner_type == "npc_demand"
+                and item.owner_id == demand_id
+                and item.status == "committed"
+            ]
+            for reservation in reservations:
+                reservation.status = "delivered"
+                reservation.delivered_day = session.game_state.story_day
+                self._record_resource_event(
+                    session,
+                    change_kind="deliver",
+                    source_type="npc_demand",
+                    source_id=demand_id,
+                    resource_id=reservation.resource_id,
+                    quantity=reservation.quantity,
+                    reservation_id=reservation.reservation_id,
+                    payment_status="not_applicable",
+                )
+        elif transition == "breached":
+            for reservation in session.resource_reservations:
+                if (
+                    reservation.owner_type == "npc_demand"
+                    and reservation.owner_id == demand_id
+                    and reservation.status == "committed"
+                ):
+                    reservation.status = "released"
+                    self._record_resource_event(
+                        session,
+                        change_kind="release",
+                        source_type="npc_demand",
+                        source_id=demand_id,
+                        resource_id=reservation.resource_id,
+                        quantity=reservation.quantity,
+                        reservation_id=reservation.reservation_id,
+                        release_reason="承诺未履行",
+                        payment_status="not_applicable",
+                    )
+        NPCDemandService.transition(
+            session, demand_id, transition, reason="玩家通过结构化处置确认"
+        )
+        deltas = NPCDemandService.apply_consequences(session, demand, transition)
+        self._commit(session, state_version)
+        public = next(
+            item for item in NPCDemandService.public(session, package)
+            if item["demand_id"] == demand_id
+        )
+        return {
+            "state_version": session.state_version,
+            "demand": public,
+            "effect_receipt": {
+                "indicator_deltas": deltas,
+                "resource_changes": [
+                    item for item in session.resource_ledger_entries
+                    if item.get("source_type") == "npc_demand"
+                    and item.get("source_id") == demand_id
+                ][-8:],
+            },
+            "visible_state": self._projector.project(session, package),
+        }
+
+    def _commit_demand_resources(self, session, package, demand) -> None:
+        pools = {
+            str(item["resource_id"]): item
+            for item in (package.governance_config or {}).get("resource_pools", ())
+        }
+        for requested in demand.commit.get("resources", ()):
+            resource_id = str(requested["resource_id"])
+            quantity = int(requested.get("quantity", 1))
+            pool = pools.get(resource_id)
+            if pool is None:
+                raise ActionUnavailableError("诉求引用的资源池不存在")
+            if session.game_state.story_day < int(pool.get("available_day", 1)):
+                raise ActionUnavailableError("该资源尚未到可调配日期")
+            used = sum(
+                item.quantity for item in session.resource_reservations
+                if item.resource_id == resource_id
+                and item.status in {"reserved", "committed", "delivered"}
+            )
+            if quantity <= 0 or used + quantity > int(pool["capacity"]):
+                raise ActionUnavailableError(
+                    "资源池余量不足，不能作出无法兑现的承诺",
+                    details={
+                        "resource_id": resource_id,
+                        "required": quantity,
+                        "available": max(0, int(pool["capacity"]) - used),
+                    },
+                )
+        for requested in demand.commit.get("resources", ()):
+            resource_id = str(requested["resource_id"])
+            quantity = int(requested.get("quantity", 1))
+            reservation = ResourceReservation(
+                reservation_id=f"reserve_demand_{secrets.token_hex(10)}",
+                owner_type="npc_demand",
+                owner_id=demand.demand_id,
+                resource_id=resource_id,
+                quantity=quantity,
+                status="committed",
+                reserved_day=session.game_state.story_day,
+                committed_day=session.game_state.story_day,
+            )
+            session.resource_reservations.append(reservation)
+            self._record_resource_event(
+                session,
+                change_kind="commit",
+                source_type="npc_demand",
+                source_id=demand.demand_id,
+                resource_id=resource_id,
+                quantity=quantity,
+                reservation_id=reservation.reservation_id,
+                payment_status="not_applicable",
+            )
 
     def start_action(
         self,
@@ -243,7 +403,10 @@ class GameplayGovernanceService:
             raise ActionUnavailableError("必须先结束当前单人会谈")
         if session.active_group_conversation is not None:
             raise ActionUnavailableError("必须先完成当前群组会谈")
-        cost = int(definition["cost"])
+        cost_result = self._governance_action_cost(
+            session, package, definition, target_npc_ids=target_ids
+        )
+        cost = cost_result.final_cost
         if session.game_state.action_points < cost:
             raise InsufficientActionPointsError(
                 "当日行动点不足",
@@ -279,6 +442,12 @@ class GameplayGovernanceService:
         result: dict = {
             "action": asdict(action),
             "cost_action_points": cost,
+            "cost_breakdown": {
+                "base": cost_result.base_cost,
+                "friction": cost_result.friction,
+                "discount": cost_result.discount,
+                "reasons": list(cost_result.reasons),
+            },
         }
         if action_kind == "inspect_archives":
             sync_known_facts_to_archives(session, package)
@@ -2518,6 +2687,7 @@ class GameplayGovernanceService:
             resource_id for resource_id in allocations
             if resource_id not in pools
             or pools[resource_id].get("category") == "housing"
+            or pools[resource_id].get("allocatable_scope") == "npc_demand"
         )
         if unknown:
             raise ActionUnavailableError(
@@ -2565,6 +2735,15 @@ class GameplayGovernanceService:
             str(item["resource_id"]): int(item["capacity"])
             for item in config.get("resource_pools", [])
         })
+        reusable = self._reusable_demand_reservations(
+            session, package, contract
+        )
+        reusable_totals: dict[str, int] = {}
+        for reservation in reusable:
+            reusable_totals[reservation.resource_id] = (
+                reusable_totals.get(reservation.resource_id, 0)
+                + reservation.quantity
+            )
         failures = {}
         for resource_id, amount in requested.items():
             used = sum(
@@ -2573,7 +2752,11 @@ class GameplayGovernanceService:
                 if item.resource_id == resource_id
                 and item.status in {"reserved", "committed", "delivered"}
             )
-            available = capacities[resource_id] - used
+            available = (
+                capacities[resource_id]
+                - used
+                + min(amount, reusable_totals.get(resource_id, 0))
+            )
             if amount > available:
                 failures[resource_id] = {
                     "required": amount,
@@ -2597,12 +2780,55 @@ class GameplayGovernanceService:
             )
         expires = min(89, session.game_state.story_day + 2)
         for resource_id, amount in requested.items():
+            remaining = amount
+            for reservation in reusable:
+                if reservation.resource_id != resource_id or remaining <= 0:
+                    continue
+                demand_id = reservation.owner_id
+                transferred = min(remaining, reservation.quantity)
+                if transferred < reservation.quantity:
+                    reservation.quantity -= transferred
+                    reservation = ResourceReservation(
+                        reservation_id=f"reserve_{secrets.token_hex(10)}",
+                        owner_type="contract",
+                        owner_id=contract.contract_id,
+                        resource_id=resource_id,
+                        quantity=transferred,
+                        status="reserved",
+                        reserved_day=session.game_state.story_day,
+                        expires_day=expires,
+                    )
+                    session.resource_reservations.append(reservation)
+                else:
+                    reservation.owner_type = "contract"
+                    reservation.owner_id = contract.contract_id
+                    reservation.status = "reserved"
+                    reservation.expires_day = expires
+                    reservation.committed_day = None
+                    reservation.delivered_day = None
+                session.npc_demand_states[demand_id][
+                    "linked_contract_id"
+                ] = contract.contract_id
+                self._record_resource_event(
+                    session,
+                    change_kind="transfer",
+                    source_type="npc_demand_contract_link",
+                    source_id=contract.contract_id,
+                    resource_id=resource_id,
+                    quantity=transferred,
+                    reservation_id=reservation.reservation_id,
+                    expires_day=expires,
+                    payment_status="unpaid",
+                )
+                remaining -= transferred
+            if remaining <= 0:
+                continue
             reservation = ResourceReservation(
                 reservation_id=f"reserve_{secrets.token_hex(10)}",
                 owner_type="contract",
                 owner_id=contract.contract_id,
                 resource_id=resource_id,
-                quantity=amount,
+                quantity=remaining,
                 status="reserved",
                 reserved_day=session.game_state.story_day,
                 expires_day=expires,
@@ -2614,11 +2840,35 @@ class GameplayGovernanceService:
                 source_type="contract_review",
                 source_id=contract.contract_id,
                 resource_id=resource_id,
-                quantity=amount,
+                quantity=remaining,
                 reservation_id=reservation.reservation_id,
                 expires_day=expires,
                 payment_status="unpaid",
             )
+
+    @staticmethod
+    def _reusable_demand_reservations(
+        session: GameSession,
+        package: ScriptPackage,
+        contract: HouseholdContract,
+    ) -> list[ResourceReservation]:
+        if not contract.signatory_npc_id:
+            return []
+        demand_ids = {
+            demand.demand_id
+            for demand in package.npc_demands
+            if demand.npc_id == contract.signatory_npc_id
+            and session.npc_demand_states.get(demand.demand_id, {}).get(
+                "status"
+            ) == "committed"
+        }
+        return [
+            reservation
+            for reservation in session.resource_reservations
+            if reservation.owner_type == "npc_demand"
+            and reservation.owner_id in demand_ids
+            and reservation.status == "committed"
+        ]
 
     def _validate_contract_reservations(
         self,
@@ -3263,9 +3513,17 @@ class GameplayGovernanceService:
         )
         result = []
         for item in config.get("base_actions", []):
-            cost = int(item["cost"])
+            cost_result = self._governance_action_cost(session, package, item)
+            cost = cost_result.final_cost
             result.append({
                 **item,
+                "cost": cost,
+                "cost_breakdown": {
+                    "base": cost_result.base_cost,
+                    "friction": cost_result.friction,
+                    "discount": cost_result.discount,
+                    "reasons": list(cost_result.reasons),
+                },
                 "available": (
                     session.status is SessionStatus.ACTIVE
                     and not active
@@ -3289,6 +3547,25 @@ class GameplayGovernanceService:
                 ),
             })
         return result
+
+    @staticmethod
+    def _governance_action_cost(
+        session,
+        package,
+        definition,
+        *,
+        target_npc_ids: tuple[str, ...] = (),
+    ):
+        tier = package.action_cost_tier(session.game_state.story_day).value
+        base = int(
+            definition.get("costs", {}).get(tier, definition.get("cost", 1))
+        )
+        return quote_cost(
+            session,
+            str(definition["action_id"]),
+            base,
+            target_npc_ids=target_npc_ids,
+        )
 
     def _resource_status(
         self, session: GameSession, package: ScriptPackage
@@ -3413,6 +3690,8 @@ class GameplayGovernanceService:
         return session, package
 
     def _commit(self, session: GameSession, expected_version: int) -> None:
+        package = require_locked_package(self._packages, session)
+        NPCDemandService.sync(session, package)
         session.state_version += 1
         session.touch()
         self._sessions.save(session, expected_version=expected_version)

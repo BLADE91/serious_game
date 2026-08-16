@@ -252,10 +252,10 @@ class GameplayV2Tests(unittest.TestCase):
         self.assertEqual(200, night_response.status_code, night_response.text)
         nights = night_response.json()["nights"]
         self.assertEqual(1, len(nights))
-        self.assertFalse(nights[0]["has_agent_activity"])
-        self.assertTrue(nights[0]["narrative_lines"])
         self.assertTrue(nights[0]["morning_brief"])
-        self.assertEqual([], nights[0]["agent_exchanges"])
+        self.assertLessEqual(len(nights[0]["morning_brief"]), 3)
+        self.assertEqual({"story_day", "morning_brief"}, set(nights[0]))
+        self.assertNotIn("agent_exchanges", nights[0])
 
     def test_unrelated_player_text_is_rejected_without_advancing_conversation(self) -> None:
         self.reach_d2_open()
@@ -527,7 +527,7 @@ class GameplayV2Tests(unittest.TestCase):
             by_id["opp_03_deng_shouben_contact"].requires_flags,
         )
 
-        self.assertIn("再次", package.story_day(24).opening_blocks[0].text)
+        self.assertIn("第二十四日", package.story_day(24).opening_blocks[0].text)
         self.assertIn("何铁柱", package.story_day(42).opening_blocks[0].text)
         self.assertIn("周奎元", package.story_day(51).opening_blocks[0].text)
         self.assertIn("杨波", package.story_day(54).opening_blocks[0].text)
@@ -632,10 +632,10 @@ class GameplayV2Tests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertEqual(200, debug_response.status_code)
-        self.assertEqual(
-            exchange["transcript"],
-            debug_response.json()["nights"][0]["agent_exchanges"][0]["transcript"],
-        )
+        public_night = debug_response.json()["nights"][0]
+        self.assertEqual({"story_day", "morning_brief"}, set(public_night))
+        self.assertNotIn("agent_exchanges", public_night)
+        self.assertNotIn("contact_selections", public_night)
         review_response = self.client.get(
             f"/api/game/session/{self.session_id}/review",
             headers=self.headers,

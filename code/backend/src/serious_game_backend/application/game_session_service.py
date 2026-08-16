@@ -17,6 +17,7 @@ from serious_game_backend.application.story_flow_service import StoryFlowService
 from serious_game_backend.application.governance_initializer import (
     initialize_governance_state,
 )
+from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.experiment_assignment_service import (
     ExperimentAssignmentService,
 )
@@ -168,8 +169,10 @@ class GameSessionService:
             ),
         )
         initialize_governance_state(session, package)
+        NPCDemandService.initialize(session, package)
         self._events.trigger_fixed_events(session, package)
         self._story_flow.initialize(session, package)
+        NPCDemandService.sync(session, package)
         now = utc_now_iso()
         completed = replace(
             request,

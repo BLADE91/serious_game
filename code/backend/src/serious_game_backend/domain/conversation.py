@@ -15,6 +15,8 @@ class ActiveConversation:
     npc_id: str
     story_day: int
     turn_count: int = 0
+    quoted_cost: int = 0
+    cost_charged: bool = False
     transcript: list[dict[str, str]] = field(default_factory=list)
     started_at: str = field(default_factory=conversation_now_iso)
 

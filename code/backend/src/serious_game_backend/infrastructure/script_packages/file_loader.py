@@ -19,6 +19,7 @@ from serious_game_backend.domain.script_package import (
     HouseholdDefinition,
     LimitedHouseholdSignatory,
     MetricBand,
+    NPCDemandDefinition,
     NPCProfileStub,
     ScriptPackage,
     SubEndingDefinition,
@@ -104,6 +105,10 @@ PLAYER_TEXT_INTERNAL_MARKERS = (
     "行动点重置",
     "轴 T",
     "flag_",
+    "编号决策",
+    "关键剧情",
+    "玩家",
+    "代码",
 )
 
 
@@ -157,6 +162,11 @@ class FileScriptPackageLoader:
         calendar = self._load_calendar(self._json(package_dir / "story_calendar.json"))
         events = self._load_events(self._json(package_dir / "event_rules.json"))
         profiles = self._load_profiles(self._json(package_dir / "npc_profiles.json"))
+        npc_demands = self._load_npc_demands(
+            self._json(package_dir / "npc_demands.json")
+            if (package_dir / "npc_demands.json").is_file()
+            else {"demands": []}
+        )
         opportunities = self._load_opportunities(
             self._json(package_dir / "interaction_opportunities.json")
         )
@@ -213,6 +223,7 @@ class FileScriptPackageLoader:
             households,
             limited_household_signatories,
             governance_config,
+            npc_demands,
             gameplay_schema_version=gameplay_schema_version,
             status=str(manifest["status"]),
         )
@@ -241,6 +252,7 @@ class FileScriptPackageLoader:
             households=households,
             initial_state=dict(numbers.get("initial_state", {})),
             limited_household_signatories=limited_household_signatories,
+            npc_demands=npc_demands,
             governance_config=governance_config,
             gameplay_schema_version=gameplay_schema_version,
             origin_npc_attitude_modifiers={
@@ -439,6 +451,7 @@ class FileScriptPackageLoader:
                     str(item["unavailable_reason"])
                     if item.get("unavailable_reason") else None
                 ),
+                unlock_day=int(item.get("unlock_day", 1)),
                 target_schema=dict(item.get("target_schema", {})),
                 parameter_schema=dict(item.get("parameter_schema", {})),
                 budget_cost=int(item.get("budget_cost", 0)),
@@ -525,6 +538,24 @@ class FileScriptPackageLoader:
                 acceptance_condition=str(item["acceptance_condition"]),
                 refusal_trigger=str(item["refusal_trigger"]),
                 counteroffer_focus=str(item["counteroffer_focus"]),
+            ))
+        return tuple(result)
+
+    @staticmethod
+    def _load_npc_demands(document: dict) -> tuple[NPCDemandDefinition, ...]:
+        result: list[NPCDemandDefinition] = []
+        for item in document.get("demands", []):
+            result.append(NPCDemandDefinition(
+                demand_id=str(item["demand_id"]),
+                npc_id=str(item["npc_id"]),
+                title=str(item["title"]).strip(),
+                category=str(item["category"]).strip(),
+                description=str(item["description"]).strip(),
+                legal_disposition=str(item.get("legal_disposition", "fulfill")),
+                discover=dict(item.get("discover", {})),
+                commit=dict(item.get("commit", {})),
+                satisfy=dict(item.get("satisfy", {})),
+                consequences=dict(item.get("consequences", {})),
             ))
         return tuple(result)
 
@@ -691,6 +722,11 @@ class FileScriptPackageLoader:
             kind=str(item.get("kind", "narration")),
             text=str(item["text"]),
             speaker=str(item["speaker"]) if item.get("speaker") else None,
+            scene_id=str(item["scene_id"]) if item.get("scene_id") else None,
+            presentation_phase=(
+                str(item["presentation_phase"])
+                if item.get("presentation_phase") else None
+            ),
             origin_ids=frozenset(item.get("origin_ids", [])),
             required_flags=frozenset(item.get("required_flags", [])),
             required_any_flags=frozenset(item.get("required_any_flags", [])),
@@ -971,11 +1007,23 @@ class FileScriptPackageLoader:
                 story_day=int(item["story_day"]),
                 title=str(item["title"]),
                 prompt=str(item["prompt"]),
+                scene_id=str(item["scene_id"]) if item.get("scene_id") else None,
                 options=tuple(options),
                 followup_blocks=FileScriptPackageLoader._load_blocks(
                     item.get("followup_blocks", [])
                 ),
                 action_point_cost=int(item.get("action_point_cost", 0)),
+                cost_source=str(item.get(
+                    "cost_source",
+                    "desk" if str(item["decision_id"]) in {
+                        "dp2_08", "dp3_07", "dp5_12"
+                    } else "collective" if str(item["decision_id"]) in {
+                        "dp1_04", "dp3_01", "dp4_11", "dp6_10"
+                    } else (
+                        "interrupt" if str(item["decision_id"]).startswith("ev")
+                        else "attached"
+                    ),
+                )),
                 skippable=bool(item.get("skippable", False)),
                 input_kind=str(item.get("input_kind", "choice")),
                 input_schema=dict(item.get("input_schema", {})),
@@ -1023,6 +1071,7 @@ class FileScriptPackageLoader:
         households,
         limited_household_signatories,
         governance_config,
+        npc_demands,
         *,
         gameplay_schema_version: int,
         status: str,
@@ -1064,6 +1113,47 @@ class FileScriptPackageLoader:
                     "玩法 Schema v2 必须登记 36 户逐户底表",
                     details={"actual": len(households)},
                 )
+            if gameplay_schema_version >= 3:
+                profile_ids = {item.npc_id for item in profiles}
+                demand_npc_ids = {item.npc_id for item in npc_demands}
+                demand_ids = [item.demand_id for item in npc_demands]
+                if demand_npc_ids != profile_ids or len(demand_ids) != len(set(demand_ids)):
+                    raise ContentValidationError(
+                        "玩法 Schema v3 要求每名NPC恰有一个核心诉求",
+                        details={
+                            "missing_npc_ids": sorted(profile_ids - demand_npc_ids),
+                            "unknown_npc_ids": sorted(demand_npc_ids - profile_ids),
+                            "duplicate_demand_ids": sorted({
+                                item for item in demand_ids if demand_ids.count(item) > 1
+                            }),
+                        },
+                    )
+                allowed_dispositions = {"fulfill", "lawfully_refuse"}
+                invalid = [
+                    item.demand_id for item in npc_demands
+                    if item.legal_disposition not in allowed_dispositions
+                    or not all((item.title, item.category, item.description))
+                ]
+                if invalid:
+                    raise ContentValidationError(
+                        "NPC核心诉求字段或合法处置类型无效",
+                        details={"demand_ids": invalid},
+                    )
+                pool_ids = {
+                    str(item.get("resource_id"))
+                    for item in governance_config.get("resource_pools", [])
+                }
+                unknown_resources = sorted({
+                    str(resource.get("resource_id"))
+                    for demand in npc_demands
+                    for resource in demand.commit.get("resources", [])
+                    if str(resource.get("resource_id")) not in pool_ids
+                })
+                if unknown_resources:
+                    raise ContentValidationError(
+                        "NPC核心诉求引用了未登记资源",
+                        details={"resource_ids": unknown_resources},
+                    )
             npc_ids = {item.npc_id for item in profiles}
             unknown_household_npcs = sorted({
                 item.representative_npc for item in households
@@ -1452,7 +1542,9 @@ class FileScriptPackageLoader:
                 raise ContentValidationError("主结局顺序必须为 1-24")
             if main_endings[-1].condition != {"always": True}:
                 raise ContentValidationError("第 24 主结局必须是恒真兜底")
-        allowed_day_modes = {"playable", "simulated", "transition", "ending"}
+        allowed_day_modes = {
+            "playable", "simulated", "transition", "ending", "free_action"
+        }
         allowed_effect_fields = {
             "public_trust",
             "social_stability",
@@ -1515,6 +1607,16 @@ class FileScriptPackageLoader:
             if beat.beat_id in beat_ids:
                 raise ContentValidationError(f"beat_id 重复：{beat.beat_id}")
             beat_ids.add(beat.beat_id)
+            has_decision = bool(beat.opening_decision_id or beat.decision_ids)
+            if (
+                gameplay_schema_version >= 3
+                and not beat.opening_blocks
+                and not has_decision
+                and beat.day_mode != "free_action"
+            ):
+                raise ContentValidationError(
+                    f"空白剧情日必须明确标记为自由行动：{beat.beat_id}"
+                )
             matching = [item for item in calendar if item.contains(day)]
             if len(matching) != 1 or matching[0].chapter != beat.chapter:
                 raise ContentValidationError(f"story beat 章节与日历不一致：{beat.beat_id}")
@@ -1603,6 +1705,23 @@ class FileScriptPackageLoader:
                         details={"flags": sorted(unknown_block_flags)},
                     )
 
+        if gameplay_schema_version >= 3:
+            for day in range(1, 90):
+                current = story_days.get(day)
+                following = story_days.get(day + 1)
+                if current is None or following is None:
+                    continue
+                current_text = "\n".join(
+                    block.text.strip() for block in current.opening_blocks
+                )
+                following_text = "\n".join(
+                    block.text.strip() for block in following.opening_blocks
+                )
+                if current_text and current_text == following_text:
+                    raise ContentValidationError(
+                        f"相邻日期重复同一开场：D{day}/D{day + 1}"
+                    )
+
         opportunity_ids = {item.opportunity_id for item in opportunities}
         location_ids = [item.location_id for item in map_locations]
         if not map_locations or len(location_ids) != len(set(location_ids)):
@@ -1677,8 +1796,26 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(
                     f"决策玩家文本混入内部说明：{decision.decision_id}"
                 )
-            if decision.action_point_cost != 0:
-                raise ContentValidationError(f"强制决策必须为 0 行动点：{decision.decision_id}")
+            if decision.cost_source not in {
+                "interrupt", "desk", "collective", "attached", "contract"
+            }:
+                raise ContentValidationError(
+                    f"决策收费来源非法：{decision.decision_id}"
+                )
+            if decision.cost_source != "desk" and decision.action_point_cost != 0:
+                raise ContentValidationError(
+                    f"非主动案头决策不得另扣行动点：{decision.decision_id}"
+                )
+            if gameplay_schema_version >= 3 and decision.action_point_cost != 0:
+                raise ContentValidationError(
+                    f"剧情决定必须为零行动点：{decision.decision_id}"
+                )
+            if gameplay_schema_version >= 3 and (
+                not decision.presentation_blocks or not decision.followup_blocks
+            ):
+                raise ContentValidationError(
+                    f"决策缺少铺垫或后续：{decision.decision_id}"
+                )
             if decision.input_kind not in {"choice", "sorting", "allocation"}:
                 raise ContentValidationError(
                     f"决策输入类型非法：{decision.decision_id}"

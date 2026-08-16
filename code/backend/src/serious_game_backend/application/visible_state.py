@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import MetricBand, ScriptPackage
+from serious_game_backend.application.npc_demand_service import NPCDemandService
+from serious_game_backend.application.progress_broadcast_policy import (
+    progress_broadcast,
+)
 
 
 VISIBLE_INDICATORS = (
@@ -54,6 +58,9 @@ class VisibleStateProjector:
                 "text": session.pending_decision.visible_text,
                 "input_kind": session.pending_decision.input_kind,
                 "input_schema": input_schema or None,
+                "presentation_entry_id": (
+                    session.pending_decision.presentation_entry_id
+                ),
             }
         return {
             "session_id": session.session_id,
@@ -103,6 +110,8 @@ class VisibleStateProjector:
                 },
             },
             "indicators": indicators,
+            "progress_broadcast": progress_broadcast(session),
+            "npc_demands": NPCDemandService.public(session, package),
             "pending_decision": pending,
             "active_conversation": (
                 {
@@ -110,6 +119,8 @@ class VisibleStateProjector:
                     "opportunity_id": session.active_conversation.opportunity_id,
                     "npc_id": session.active_conversation.npc_id,
                     "turn_count": session.active_conversation.turn_count,
+                    "quoted_cost": session.active_conversation.quoted_cost,
+                    "cost_charged": session.active_conversation.cost_charged,
                 }
                 if session.active_conversation is not None else None
             ),

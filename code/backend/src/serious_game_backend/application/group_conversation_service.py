@@ -13,6 +13,7 @@ from serious_game_backend.application.ports import (
     ScriptPackageRepository,
 )
 from serious_game_backend.application.visible_state import VisibleStateProjector
+from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.domain.enums import SessionStatus
 from serious_game_backend.domain.errors import (
     ActionUnavailableError,
@@ -81,6 +82,7 @@ class GroupConversationService:
                 "reason": review_reason,
                 "visible_to_player": False,
             })
+            NPCDemandService.sync(session, package)
             session.state_version += 1
             session.touch()
             self._sessions.save(session, expected_version=state_version)
@@ -158,6 +160,7 @@ class GroupConversationService:
                     session.group_conversation_queue.pop(0)
                 )
                 session.active_group_conversation.status = "active"
+        NPCDemandService.sync(session, package)
         session.state_version += 1
         session.touch()
         self._sessions.save(session, expected_version=state_version)

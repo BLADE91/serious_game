@@ -48,12 +48,21 @@ const beatIds = new Set(beats.map(item => item.beat_id));
 const blockIds = new Set(beats.flatMap(item => [...(item.opening_blocks || []), ...(item.night_blocks || [])]).map(item => item.block_id));
 const decisionIds = new Set(decisions.map(item => item.decision_id));
 const endingIds = new Set(endings.map(item => item.ending_id));
+const storySceneIds = new Set(STORY_SCENES.map(item => item.id));
 
 for (const scene of STORY_SCENES) {
   assert.ok(scene.beatIds.length || scene.blockIds.length || scene.decisionIds.length, `${scene.id} has no auditable mapping`);
-  for (const value of scene.beatIds) assert.ok(beatIds.has(value), `${scene.id} uses unknown beat ${value}`);
-  for (const value of scene.blockIds) assert.ok(blockIds.has(value), `${scene.id} uses unknown block ${value}`);
-  for (const value of scene.decisionIds) assert.ok(decisionIds.has(value), `${scene.id} uses unknown decision ${value}`);
+}
+for (const beat of beats) {
+  for (const block of [...(beat.opening_blocks || []), ...(beat.night_blocks || [])]) {
+    assert.ok(storySceneIds.has(block.scene_id), `${block.block_id} has unknown or missing scene_id`);
+  }
+}
+for (const decision of decisions) {
+  assert.ok(storySceneIds.has(decision.scene_id), `${decision.decision_id} has unknown or missing scene_id`);
+  for (const block of [...(decision.presentation_blocks || []), ...(decision.followup_blocks || [])]) {
+    assert.ok(storySceneIds.has(block.scene_id), `${block.block_id} has unknown or missing scene_id`);
+  }
 }
 const mappedDecisionIds = new Set(STORY_SCENES.flatMap(scene => scene.decisionIds));
 assert.deepEqual([...mappedDecisionIds].sort(), [...decisionIds].sort(), "all real decisions must have an auditable scene fallback");

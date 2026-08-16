@@ -36,10 +36,10 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   assert.match(source, /className="conversation-bar gal-conversation-bar"/);
   assert.match(source, /compactCharacter\?\.role/);
   assert.match(source, /actionPointLabel\(item\)/);
-  assert.match(source, /api\.loadSnapshot[\s\S]*"已载入所选存档", true/);
-  assert.match(source, /refresh\(0, id, true, true, kind === "new" \? "start" : "latest"\)/);
+  assert.match(source, /api\.loadSnapshot[\s\S]*"已载入所选关键节点", true/);
+  assert.match(source, /refresh\(0, id, true, true, kind === "load" \? "latest" : "start"\)/);
   assert.match(source, /decisionReady && pending/);
-  assert.match(source, /disabled=\{narrative\.currentIndex >= playerLines\.length - 1 \|\| Boolean\(pending\)\}/);
+  assert.match(source, /disabled=\{narrative\.currentIndex >= playerLines\.length - 1\}>下一段/);
   assert.match(source, /visibleHistoryLines\.map/);
   assert.match(source, />自定义会议主题</);
   assert.match(source, /meetingTopicMode === "custom"/);
@@ -76,11 +76,12 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   assert.match(source, /\/countersign/);
   assert.match(source, /\/issue/);
   assert.match(source, /\/publish/);
-  assert.match(source, /function NightConversationViewer/);
-  assert.match(source, /人物自主互动已完成/);
-  assert.match(source, /本夜未触发自主互动/);
-  assert.match(source, /回看夜间密谈/);
-  assert.match(source, /morning_brief/);
+  assert.doesNotMatch(source, /function NightConversationViewer/);
+  assert.doesNotMatch(source, /agent_exchanges/);
+  assert.match(source, /九十日治理周期已结束/);
+  assert.match(source, /查看结局复盘/);
+  assert.match(source, /治理周期完成/);
+  assert.match(source, /私下联络仅汇入次晨简报/);
   assert.match(source, /function NpcStreamingReplies/);
   assert.match(source, /performNpcStream/);
   assert.match(source, /\/action\/stream/);
@@ -98,7 +99,7 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   assert.doesNotMatch(source, /item\.glyph/);
   assert.match(source, /卷宗 \{chineseIndex\(index\)\}/);
   const images = source.split("\n").filter(line => line.includes("<Image"));
-  assert.equal(images.length, 3);
+  assert.equal(images.length, 2);
   for (const image of images) {
     assert.match(image, /\bunoptimized\b/);
     assert.match(image, /\balt=/);
@@ -106,10 +107,8 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   }
   const portraitImage = images.find(line => line.includes('className="character-portrait"'));
   const sceneImage = images.find(line => line.includes('className="scene-backdrop"'));
-  const nightImage = images.find(line => line.includes('className="night-stage-backdrop"'));
   assert.match(portraitImage || "", /style=\{\{ objectFit: "contain", objectPosition: "center bottom" \}\}/);
   assert.doesNotMatch(sceneImage || "", /objectFit: "contain"/);
-  assert.match(nightImage || "", /alt="夜间会谈现场"/);
 });
 
 test("reads the private backend address from the Cloudflare runtime binding", async () => {
@@ -119,12 +118,12 @@ test("reads the private backend address from the Cloudflare runtime binding", as
   assert.doesNotMatch(source, /NEXT_PUBLIC_GAME_BACKEND_URL/);
 });
 
-test("keeps narrow-screen auxiliary controls touch friendly", async () => {
+test("keeps narrow-screen auxiliary controls touch friendly without a manual refresh button", async () => {
   const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
   const styles = await readFile(path.join(projectRoot, "app", "globals.css"), "utf8");
-  assert.match(source, /className="refresh-button"/);
-  assert.match(styles, /\.refresh-button, \.history-toggle, \.icon-button \{ min-height: 44px; \}/);
-  assert.match(styles, /\.refresh-button, \.icon-button \{ min-width: 44px; \}/);
+  assert.doesNotMatch(source, /className="refresh-button"/);
+  assert.match(styles, /\.history-toggle/);
+  assert.match(styles, /\.icon-button/);
 });
 
 test("uses the warm archival palette without the former green shell", async () => {
@@ -138,8 +137,12 @@ test("uses the warm archival palette without the former green shell", async () =
   assert.match(styles, /--charcoal: #1c1812/);
   assert.match(styles, /\.metric-strip \{[\s\S]*?background: #2a231a/);
   assert.match(styles, /\.context-panel \{[\s\S]*?background: var\(--paper-deep\)/);
-  assert.match(styles, /\.context-panel \{[\s\S]*?background: #d8c7a4/);
-  assert.match(styles, /\.panel-body \{ background: #d8c7a4/);
+  assert.match(styles, /\.context-panel \{[\s\S]*?background: #e3d1aa/);
+  assert.match(styles, /\.panel-body \{ background: #e3d1aa/);
+  assert.match(styles, /\.modal-backdrop \{[^}]*background: rgba\(18,13,8,\.72\);[^}]*backdrop-filter: none/);
+  assert.match(styles, /\.night-stage-shade \{[^}]*background: rgba\(16,13,10,\.24\)/);
+  assert.match(styles, /\.character-profile-stage::after \{ content: none; display: none; \}/);
+  assert.match(styles, /\.scene-backdrop \{ animation: scene-enter \.18s ease-out; \}/);
 });
 
 test("hides the retired day-four fatigue exposition from existing saves", async () => {
