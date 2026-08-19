@@ -28,6 +28,71 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = BACKEND_ROOT / "content" / "packages"
 
 
+def run_authoritative_wu_conversation(
+    test: unittest.TestCase,
+    *,
+    runtime,
+    client: TestClient,
+    headers: dict[str, str],
+    session_id: str,
+    account_id: str,
+    suffix: str,
+) -> dict:
+    session = runtime.sessions.get_owned(session_id, account_id)
+    session.pending_decision = None
+    session.pending_decision_queue.clear()
+    session.flags.add("flag_clan_map")
+    session.game_state = replace(session.game_state, story_day=2)
+    session.npc_demand_states["demand_wu_xiuying"]["due_day"] = 60
+    session.append_narrative(
+        story_day=2,
+        kind="narration",
+        text="吴秀英已在本段剧情中正式出现。",
+    )
+    runtime.sessions.save(session, expected_version=session.state_version)
+
+    started = client.post(
+        f"/api/game/session/{session_id}/action",
+        headers=headers,
+        json={
+            "input_mode": "conversation_start",
+            "client_action_id": f"authoritative-start-{suffix}",
+            "state_version": session.state_version,
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        },
+    )
+    test.assertEqual(200, started.status_code, started.text)
+    conversation_id = started.json()["conversation"]["conversation_id"]
+    turn = client.post(
+        f"/api/game/session/{session_id}/action",
+        headers=headers,
+        json={
+            "input_mode": "free_text",
+            "client_action_id": f"authoritative-turn-{suffix}",
+            "state_version": started.json()["state_version"],
+            "conversation_id": conversation_id,
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+            "player_text": "请把村里的真实情况说清楚。",
+        },
+    )
+    test.assertEqual(200, turn.status_code, turn.text)
+    ended = client.post(
+        f"/api/game/session/{session_id}/action",
+        headers=headers,
+        json={
+            "input_mode": "conversation_end",
+            "client_action_id": f"authoritative-end-{suffix}",
+            "state_version": turn.json()["state_version"],
+            "conversation_id": conversation_id,
+        },
+    )
+    test.assertEqual(200, ended.status_code, ended.text)
+    test.assertEqual("completed", ended.json()["completion_status"])
+    return ended.json()
+
+
 class RelationshipAndConversationV3Tests(unittest.TestCase):
     def setUp(self) -> None:
         self.settings = Settings(
@@ -414,8 +479,141 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
             subnetworks,
         )
 
+    def test_manual_save_load_restores_task2_state_and_durable_metadata(self) -> None:
+        ended = run_authoritative_wu_conversation(
+            self,
+            runtime=self.runtime,
+            client=self.client,
+            headers=self.headers,
+            session_id=self.session_id,
+            account_id="acct_relationship_v3",
+            suffix="manual-restore",
+        )
+        before = self.runtime.sessions.get_owned(
+            self.session_id, "acct_relationship_v3"
+        )
+        expected_known = set(before.known_npc_ids)
+        expected_contactable = set(before.contactable_npc_ids)
+        expected_edges = [dict(item) for item in before.relationship_edges]
+        expected_transcript = tuple(
+            dict(item) for item in before.completed_conversations[0].transcript
+        )
+        self.assertIn("npc_wu_xiuying", expected_known)
+        self.assertTrue(expected_contactable)
+        self.assertTrue(any(
+            item["edge_id"] == "rel_wu_zhou_village"
+            and item["visibility"] == "confirmed"
+            for item in expected_edges
+        ))
+
+        saved = self.client.post(
+            f"/api/game/session/{self.session_id}/manual-saves",
+            headers=self.headers,
+            json={
+                "client_action_id": "task2-manual-save-restore",
+                "state_version": ended["state_version"],
+                "slot_number": 1,
+                "display_name": "Task 2 state",
+                "overwrite": False,
+            },
+        )
+        self.assertEqual(200, saved.status_code, saved.text)
+
+        before.known_npc_ids.clear()
+        before.contactable_npc_ids.clear()
+        before.relationship_edges.clear()
+        before.completed_conversations.clear()
+        self.runtime.sessions.save(
+            before, expected_version=before.state_version
+        )
+        loaded = self.client.post(
+            f"/api/game/session/{self.session_id}/load-snapshot",
+            headers=self.headers,
+            json={
+                "client_action_id": "task2-manual-load-restore",
+                "state_version": ended["state_version"],
+                "snapshot_id": saved.json()["snapshot_id"],
+                "confirmed": True,
+            },
+        )
+        self.assertEqual(200, loaded.status_code, loaded.text)
+        restored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_relationship_v3"
+        )
+        self.assertEqual(expected_known, restored.known_npc_ids)
+        self.assertEqual(expected_contactable, restored.contactable_npc_ids)
+        self.assertEqual(expected_edges, restored.relationship_edges)
+        self.assertEqual(
+            expected_transcript,
+            restored.completed_conversations[0].transcript,
+        )
+        durable = self.runtime.npc_memories._repository.active_for_npc(
+            self.session_id, "npc_wu_xiuying", 90
+        )
+        self.assertEqual(
+            {"disclosure", "relationship", "demand"},
+            {item.memory_type for item in durable},
+        )
+        demand = next(item for item in durable if item.memory_type == "demand")
+        self.assertEqual(60, demand.due_day)
+        self.assertEqual("unresolved", demand.resolution_state)
+
 
 class RelationshipSqliteRestartTests(unittest.TestCase):
+    def test_authoritative_turn_memories_survive_through_d90_and_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "authoritative-memory.sqlite3"
+            settings = Settings(
+                environment="test",
+                content_root=PACKAGE_ROOT,
+                default_package_id="pkg_gameplay_v3",
+                repository="sqlite",
+                database_path=database_path,
+                role_llm_provider="fake",
+            )
+            runtime = build_container(settings)
+            client = TestClient(create_app(settings, runtime))
+            headers = {"X-Account-ID": "acct_authoritative_memory"}
+            created = client.post(
+                "/api/game/session",
+                headers=headers,
+                json={
+                    "client_request_id": "authoritative-memory-session",
+                    "package_id": "pkg_gameplay_v3",
+                },
+            )
+            self.assertEqual(201, created.status_code, created.text)
+            session_id = created.json()["session_id"]
+            run_authoritative_wu_conversation(
+                self,
+                runtime=runtime,
+                client=client,
+                headers=headers,
+                session_id=session_id,
+                account_id="acct_authoritative_memory",
+                suffix="sqlite-restart",
+            )
+
+            restarted = build_container(settings)
+            durable = restarted.npc_memories._repository.active_for_npc(
+                session_id, "npc_wu_xiuying", 90
+            )
+            self.assertEqual(
+                {"disclosure", "relationship", "demand"},
+                {item.memory_type for item in durable},
+            )
+            by_type = {item.memory_type: item for item in durable}
+            self.assertTrue(all(item.expires_after_day == 90 for item in durable))
+            self.assertTrue(all(
+                item.actor_id == "npc_wu_xiuying" for item in durable
+            ))
+            self.assertIn("柳林村宗族权力图", by_type["disclosure"].content)
+            self.assertEqual("observed", by_type["disclosure"].resolution_state)
+            self.assertEqual("observed", by_type["relationship"].resolution_state)
+            self.assertIn("公开底账", by_type["demand"].content)
+            self.assertEqual(60, by_type["demand"].due_day)
+            self.assertEqual("unresolved", by_type["demand"].resolution_state)
+
     def test_new_snapshot_fields_survive_sqlite_restart(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "runtime.sqlite3"

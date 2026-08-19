@@ -230,18 +230,13 @@ class ActionService:
                 research_event=research_event,
             )
             if draft["kind"] == "free_text":
-                try:
-                    self._npc_memories.record(
-                        session_id=session_id,
-                        account_id=account_id,
-                        npc_id=draft["npc_id"],
-                        operation_id=operation_id,
-                        story_day=current.game_state.story_day,
-                        candidate=draft["turn"].memory_candidate,
-                    )
-                except Exception:
-                    # 记忆是可重建的软状态，不允许反向破坏已提交的权威回合。
-                    pass
+                self._record_turn_memories(
+                    current,
+                    package,
+                    draft,
+                    account_id=account_id,
+                    operation_id=operation_id,
+                )
             return response
         except Exception as exc:
             current = self._sessions.get_owned(session_id, account_id)
@@ -1122,6 +1117,90 @@ class ActionService:
             transcript=tuple(dict(item) for item in conversation.transcript),
             started_at=conversation.started_at,
         ))
+
+    def _record_turn_memories(
+        self,
+        session,
+        package,
+        draft: dict,
+        *,
+        account_id: str,
+        operation_id: str,
+    ) -> None:
+        turn = draft["turn"]
+        npc_id = draft["npc_id"]
+        common = {
+            "session_id": session.session_id,
+            "account_id": account_id,
+            "npc_id": npc_id,
+            "operation_id": operation_id,
+            "story_day": session.game_state.story_day,
+        }
+        try:
+            self._npc_memories.record(
+                **common,
+                candidate=turn.memory_candidate,
+            )
+        except Exception:
+            # 记忆是可重建的软状态，不允许反向破坏已提交的权威回合。
+            pass
+
+        authoritative: list[dict] = []
+        if turn.disclosure_id is not None:
+            fact = package.facts.get(turn.disclosure_id)
+            authoritative.append({
+                "memory_type": "disclosure",
+                "content": (
+                    f"{fact.title}：{fact.text}"
+                    if fact is not None else f"已披露事实：{turn.disclosure_id}"
+                ),
+                "actor_id": npc_id,
+                "due_day": None,
+                "resolution_state": "observed",
+            })
+        if turn.attitude_delta != 0 or turn.anxiety_delta != 0:
+            npc_name = next(
+                (
+                    item.name for item in package.npc_profiles
+                    if item.npc_id == npc_id
+                ),
+                npc_id,
+            )
+            authoritative.append({
+                "memory_type": "relationship",
+                "content": f"本次会谈使玩家与{npc_name}的关系发生了可观察变化。",
+                "actor_id": npc_id,
+                "due_day": None,
+                "resolution_state": "observed",
+            })
+        for demand in package.npc_demands:
+            if demand.npc_id != npc_id:
+                continue
+            state = session.npc_demand_states.get(demand.demand_id, {})
+            status = str(state.get("status", "unknown"))
+            if status not in {"discovered", "acknowledged", "committed"}:
+                continue
+            raw_due_day = state.get(
+                "due_day", demand.satisfy.get("expires_day")
+            )
+            authoritative.append({
+                "memory_type": "demand",
+                "content": f"{demand.title}：{demand.description}",
+                "actor_id": demand.npc_id,
+                "due_day": (
+                    int(raw_due_day) if raw_due_day is not None else None
+                ),
+                "resolution_state": "unresolved",
+            })
+        for memory in authoritative:
+            try:
+                self._npc_memories.record_authoritative(
+                    **common,
+                    **memory,
+                )
+            except Exception:
+                # 每条权威记忆独立落库，单条失败不能阻断已提交的游戏动作。
+                continue
 
     def _owned_session(self, session_id: str, account_id: str):
         session = self._sessions.get_owned(session_id, account_id)

@@ -64,7 +64,6 @@ class NPCMemoryService:
         if not content:
             return None
         memory_type = self._memory_type(content)
-        durable = memory_type != "episode"
         due_match = re.search(
             r"(?:D\s*(\d{1,2})(?=$|[\s前后截止、，。；])|"
             r"第\s*(\d{1,2})\s*日)",
@@ -77,6 +76,70 @@ class NPCMemoryService:
         unresolved = any(
             marker in content for marker in ("尚未", "未兑现", "待办", "待解决")
         )
+        return self._persist(
+            session_id=session_id,
+            account_id=account_id,
+            npc_id=npc_id,
+            operation_id=operation_id,
+            story_day=story_day,
+            content=content,
+            memory_type=memory_type,
+            actor_id=npc_id,
+            due_day=due_day,
+            resolution_state=(
+                "unresolved" if memory_type != "episode" and unresolved else
+                "open" if memory_type in {"commitment", "demand"} else
+                "observed"
+            ),
+        )
+
+    def record_authoritative(
+        self,
+        *,
+        session_id: str,
+        account_id: str,
+        npc_id: str,
+        operation_id: str,
+        story_day: int,
+        content: str,
+        memory_type: str,
+        actor_id: str,
+        due_day: int | None,
+        resolution_state: str,
+    ) -> NPCMemory | None:
+        if memory_type not in {"commitment", "demand", "disclosure", "relationship"}:
+            raise ValueError("invalid authoritative memory type")
+        value = self._sanitize(content)
+        if not value:
+            return None
+        return self._persist(
+            session_id=session_id,
+            account_id=account_id,
+            npc_id=npc_id,
+            operation_id=operation_id,
+            story_day=story_day,
+            content=value,
+            memory_type=memory_type,
+            actor_id=actor_id,
+            due_day=due_day,
+            resolution_state=resolution_state,
+        )
+
+    def _persist(
+        self,
+        *,
+        session_id: str,
+        account_id: str,
+        npc_id: str,
+        operation_id: str,
+        story_day: int,
+        content: str,
+        memory_type: str,
+        actor_id: str,
+        due_day: int | None,
+        resolution_state: str,
+    ) -> NPCMemory:
+        durable = memory_type != "episode"
         memory = NPCMemory(
             memory_id=f"mem_{secrets.token_hex(12)}",
             session_id=session_id,
@@ -90,14 +153,10 @@ class NPCMemoryService:
             expires_after_day=(
                 90 if durable else min(90, story_day + self._ttl_days)
             ),
-            actor_id=npc_id,
+            actor_id=actor_id,
             commitment_content=(content if durable else None),
             due_day=due_day,
-            resolution_state=(
-                "unresolved" if durable and unresolved else
-                "open" if memory_type in {"commitment", "demand"} else
-                "observed"
-            ),
+            resolution_state=resolution_state,
         )
         self._repository.save(memory)
         if not durable:
