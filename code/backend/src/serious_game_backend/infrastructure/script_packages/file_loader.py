@@ -1049,6 +1049,110 @@ class FileScriptPackageLoader:
         }
 
     @staticmethod
+    def _validate_action_variants(
+        governance_config: dict,
+        *,
+        resource_actions: dict[str, ResourceActionDefinition],
+        profiles: tuple[NPCProfileStub, ...],
+        map_locations: tuple[MapLocationDefinition, ...],
+    ) -> None:
+        variants = governance_config.get("action_variants", [])
+        if not isinstance(variants, list) or not variants:
+            raise ContentValidationError("玩法 Schema v4 必须登记行动变体")
+        variant_ids = [str(item.get("variant_id", "")) for item in variants]
+        if any(not item for item in variant_ids) or len(variant_ids) != len(set(variant_ids)):
+            raise ContentValidationError("行动变体 ID 不能为空或重复")
+
+        family_ids = {
+            "household_visit",
+            "cadre_interview",
+            "leadership_meeting",
+            "inspect_archives",
+        }
+        enabled_families = {
+            str(item.get("action_id", ""))
+            for item in variants
+            if item.get("enabled", False)
+        }
+        if enabled_families != family_ids:
+            raise ContentValidationError(
+                "启用的行动变体必须且只能归入四项基础行动",
+                details={
+                    "missing": sorted(family_ids - enabled_families),
+                    "unexpected": sorted(enabled_families - family_ids),
+                },
+            )
+
+        location_ids = {item.location_id for item in map_locations}
+        npc_ids = {item.npc_id for item in profiles}
+        allowed_outcomes = {"fact", "flag", "state", "resource", "document", "follow_up"}
+        required_cost_tiers = {"normal", "sensitive", "acceptance"}
+        for item in variants:
+            variant_id = str(item.get("variant_id", ""))
+            action_id = str(item.get("action_id", ""))
+            legacy_action_id = str(item.get("legacy_action_id", ""))
+            if action_id not in family_ids:
+                raise ContentValidationError(
+                    f"行动变体引用未知基础行动：{variant_id}"
+                )
+            if legacy_action_id not in resource_actions:
+                raise ContentValidationError(
+                    f"行动变体引用未知旧工具：{variant_id}"
+                )
+            if not item.get("enabled", False):
+                continue
+            required_fields = {
+                "unlock_day", "required_flags", "required_any_flags",
+                "legal_location_ids", "target_kind", "legal_target_ids",
+                "action_point_costs", "resource_costs", "visible_result",
+                "hard_outcomes",
+            }
+            missing = sorted(required_fields - set(item))
+            if missing:
+                raise ContentValidationError(
+                    f"启用的行动变体缺少声明：{variant_id}",
+                    details={"missing": missing},
+                )
+            legal_locations = set(item["legal_location_ids"])
+            if not legal_locations or not legal_locations.issubset(location_ids):
+                raise ContentValidationError(
+                    f"启用的行动变体地点无效：{variant_id}"
+                )
+            legal_targets = set(item["legal_target_ids"])
+            if not legal_targets:
+                raise ContentValidationError(
+                    f"启用的行动变体目标范围为空：{variant_id}"
+                )
+            if item["target_kind"] != "available_archive" and not legal_targets.issubset(npc_ids):
+                raise ContentValidationError(
+                    f"启用的行动变体引用未知人物：{variant_id}"
+                )
+            costs = item["action_point_costs"]
+            if set(costs) != required_cost_tiers or any(
+                type(value) is not int or value < 0 for value in costs.values()
+            ):
+                raise ContentValidationError(
+                    f"启用的行动变体行动点成本无效：{variant_id}"
+                )
+            if not isinstance(item["resource_costs"], list):
+                raise ContentValidationError(
+                    f"启用的行动变体资源成本无效：{variant_id}"
+                )
+            if not str(item["visible_result"]).strip():
+                raise ContentValidationError(
+                    f"启用的行动变体缺少可见结果：{variant_id}"
+                )
+            outcomes = item["hard_outcomes"]
+            if not outcomes or any(
+                str(outcome.get("kind", "")) not in allowed_outcomes
+                or not str(outcome.get("id", "")).strip()
+                for outcome in outcomes
+            ):
+                raise ContentValidationError(
+                    f"enabled variant requires an authoritative hard outcome: {variant_id}"
+                )
+
+    @staticmethod
     def _validate(
         actions,
         calendar,
@@ -1301,6 +1405,13 @@ class FileScriptPackageLoader:
                         "missing": sorted(expected_base_actions - base_action_ids),
                         "unexpected": sorted(base_action_ids - expected_base_actions),
                     },
+                )
+            if gameplay_schema_version >= 4:
+                FileScriptPackageLoader._validate_action_variants(
+                    governance_config,
+                    resource_actions=resource_actions,
+                    profiles=profiles,
+                    map_locations=map_locations,
                 )
             permissions = set(governance_config.get("permissions", {}))
             if permissions != {"1.1", "1.2", "1.3", "1.4", "1.5"}:

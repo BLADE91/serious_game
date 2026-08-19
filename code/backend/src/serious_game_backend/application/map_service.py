@@ -3,6 +3,12 @@ from __future__ import annotations
 from serious_game_backend.application.interaction_opportunity_service import (
     InteractionOpportunityService,
 )
+from serious_game_backend.application.action_variants import (
+    configured_variants,
+    default_npc_location,
+    variant_availability,
+    variant_target_choices,
+)
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
 
@@ -12,6 +18,8 @@ class MapService:
         self._opportunities = opportunities
 
     def build(self, session: GameSession, package: ScriptPackage) -> dict:
+        if package.gameplay_schema_version >= 4:
+            return self._build_governance_map(session, package)
         available_items = self._opportunities.list_available(session, package)
         available = {item.opportunity_id for item in available_items}
         opportunities = {item.opportunity_id: item for item in available_items}
@@ -103,6 +111,81 @@ class MapService:
                 "description": item.description,
                 "visual_state": visual_state,
                 "entry_cards": entry_cards,
+                "newly_unlocked": False,
+            })
+        return {
+            "state_version": session.state_version,
+            "story_day": session.game_state.story_day,
+            "locations": locations,
+        }
+
+    def _build_governance_map(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+    ) -> dict:
+        variants = tuple(
+            item for item in configured_variants(package)
+            if item.get("enabled", False)
+        )
+        active_event_ids = {
+            item.event_id
+            for item in session.visible_events
+            if item.story_day == session.game_state.story_day
+        }
+        locations = []
+        for location in package.map_locations:
+            location_unlocked = (
+                session.game_state.story_day >= location.unlock_day
+                and location.required_flags.issubset(session.flags)
+            )
+            cards = []
+            for variant in variants:
+                if location.location_id not in variant["legal_location_ids"]:
+                    continue
+                available, reason = variant_availability(session, variant)
+                if not location_unlocked:
+                    available = False
+                    reason = reason or f"第 {location.unlock_day} 日后开放"
+                target_choices = variant_target_choices(session, package, variant)
+                legal_npc_ids = {
+                    item["target_id"] for item in target_choices
+                    if str(item["target_id"]).startswith("npc_")
+                }
+                preselected_npc_ids = [
+                    npc_id for npc_id in variant.get("legal_target_ids", ())
+                    if npc_id in legal_npc_ids
+                    and default_npc_location(npc_id) == location.location_id
+                ]
+                cards.append({
+                    "title": variant.get("location_labels", {}).get(
+                        location.location_id, variant["name"]
+                    ),
+                    "entry_type": "governance_navigation",
+                    "description": variant.get(
+                        "description", variant["visible_result"]
+                    ),
+                    "action_id": variant["action_id"],
+                    "variant_id": variant["variant_id"],
+                    "preselected_location_id": location.location_id,
+                    "preselected_npc_ids": preselected_npc_ids,
+                    "available": available,
+                    "unavailable_reason": reason,
+                })
+            if not location_unlocked:
+                visual_state = "locked"
+            elif any(card["available"] for card in cards):
+                visual_state = "available"
+            elif set(location.linked_event_ids) & active_event_ids:
+                visual_state = "event_active"
+            else:
+                visual_state = "known"
+            locations.append({
+                "location_id": location.location_id,
+                "name": location.name,
+                "description": location.description,
+                "visual_state": visual_state,
+                "entry_cards": cards,
                 "newly_unlocked": False,
             })
         return {

@@ -173,6 +173,8 @@ class GovernanceActionStartRequest(BaseModel):
     action_kind: str = Field(
         pattern="^(household_visit|cadre_interview|leadership_meeting|inspect_archives)$"
     )
+    variant_id: str | None = Field(default=None, min_length=1, max_length=128)
+    location_id: str | None = Field(default=None, min_length=1, max_length=128)
     target_ids: list[str] = Field(default_factory=list, max_length=8)
     topic: str = Field(default="", max_length=500)
     archive_ids: list[str] = Field(default_factory=list, max_length=32)

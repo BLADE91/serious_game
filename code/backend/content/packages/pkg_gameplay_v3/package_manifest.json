@@ -1,0 +1,13 @@
+{
+  "package_id": "pkg_gameplay_v3",
+  "title": "浊流之上",
+  "package_version": "3.0.0-action-unification",
+  "source_version": "最终剧本_20260723",
+  "content_hash": "sha256:3adaa21a47eab9074fc822830244d8bdd617f2d3e70b7b647cf890f599690334",
+  "status": "draft",
+  "gameplay_schema_version": 4,
+  "script_schema_version": 2,
+  "rules_schema_version": 3,
+  "notes": "四项治理行动族与旧工具变体统一；地图只提供治理导航，旧包保持独立可读。",
+  "source_sha256": "sha256:594c907b5953a402cf22d8d6fe1d0a3c0dc302126b65d04e35bf3813fb62585e"
+}

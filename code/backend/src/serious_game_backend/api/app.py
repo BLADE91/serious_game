@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextvars import ContextVar
 import json
+import re
 import secrets
 
 from fastapi import FastAPI, Header, Query, Request, Response
@@ -42,9 +43,18 @@ from serious_game_backend.api.schemas import (
 )
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.action_cost_policy import quote_cost
+from serious_game_backend.application.action_variants import (
+    configured_variants,
+    public_variant,
+    variant_availability,
+)
 from serious_game_backend.bootstrap import Container, build_container
 from serious_game_backend.config import Settings
-from serious_game_backend.domain.errors import DomainError, NotFoundError
+from serious_game_backend.domain.errors import (
+    DomainError,
+    NotFoundError,
+    PackageRetiredError,
+)
 from serious_game_backend.domain.errors import (
     AuthenticationRequiredError,
     RegistrationDisabledError,
@@ -132,9 +142,24 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
         return error_response(exc)
 
+    def retired_session_error(path: str, account_id: str) -> PackageRetiredError | None:
+        match = re.match(r"^/api/game/session/([^/]+)(?:/|$)", path)
+        if match is None:
+            return None
+        session = runtime.game_sessions.get_owned(match.group(1), account_id)
+        package = runtime.packages.get(session.package_id) if session else None
+        if package is not None and package.status == "retired":
+            return PackageRetiredError("退役剧本包仅供复盘，不能继续写入")
+        return None
+
     @app.middleware("http")
     async def production_authentication(request: Request, call_next):
         if not authentication_enabled:
+            if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+                account_id = request.headers.get("X-Account-ID", "").strip()
+                retired_error = retired_session_error(request.url.path, account_id)
+                if retired_error is not None:
+                    return error_response(retired_error)
             return await call_next(request)
         public_paths = {
             "/health/live", "/health/ready", "/api/auth/login", "/api/auth/register",
@@ -156,6 +181,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 runtime.auth.verify_csrf(
                     principal, request.headers.get("X-CSRF-Token")
                 )
+                retired_error = retired_session_error(
+                    request.url.path, principal.account_id
+                )
+                if retired_error is not None:
+                    raise retired_error
         except DomainError as exc:
             return error_response(exc)
         context_token = _principal_context.set(principal)
@@ -258,7 +288,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             )
         )
         action_blocked_reason = None
-        if not active:
+        if package.status == "retired":
+            action_blocked_reason = "该剧本包已退役，本局仅供复盘"
+        elif not active:
             action_blocked_reason = "本局已经结束"
         elif busy:
             action_blocked_reason = "上一操作仍在处理中，请等待原操作完成"
@@ -274,19 +306,22 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             action_blocked_reason = "当前剧情节点不开放自主行动"
         return {
             "can_choose": (
-                active and not busy and pending
+                package.status != "retired" and active and not busy and pending
                 and not conversing and not group_conversing
             ),
             "can_act": (
-                active and not busy and not pending and not conversing
+                package.status != "retired"
+                and active and not busy and not pending and not conversing
                 and not group_conversing and not governance_active and allow_actions
             ),
             "can_talk": (
-                active and not busy and not pending and not group_conversing
+                package.status != "retired"
+                and active and not busy and not pending and not group_conversing
                 and not governance_active and (conversing or allow_actions)
             ),
             "can_end_day": (
-                active and not busy and not pending and not conversing
+                package.status != "retired"
+                and active and not busy and not pending and not conversing
                 and not group_conversing and not governance_active and allow_end_day
             ),
             "action_blocked_reason": action_blocked_reason,
@@ -333,6 +368,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     "description": item["description"],
                     "permissions": item["permissions"],
                     "target_kind": item["target_kind"],
+                    "variants": [
+                        public_variant(session, package, variant)
+                        for variant in configured_variants(package)
+                        if variant.get("action_id") == item["action_id"]
+                        and variant_availability(session, variant)[0]
+                    ] if package.gameplay_schema_version >= 4 else [],
                 })
             return tier.value, values
         available_opportunities = (
@@ -777,6 +818,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "created_at": session.created_at,
                 "updated_at": session.updated_at,
                 "loadable": loadable,
+                "mode": (
+                    "playable"
+                    if loadable and package is not None and package.status != "retired"
+                    else "review_only"
+                ),
                 "unavailable_reason": None if loadable else "该进度使用旧版剧本内容，当前版本无法安全载入",
             }
         return {
@@ -1084,6 +1130,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             session_id=session_id,
             state_version=body.state_version,
             action_kind=body.action_kind,
+            variant_id=body.variant_id,
+            location_id=body.location_id,
             target_ids=tuple(body.target_ids),
             topic=body.topic,
             archive_ids=tuple(body.archive_ids),

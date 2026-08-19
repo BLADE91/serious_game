@@ -1,0 +1,444 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+import json
+import shutil
+import tempfile
+import unittest
+
+from fastapi.testclient import TestClient
+
+from serious_game_backend.api.app import create_app
+from serious_game_backend.bootstrap import build_container
+from serious_game_backend.config import Settings
+from serious_game_backend.domain.errors import ContentValidationError
+from serious_game_backend.infrastructure.script_packages.file_loader import (
+    FileScriptPackageLoader,
+)
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_ROOT = BACKEND_ROOT / "content" / "packages"
+ACTION_FAMILIES = {
+    "household_visit",
+    "cadre_interview",
+    "leadership_meeting",
+    "inspect_archives",
+}
+
+
+def _variant_config(base: dict) -> dict:
+    config = dict(base)
+    config["action_variants"] = [
+        {
+            "variant_id": "field_visit",
+            "legacy_action_id": "field_visit",
+            "action_id": "household_visit",
+            "name": "现场走访",
+            "enabled": True,
+            "unlock_day": 1,
+            "required_flags": [],
+            "required_any_flags": [],
+            "legal_location_ids": [
+                "loc_liulin_village",
+                "loc_hongda_factory",
+                "loc_county_hospital",
+            ],
+            "target_kind": "household_representative",
+            "legal_target_ids": list(base["household_representative_npc_ids"]),
+            "action_point_costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
+            "resource_costs": [],
+            "visible_result": "形成现场走访记录和待办事项。",
+            "hard_outcomes": [{"kind": "follow_up", "id": "governance_action_record"}],
+            "location_labels": {
+                "loc_liulin_village": "入村走访",
+                "loc_hongda_factory": "化工厂现场核查",
+                "loc_county_hospital": "医院材料核验",
+            },
+        },
+        {
+            "variant_id": "interview_cadre",
+            "legacy_action_id": "interview_cadre",
+            "action_id": "cadre_interview",
+            "name": "干部约谈",
+            "enabled": True,
+            "unlock_day": 1,
+            "required_flags": [],
+            "required_any_flags": [],
+            "legal_location_ids": ["loc_county_government"],
+            "target_kind": "cadre",
+            "legal_target_ids": list(base["cadre_npc_ids"]),
+            "action_point_costs": {"normal": 2, "sensitive": 3, "acceptance": 4},
+            "resource_costs": [],
+            "visible_result": "形成干部访谈记录和待核材料清单。",
+            "hard_outcomes": [{"kind": "document", "id": "governance_action_record"}],
+        },
+        {
+            "variant_id": "convene_leadership_meeting",
+            "legacy_action_id": "convene_leadership_meeting",
+            "action_id": "leadership_meeting",
+            "name": "班子会议",
+            "enabled": True,
+            "unlock_day": 1,
+            "required_flags": [],
+            "required_any_flags": [],
+            "legal_location_ids": ["loc_county_government"],
+            "target_kind": "meeting_participant",
+            "legal_target_ids": list(base["leadership_meeting_npc_ids"]),
+            "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
+            "resource_costs": [],
+            "visible_result": "形成会议记录及依法通过的决议或文件。",
+            "hard_outcomes": [{"kind": "document", "id": "meeting_record"}],
+        },
+        {
+            "variant_id": "public_hearing",
+            "legacy_action_id": "public_hearing",
+            "action_id": "leadership_meeting",
+            "name": "公开听证",
+            "enabled": True,
+            "unlock_day": 1,
+            "required_flags": [],
+            "required_any_flags": [],
+            "legal_location_ids": ["loc_county_government", "loc_liulin_village"],
+            "target_kind": "meeting_participant",
+            "legal_target_ids": [
+                "npc_zhao_jianguo",
+                "npc_feng_jingzhi",
+                "npc_zhou_dashan",
+                "npc_wu_xiuying",
+                "npc_he_tiezhu",
+                "npc_tan_laoliu",
+                "npc_yuan_guilan",
+                "npc_ning_dehai",
+            ],
+            "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
+            "resource_costs": ["hearing_venue"],
+            "visible_result": "形成公开听证记录和程序性结论。",
+            "hard_outcomes": [{"kind": "document", "id": "meeting_record"}],
+        },
+        {
+            "variant_id": "clan_leader_campaign",
+            "legacy_action_id": "clan_leader_campaign",
+            "action_id": "leadership_meeting",
+            "name": "宗族议事",
+            "enabled": True,
+            "unlock_day": 31,
+            "required_flags": [],
+            "required_any_flags": [],
+            "legal_location_ids": ["loc_zhou_ancestral_hall"],
+            "target_kind": "meeting_participant",
+            "legal_target_ids": [
+                "npc_zhou_dashan",
+                "npc_zhou_kuiyuan",
+                "npc_zhou_mancang",
+            ],
+            "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
+            "resource_costs": ["clan_mediation"],
+            "visible_result": "形成宗族议事记录和后续事项。",
+            "hard_outcomes": [{"kind": "follow_up", "id": "meeting_record"}],
+        },
+        {
+            "variant_id": "collect_blood_lead_report",
+            "legacy_action_id": "collect_blood_lead_report",
+            "action_id": "inspect_archives",
+            "name": "调取血铅材料",
+            "enabled": True,
+            "unlock_day": 46,
+            "required_flags": [],
+            "required_any_flags": [
+                "血铅疑云·初闻",
+                "掌握血铅",
+                "flag_blood_lead_known",
+            ],
+            "legal_location_ids": ["loc_county_hospital", "loc_liulin_village"],
+            "target_kind": "available_archive",
+            "legal_target_ids": ["available_archives"],
+            "action_point_costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
+            "resource_costs": ["county_hospital_records"],
+            "visible_result": "取得并登记符合授权条件的医院材料。",
+            "hard_outcomes": [{"kind": "document", "id": "archive_read_record"}],
+        },
+    ]
+    return config
+
+
+class ActionUnificationV3Tests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.settings = Settings(
+            environment="test",
+            content_root=PACKAGE_ROOT,
+            default_package_id="pkg_gameplay_v2",
+            repository="memory",
+            role_llm_provider="fake",
+        )
+        self.runtime = build_container(self.settings)
+        base = self.runtime.packages.get("pkg_gameplay_v2")
+        repaired = replace(
+            base,
+            package_id="pkg_action_unification_fixture",
+            package_version="test-v4",
+            content_hash="sha256:action-unification-fixture",
+            gameplay_schema_version=4,
+            governance_config=_variant_config(base.governance_config),
+        )
+        self.runtime.packages._items[repaired.package_id] = repaired
+        self.client = TestClient(create_app(self.settings, self.runtime))
+        self.headers = {"X-Account-ID": "acct_action_unification"}
+        response = self.client.post(
+            "/api/game/session",
+            headers=self.headers,
+            json={
+                "client_request_id": "action-unification-session-0001",
+                "package_id": repaired.package_id,
+            },
+        )
+        self.assertEqual(201, response.status_code, response.text)
+        self.session_id = response.json()["session_id"]
+        self._set_story_state(day=2)
+
+    def _set_story_state(self, *, day: int, flags: set[str] | None = None) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        session.pending_decision = None
+        session.flags = set(flags or ())
+        session.game_state = replace(session.game_state, story_day=day)
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+
+    def _actions(self) -> list[dict]:
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/actions", headers=self.headers
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        return response.json()["actions"]
+
+    def _map(self) -> dict:
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/map", headers=self.headers
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        return response.json()
+
+    def test_actions_expose_exactly_four_families_with_current_variants(self) -> None:
+        actions = self._actions()
+        self.assertEqual(ACTION_FAMILIES, {item["action_id"] for item in actions})
+        self.assertEqual(4, len(actions))
+        field_visit = next(
+            variant
+            for action in actions
+            for variant in action["variants"]
+            if variant["variant_id"] == "field_visit"
+        )
+        self.assertEqual("household_visit", field_visit["action_id"])
+        self.assertIn("visible_result", field_visit)
+        self.assertNotIn("resource_action", json.dumps(actions, ensure_ascii=False))
+
+    def test_map_uses_non_executable_governance_descriptors(self) -> None:
+        cards = [
+            card
+            for location in self._map()["locations"]
+            for card in location["entry_cards"]
+        ]
+        self.assertTrue(cards)
+        self.assertTrue(all(card["action_id"] in ACTION_FAMILIES for card in cards))
+        self.assertTrue(all("preselected_location_id" in card for card in cards))
+        self.assertTrue(all("preselected_npc_ids" in card for card in cards))
+        self.assertTrue(all("submit" not in card for card in cards))
+        self.assertTrue(all(card["entry_type"] != "resource_action" for card in cards))
+
+    def test_map_uses_contextual_field_labels_and_keeps_blood_lead_locked(self) -> None:
+        def card(location_id: str, variant_id: str) -> dict:
+            location = next(
+                item for item in self._map()["locations"]
+                if item["location_id"] == location_id
+            )
+            return next(
+                item for item in location["entry_cards"]
+                if item.get("variant_id") == variant_id
+            )
+
+        self.assertEqual("入村走访", card("loc_liulin_village", "field_visit")["title"])
+        self.assertEqual("化工厂现场核查", card("loc_hongda_factory", "field_visit")["title"])
+        self.assertEqual("医院材料核验", card("loc_county_hospital", "field_visit")["title"])
+
+        self._set_story_state(day=45, flags={"掌握血铅"})
+        self.assertFalse(card("loc_county_hospital", "collect_blood_lead_report")["available"])
+        self._set_story_state(day=46)
+        self.assertFalse(card("loc_county_hospital", "collect_blood_lead_report")["available"])
+        self._set_story_state(day=46, flags={"掌握血铅"})
+        self.assertTrue(card("loc_county_hospital", "collect_blood_lead_report")["available"])
+
+    def test_meeting_variants_filter_their_own_legal_participants(self) -> None:
+        self._set_story_state(day=31)
+        variants = {
+            variant["variant_id"]: variant
+            for action in self._actions()
+            for variant in action["variants"]
+        }
+        package = self.runtime.packages.get("pkg_action_unification_fixture")
+        leadership = {
+            item["target_id"]
+            for item in variants["convene_leadership_meeting"]["target_choices"]
+        }
+        hearing = {
+            item["target_id"]
+            for item in variants["public_hearing"]["target_choices"]
+        }
+        clan = {
+            item["target_id"]
+            for item in variants["clan_leader_campaign"]["target_choices"]
+        }
+        self.assertTrue(leadership)
+        self.assertTrue(leadership.issubset(
+            set(package.governance_config["leadership_meeting_npc_ids"])
+        ))
+        self.assertTrue(hearing)
+        self.assertTrue(hearing.issubset({
+                "npc_zhao_jianguo", "npc_feng_jingzhi", "npc_zhou_dashan",
+                "npc_wu_xiuying", "npc_he_tiezhu", "npc_tan_laoliu",
+                "npc_yuan_guilan", "npc_ning_dehai",
+        }))
+        self.assertTrue(clan)
+        self.assertTrue(clan.issubset(
+            {"npc_zhou_dashan", "npc_zhou_kuiyuan", "npc_zhou_mancang"}
+        ))
+        self.assertNotEqual(leadership, hearing)
+        self.assertNotEqual(hearing, clan)
+
+    def test_variant_targets_do_not_reveal_unintroduced_npcs(self) -> None:
+        variants = {
+            variant["variant_id"]: variant
+            for action in self._actions()
+            for variant in action["variants"]
+        }
+        leadership_ids = {
+            item["target_id"]
+            for item in variants["convene_leadership_meeting"]["target_choices"]
+        }
+        self.assertNotIn("npc_gu_keming", leadership_ids)
+
+    def test_governance_submission_executes_selected_variant_context(self) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": session.state_version,
+                "action_kind": "leadership_meeting",
+                "variant_id": "public_hearing",
+                "location_id": "loc_liulin_village",
+                "target_ids": ["npc_zhao_jianguo", "npc_zhou_dashan"],
+                "topic": "补偿程序",
+            },
+        )
+        self.assertEqual(201, response.status_code, response.text)
+        self.assertEqual("public_hearing", response.json()["action"]["variant_id"])
+        self.assertEqual("loc_liulin_village", response.json()["action"]["location_id"])
+
+    def test_governance_submission_rejects_targets_from_another_variant(self) -> None:
+        self._set_story_state(day=31)
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": session.state_version,
+                "action_kind": "leadership_meeting",
+                "variant_id": "clan_leader_campaign",
+                "location_id": "loc_zhou_ancestral_hall",
+                "target_ids": ["npc_zhao_jianguo", "npc_zhou_dashan"],
+                "topic": "祖坟安排",
+            },
+        )
+        self.assertEqual(409, response.status_code, response.text)
+        self.assertEqual("ACTION_UNAVAILABLE", response.json()["error"]["code"])
+
+    def test_loader_rejects_enabled_variant_without_hard_outcome(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_dir = Path(temp_dir) / "package"
+            shutil.copytree(PACKAGE_ROOT / "pkg_gameplay_v2", package_dir)
+            manifest_path = package_dir / "package_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["package_id"] = "pkg_invalid_variant"
+            manifest["gameplay_schema_version"] = 4
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            config_path = package_dir / "governance_config.json"
+            config = _variant_config(json.loads(config_path.read_text(encoding="utf-8")))
+            config["action_variants"][0]["hard_outcomes"] = []
+            config_path.write_text(
+                json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ContentValidationError) as caught:
+                FileScriptPackageLoader().load(package_dir)
+            self.assertIn("hard outcome", str(caught.exception).lower())
+
+    def test_repaired_content_package_is_independent_and_loadable(self) -> None:
+        package = FileScriptPackageLoader().load(PACKAGE_ROOT / "pkg_gameplay_v3")
+        self.assertEqual("pkg_gameplay_v3", package.package_id)
+        self.assertEqual(4, package.gameplay_schema_version)
+        self.assertEqual(ACTION_FAMILIES, {
+            item["action_id"]
+            for item in package.governance_config["action_variants"]
+            if item["enabled"]
+        })
+
+    def _retire_fixture_package(self) -> None:
+        package = self.runtime.packages.get("pkg_action_unification_fixture")
+        self.runtime.packages._items[package.package_id] = replace(
+            package, status="retired"
+        )
+
+    def test_retired_session_summary_is_review_only(self) -> None:
+        self._retire_fixture_package()
+        sessions = self.client.get("/api/game/sessions", headers=self.headers)
+        self.assertEqual(200, sessions.status_code, sessions.text)
+        summary = next(
+            item for item in sessions.json()["sessions"]
+            if item["session_id"] == self.session_id
+        )
+        self.assertEqual("review_only", summary["mode"])
+
+    def test_retired_session_view_feed_and_review_remain_readable(self) -> None:
+        self._retire_fixture_package()
+        for suffix in ("", "/feed", "/review"):
+            response = self.client.get(
+                f"/api/game/session/{self.session_id}{suffix}", headers=self.headers
+            )
+            self.assertEqual(200, response.status_code, (suffix, response.text))
+        view = self.client.get(
+            f"/api/game/session/{self.session_id}/view", headers=self.headers
+        )
+        self.assertEqual(200, view.status_code, view.text)
+        self.assertEqual(
+            {"can_choose": False, "can_act": False, "can_end_day": False, "can_talk": False},
+            view.json()["commands"],
+        )
+
+    def test_retired_session_state_changes_fail_with_package_retired(self) -> None:
+        self._retire_fixture_package()
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        write = self.client.post(
+            f"/api/game/session/{self.session_id}/end-day",
+            headers=self.headers,
+            json={
+                "client_action_id": "retired-package-write-0001",
+                "state_version": session.state_version,
+            },
+        )
+        self.assertEqual(409, write.status_code, write.text)
+        self.assertEqual("PACKAGE_RETIRED", write.json()["error"]["code"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -62,6 +62,11 @@ class SessionContentUnavailableError(DomainError):
     http_status = 503
 
 
+class PackageRetiredError(DomainError):
+    code = "PACKAGE_RETIRED"
+    http_status = 409
+
+
 class OperationRetryRequiredError(DomainError):
     code = "OPERATION_RETRY_REQUIRED"
     http_status = 409

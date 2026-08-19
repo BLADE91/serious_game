@@ -23,6 +23,8 @@ class GovernanceActionRecord:
     story_day: int
     target_ids: tuple[str, ...]
     required_permissions: tuple[str, ...]
+    variant_id: str | None = None
+    location_id: str | None = None
     status: str = "active"
     topic: str = ""
     archive_ids: tuple[str, ...] = ()

@@ -21,6 +21,11 @@ from serious_game_backend.application.resource_availability import (
     unencumbered_budget,
 )
 from serious_game_backend.application.action_cost_policy import quote_cost
+from serious_game_backend.application.action_variants import (
+    find_variant,
+    variant_availability,
+    variant_target_choices,
+)
 from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.ports import (
     GameSessionRepository,
@@ -368,6 +373,8 @@ class GameplayGovernanceService:
         session_id: str,
         state_version: int,
         action_kind: str,
+        variant_id: str | None = None,
+        location_id: str | None = None,
         target_ids: tuple[str, ...] = (),
         topic: str = "",
         archive_ids: tuple[str, ...] = (),
@@ -385,6 +392,29 @@ class GameplayGovernanceService:
         definition = definitions.get(action_kind)
         if definition is None or action_kind not in BASE_ACTION_PERMISSIONS:
             raise ActionUnavailableError("不存在这项基础行动")
+        variant = None
+        if package.gameplay_schema_version >= 4 and variant_id:
+            variant = find_variant(package, variant_id)
+            if variant is None or variant.get("action_id") != action_kind:
+                raise ActionUnavailableError("行动变体与基础行动不匹配")
+            available, unavailable_reason = variant_availability(session, variant)
+            if not available:
+                raise ActionUnavailableError(
+                    unavailable_reason or "行动变体当前不可用"
+                )
+            if location_id not in variant["legal_location_ids"]:
+                raise ActionUnavailableError("行动变体不能在所选地点执行")
+            legal_targets = {
+                item["target_id"]
+                for item in variant_target_choices(session, package, variant)
+            }
+            selected_targets = (
+                set(archive_ids)
+                if variant["target_kind"] == "available_archive"
+                else set(target_ids)
+            )
+            if not selected_targets.issubset(legal_targets):
+                raise ActionUnavailableError("所选对象不属于该行动变体的合法范围")
         active = next(
             (
                 item for item in session.governance_actions.values()
@@ -403,8 +433,12 @@ class GameplayGovernanceService:
             raise ActionUnavailableError("必须先结束当前单人会谈")
         if session.active_group_conversation is not None:
             raise ActionUnavailableError("必须先完成当前群组会谈")
+        cost_definition = (
+            {**definition, "costs": variant["action_point_costs"]}
+            if variant is not None else definition
+        )
         cost_result = self._governance_action_cost(
-            session, package, definition, target_npc_ids=target_ids
+            session, package, cost_definition, target_npc_ids=target_ids
         )
         cost = cost_result.final_cost
         if session.game_state.action_points < cost:
@@ -424,6 +458,7 @@ class GameplayGovernanceService:
             proposed_document_type=proposed_document_type,
             lead_npc_id=lead_npc_id,
             session=session,
+            variant=variant,
         )
         action_instance_id = f"govact_{secrets.token_hex(10)}"
         action = GovernanceActionRecord(
@@ -432,6 +467,8 @@ class GameplayGovernanceService:
             story_day=session.game_state.story_day,
             target_ids=target_ids,
             required_permissions=BASE_ACTION_PERMISSIONS[action_kind],
+            variant_id=variant_id,
+            location_id=location_id,
             topic=topic.strip(),
             archive_ids=archive_ids,
         )
@@ -473,7 +510,7 @@ class GameplayGovernanceService:
                 topic=topic.strip(),
                 participant_ids=target_ids,
                 decision_mode=decision_mode,
-                lead_npc_id=str(lead_npc_id),
+                lead_npc_id=str(lead_npc_id or ""),
                 proposed_document_type=proposed_document_type,
             )
             session.meetings[meeting_id] = meeting
@@ -1764,6 +1801,7 @@ class GameplayGovernanceService:
         proposed_document_type: str | None,
         lead_npc_id: str | None,
         session: GameSession,
+        variant: dict | None = None,
     ) -> None:
         config = package.governance_config or {}
         visible_npc_ids = self._visible_governance_npc_ids(session, package)
@@ -1779,7 +1817,11 @@ class GameplayGovernanceService:
             if not 1 <= len(target_ids) <= 3 or not set(target_ids).issubset(allowed):
                 raise ActionUnavailableError("干部访谈必须选择1至3名已登记干部")
         elif action_kind == "leadership_meeting":
-            eligible = set(config.get("leadership_meeting_npc_ids", ()))
+            eligible = set(
+                variant.get("legal_target_ids", ())
+                if variant is not None
+                else config.get("leadership_meeting_npc_ids", ())
+            )
             eligible &= visible_npc_ids
             if not 2 <= len(target_ids) <= 8:
                 raise ActionUnavailableError("班子会议必须有2至8名领导干部参会")
@@ -1787,10 +1829,18 @@ class GameplayGovernanceService:
                 target_ids
             ).issubset(eligible):
                 raise ActionUnavailableError("班子会议只能邀请已公开的领导干部")
-            if not lead_npc_id or lead_npc_id not in target_ids:
-                raise ActionUnavailableError("必须从参会领导中指定一名分管或牵头领导")
             if not topic.strip():
                 raise ActionUnavailableError("班子会议必须填写具体议题")
+            is_leadership_variant = (
+                variant is None
+                or variant.get("variant_id") == "convene_leadership_meeting"
+            )
+            if is_leadership_variant and (
+                not lead_npc_id or lead_npc_id not in target_ids
+            ):
+                raise ActionUnavailableError("必须从参会领导中指定一名分管或牵头领导")
+            if not is_leadership_variant and proposed_document_type:
+                raise ActionUnavailableError("该会议变体不能直接拟制班子文件")
             if proposed_document_type:
                 rules = config.get("document_rules", {})
                 if proposed_document_type not in rules:
