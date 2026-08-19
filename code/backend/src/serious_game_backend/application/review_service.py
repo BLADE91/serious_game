@@ -85,14 +85,15 @@ class ReviewService:
             ],
             "night_timeline": [
                 {
-                    key: value
-                    for key, value in item.items()
-                    if key not in {
-                        "agent_exchanges",
-                        "contact_selections",
-                        "contact_responses",
-                        "followup_decisions",
-                    }
+                    key: item.get(key)
+                    for key in (
+                        "story_day",
+                        "beat_id",
+                        "lines",
+                        "summary",
+                        "morning_card",
+                        "propagation_count",
+                    )
                 }
                 for item in session.night_logs
             ],

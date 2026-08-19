@@ -90,6 +90,7 @@ class NightAgentContext:
     private_context: str = ""
     allowed_actions: tuple[dict, ...] = ()
     allowed_topics: tuple[str, ...] = ()
+    forbidden_disclosure_markers: tuple[str, ...] = ()
     max_contacts: int = 0
     player_text: str = ""
     allowed_followup_type: str = ""

@@ -6,7 +6,7 @@ import secrets
 from serious_game_backend.application.ports import RoleLLMGateway
 from serious_game_backend.application.scripted_effect_service import ScriptedEffectService
 from serious_game_backend.domain.game_session import GameSession
-from serious_game_backend.domain.llm import NightAgentContext
+from serious_game_backend.domain.llm import NightAgentContext, NightAgentResult
 from serious_game_backend.domain.conversation import ForcedGroupConversation
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.story import ScriptedEffects
@@ -17,6 +17,11 @@ from serious_game_backend.domain.errors import (
     RoleLLMResponseError,
     RoleLLMUnavailableError,
 )
+
+
+class _NightAgentDisclosureError(RoleLLMResponseError):
+    code = "NIGHT_AGENT_HIDDEN_FACT_LEAKAGE"
+    retryable = False
 
 
 class NightSimulationService:
@@ -165,6 +170,12 @@ class NightSimulationService:
             return []
         profiles = {item.npc_id: item for item in package.npc_profiles}
         social_roles = package.npc_social_roles or {}
+        forbidden_disclosure_markers = tuple(dict.fromkeys(
+            str(marker)
+            for scene in package.night_agent_scenes
+            for marker in scene.get("hidden_fact_markers", ())
+            if str(marker)
+        ))
         participants = {
             npc_id
             for exchange in exchanges
@@ -219,6 +230,7 @@ class NightSimulationService:
                         else "决定是否需要在次日主动向县长汇报并会谈"
                     ),
                     allowed_followup_type=followup_type,
+                    forbidden_disclosure_markers=forbidden_disclosure_markers,
                 )
                 result = self._safe_night_turn(context, failures)
                 if result is None:
@@ -273,6 +285,9 @@ class NightSimulationService:
                             counterpart_ids=(npc_id,),
                             transcript=related_transcript,
                             scene_goal=result.agenda,
+                            forbidden_disclosure_markers=(
+                                forbidden_disclosure_markers
+                            ),
                     )
                     response = self._safe_night_turn(
                         response_context, failures
@@ -354,6 +369,7 @@ class NightSimulationService:
             )
             if len(candidate_ids) < 2:
                 continue
+            scene_audit_start = len(private_audit)
             groups: list[tuple[str, ...]]
             if scene.get("selection_mode") == "autonomous":
                 groups = self._select_contact_groups(
@@ -370,6 +386,26 @@ class NightSimulationService:
                 )
             else:
                 groups = [candidate_ids]
+            scene_audits = private_audit[scene_audit_start:]
+            if package.relationship_subnetworks and any(
+                item.get("validation_verdict") == "rejected"
+                for item in scene_audits
+            ):
+                exchanges.append(self._settle_hold_exchange(
+                    session,
+                    package,
+                    scene,
+                    tuple(dict.fromkeys(
+                        str(item.get("npc_id"))
+                        for item in scene_audits
+                        if item.get("npc_id")
+                    )),
+                    action_catalog,
+                    group_index=0,
+                    executed_global=executed_global,
+                    private_audit=scene_audits,
+                ))
+                continue
             for group_index, participants in enumerate(groups, start=1):
                 exchanges.append(self._run_agent_exchange(
                     session,
@@ -432,18 +468,26 @@ class NightSimulationService:
                 ),
                 allowed_actions=allowed_actions,
                 allowed_topics=allowed_topics,
+                forbidden_disclosure_markers=tuple(
+                    scene.get("hidden_fact_markers", ())
+                ),
                 max_contacts=max_contacts,
                 model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
             )
             result = self._safe_night_turn(context, failures)
             if result is None:
+                failure = self._failure_for_operation(
+                    failures, context.operation_id
+                )
                 private_audit.append(self._proposal_audit(
                     phase="contact_selection",
                     npc_id=npc_id,
                     operation_id=context.operation_id,
-                    original_proposal=None,
+                    original_proposal=failure.get("original_proposal"),
                     verdict="rejected",
-                    reason="provider_failure",
+                    reason=self._failure_reason(
+                        failures, context.operation_id
+                    ),
                     resolved_hard_outcome_ids=(
                         ["outcome_hold_position"]
                         if package.relationship_subnetworks else []
@@ -515,6 +559,9 @@ class NightSimulationService:
                     private_context=str(
                         scene.get("private_contexts", {}).get(invited_id, "")
                     ),
+                    forbidden_disclosure_markers=tuple(
+                        scene.get("hidden_fact_markers", ())
+                    ),
                     model_id=str(
                         scene.get("model_ids", {}).get(invited_id, "")
                     ),
@@ -523,6 +570,23 @@ class NightSimulationService:
                     response_context, failures
                 )
                 if response is None:
+                    failure = self._failure_for_operation(
+                        failures, response_context.operation_id
+                    )
+                    private_audit.append(self._proposal_audit(
+                        phase="contact_response",
+                        npc_id=invited_id,
+                        operation_id=response_context.operation_id,
+                        original_proposal=failure.get("original_proposal"),
+                        verdict="rejected",
+                        reason=self._failure_reason(
+                            failures, response_context.operation_id
+                        ),
+                        resolved_hard_outcome_ids=(
+                            ["outcome_hold_position"]
+                            if package.relationship_subnetworks else []
+                        ),
+                    ))
                     responses.append({
                         "scene_id": scene["scene_id"],
                         "initiator_npc_id": npc_id,
@@ -538,6 +602,20 @@ class NightSimulationService:
                     and response.contact_response
                     in {"accept", "reject", "defer"}
                 )
+                if not valid_response:
+                    private_audit.append(self._proposal_audit(
+                        phase="contact_response",
+                        npc_id=invited_id,
+                        operation_id=response_context.operation_id,
+                        original_proposal=self._night_result_document(response),
+                        verdict="rejected",
+                        reason="invalid_contact_response",
+                        model_id=response.model_id,
+                        resolved_hard_outcome_ids=(
+                            ["outcome_hold_position"]
+                            if package.relationship_subnetworks else []
+                        ),
+                    ))
                 responses.append({
                     "scene_id": scene["scene_id"],
                     "initiator_npc_id": npc_id,
@@ -592,6 +670,8 @@ class NightSimulationService:
                 and self._conditions_match(action_catalog[action_id], session)
             ]
             transcript: list[dict] = []
+            private_audit: list[dict] = []
+            scene_blocked = False
             for round_index in range(1, int(scene.get("rounds", 2)) + 1):
                 for npc_id in participants:
                     profile = profiles[npc_id]
@@ -629,13 +709,48 @@ class NightSimulationService:
                         ),
                         allowed_actions=actor_allowed,
                         allowed_topics=allowed_topics,
+                        forbidden_disclosure_markers=tuple(
+                            scene.get("hidden_fact_markers", ())
+                        ),
                         model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
                     )
                     result = self._safe_night_turn(context, failures)
                     if result is None:
-                        continue
+                        failure = self._failure_for_operation(
+                            failures, context.operation_id
+                        )
+                        private_audit.append(self._proposal_audit(
+                            phase="dialogue",
+                            npc_id=npc_id,
+                            operation_id=context.operation_id,
+                            original_proposal=failure.get("original_proposal"),
+                            verdict="rejected",
+                            reason=self._failure_reason(
+                                failures, context.operation_id
+                            ),
+                            resolved_hard_outcome_ids=(
+                                ["outcome_hold_position"]
+                                if package.relationship_subnetworks else []
+                            ),
+                        ))
+                        scene_blocked = bool(package.relationship_subnetworks)
+                        break
                     if result.npc_id != npc_id or not result.dialogue:
-                        continue
+                        private_audit.append(self._proposal_audit(
+                            phase="dialogue",
+                            npc_id=npc_id,
+                            operation_id=context.operation_id,
+                            original_proposal=self._night_result_document(result),
+                            verdict="rejected",
+                            reason="invalid_dialogue_response",
+                            model_id=result.model_id,
+                            resolved_hard_outcome_ids=(
+                                ["outcome_hold_position"]
+                                if package.relationship_subnetworks else []
+                            ),
+                        ))
+                        scene_blocked = bool(package.relationship_subnetworks)
+                        break
                     transcript.append({
                         "round": round_index,
                         "speaker_npc_id": npc_id,
@@ -643,8 +758,21 @@ class NightSimulationService:
                         "model_id": result.model_id,
                         "dialogue": result.dialogue,
                     })
+                if scene_blocked:
+                    break
+            if scene_blocked:
+                return self._settle_hold_exchange(
+                    session,
+                    package,
+                    scene,
+                    participants,
+                    action_catalog,
+                    group_index=group_index,
+                    executed_global=executed_global,
+                    private_audit=private_audit,
+                    transcript=transcript,
+                )
             proposals: list[dict] = []
-            private_audit: list[dict] = []
             allowed_by_id = {str(item["action_id"]): item for item in allowed}
             for npc_id in participants:
                 profile = profiles[npc_id]
@@ -678,17 +806,26 @@ class NightSimulationService:
                     ),
                     allowed_actions=actor_allowed,
                     allowed_topics=allowed_topics,
+                    forbidden_disclosure_markers=tuple(
+                        scene.get("hidden_fact_markers", ())
+                    ),
                     model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
                 )
                 result = self._safe_night_turn(context, failures)
                 if result is None:
+                    failure = self._failure_for_operation(
+                        failures, context.operation_id
+                    )
+                    failure_reason = self._failure_reason(
+                        failures, context.operation_id
+                    )
                     private_audit.append(self._proposal_audit(
                         phase="action",
                         npc_id=npc_id,
                         operation_id=context.operation_id,
-                        original_proposal=None,
+                        original_proposal=failure.get("original_proposal"),
                         verdict="rejected",
-                        reason="provider_failure",
+                        reason=failure_reason,
                         resolved_hard_outcome_ids=(
                             ["outcome_hold_position"]
                             if package.relationship_subnetworks else []
@@ -701,7 +838,7 @@ class NightSimulationService:
                         "topic_ids": [],
                         "accepted": True,
                         "fallback": True,
-                        "reason": "夜间行动生成失败，已安全回退",
+                        "reason": failure_reason,
                     })
                     continue
                 action = next(
@@ -718,11 +855,6 @@ class NightSimulationService:
                     set(authoritative_action.get("allowed_target_ids", ()))
                     if authoritative_action else set()
                 )
-                hidden_markers = tuple(scene.get("hidden_fact_markers", ()))
-                leaked_hidden_fact = any(
-                    marker and marker in f"{result.dialogue or ''}{result.rationale}"
-                    for marker in hidden_markers
-                )
                 rejection_reason = None
                 if result.npc_id != npc_id:
                     rejection_reason = "actor_not_eligible"
@@ -736,8 +868,6 @@ class NightSimulationService:
                     rejection_reason = "topic_not_allowed"
                 elif package.relationship_subnetworks and not result.topic_ids:
                     rejection_reason = "topic_required"
-                elif leaked_hidden_fact:
-                    rejection_reason = "hidden_fact_leakage"
                 if rejection_reason is not None:
                     private_audit.append(self._proposal_audit(
                         phase="action",
@@ -907,6 +1037,73 @@ class NightSimulationService:
                 ),
             }
 
+    def _settle_hold_exchange(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        scene: dict,
+        participants: tuple[str, ...],
+        action_catalog: dict[str, dict],
+        *,
+        group_index: int,
+        executed_global: set[str],
+        private_audit: list[dict],
+        transcript: list[dict] | None = None,
+    ) -> dict:
+        action_id = "night_hold_position"
+        action = action_catalog.get(action_id, {})
+        outcome_ids = tuple(action.get("hard_outcome_ids", ()))
+        outcomes = package.night_agent_hard_outcomes or {}
+        resolved = [
+            outcome_id for outcome_id in outcome_ids if outcome_id in outcomes
+        ]
+        if action_id not in executed_global:
+            for outcome_id in resolved:
+                outcome = outcomes[outcome_id]
+                self._scripted_effects.apply(
+                    session,
+                    package,
+                    self._effects(outcome.get("effects", {})),
+                    source_id=(
+                        f"night_agent:{session.game_state.story_day}:"
+                        f"{scene['scene_id']}:{outcome_id}"
+                    ),
+                )
+                self._apply_npc_deltas(
+                    session, outcome.get("npc_deltas", {})
+                )
+            executed_global.add(action_id)
+        rejected = [
+            item
+            for item in private_audit
+            if item.get("validation_verdict") == "rejected"
+        ]
+        proposals = [
+            {
+                "npc_id": item.get("npc_id"),
+                "action_id": action_id,
+                "target_ids": [],
+                "topic_ids": [],
+                "accepted": True,
+                "fallback": True,
+                "reason": item.get("rejection_reason"),
+            }
+            for item in rejected
+        ]
+        return {
+            "scene_id": scene["scene_id"],
+            "group_index": group_index,
+            "participant_ids": list(participants),
+            "transcript": list(transcript or ()),
+            "action_proposals": proposals,
+            "executed_action_ids": [action_id],
+            "resolved_hard_outcome_ids": resolved,
+            "private_audit": private_audit,
+            "public_summary": self._public_exchange_summary(
+                scene, [action_id], action_catalog
+            ),
+        }
+
     def _safe_night_turn(
         self,
         context: NightAgentContext,
@@ -920,7 +1117,15 @@ class NightSimulationService:
         for attempt in range(1, 3):
             attempts = attempt
             try:
-                return self._night_llm.run_night_turn(context)
+                result = self._night_llm.run_night_turn(context)
+                if self._contains_forbidden_disclosure(result, context):
+                    raise _NightAgentDisclosureError(
+                        "夜间 Agent 输出包含未授权隐藏事实",
+                        details={
+                            "original_proposal": self._night_result_document(result)
+                        },
+                    )
+                return result
             except (
                 RoleLLMBudgetExceededError,
                 RoleLLMResponseError,
@@ -939,8 +1144,67 @@ class NightSimulationService:
                 last_error, "code", type(last_error).__name__
             ),
             "message": str(last_error),
+            "original_proposal": getattr(last_error, "details", {}).get(
+                "original_proposal"
+            ),
         })
         return None
+
+    @staticmethod
+    def _contains_forbidden_disclosure(
+        result: NightAgentResult,
+        context: NightAgentContext,
+    ) -> bool:
+        text = "\n".join((
+            result.dialogue or "",
+            result.rationale,
+            result.agenda,
+            *result.demands,
+        ))
+        return any(
+            marker and marker in text
+            for marker in context.forbidden_disclosure_markers
+        )
+
+    @staticmethod
+    def _night_result_document(result: NightAgentResult) -> dict:
+        return {
+            "npc_id": result.npc_id,
+            "model_id": result.model_id,
+            "dialogue": result.dialogue,
+            "action_id": result.action_id,
+            "contact_ids": list(result.contact_ids),
+            "contact_response": result.contact_response,
+            "participant_ids": list(result.participant_ids),
+            "agenda": result.agenda,
+            "demands": list(result.demands),
+            "target_ids": list(result.target_ids),
+            "topic_ids": list(result.topic_ids),
+            "rationale": result.rationale,
+        }
+
+    @staticmethod
+    def _failure_for_operation(
+        failures: list[dict], operation_id: str
+    ) -> dict:
+        return next(
+            (
+                item for item in reversed(failures)
+                if item.get("operation_id") == operation_id
+            ),
+            {},
+        )
+
+    @classmethod
+    def _failure_reason(
+        cls, failures: list[dict], operation_id: str
+    ) -> str:
+        failure = cls._failure_for_operation(failures, operation_id)
+        return (
+            "hidden_fact_leakage"
+            if failure.get("error_code") == "NIGHT_AGENT_HIDDEN_FACT_LEAKAGE"
+            else "provider_failure"
+        )
 
     def _actor_night_scope(
         self,

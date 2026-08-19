@@ -338,8 +338,14 @@ class NightAgentV3SettlementTests(unittest.TestCase):
             with self.subTest(fixture=fixture):
                 session = self._session_on(29)
                 session.night_logs.clear()
+                session.game_state = replace(
+                    session.game_state, corruption_evidence=0
+                )
+                session.flags.discard("攻守同盟已成")
                 gateway = RecordingNightGateway(night_fixture=fixture)
-                record = self._service(gateway).run_night(session, self.package)
+                service = self._service(gateway)
+                record = service.run_night(session, self.package)
+                replay = service.run_night(session, self.package)
 
                 rejected = [
                     item
@@ -352,6 +358,19 @@ class NightAgentV3SettlementTests(unittest.TestCase):
                     for item in rejected
                 ))
                 self.assertTrue(record["morning_card"])
+                self.assertIs(record, replay)
+                self.assertEqual(1, len(session.night_logs))
+                self.assertEqual(0, session.game_state.corruption_evidence)
+                self.assertNotIn("攻守同盟已成", session.flags)
+                self.assertTrue(record["agent_exchanges"])
+                self.assertEqual(
+                    ["night_hold_position"],
+                    record["agent_exchanges"][0]["executed_action_ids"],
+                )
+                self.assertEqual(
+                    ["outcome_hold_position"],
+                    record["agent_exchanges"][0]["resolved_hard_outcome_ids"],
+                )
 
         self.runtime.sessions.save(session, expected_version=session.state_version)
         response = self.client.get(
@@ -370,6 +389,88 @@ class NightAgentV3SettlementTests(unittest.TestCase):
             "exact_npc_score",
         ):
             self.assertNotIn(private_key, response.text)
+
+    def test_review_night_timeline_uses_player_safe_field_whitelist(self) -> None:
+        session = self._session_on(29)
+        self._service(
+            RecordingNightGateway(night_fixture="illegal_action")
+        ).run_night(session, self.package)
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/review",
+            headers=self.headers,
+        )
+
+        self.assertEqual(200, response.status_code, response.text)
+        night = response.json()["night_timeline"][0]
+        self.assertEqual(
+            {
+                "story_day",
+                "beat_id",
+                "lines",
+                "summary",
+                "morning_card",
+                "propagation_count",
+            },
+            set(night),
+        )
+        for private_key in (
+            "private_audit",
+            "agent_failures",
+            "original_proposal",
+            "rationale",
+            "rejection_reason",
+            "model_audit_reference",
+        ):
+            self.assertNotIn(private_key, response.text)
+
+    def test_illegal_contact_creates_replayable_hold_settlement(self) -> None:
+        session = self._session_on(29)
+        session.game_state = replace(session.game_state, corruption_evidence=0)
+        service = self._service(
+            RecordingNightGateway(night_fixture="illegal_contact")
+        )
+
+        record = service.run_night(session, self.package)
+        replay = service.run_night(session, self.package)
+
+        self.assertIs(record, replay)
+        self.assertEqual(1, len(session.night_logs))
+        self.assertEqual(0, session.game_state.corruption_evidence)
+        self.assertNotIn("攻守同盟已成", session.flags)
+        self.assertTrue(record["agent_exchanges"])
+        fallback = record["agent_exchanges"][0]
+        self.assertEqual(["night_hold_position"], fallback["executed_action_ids"])
+        self.assertEqual(
+            ["outcome_hold_position"], fallback["resolved_hard_outcome_ids"]
+        )
+        self.assertIn("有限接触", fallback["public_summary"])
+
+    def test_dialogue_hidden_fact_leakage_blocks_scene_hard_settlement(self) -> None:
+        session = self._session_on(29)
+        session.game_state = replace(session.game_state, corruption_evidence=0)
+        gateway = RecordingNightGateway(night_fixture="hidden_fact_dialogue")
+
+        record = self._service(gateway).run_night(session, self.package)
+
+        self.assertEqual(0, session.game_state.corruption_evidence)
+        self.assertNotIn("攻守同盟已成", session.flags)
+        self.assertFalse(any(
+            context.phase == "action" for context in gateway.contexts
+        ))
+        exchange = record["agent_exchanges"][0]
+        self.assertEqual(["night_hold_position"], exchange["executed_action_ids"])
+        self.assertEqual(
+            ["outcome_hold_position"], exchange["resolved_hard_outcome_ids"]
+        )
+        rejected = [
+            item
+            for item in record["private_audit"]
+            if item["rejection_reason"] == "hidden_fact_leakage"
+        ]
+        self.assertTrue(rejected)
+        self.assertNotIn("未公开底稿", "\n".join(record["morning_card"]))
 
     def test_legal_fixture_is_repeatable_for_same_seed(self) -> None:
         first_session = self._session_on(29)

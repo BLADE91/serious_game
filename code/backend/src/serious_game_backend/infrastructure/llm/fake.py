@@ -137,6 +137,12 @@ class FakeRoleLLMGateway:
             )
         if context.phase == "dialogue":
             other = context.counterpart_ids[0] if context.counterpart_ids else "对方"
+            if self._night_fixture == "hidden_fact_dialogue":
+                return NightAgentResult(
+                    npc_id=context.npc_id,
+                    model_id=model_id,
+                    dialogue="未公开底稿写明某人的精确隐秘得分为99。",
+                )
             line = (
                 f"我先把底线说清楚。{context.scene_goal}"
                 if context.round_index == 1
