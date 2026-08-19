@@ -63,6 +63,20 @@ class NPCMemoryService:
         content = self._sanitize(candidate)
         if not content:
             return None
+        memory_type = self._memory_type(content)
+        durable = memory_type != "episode"
+        due_match = re.search(
+            r"(?:D\s*(\d{1,2})(?=$|[\s前后截止、，。；])|"
+            r"第\s*(\d{1,2})\s*日)",
+            content,
+        )
+        due_day = (
+            int(due_match.group(1) or due_match.group(2))
+            if due_match else None
+        )
+        unresolved = any(
+            marker in content for marker in ("尚未", "未兑现", "待办", "待解决")
+        )
         memory = NPCMemory(
             memory_id=f"mem_{secrets.token_hex(12)}",
             session_id=session_id,
@@ -70,14 +84,58 @@ class NPCMemoryService:
             npc_id=npc_id,
             source_operation_id=operation_id,
             content=content,
-            memory_type="episode",
+            memory_type=memory_type,
             keywords=self._keywords(content),
             valid_from_day=story_day,
-            expires_after_day=min(90, story_day + self._ttl_days),
+            expires_after_day=(
+                90 if durable else min(90, story_day + self._ttl_days)
+            ),
+            actor_id=npc_id,
+            commitment_content=(content if durable else None),
+            due_day=due_day,
+            resolution_state=(
+                "unresolved" if durable and unresolved else
+                "open" if memory_type in {"commitment", "demand"} else
+                "observed"
+            ),
         )
         self._repository.save(memory)
-        self._compress_if_needed(memory)
+        if not durable:
+            self._compress_if_needed(memory)
         return memory
+
+    def context(
+        self,
+        *,
+        session_id: str,
+        npc_id: str,
+        story_day: int,
+        query: str,
+    ) -> dict[str, tuple[str, ...]]:
+        active = self._repository.active_for_npc(
+            session_id, npc_id, story_day
+        )
+        terms = set(self._keywords(query))
+        ranked = sorted(
+            active,
+            key=lambda item: (
+                bool(terms & set(item.keywords)),
+                item.valid_from_day,
+                item.created_at,
+            ),
+            reverse=True,
+        )
+        return {
+            "memory_items": tuple(
+                item.content for item in ranked[: self._retrieval_limit]
+            ),
+            "unresolved_commitments": tuple(
+                item.content
+                for item in ranked
+                if item.memory_type in {"commitment", "demand"}
+                and item.resolution_state in {"open", "unresolved"}
+            )[: self._retrieval_limit],
+        }
 
     def invalidate(self, memory_ids: tuple[str, ...]) -> None:
         self._repository.invalidate(memory_ids, runtime_now_iso())
@@ -86,10 +144,25 @@ class NPCMemoryService:
         active = self._repository.active_for_npc(
             newest.session_id, newest.npc_id, newest.valid_from_day
         )
-        if len(active) < self._compression_threshold:
+        episodes = tuple(
+            item for item in active if item.memory_type == "episode"
+        )
+        if len(episodes) < self._compression_threshold:
             return
-        sources = tuple(active[:6])
-        summary_text = "；".join(item.content.rstrip("。；") for item in sources)
+        sources = tuple(episodes[:6])
+        actor_ids = tuple(dict.fromkeys(
+            item.actor_id or item.npc_id for item in sources
+        ))
+        due_days = tuple(
+            item.due_day for item in sources if item.due_day is not None
+        )
+        states = tuple(dict.fromkeys(item.resolution_state for item in sources))
+        summary_text = (
+            f"参与者:{','.join(actor_ids)}；内容:"
+            + "；".join(item.content.rstrip("。；") for item in sources)
+            + (f"；到期日:D{min(due_days)}" if due_days else "")
+            + f"；状态:{','.join(states)}"
+        )
         summary_text = self._sanitize(summary_text[:480])
         if not summary_text:
             return
@@ -104,6 +177,10 @@ class NPCMemoryService:
             keywords=self._keywords(summary_text),
             valid_from_day=newest.valid_from_day,
             expires_after_day=min(90, newest.valid_from_day + self._ttl_days),
+            actor_id=",".join(actor_ids),
+            commitment_content=summary_text,
+            due_day=min(due_days) if due_days else None,
+            resolution_state=(states[0] if len(states) == 1 else "mixed"),
         )
         self._repository.save(summary)
         self._repository.invalidate(
@@ -124,3 +201,16 @@ class NPCMemoryService:
     def _keywords(text: str) -> tuple[str, ...]:
         values = re.findall(r"[\u4e00-\u9fff]{2,6}|[A-Za-z0-9]{3,}", text)
         return tuple(dict.fromkeys(item.lower() for item in values))[:20]
+
+    @staticmethod
+    def _memory_type(content: str) -> str:
+        lowered = content.lower()
+        if any(marker in lowered for marker in ("承诺", "答应", "约定", "保证")):
+            return "commitment"
+        if any(marker in lowered for marker in ("诉求", "要求", "需求", "待解决")):
+            return "demand"
+        if any(marker in lowered for marker in ("披露", "透露", "交出", "承认")):
+            return "disclosure"
+        if any(marker in lowered for marker in ("结盟", "翻脸", "关系转折", "不再信任")):
+            return "relationship"
+        return "episode"

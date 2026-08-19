@@ -27,6 +27,9 @@ from serious_game_backend.application.action_variants import (
     variant_target_choices,
 )
 from serious_game_backend.application.npc_demand_service import NPCDemandService
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
+)
 from serious_game_backend.application.ports import (
     GameSessionRepository,
     RoleLLMGateway,
@@ -97,6 +100,7 @@ class GameplayGovernanceService:
 
     def overview(self, *, account_id: str, session_id: str) -> dict:
         session, package = self._load(account_id, session_id)
+        NPCRelationshipService.synchronize(session, package)
         sync_known_facts_to_archives(session, package)
         config = package.governance_config or {}
         profiles = {item.npc_id: item for item in package.npc_profiles}
@@ -1933,6 +1937,9 @@ class GameplayGovernanceService:
         known. The opening whitelist covers officials and village representatives
         whose identities are public before the first scripted encounter.
         """
+        if package.gameplay_schema_version >= 4:
+            NPCRelationshipService.synchronize(session, package)
+            return set(session.known_npc_ids)
         config = package.governance_config or {}
         visible = set(config.get("initial_visible_npc_ids", ()))
         day = session.game_state.story_day
@@ -3789,6 +3796,7 @@ class GameplayGovernanceService:
     def _commit(self, session: GameSession, expected_version: int) -> None:
         package = require_locked_package(self._packages, session)
         NPCDemandService.sync(session, package)
+        NPCRelationshipService.synchronize(session, package)
         session.state_version += 1
         session.touch()
         self._sessions.save(session, expected_version=expected_version)

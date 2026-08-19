@@ -3,6 +3,9 @@ from __future__ import annotations
 from serious_game_backend.domain.enums import AvailabilityMode
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
+)
 
 
 def configured_variants(package: ScriptPackage) -> tuple[dict, ...]:
@@ -105,6 +108,9 @@ def visible_governance_npc_ids(
     session: GameSession,
     package: ScriptPackage,
 ) -> set[str]:
+    if package.gameplay_schema_version >= 4:
+        NPCRelationshipService.synchronize(session, package)
+        return set(session.known_npc_ids)
     visible = set(
         (package.governance_config or {}).get("initial_visible_npc_ids", ())
     )

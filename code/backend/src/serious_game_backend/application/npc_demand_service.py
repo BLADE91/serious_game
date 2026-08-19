@@ -4,6 +4,9 @@ from dataclasses import replace
 
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import NPCDemandDefinition, ScriptPackage
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
+)
 
 
 DEMAND_STATUSES = {
@@ -150,7 +153,14 @@ class NPCDemandService:
             for item in (package.governance_config or {}).get("resource_pools", ())
         }
         result = []
+        if package.gameplay_schema_version >= 4:
+            NPCRelationshipService.synchronize(session, package)
         for demand in package.npc_demands:
+            if (
+                package.gameplay_schema_version >= 4
+                and demand.npc_id not in session.known_npc_ids
+            ):
+                continue
             state = session.npc_demand_states.get(demand.demand_id, {})
             status = str(state.get("status", "unknown"))
             if status == "unknown":
@@ -281,19 +291,26 @@ class NPCDemandService:
         rule = demand.discover
         if session.game_state.story_day < int(rule.get("min_day", 1)):
             return False
-        visible_npcs = set(
-            (package.governance_config or {}).get("initial_visible_npc_ids", ())
-        )
-        for opportunity in package.interaction_opportunities:
-            if opportunity.availability_mode.value == "closed":
-                continue
-            if session.game_state.story_day < opportunity.day_min:
-                continue
-            if not opportunity.requires_flags.issubset(session.flags):
-                continue
-            if not opportunity.requires_events.issubset(session.triggered_events):
-                continue
-            visible_npcs.add(opportunity.npc_id)
+        if package.gameplay_schema_version >= 4:
+            NPCRelationshipService.synchronize(session, package)
+            visible_npcs = set(session.known_npc_ids)
+        else:
+            visible_npcs = set(
+                (package.governance_config or {}).get(
+                    "initial_visible_npc_ids", ()
+                )
+            )
+        if package.gameplay_schema_version < 4:
+            for opportunity in package.interaction_opportunities:
+                if opportunity.availability_mode.value == "closed":
+                    continue
+                if session.game_state.story_day < opportunity.day_min:
+                    continue
+                if not opportunity.requires_flags.issubset(session.flags):
+                    continue
+                if not opportunity.requires_events.issubset(session.triggered_events):
+                    continue
+                visible_npcs.add(opportunity.npc_id)
         if demand.npc_id not in visible_npcs:
             return False
         flags = set(rule.get("required_any_flags", ()))

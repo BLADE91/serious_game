@@ -14,6 +14,9 @@ from serious_game_backend.application.interaction_opportunity_service import (
 from serious_game_backend.application.npc_turn_service import NPCTurnService
 from serious_game_backend.application.npc_memory_service import NPCMemoryService
 from serious_game_backend.application.npc_demand_service import NPCDemandService
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
+)
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.ports import (
     GameSessionRepository,
@@ -52,7 +55,10 @@ from serious_game_backend.domain.operation import OperationRecord, utc_now_iso
 from serious_game_backend.domain.llm import RoleTurnContext
 from serious_game_backend.domain.fact_markers import disclosure_markers_for
 from serious_game_backend.domain.story import ScriptedEffects
-from serious_game_backend.domain.conversation import ActiveConversation
+from serious_game_backend.domain.conversation import (
+    ActiveConversation,
+    CompletedConversation,
+)
 
 
 class ActionService:
@@ -121,6 +127,7 @@ class ActionService:
 
         session = self._owned_session(session_id, account_id)
         package = require_locked_package(self._packages, session)
+        NPCRelationshipService.synchronize(session, package)
         self._validate_write_gate(session, command)
         beat = package.story_day(session.game_state.story_day)
         if (
@@ -185,6 +192,7 @@ class ActionService:
             )
             self._trust_derivation.apply(current, package)
             NPCDemandService.sync(current, package)
+            NPCRelationshipService.synchronize(current, package)
             current.processing_action_id = None
             current.state_version += 1
             current.touch()
@@ -495,6 +503,28 @@ class ActionService:
             story_day=session.game_state.story_day,
             query=command.player_text,
         )
+        memory_context = self._npc_memories.context(
+            session_id=session.session_id,
+            npc_id=opportunity.npc_id,
+            story_day=session.game_state.story_day,
+            query=command.player_text,
+        )
+        relationship_context = NPCRelationshipService.relationship_context(
+            session, opportunity.npc_id
+        )
+        recent_change_reasons = (
+            NPCRelationshipService.recent_visible_change_reasons(
+                session, opportunity.npc_id
+            )
+        )
+        unresolved_demands = tuple(
+            demand.description
+            for demand in package.npc_demands
+            if demand.npc_id == opportunity.npc_id
+            and session.npc_demand_states.get(demand.demand_id, {}).get(
+                "status"
+            ) in {"discovered", "acknowledged", "committed"}
+        )
         prepared_input = (
             self._model_input_policy.prepare(account_id, command.player_text)
             if self._model_input_policy is not None
@@ -531,6 +561,10 @@ class ActionService:
                 ),
                 forbidden_fact_markers=forbidden_fact_markers,
                 memory_items=memory_items,
+                relationship_context=relationship_context,
+                recent_visible_change_reasons=recent_change_reasons,
+                unresolved_commitments=memory_context["unresolved_commitments"],
+                unresolved_demands=unresolved_demands,
                 conversation_turn_count=conversation.turn_count,
                 conversation_history=tuple(conversation.transcript),
                 conversation_opening=opportunity.opening_narrative,
@@ -546,6 +580,12 @@ class ActionService:
                         if item in package.facts
                     ],
                     "npc_disclosure_posture": disclosure_gate.trust_label,
+                    "relationship_context": relationship_context,
+                    "recent_visible_change_reasons": list(recent_change_reasons),
+                    "unresolved_commitments": list(
+                        memory_context["unresolved_commitments"]
+                    ),
+                    "unresolved_demands": list(unresolved_demands),
                     "fatigue_posture": (
                         "撑不住了" if session.game_state.fatigue >= 75 else
                         "有些吃力" if session.game_state.fatigue >= 50 else
@@ -717,6 +757,7 @@ class ActionService:
                     story_day=session.game_state.story_day,
                     quoted_cost=draft["cost"],
                     cost_charged=False,
+                    start_reason=opportunity.entry_type,
                 )
                 session.append_narrative(
                     story_day=session.game_state.story_day,
@@ -763,6 +804,23 @@ class ActionService:
                         or draft["clear_disclosure_quota"]
                     ),
                 )
+                visible_reasons = []
+                if turn.attitude_delta > 0:
+                    visible_reasons.append("本次会谈中的回应使对方更愿意合作。")
+                elif turn.attitude_delta < 0:
+                    visible_reasons.append("本次会谈中的表达使对方更为抵触。")
+                if turn.anxiety_delta > 0:
+                    visible_reasons.append("本次会谈增加了对方对后续风险的担忧。")
+                elif turn.anxiety_delta < 0:
+                    visible_reasons.append("本次会谈缓解了对方对后续风险的担忧。")
+                for reason in visible_reasons:
+                    session.logs.append({
+                        "type": "relationship_change",
+                        "story_day": session.game_state.story_day,
+                        "npc_id": draft["npc_id"],
+                        "reason": reason,
+                        "visible_to_player": True,
+                    })
                 log["type"] = "conversation_turn"
                 log["npc_id"] = draft["npc_id"]
                 log["conversation_id"] = conversation.conversation_id
@@ -858,6 +916,12 @@ class ActionService:
                         "cost_action_points": 0,
                         "visible_to_player": True,
                     })
+                    self._complete_conversation(
+                        session,
+                        conversation,
+                        end_reason="npc_exit",
+                        completion_status=draft["completion_status"],
+                    )
                     session.active_conversation = None
                 # 玩家日志不记录内部 delta；权威审计适配器另行保存来源字段。
             elif draft["kind"] == "input_rejected":
@@ -877,6 +941,15 @@ class ActionService:
                 )
                 if draft["completed"]:
                     self._apply_opportunity_completion(session, package, opportunity)
+                conversation = session.active_conversation
+                if conversation is None:
+                    raise ActionUnavailableError("进行中的会谈已丢失")
+                self._complete_conversation(
+                    session,
+                    conversation,
+                    end_reason="player_exit",
+                    completion_status=draft["completion_status"],
+                )
                 session.active_conversation = None
                 log["type"] = "conversation_ended"
                 log["npc_id"] = draft["npc_id"]
@@ -1024,6 +1097,31 @@ class ActionService:
                 if draft.get("turn") is not None else draft.get("narrative")
             ),
         }
+
+    @staticmethod
+    def _complete_conversation(
+        session,
+        conversation: ActiveConversation,
+        *,
+        end_reason: str,
+        completion_status: str,
+    ) -> None:
+        if any(
+            item.conversation_id == conversation.conversation_id
+            for item in session.completed_conversations
+        ):
+            return
+        session.completed_conversations.append(CompletedConversation(
+            conversation_id=conversation.conversation_id,
+            opportunity_id=conversation.opportunity_id,
+            npc_id=conversation.npc_id,
+            story_day=conversation.story_day,
+            start_reason=conversation.start_reason,
+            end_reason=end_reason,
+            completion_status=completion_status,
+            transcript=tuple(dict(item) for item in conversation.transcript),
+            started_at=conversation.started_at,
+        ))
 
     def _owned_session(self, session_id: str, account_id: str):
         session = self._sessions.get_owned(session_id, account_id)

@@ -1,5 +1,13 @@
 {
   "schema_version": 1,
+  "npc_discovery_rules": {
+    "initial_known_npc_ids": ["npc_zheng_xiangdong"],
+    "initial_contactable_npc_ids": ["npc_zheng_xiangdong"],
+    "by_npc": {
+      "npc_wu_xiuying": {"known_from_day": 2, "known_required_flags": ["flag_clan_map"]},
+      "npc_zhou_dashan": {"known_from_day": 2, "known_required_fact_ids": ["fact_clan_power_map"]}
+    }
+  },
   "npc_social_roles": {
     "npc_zhang_li": ["cadre"],
     "npc_zhao_jianguo": ["cadre"],
@@ -121,10 +129,13 @@
     }}
   },
   "npc_relationships": [
-    {"source_npc_id":"npc_liu_san","target_npc_id":"npc_zhou_dashan","attitude_delta":-5,"anxiety_delta":5},
-    {"source_npc_id":"npc_qian_wei","target_npc_id":"npc_zhao_jianguo","attitude_delta":-5,"anxiety_delta":5},
-    {"source_npc_id":"npc_chen_mo","target_npc_id":"npc_wu_xiuying","attitude_delta":5,"anxiety_delta":0},
-    {"source_npc_id":"npc_sun_qiang","target_npc_id":"npc_zhao_jianguo","attitude_delta":-5,"anxiety_delta":5}
+    {"edge_id":"rel_liu_zhou_interest","subnetwork":"corporate_corruption","channel":"interest","source_npc_id":"npc_liu_san","target_npc_id":"npc_zhou_dashan","initial_visibility":"hidden","visibility_requirements":{"suspected_fact_ids":["fact_connected_invoices"],"confirmed_flags":["账目揭发"]},"suspected_reason":"已取得的票据显示刘三与周大山之间存在利益往来。","confirmed_reason":"账目核验确认了双方的利益联系。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
+    {"edge_id":"rel_qian_zhao_interest","subnetwork":"corporate_corruption","channel":"interest","source_npc_id":"npc_qian_wei","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"suspected_flags":["秘密摸底"],"confirmed_flags":["两百万已移交立案"]},"suspected_reason":"调查迹象显示钱伟与赵建国之间可能存在利益联系。","confirmed_reason":"正式材料确认了双方的利益联系。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
+    {"edge_id":"rel_chen_wu_information","subnetwork":"external_oversight","channel":"information","source_npc_id":"npc_chen_mo","target_npc_id":"npc_wu_xiuying","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["记者结盟"]},"suspected_reason":"两人的公开接触显示存在信息往来。","confirmed_reason":"玩家亲历的合作确认了双方的信息联系。","propagation_enabled":true,"attitude_delta":5,"anxiety_delta":0},
+    {"edge_id":"rel_sun_zhao_reporting","subnetwork":"county_government","channel":"reporting","source_npc_id":"npc_sun_qiang","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["孙强交底"]},"suspected_reason":"公开职务关系显示孙强经常向赵建国汇报。","confirmed_reason":"孙强的交底确认了实际汇报链。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
+    {"edge_id":"rel_wu_zhou_village","subnetwork":"village_clan","channel":"influence","source_npc_id":"npc_wu_xiuying","target_npc_id":"npc_zhou_dashan","initial_visibility":"hidden","visibility_requirements":{"suspected_fact_ids":["fact_clan_power_map"],"confirmed_flags":["flag_wu_first_talk_completed"]},"suspected_reason":"吴秀英介绍了村庄中不同群体与周氏族长的关系。","confirmed_reason":"首次会谈确认了两人在村庄关系网中的位置。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0},
+    {"edge_id":"rel_shi_ke_evidence","subnetwork":"environmental_evidence","channel":"reporting","source_npc_id":"npc_shi_wenbin","target_npc_id":"npc_ke_qinian","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["环评揭穿"]},"suspected_reason":"公开职务关系显示石文斌受柯启年管理。","confirmed_reason":"环境材料确认了两人在证据链中的关系。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0},
+    {"edge_id":"rel_zhang_zhao_oversight","subnetwork":"external_oversight","channel":"oversight","source_npc_id":"npc_zhang_li","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["自查落空"]},"suspected_reason":"巡察工作使张立与县班子进入公开监督关系。","confirmed_reason":"巡察材料确认了具体监督对象。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0}
   ],
   "night_agent_scenes": [
     {

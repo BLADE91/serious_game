@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 from contextvars import ContextVar
 import json
 import re
 import secrets
 
-from fastapi import FastAPI, Header, Query, Request, Response
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -47,6 +49,9 @@ from serious_game_backend.application.action_variants import (
     configured_variants,
     public_variant,
     variant_availability,
+)
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
 )
 from serious_game_backend.bootstrap import Container, build_container
 from serious_game_backend.config import Settings
@@ -328,6 +333,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         }
 
     def action_entries(session, package) -> tuple[str, list[dict]]:
+        NPCRelationshipService.synchronize(session, package)
         state = session.game_state
         tier = package.action_cost_tier(state.story_day)
         gate = command_gate(session, package)
@@ -516,6 +522,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             {"target_id": item.npc_id, "label": item.name}
             for item in package.npc_profiles
             if item.npc_id in session.npc_states
+            and (
+                package.gameplay_schema_version < 4
+                or item.npc_id in session.known_npc_ids
+            )
         ]
 
     def public_fact(item) -> dict:
@@ -1440,6 +1450,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         account_id = current_account_id(x_account_id)
         session = runtime.game_sessions.get_owned(session_id, account_id)
         package = require_locked_package(runtime.packages, session)
+        NPCRelationshipService.synchronize(session, package)
         gate = command_gate(session, package)
         if session.processing_action_id is not None:
             values = ()
@@ -1458,6 +1469,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         return {
             "state_version": session.state_version,
             "blocked_reason": gate["action_blocked_reason"],
+            "people": NPCRelationshipService.public_people(session, package),
+            "relationship_edges": NPCRelationshipService.public_edges(
+                session, package
+            ),
             "opportunities": [
                 {
                     "opportunity_id": item.opportunity_id,
@@ -1507,6 +1522,97 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 }
                 for item in values
             ],
+        }
+
+    @app.get("/api/game/session/{session_id}/conversations")
+    async def list_conversations(
+        session_id: str,
+        npc_id: str | None = Query(default=None, min_length=1, max_length=128),
+        story_day: int | None = Query(default=None, ge=1, le=90),
+        cursor: str | None = Query(default=None, min_length=1, max_length=512),
+        limit: int = Query(default=20, ge=1, le=100),
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        account_id = current_account_id(x_account_id)
+        session = runtime.game_sessions.get_owned(session_id, account_id)
+        package = require_locked_package(runtime.packages, session)
+        if npc_id is not None and npc_id not in {
+            item.npc_id for item in package.npc_profiles
+        }:
+            raise HTTPException(
+                status_code=422, detail="invalid conversation npc filter"
+            )
+        offset = 0
+        if cursor is not None:
+            try:
+                raw = base64.b64decode(
+                    cursor.encode("ascii"), altchars=b"-_", validate=True
+                )
+                document = json.loads(raw.decode("utf-8"))
+                if (
+                    not isinstance(document, dict)
+                    or set(document) != {"offset", "npc_id", "story_day"}
+                    or document["npc_id"] != npc_id
+                    or document["story_day"] != story_day
+                    or isinstance(document["offset"], bool)
+                    or int(document["offset"]) < 0
+                ):
+                    raise ValueError("cursor does not match filters")
+                offset = int(document["offset"])
+            except (
+                UnicodeError, ValueError, TypeError, json.JSONDecodeError,
+                binascii.Error,
+            ) as exc:
+                raise HTTPException(
+                    status_code=422, detail="invalid conversation cursor"
+                ) from exc
+        values = sorted(
+            (
+                item
+                for item in session.completed_conversations
+                if (npc_id is None or item.npc_id == npc_id)
+                and (story_day is None or item.story_day == story_day)
+            ),
+            key=lambda item: (
+                item.story_day, item.started_at, item.conversation_id
+            ),
+        )
+        if offset > len(values):
+            raise HTTPException(
+                status_code=422, detail="invalid conversation cursor"
+            )
+        page = values[offset: offset + limit]
+        next_offset = offset + len(page)
+        next_cursor = None
+        if next_offset < len(values):
+            payload = json.dumps(
+                {
+                    "offset": next_offset,
+                    "npc_id": npc_id,
+                    "story_day": story_day,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            next_cursor = base64.urlsafe_b64encode(payload).decode("ascii")
+        return {
+            "items": [
+                {
+                    "conversation_id": item.conversation_id,
+                    "opportunity_id": item.opportunity_id,
+                    "npc_id": item.npc_id,
+                    "story_day": item.story_day,
+                    "start_reason": item.start_reason,
+                    "end_reason": item.end_reason,
+                    "completion_status": item.completion_status,
+                    "transcript": [dict(turn) for turn in item.transcript],
+                    "started_at": item.started_at,
+                    "ended_at": item.ended_at,
+                }
+                for item in page
+            ],
+            "next_cursor": next_cursor,
         }
 
     @app.post("/api/game/session/{session_id}/action/stream")

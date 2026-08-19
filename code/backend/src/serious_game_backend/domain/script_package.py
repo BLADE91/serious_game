@@ -225,6 +225,7 @@ class ScriptPackage:
     origin_npc_attitude_modifiers: dict[str, dict[str, int]] | None = None
     trust_rules: dict | None = None
     npc_relationships: tuple[dict, ...] = ()
+    npc_discovery_rules: dict | None = None
     night_agent_scenes: tuple[dict, ...] = ()
     night_agent_actions: dict[str, dict] | None = None
     npc_social_roles: dict[str, tuple[str, ...]] | None = None

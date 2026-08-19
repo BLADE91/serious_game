@@ -270,6 +270,9 @@ class FileScriptPackageLoader:
             npc_relationships=tuple(
                 dict(item) for item in social_rules.get("npc_relationships", [])
             ),
+            npc_discovery_rules=dict(
+                social_rules.get("npc_discovery_rules", {})
+            ),
             night_agent_scenes=tuple(
                 dict(item) for item in social_rules.get("night_agent_scenes", [])
             ),

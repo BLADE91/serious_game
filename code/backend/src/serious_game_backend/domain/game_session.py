@@ -10,6 +10,7 @@ from serious_game_backend.domain.enums import SessionStatus
 from serious_game_backend.domain.story import VisibleNarrativeEntry
 from serious_game_backend.domain.conversation import (
     ActiveConversation,
+    CompletedConversation,
     ForcedGroupConversation,
 )
 from serious_game_backend.domain.household_settlement import (
@@ -65,11 +66,15 @@ class GameSession:
     rendered_content_ids: set[str] = field(default_factory=set)
     next_feed_cursor: int = 1
     known_fact_ids: set[str] = field(default_factory=set)
+    known_npc_ids: set[str] = field(default_factory=set)
+    contactable_npc_ids: set[str] = field(default_factory=set)
+    relationship_edges: list[dict] = field(default_factory=list)
     night_logs: list[dict] = field(default_factory=list)
     ending_result: dict | None = None
     decision_parameters: dict[str, dict] = field(default_factory=dict)
     npc_demand_states: dict[str, dict] = field(default_factory=dict)
     active_conversation: ActiveConversation | None = None
+    completed_conversations: list[CompletedConversation] = field(default_factory=list)
     active_group_conversation: ForcedGroupConversation | None = None
     group_conversation_queue: list[ForcedGroupConversation] = field(
         default_factory=list

@@ -5,16 +5,24 @@ from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.enums import AvailabilityMode
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
+)
 
 
 class InteractionOpportunityService:
     def list_available(
         self, session: GameSession, package: ScriptPackage
     ) -> list[InteractionOpportunity]:
+        NPCRelationshipService.synchronize(session, package)
         return [
             item
             for item in package.interaction_opportunities
-            if self._is_available(item, session)
+            if self._is_available(
+                item,
+                session,
+                require_contactable=bool(package.npc_discovery_rules),
+            )
         ]
 
     def require_available(
@@ -31,12 +39,21 @@ class InteractionOpportunityService:
             ),
             None,
         )
-        if opportunity is None or not self._is_available(opportunity, session):
+        if opportunity is None or not self._is_available(
+            opportunity,
+            session,
+            require_contactable=bool(package.npc_discovery_rules),
+        ):
             raise ActionUnavailableError("当前互动机会不可用")
         return opportunity
 
     @staticmethod
-    def _is_available(item: InteractionOpportunity, session: GameSession) -> bool:
+    def _is_available(
+        item: InteractionOpportunity,
+        session: GameSession,
+        *,
+        require_contactable: bool = False,
+    ) -> bool:
         if item.availability_mode is AvailabilityMode.CLOSED:
             return False
         day = session.game_state.story_day
@@ -55,4 +72,8 @@ class InteractionOpportunityService:
             for log in session.logs
         ):
             return False
-        return item.npc_id in session.npc_states
+        if item.npc_id not in session.npc_states:
+            return False
+        if require_contactable:
+            return item.npc_id in session.contactable_npc_ids
+        return True

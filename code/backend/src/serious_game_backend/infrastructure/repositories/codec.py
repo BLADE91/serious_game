@@ -18,6 +18,7 @@ from serious_game_backend.domain.events import (
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.conversation import (
     ActiveConversation,
+    CompletedConversation,
     ForcedGroupConversation,
 )
 from serious_game_backend.domain.game_state import GameState
@@ -71,7 +72,7 @@ def encode_session(session: GameSession) -> dict:
             ),
         }
     return {
-        "schema_version": 11,
+        "schema_version": 12,
         "session_id": session.session_id,
         "account_id": session.account_id,
         "package_id": session.package_id,
@@ -120,6 +121,9 @@ def encode_session(session: GameSession) -> dict:
         "rendered_content_ids": sorted(session.rendered_content_ids),
         "next_feed_cursor": session.next_feed_cursor,
         "known_fact_ids": sorted(session.known_fact_ids),
+        "known_npc_ids": sorted(session.known_npc_ids),
+        "contactable_npc_ids": sorted(session.contactable_npc_ids),
+        "relationship_edges": session.relationship_edges,
         "night_logs": session.night_logs,
         "ending_result": session.ending_result,
         "decision_parameters": session.decision_parameters,
@@ -128,6 +132,9 @@ def encode_session(session: GameSession) -> dict:
             asdict(session.active_conversation)
             if session.active_conversation is not None else None
         ),
+        "completed_conversations": [
+            asdict(item) for item in session.completed_conversations
+        ],
         "active_group_conversation": (
             asdict(session.active_group_conversation)
             if session.active_group_conversation is not None else None
@@ -195,6 +202,31 @@ def decode_session(value: dict) -> GameSession:
             context=dict(pending_value.get("context", {})),
             presentation_entry_id=pending_value.get("presentation_entry_id"),
         )
+    npc_states = {
+        npc_id: NPCState(
+            npc_id=str(item["npc_id"]),
+            state_tier=NPCStateTier(item["state_tier"]),
+            availability_mode=AvailabilityMode(item["availability_mode"]),
+            profile_id=item.get("profile_id"),
+            trust_score=item.get("trust_score"),
+            trust_locked=bool(item.get("trust_locked", False)),
+            trust_effects_applied=frozenset(
+                item.get("trust_effects_applied", [])
+            ),
+            attitude_score=item.get("attitude_score"),
+            anxiety_score=item.get("anxiety_score"),
+            memory_id=item.get("memory_id"),
+            chapter_disclosure_used=bool(
+                item.get("chapter_disclosure_used", False)
+            ),
+            known_fact_ids=frozenset(item.get("known_fact_ids", [])),
+            owned_evidence_ids=frozenset(
+                item.get("owned_evidence_ids", [])
+            ),
+            special_flags=frozenset(item.get("special_flags", [])),
+        )
+        for npc_id, item in value.get("npc_states", {}).items()
+    }
     return GameSession(
         session_id=str(value["session_id"]),
         account_id=str(value["account_id"]),
@@ -213,31 +245,7 @@ def decode_session(value: dict) -> GameSession:
         research_subject_id=value.get("research_subject_id"),
         experiment_id=value.get("experiment_id"),
         experiment_group_id=value.get("experiment_group_id"),
-        npc_states={
-            npc_id: NPCState(
-                npc_id=str(item["npc_id"]),
-                state_tier=NPCStateTier(item["state_tier"]),
-                availability_mode=AvailabilityMode(item["availability_mode"]),
-                profile_id=item.get("profile_id"),
-                trust_score=item.get("trust_score"),
-                trust_locked=bool(item.get("trust_locked", False)),
-                trust_effects_applied=frozenset(
-                    item.get("trust_effects_applied", [])
-                ),
-                attitude_score=item.get("attitude_score"),
-                anxiety_score=item.get("anxiety_score"),
-                memory_id=item.get("memory_id"),
-                chapter_disclosure_used=bool(
-                    item.get("chapter_disclosure_used", False)
-                ),
-                known_fact_ids=frozenset(item.get("known_fact_ids", [])),
-                owned_evidence_ids=frozenset(
-                    item.get("owned_evidence_ids", [])
-                ),
-                special_flags=frozenset(item.get("special_flags", [])),
-            )
-            for npc_id, item in value.get("npc_states", {}).items()
-        },
+        npc_states=npc_states,
         status=SessionStatus(value["status"]),
         state_version=int(value["state_version"]),
         processing_action_id=value.get("processing_action_id"),
@@ -259,6 +267,11 @@ def decode_session(value: dict) -> GameSession:
         rendered_content_ids=set(value.get("rendered_content_ids", [])),
         next_feed_cursor=int(value.get("next_feed_cursor", 1)),
         known_fact_ids=set(value.get("known_fact_ids", [])),
+        known_npc_ids=set(value.get("known_npc_ids", [])),
+        contactable_npc_ids=set(value.get("contactable_npc_ids", [])),
+        relationship_edges=[
+            dict(item) for item in value.get("relationship_edges", [])
+        ],
         night_logs=list(value.get("night_logs", [])),
         ending_result=value.get("ending_result"),
         decision_parameters=dict(value.get("decision_parameters", {})),
@@ -270,6 +283,15 @@ def decode_session(value: dict) -> GameSession:
             ActiveConversation(**value["active_conversation"])
             if value.get("active_conversation") is not None else None
         ),
+        completed_conversations=[
+            CompletedConversation(**{
+                **item,
+                "transcript": tuple(
+                    dict(turn) for turn in item.get("transcript", ())
+                ),
+            })
+            for item in value.get("completed_conversations", [])
+        ],
         active_group_conversation=(
             ForcedGroupConversation(**{
                 **value["active_group_conversation"],

@@ -9,6 +9,9 @@ from serious_game_backend.application.action_variants import (
     variant_availability,
     variant_target_choices,
 )
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
+)
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
 
@@ -18,6 +21,7 @@ class MapService:
         self._opportunities = opportunities
 
     def build(self, session: GameSession, package: ScriptPackage) -> dict:
+        NPCRelationshipService.synchronize(session, package)
         if package.gameplay_schema_version >= 4:
             return self._build_governance_map(session, package)
         available_items = self._opportunities.list_available(session, package)
@@ -256,6 +260,10 @@ class MapService:
             {"target_id": item.npc_id, "label": item.name}
             for item in package.npc_profiles
             if item.npc_id in session.npc_states
+            and (
+                package.gameplay_schema_version < 4
+                or item.npc_id in session.known_npc_ids
+            )
         ]
 
     @staticmethod

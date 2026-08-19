@@ -24,6 +24,10 @@ class RoleTurnContext:
     allowed_fact_markers: dict[str, tuple[str, ...]] = field(default_factory=dict)
     forbidden_fact_markers: tuple[str, ...] = ()
     memory_items: tuple[str, ...] = ()
+    relationship_context: dict[str, str] = field(default_factory=dict)
+    recent_visible_change_reasons: tuple[str, ...] = ()
+    unresolved_commitments: tuple[str, ...] = ()
+    unresolved_demands: tuple[str, ...] = ()
     conversation_turn_count: int = 0
     conversation_history: tuple[dict[str, str], ...] = ()
     conversation_opening: str = ""

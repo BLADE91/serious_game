@@ -79,6 +79,8 @@ class NightSimulationService:
             if not requested_targets:
                 continue
             for edge in edges:
+                if not edge.get("propagation_enabled", True):
+                    continue
                 if edge.get("source_npc_id") != source_id:
                     continue
                 target_id = str(edge.get("target_npc_id", ""))

@@ -43,6 +43,10 @@ class NPCMemory:
     keywords: tuple[str, ...]
     valid_from_day: int
     expires_after_day: int | None = None
+    actor_id: str = ""
+    commitment_content: str | None = None
+    due_day: int | None = None
+    resolution_state: str = "observed"
     invalidated_at: str | None = None
     created_at: str = field(default_factory=runtime_now_iso)
 

@@ -24,6 +24,9 @@ class FakeRoleLLMGateway:
                 input_relevance="irrelevant",
             )
         if context.npc_id == "npc_wu_xiuying":
+            relationship = context.relationship_context or dict(
+                context.visible_world_context.get("relationship_context", {})
+            )
             forceful = any(
                 phrase in context.player_text
                 for phrase in ("必须配合", "不识抬举", "命令你", "马上签")
@@ -44,9 +47,16 @@ class FakeRoleLLMGateway:
                     conversation_state="end",
                     exit_narrative="吴秀英收起脸上的客气，提起菜篮转身下坡，没有再给你追问的机会。",
                 )
+            relationship_signal = (
+                "你前面办事还算有章法，我愿意把话再说深一点。"
+                if relationship.get("trust_band") == "trusted"
+                else ""
+            )
             return RoleTurnResult(
                 npc_id=context.npc_id,
                 dialogue=(
+                    relationship_signal
+                    +
                     "周家、何家、杨家，面上一团和气，底下各有各的算盘。"
                     "县长要在这村里办事，先得看明白，谁的话在谁面前好使。"
                     "县长，这村里的水看着浅，趟下去才知道深浅。您慢慢看。"

@@ -19,6 +19,7 @@ class ActiveConversation:
     cost_charged: bool = False
     transcript: list[dict[str, str]] = field(default_factory=list)
     started_at: str = field(default_factory=conversation_now_iso)
+    start_reason: str = "interaction_opportunity"
 
     def add_turn(self, player_text: str, npc_text: str) -> None:
         self.transcript.extend((
@@ -26,6 +27,20 @@ class ActiveConversation:
             {"speaker": "npc", "text": npc_text},
         ))
         self.turn_count += 1
+
+
+@dataclass(frozen=True, slots=True)
+class CompletedConversation:
+    conversation_id: str
+    opportunity_id: str
+    npc_id: str
+    story_day: int
+    start_reason: str
+    end_reason: str
+    completion_status: str
+    transcript: tuple[dict[str, str], ...]
+    started_at: str
+    ended_at: str = field(default_factory=conversation_now_iso)
 
 
 @dataclass(slots=True)

@@ -23,6 +23,9 @@ from serious_game_backend.application.gameplay_governance_service import (
     GameplayGovernanceService,
 )
 from serious_game_backend.application.visible_state import VisibleStateProjector
+from serious_game_backend.application.npc_relationship_service import (
+    NPCRelationshipService,
+)
 from serious_game_backend.domain.enums import OperationStatus, SessionStatus
 from serious_game_backend.domain.errors import (
     ActionUnavailableError,
@@ -218,6 +221,7 @@ class EndDayService:
                 self._story_flow.append_night(current, package)
                 night_record = self._nights.run_night(current, package)
             self._nights.activate_next_group_conversation(current)
+            NPCRelationshipService.synchronize(current, package)
             current.processing_action_id = None
             current.state_version += 1
             current.touch()
