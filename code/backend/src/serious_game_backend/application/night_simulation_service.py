@@ -831,6 +831,12 @@ class NightSimulationService:
                             if package.relationship_subnetworks else []
                         ),
                     ))
+                    if (
+                        failure_reason == "hidden_fact_leakage"
+                        and package.relationship_subnetworks
+                    ):
+                        scene_blocked = True
+                        break
                     proposals.append({
                         "npc_id": npc_id,
                         "action_id": "night_hold_position",
@@ -923,6 +929,31 @@ class NightSimulationService:
                     "rationale": result.rationale,
                     "accepted": True,
                 })
+            if scene_blocked:
+                for audit in private_audit:
+                    if (
+                        audit["phase"] == "action"
+                        and audit["validation_verdict"] == "accepted"
+                    ):
+                        audit.update({
+                            "validation_verdict": "rejected",
+                            "rejection_reason": "scene_hidden_fact_leakage",
+                            "chosen_fallback": "night_hold_position",
+                            "resolved_hard_outcome_ids": [
+                                "outcome_hold_position"
+                            ],
+                        })
+                return self._settle_hold_exchange(
+                    session,
+                    package,
+                    scene,
+                    participants,
+                    action_catalog,
+                    group_index=group_index,
+                    executed_global=executed_global,
+                    private_audit=private_audit,
+                    transcript=transcript,
+                )
             executed: list[str] = []
             resolved_hard_outcome_ids: list[str] = []
             accepted = [item for item in proposals if item["accepted"]]

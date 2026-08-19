@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 import unittest
@@ -471,6 +472,57 @@ class NightAgentV3SettlementTests(unittest.TestCase):
         ]
         self.assertTrue(rejected)
         self.assertNotIn("未公开底稿", "\n".join(record["morning_card"]))
+
+    def test_one_action_disclosure_atomically_holds_entire_scene(self) -> None:
+        class MixedActionDisclosureGateway(FakeRoleLLMGateway):
+            def run_night_turn(self, context):
+                if context.phase != "action":
+                    return super().run_night_turn(context)
+                if context.npc_id == "npc_qian_wei":
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="fake-mixed-action-disclosure",
+                        action_id="night_unify_story",
+                        target_ids=("npc_zhao_jianguo",),
+                        topic_ids=("investigation_risk",),
+                        rationale="未公开底稿显示另一参与者的精确隐秘得分。",
+                    )
+                return NightAgentResult(
+                    npc_id=context.npc_id,
+                    model_id="fake-mixed-action-disclosure",
+                    action_id="night_move_originals",
+                    topic_ids=("evidence_custody",),
+                    rationale="只处理本人经手的材料。",
+                )
+
+        session = self._session_on(29)
+        session.flags.add("秘密摸底")
+        session.game_state = replace(session.game_state, corruption_evidence=10)
+        state_before = session.game_state
+        flags_before = set(session.flags)
+        npc_states_before = deepcopy(session.npc_states)
+        reservations_before = deepcopy(session.resource_reservations)
+        ledger_before = deepcopy(session.resource_ledger_entries)
+        service = self._service(MixedActionDisclosureGateway())
+
+        record = service.run_night(session, self.package)
+        replay = service.run_night(session, self.package)
+
+        exchange = record["agent_exchanges"][0]
+        self.assertEqual(["night_hold_position"], exchange["executed_action_ids"])
+        self.assertEqual(
+            ["outcome_hold_position"], exchange["resolved_hard_outcome_ids"]
+        )
+        self.assertNotIn("night_move_originals", exchange["executed_action_ids"])
+        self.assertEqual(state_before, session.game_state)
+        self.assertEqual(flags_before, session.flags)
+        self.assertEqual(npc_states_before, session.npc_states)
+        self.assertEqual(reservations_before, session.resource_reservations)
+        self.assertEqual(ledger_before, session.resource_ledger_entries)
+        self.assertNotIn("原件缺失", session.flags)
+        self.assertIs(record, replay)
+        self.assertEqual(1, len(session.night_logs))
+        self.assertNotIn("未公开底稿", exchange["public_summary"])
 
     def test_legal_fixture_is_repeatable_for_same_seed(self) -> None:
         first_session = self._session_on(29)
