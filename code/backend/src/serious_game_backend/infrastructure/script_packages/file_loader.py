@@ -270,6 +270,10 @@ class FileScriptPackageLoader:
             npc_relationships=tuple(
                 dict(item) for item in social_rules.get("npc_relationships", [])
             ),
+            relationship_subnetworks={
+                str(item["subnetwork_id"]): dict(item)
+                for item in social_rules.get("relationship_subnetworks", [])
+            },
             npc_discovery_rules=dict(
                 social_rules.get("npc_discovery_rules", {})
             ),
@@ -279,6 +283,10 @@ class FileScriptPackageLoader:
             night_agent_actions={
                 str(item["action_id"]): dict(item)
                 for item in social_rules.get("night_agent_actions", [])
+            },
+            night_agent_hard_outcomes={
+                str(item["outcome_id"]): dict(item)
+                for item in social_rules.get("night_agent_hard_outcomes", [])
             },
             npc_social_roles={
                 str(npc_id): tuple(str(role) for role in roles)
@@ -321,6 +329,86 @@ class FileScriptPackageLoader:
         if any(not item for item in action_ids) or len(action_ids) != len(set(action_ids)):
             raise ContentValidationError("夜间 Agent 动作 ID 为空或重复")
         action_id_set = set(action_ids)
+        edges = document.get("npc_relationships", [])
+        edge_ids = [str(item.get("edge_id", "")) for item in edges]
+        strict_night_network = bool(document.get("relationship_subnetworks"))
+        if strict_night_network and (
+            any(not item for item in edge_ids)
+            or len(edge_ids) != len(set(edge_ids))
+        ):
+            raise ContentValidationError("NPC关系边 ID 为空或重复")
+        subnetworks = document.get("relationship_subnetworks", [])
+        subnetwork_ids = [str(item.get("subnetwork_id", "")) for item in subnetworks]
+        if any(not item for item in subnetwork_ids) or len(subnetwork_ids) != len(
+            set(subnetwork_ids)
+        ):
+            raise ContentValidationError("夜间关系子网 ID 为空或重复")
+        subnetwork_id_set = set(subnetwork_ids)
+        edge_by_id = {
+            str(item["edge_id"]): item for item in edges if item.get("edge_id")
+        }
+        for subnetwork in subnetworks:
+            subnetwork_id = str(subnetwork["subnetwork_id"])
+            referenced_edges = set(subnetwork.get("edge_ids", ()))
+            if (
+                not referenced_edges
+                or not referenced_edges.issubset(edge_by_id)
+                or not subnetwork.get("allowed_propagation_topics")
+                or not subnetwork.get("relationship_visibility_requirements")
+                or not set(subnetwork.get("night_action_ids", ())).issubset(
+                    action_id_set
+                )
+            ):
+                raise ContentValidationError(
+                    "夜间关系子网边界配置无效",
+                    details={"subnetwork_id": subnetwork_id},
+                )
+            if any(
+                edge_by_id[edge_id].get("subnetwork") != subnetwork_id
+                for edge_id in referenced_edges
+            ):
+                raise ContentValidationError(
+                    "夜间关系子网引用了其他子网的关系边",
+                    details={"subnetwork_id": subnetwork_id},
+                )
+        for edge in edges:
+            if (
+                edge.get("subnetwork") not in subnetwork_id_set
+                and subnetworks
+            ):
+                raise ContentValidationError("NPC关系边引用未知夜间子网")
+            if subnetworks and (
+                edge.get("source_npc_id") not in npc_ids
+                or edge.get("target_npc_id") not in npc_ids
+                or edge.get("source_npc_id") == edge.get("target_npc_id")
+            ):
+                raise ContentValidationError("NPC关系边端点无效")
+            if subnetworks and (
+                not edge.get("visibility_requirements")
+                or not edge.get("allowed_propagation_topics")
+                or not set(edge.get("night_action_ids", ())).issubset(action_id_set)
+            ):
+                raise ContentValidationError("NPC关系边缺少夜间传播边界")
+
+        outcomes = document.get("night_agent_hard_outcomes", [])
+        outcome_ids = [str(item.get("outcome_id", "")) for item in outcomes]
+        if any(not item for item in outcome_ids) or len(outcome_ids) != len(set(outcome_ids)):
+            raise ContentValidationError("夜间硬结算结果 ID 为空或重复")
+        outcome_by_id = {str(item["outcome_id"]): item for item in outcomes}
+        for outcome in outcomes:
+            if outcome.get("action_id") not in action_id_set:
+                raise ContentValidationError("夜间硬结算结果引用未知动作")
+            if not set(outcome.get("npc_deltas", ())).issubset(npc_ids):
+                raise ContentValidationError("夜间硬结算结果引用未知 NPC")
+            effects = outcome.get("effects", {})
+            referenced_outcome_flags = (
+                set(effects.get("open_flags", ()))
+                | set(effects.get("close_flags", ()))
+            )
+            if not referenced_outcome_flags.issubset(registered_flags):
+                raise ContentValidationError("夜间硬结算结果引用未注册旗标")
+            if "budget_remaining" in effects.get("ledger_deltas", {}):
+                raise ContentValidationError("NPC夜间硬结算不得修改预算")
         scene_ids: set[str] = set()
         for scene in document.get("night_agent_scenes", []):
             scene_id = str(scene.get("scene_id", ""))
@@ -350,8 +438,32 @@ class FileScriptPackageLoader:
                     "夜间 Agent 场景引用未登记动作",
                     details={"scene_id": scene_id, "action_ids": sorted(unknown_actions)},
                 )
+            unknown_subnetworks = set(scene.get("subnetwork_ids", ())) - subnetwork_id_set
+            if subnetworks and (
+                unknown_subnetworks
+                or not scene.get("subnetwork_ids")
+                or not scene.get("allowed_topics")
+                or int(scene.get("max_action_executions", 1)) < 1
+            ):
+                raise ContentValidationError(
+                    "夜间 Agent 场景子网边界无效",
+                    details={"scene_id": scene_id},
+                )
         for action in actions:
             action_id = str(action["action_id"])
+            hard_outcome_ids = set(action.get("hard_outcome_ids", ()))
+            if subnetworks and (
+                not hard_outcome_ids
+                or not hard_outcome_ids.issubset(outcome_by_id)
+                or any(
+                    outcome_by_id[outcome_id].get("action_id") != action_id
+                    for outcome_id in hard_outcome_ids
+                )
+            ):
+                raise ContentValidationError(
+                    "夜间动作硬结算注册无效",
+                    details={"action_id": action_id},
+                )
             if action.get("resolution", "unilateral") not in {
                 "unilateral", "consensus"
             }:

@@ -77,6 +77,7 @@ class NightAgentPayload(BaseModel):
     demands: list[str] = Field(default_factory=list, max_length=8)
     urgency: Literal["none", "normal", "high", "critical"] = "none"
     target_ids: list[str] = Field(default_factory=list, max_length=5)
+    topic_ids: list[str] = Field(default_factory=list, max_length=5)
     rationale: str = Field(default="", max_length=500)
 
 
@@ -225,6 +226,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 "name": item.get("name", ""),
                 "description": item.get("description", ""),
                 "targets": item.get("allowed_target_ids", []),
+                "topics": item.get("allowed_topics", []),
             }
             for item in context.allowed_actions
         }
@@ -267,7 +269,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             contract = (
                 "本回合只做行动决定：dialogue 必须为 null；action_id 必须从允许动作键中选择，"
                 "target_ids 只能使用动作允许目标；contact_ids 必须为 []；"
-                "rationale 说明角色为何在交流后这样做。"
+                "topic_ids 只能使用允许主题；rationale 说明角色为何在交流后这样做。"
             )
         system = "\n\n".join((
             "你是严肃游戏夜间场景中的一个独立 NPC Agent。你只能扮演当前角色，"
@@ -284,10 +286,12 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             + json.dumps(context.counterpart_ids, ensure_ascii=False),
             "玩家在当前强制群组会话中的最新回应：\n" + context.player_text,
             "允许动作：\n" + json.dumps(actions, ensure_ascii=False, sort_keys=True),
+            "允许传播主题：\n"
+            + json.dumps(context.allowed_topics, ensure_ascii=False),
             contract,
             "只返回 JSON 对象，字段必须且只能是 npc_id、dialogue、action_id、"
             "contact_ids、contact_response、initiate_followup、followup_type、"
-            "participant_ids、agenda、demands、urgency、target_ids、rationale。"
+            "participant_ids、agenda、demands、urgency、target_ids、topic_ids、rationale。"
             "npc_id 必须是当前角色。",
         ))
         model_id = context.model_id or self._settings.role_llm_model
@@ -402,6 +406,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 or payload.followup_type is not None
                 or payload.participant_ids
                 or payload.action_id not in allowed_ids
+                or not set(payload.topic_ids).issubset(context.allowed_topics)
             ):
                 raise RoleLLMResponseError("夜间行动不在剧本白名单")
             result = NightAgentResult(
@@ -418,6 +423,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 demands=tuple(payload.demands),
                 urgency=payload.urgency,
                 target_ids=tuple(payload.target_ids),
+                topic_ids=tuple(payload.topic_ids),
                 rationale=payload.rationale,
             )
             usage = response.get("usage", {}) or {}
@@ -1087,7 +1093,9 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             raise RoleLLMResponseError("夜间 Agent 未返回合法结构化响应") from exc
         if not isinstance(document, dict):
             raise RoleLLMResponseError("夜间 Agent 未返回合法结构化响应")
-        for key in ("contact_ids", "participant_ids", "demands", "target_ids"):
+        for key in (
+            "contact_ids", "participant_ids", "demands", "target_ids", "topic_ids"
+        ):
             if document.get(key) is None:
                 document[key] = []
         for key in ("agenda", "rationale"):
@@ -1272,6 +1280,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             "demands": list(result.demands),
             "urgency": result.urgency,
             "target_ids": list(result.target_ids),
+            "topic_ids": list(result.topic_ids),
             "rationale": result.rationale,
         }
 
@@ -1284,5 +1293,6 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                 "participant_ids": tuple(value.get("participant_ids", ())),
                 "demands": tuple(value.get("demands", ())),
                 "target_ids": tuple(value.get("target_ids", ())),
+                "topic_ids": tuple(value.get("topic_ids", ())),
             }
         )

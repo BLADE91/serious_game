@@ -89,6 +89,7 @@ class NightAgentContext:
     scene_goal: str = ""
     private_context: str = ""
     allowed_actions: tuple[dict, ...] = ()
+    allowed_topics: tuple[str, ...] = ()
     max_contacts: int = 0
     player_text: str = ""
     allowed_followup_type: str = ""
@@ -111,6 +112,7 @@ class NightAgentResult:
     demands: tuple[str, ...] = ()
     urgency: str = "none"
     target_ids: tuple[str, ...] = ()
+    topic_ids: tuple[str, ...] = ()
     rationale: str = ""
 
 

@@ -128,20 +128,30 @@
       "dp3_10:d":[-22,-15]
     }}
   },
+  "relationship_subnetworks": [
+    {"subnetwork_id":"county_government","name":"县级政府网络","edge_ids":["rel_sun_zhao_reporting"],"allowed_propagation_topics":["county_reporting"],"relationship_visibility_requirements":{"minimum_visibility":"hidden","actor_must_be_endpoint":true},"night_action_ids":["night_hold_position"]},
+    {"subnetwork_id":"corporate_corruption","name":"企业腐败网络","edge_ids":["rel_liu_zhou_interest","rel_qian_zhao_interest","rel_zhao_qian_interest"],"allowed_propagation_topics":["investigation_risk","evidence_custody"],"relationship_visibility_requirements":{"minimum_visibility":"hidden","actor_must_be_endpoint":true},"night_action_ids":["night_unify_story","night_move_originals","night_cut_off_counterpart","night_hold_position"]},
+    {"subnetwork_id":"village_clan","name":"村庄宗族网络","edge_ids":["rel_wu_zhou_village"],"allowed_propagation_topics":["clan_mediation"],"relationship_visibility_requirements":{"minimum_visibility":"hidden","actor_must_be_endpoint":true},"night_action_ids":["night_hold_position"]},
+    {"subnetwork_id":"environmental_evidence","name":"环境证据网络","edge_ids":["rel_shi_ke_evidence"],"allowed_propagation_topics":["eia_evidence"],"relationship_visibility_requirements":{"minimum_visibility":"hidden","actor_must_be_endpoint":true},"night_action_ids":["night_hold_position"]},
+    {"subnetwork_id":"external_oversight","name":"外部监督网络","edge_ids":["rel_chen_wu_information","rel_zhang_zhao_oversight"],"allowed_propagation_topics":["public_oversight","inspection_progress"],"relationship_visibility_requirements":{"minimum_visibility":"hidden","actor_must_be_endpoint":true},"night_action_ids":["night_hold_position"]}
+  ],
   "npc_relationships": [
-    {"edge_id":"rel_liu_zhou_interest","subnetwork":"corporate_corruption","channel":"interest","source_npc_id":"npc_liu_san","target_npc_id":"npc_zhou_dashan","initial_visibility":"hidden","visibility_requirements":{"suspected_fact_ids":["fact_connected_invoices"],"confirmed_flags":["账目揭发"]},"suspected_reason":"已取得的票据显示刘三与周大山之间存在利益往来。","confirmed_reason":"账目核验确认了双方的利益联系。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
-    {"edge_id":"rel_qian_zhao_interest","subnetwork":"corporate_corruption","channel":"interest","source_npc_id":"npc_qian_wei","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"suspected_flags":["秘密摸底"],"confirmed_flags":["两百万已移交立案"]},"suspected_reason":"调查迹象显示钱伟与赵建国之间可能存在利益联系。","confirmed_reason":"正式材料确认了双方的利益联系。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
-    {"edge_id":"rel_chen_wu_information","subnetwork":"external_oversight","channel":"information","source_npc_id":"npc_chen_mo","target_npc_id":"npc_wu_xiuying","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["记者结盟"]},"suspected_reason":"两人的公开接触显示存在信息往来。","confirmed_reason":"玩家亲历的合作确认了双方的信息联系。","propagation_enabled":true,"attitude_delta":5,"anxiety_delta":0},
-    {"edge_id":"rel_sun_zhao_reporting","subnetwork":"county_government","channel":"reporting","source_npc_id":"npc_sun_qiang","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["孙强交底"]},"suspected_reason":"公开职务关系显示孙强经常向赵建国汇报。","confirmed_reason":"孙强的交底确认了实际汇报链。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
-    {"edge_id":"rel_wu_zhou_village","subnetwork":"village_clan","channel":"influence","source_npc_id":"npc_wu_xiuying","target_npc_id":"npc_zhou_dashan","initial_visibility":"hidden","visibility_requirements":{"suspected_fact_ids":["fact_clan_power_map"],"confirmed_flags":["flag_wu_first_talk_completed"]},"suspected_reason":"吴秀英介绍了村庄中不同群体与周氏族长的关系。","confirmed_reason":"首次会谈确认了两人在村庄关系网中的位置。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0},
-    {"edge_id":"rel_shi_ke_evidence","subnetwork":"environmental_evidence","channel":"reporting","source_npc_id":"npc_shi_wenbin","target_npc_id":"npc_ke_qinian","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["环评揭穿"]},"suspected_reason":"公开职务关系显示石文斌受柯启年管理。","confirmed_reason":"环境材料确认了两人在证据链中的关系。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0},
-    {"edge_id":"rel_zhang_zhao_oversight","subnetwork":"external_oversight","channel":"oversight","source_npc_id":"npc_zhang_li","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["自查落空"]},"suspected_reason":"巡察工作使张立与县班子进入公开监督关系。","confirmed_reason":"巡察材料确认了具体监督对象。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0}
+    {"edge_id":"rel_liu_zhou_interest","subnetwork":"corporate_corruption","channel":"interest","source_npc_id":"npc_liu_san","target_npc_id":"npc_zhou_dashan","initial_visibility":"hidden","visibility_requirements":{"suspected_fact_ids":["fact_connected_invoices"],"confirmed_flags":["账目揭发"]},"allowed_propagation_topics":["investigation_risk"],"night_action_ids":["night_hold_position"],"suspected_reason":"已取得的票据显示刘三与周大山之间存在利益往来。","confirmed_reason":"账目核验确认了双方的利益联系。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
+    {"edge_id":"rel_qian_zhao_interest","subnetwork":"corporate_corruption","channel":"interest","source_npc_id":"npc_qian_wei","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"suspected_flags":["秘密摸底"],"confirmed_flags":["两百万已移交立案"]},"allowed_propagation_topics":["investigation_risk","evidence_custody"],"night_action_ids":["night_unify_story","night_cut_off_counterpart","night_hold_position"],"suspected_reason":"调查迹象显示钱伟与赵建国之间可能存在利益联系。","confirmed_reason":"正式材料确认了双方的利益联系。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
+    {"edge_id":"rel_zhao_qian_interest","subnetwork":"corporate_corruption","channel":"interest","source_npc_id":"npc_zhao_jianguo","target_npc_id":"npc_qian_wei","initial_visibility":"hidden","visibility_requirements":{"suspected_flags":["秘密摸底"],"confirmed_flags":["两百万已移交立案"]},"allowed_propagation_topics":["investigation_risk","evidence_custody"],"night_action_ids":["night_unify_story","night_move_originals","night_cut_off_counterpart","night_hold_position"],"suspected_reason":"调查迹象显示赵建国仍受钱伟利益链影响。","confirmed_reason":"正式材料确认了赵建国与钱伟之间的反向联络。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0},
+    {"edge_id":"rel_chen_wu_information","subnetwork":"external_oversight","channel":"information","source_npc_id":"npc_chen_mo","target_npc_id":"npc_wu_xiuying","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["记者结盟"]},"allowed_propagation_topics":["public_oversight"],"night_action_ids":["night_hold_position"],"suspected_reason":"两人的公开接触显示存在信息往来。","confirmed_reason":"玩家亲历的合作确认了双方的信息联系。","propagation_enabled":true,"attitude_delta":5,"anxiety_delta":0},
+    {"edge_id":"rel_sun_zhao_reporting","subnetwork":"county_government","channel":"reporting","source_npc_id":"npc_sun_qiang","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["孙强交底"]},"allowed_propagation_topics":["county_reporting"],"night_action_ids":["night_hold_position"],"suspected_reason":"公开职务关系显示孙强经常向赵建国汇报。","confirmed_reason":"孙强的交底确认了实际汇报链。","propagation_enabled":true,"attitude_delta":-5,"anxiety_delta":5},
+    {"edge_id":"rel_wu_zhou_village","subnetwork":"village_clan","channel":"influence","source_npc_id":"npc_wu_xiuying","target_npc_id":"npc_zhou_dashan","initial_visibility":"hidden","visibility_requirements":{"suspected_fact_ids":["fact_clan_power_map"],"confirmed_flags":["flag_wu_first_talk_completed"]},"allowed_propagation_topics":["clan_mediation"],"night_action_ids":["night_hold_position"],"suspected_reason":"吴秀英介绍了村庄中不同群体与周氏族长的关系。","confirmed_reason":"首次会谈确认了两人在村庄关系网中的位置。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0},
+    {"edge_id":"rel_shi_ke_evidence","subnetwork":"environmental_evidence","channel":"reporting","source_npc_id":"npc_shi_wenbin","target_npc_id":"npc_ke_qinian","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["环评揭穿"]},"allowed_propagation_topics":["eia_evidence"],"night_action_ids":["night_hold_position"],"suspected_reason":"公开职务关系显示石文斌受柯启年管理。","confirmed_reason":"环境材料确认了两人在证据链中的关系。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0},
+    {"edge_id":"rel_zhang_zhao_oversight","subnetwork":"external_oversight","channel":"oversight","source_npc_id":"npc_zhang_li","target_npc_id":"npc_zhao_jianguo","initial_visibility":"hidden","visibility_requirements":{"when_both_known":true,"confirmed_flags":["自查落空"]},"allowed_propagation_topics":["inspection_progress"],"night_action_ids":["night_hold_position"],"suspected_reason":"巡察工作使张立与县班子进入公开监督关系。","confirmed_reason":"巡察材料确认了具体监督对象。","propagation_enabled":false,"attitude_delta":0,"anxiety_delta":0}
   ],
   "night_agent_scenes": [
+    {"scene_id":"night_d10_county_reporting","story_day":10,"selection_mode":"autonomous","subnetwork_ids":["county_government"],"candidate_ids":["npc_sun_qiang","npc_zhao_jianguo"],"max_contacts_per_npc":1,"max_action_executions":1,"rounds":1,"allowed_topics":["county_reporting"],"scene_goal":"征迁初期的县镇汇报链正在校准口径，只能讨论已经进入工作流程的进度。","public_direction_summary":"县镇工作链条进行了一次常规进度核对。","private_contexts":{},"model_ids":{},"action_ids":["night_hold_position"]},
     {
       "scene_id": "night_d29_qian_zhao_private_room",
       "story_day": 29,
       "selection_mode": "autonomous",
+      "subnetwork_ids": ["corporate_corruption"],
       "candidate_ids": [
         "npc_qian_wei",
         "npc_zhao_jianguo",
@@ -149,7 +159,10 @@
         "npc_liu_san"
       ],
       "max_contacts_per_npc": 2,
+      "max_action_executions": 1,
       "rounds": 2,
+      "allowed_topics": ["investigation_risk", "evidence_custody"],
+      "hidden_fact_markers": ["未公开底稿", "精确隐秘得分"],
       "scene_goal": "县里的调查正在逼近。判断彼此是否仍可信，并决定今晚之后如何保护自己。",
       "public_direction_summary": "与近期调查有关的人员进行了试探性接触，主要在评估风险、合作边界和彼此立场。",
       "private_contexts": {
@@ -165,7 +178,17 @@
         "night_cut_off_counterpart",
         "night_hold_position"
       ]
-    }
+    },
+    {"scene_id":"night_d40_village_mediation","story_day":40,"selection_mode":"autonomous","subnetwork_ids":["village_clan"],"candidate_ids":["npc_wu_xiuying","npc_zhou_dashan"],"max_contacts_per_npc":1,"max_action_executions":1,"rounds":1,"allowed_topics":["clan_mediation"],"scene_goal":"宗族议事只能围绕已公开的安置分歧协调，不得扩散未核验材料。","public_direction_summary":"村庄内部就公开的安置分歧进行了有限沟通。","private_contexts":{},"model_ids":{},"action_ids":["night_hold_position"]},
+    {"scene_id":"night_d55_environment_evidence","story_day":55,"selection_mode":"autonomous","subnetwork_ids":["environmental_evidence"],"candidate_ids":["npc_shi_wenbin","npc_ke_qinian"],"max_contacts_per_npc":1,"max_action_executions":1,"rounds":1,"allowed_topics":["eia_evidence"],"scene_goal":"环境材料进入复核期，只能讨论证据保管和已经登记的复核流程。","public_direction_summary":"环境材料的保管与复核流程出现了新的工作动向。","private_contexts":{},"model_ids":{},"action_ids":["night_hold_position"]},
+    {"scene_id":"night_d70_external_oversight","story_day":70,"selection_mode":"autonomous","subnetwork_ids":["external_oversight"],"candidate_ids":["npc_chen_mo","npc_wu_xiuying"],"max_contacts_per_npc":1,"max_action_executions":1,"rounds":1,"allowed_topics":["public_oversight"],"scene_goal":"外部关注上升，只能交流已经公开或亲历可观察的监督进展。","public_direction_summary":"外部监督渠道围绕公开进展进行了谨慎核对。","private_contexts":{},"model_ids":{},"action_ids":["night_hold_position"]},
+    {"scene_id":"night_d84_inspection_followup","story_day":84,"selection_mode":"autonomous","subnetwork_ids":["external_oversight","county_government"],"candidate_ids":["npc_zhang_li","npc_zhao_jianguo","npc_sun_qiang"],"max_contacts_per_npc":1,"max_action_executions":1,"rounds":1,"allowed_topics":["inspection_progress","county_reporting"],"scene_goal":"终局前的监督回看只核对已登记的整改和县镇执行进度。","public_direction_summary":"监督与执行链条对已登记的整改进度进行了回看。","private_contexts":{},"model_ids":{},"action_ids":["night_hold_position"]}
+  ],
+  "night_agent_hard_outcomes": [
+    {"outcome_id":"outcome_unify_story","action_id":"night_unify_story","effects":{"metric_deltas":{"corruption_evidence":[3,8]},"open_flags":["攻守同盟已成"],"close_flags":["钱赵生隙"]},"npc_deltas":{"npc_qian_wei":{"attitude":3,"anxiety":-3},"npc_zhao_jianguo":{"attitude":3,"anxiety":-3}}},
+    {"outcome_id":"outcome_move_originals","action_id":"night_move_originals","effects":{"metric_deltas":{"corruption_evidence":[-8,-3]},"open_flags":["原件缺失"]},"npc_deltas":{"npc_zhao_jianguo":{"attitude":0,"anxiety":8}}},
+    {"outcome_id":"outcome_cut_off_counterpart","action_id":"night_cut_off_counterpart","effects":{"metric_deltas":{"corruption_evidence":[0,3]},"open_flags":["钱赵生隙"],"close_flags":["攻守同盟已成"]},"npc_deltas":{"npc_qian_wei":{"attitude":-5,"anxiety":5},"npc_zhao_jianguo":{"attitude":-5,"anxiety":5}}},
+    {"outcome_id":"outcome_hold_position","action_id":"night_hold_position","effects":{},"npc_deltas":{}}
   ],
   "night_agent_actions": [
     {
@@ -174,6 +197,8 @@
       "description": "双方继续合作，约定一致说法并互相掩护；只有两人都选择才成立。",
       "public_direction_summary": "部分相关人员尝试协调对外说法，调查中的相互掩护迹象有所增强。",
       "resolution": "consensus",
+      "hard_outcome_ids": ["outcome_unify_story"],
+      "allowed_topics": ["investigation_risk"],
       "actor_ids": ["npc_qian_wei", "npc_zhao_jianguo"],
       "forbidden_flags": ["与钱伟撕破脸"],
       "allowed_target_ids": ["npc_qian_wei", "npc_zhao_jianguo"],
@@ -193,6 +218,8 @@
       "description": "赵建国趁夜转移可能被调查取得的原件，以降低直接证据强度。",
       "public_direction_summary": "有人可能调整了关键材料的保管方式，后续核查难度有所上升。",
       "resolution": "unilateral",
+      "hard_outcome_ids": ["outcome_move_originals"],
+      "allowed_topics": ["evidence_custody"],
       "actor_ids": ["npc_zhao_jianguo"],
       "required_any_flags": ["已立项审计", "秘密摸底"],
       "allowed_target_ids": [],
@@ -210,6 +237,8 @@
       "description": "停止互相掩护，并为必要时向调查者提供对方线索做准备。",
       "public_direction_summary": "原有合作关系出现裂痕，相关人员开始相互防备。",
       "resolution": "unilateral",
+      "hard_outcome_ids": ["outcome_cut_off_counterpart"],
+      "allowed_topics": ["investigation_risk"],
       "required_flags": ["与钱伟撕破脸"],
       "allowed_target_ids": ["npc_qian_wei", "npc_zhao_jianguo"],
       "effects": {
@@ -228,6 +257,8 @@
       "description": "不达成共同安排，也不立刻采取高风险动作，保留下一夜改变立场的空间。",
       "public_direction_summary": "相关人员进行了有限接触，但没有形成明确的共同安排。",
       "resolution": "unilateral",
+      "hard_outcome_ids": ["outcome_hold_position"],
+      "allowed_topics": ["county_reporting", "investigation_risk", "evidence_custody", "clan_mediation", "eia_evidence", "public_oversight", "inspection_progress"],
       "allowed_target_ids": [],
       "effects": {},
       "npc_deltas": {}

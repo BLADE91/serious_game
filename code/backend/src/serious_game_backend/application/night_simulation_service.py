@@ -63,6 +63,7 @@ class NightSimulationService:
             agent_exchanges,
             contact_selections,
             contact_responses,
+            private_audit,
         ) = self._run_agent_scenes(session, package, agent_failures)
         followup_decisions = self._create_followup_conversations(
             session, package, agent_exchanges, agent_failures
@@ -132,6 +133,7 @@ class NightSimulationService:
             "contact_responses": contact_responses,
             "followup_decisions": followup_decisions,
             "agent_failures": agent_failures,
+            "private_audit": private_audit,
         }
         session.night_logs.append(record)
         session.logs.append({
@@ -328,14 +330,15 @@ class NightSimulationService:
         session: GameSession,
         package: ScriptPackage,
         failures: list[dict],
-    ) -> tuple[list[dict], list[dict], list[dict]]:
+    ) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
         if self._night_llm is None:
-            return [], [], []
+            return [], [], [], []
         profiles = {item.npc_id: item for item in package.npc_profiles}
         action_catalog = package.night_agent_actions or {}
         exchanges: list[dict] = []
         selections: list[dict] = []
         responses: list[dict] = []
+        private_audit: list[dict] = []
         executed_global: set[str] = set()
         for scene in package.night_agent_scenes:
             if int(scene.get("story_day", -1)) != session.game_state.story_day:
@@ -358,8 +361,11 @@ class NightSimulationService:
                     scene,
                     candidate_ids,
                     profiles,
+                    package,
+                    action_catalog,
                     selections,
                     responses,
+                    private_audit,
                     failures,
                 )
             else:
@@ -376,7 +382,8 @@ class NightSimulationService:
                     executed_global=executed_global,
                     failures=failures,
                 ))
-        return exchanges, selections, responses
+                private_audit.extend(exchanges[-1].get("private_audit", ()))
+        return exchanges, selections, responses, private_audit
 
     def _select_contact_groups(
         self,
@@ -384,8 +391,11 @@ class NightSimulationService:
         scene: dict,
         candidate_ids: tuple[str, ...],
         profiles: dict,
+        package: ScriptPackage,
+        action_catalog: dict[str, dict],
         selections: list[dict],
         responses: list[dict],
+        private_audit: list[dict],
         failures: list[dict],
     ) -> list[tuple[str, ...]]:
         max_contacts = max(0, int(scene.get("max_contacts_per_npc", 2)))
@@ -393,7 +403,14 @@ class NightSimulationService:
         seen: set[frozenset[str]] = set()
         for npc_id in candidate_ids:
             profile = profiles[npc_id]
-            candidates = tuple(item for item in candidate_ids if item != npc_id)
+            candidates, allowed_topics, allowed_actions = self._actor_night_scope(
+                session,
+                package,
+                scene,
+                npc_id,
+                candidate_ids,
+                action_catalog,
+            )
             context = NightAgentContext(
                 session_id=session.session_id,
                 account_id=session.account_id,
@@ -413,11 +430,25 @@ class NightSimulationService:
                 private_context=str(
                     scene.get("private_contexts", {}).get(npc_id, "")
                 ),
+                allowed_actions=allowed_actions,
+                allowed_topics=allowed_topics,
                 max_contacts=max_contacts,
                 model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
             )
             result = self._safe_night_turn(context, failures)
             if result is None:
+                private_audit.append(self._proposal_audit(
+                    phase="contact_selection",
+                    npc_id=npc_id,
+                    operation_id=context.operation_id,
+                    original_proposal=None,
+                    verdict="rejected",
+                    reason="provider_failure",
+                    resolved_hard_outcome_ids=(
+                        ["outcome_hold_position"]
+                        if package.relationship_subnetworks else []
+                    ),
+                ))
                 selections.append({
                     "scene_id": scene["scene_id"],
                     "npc_id": npc_id,
@@ -432,6 +463,23 @@ class NightSimulationService:
                 if item in candidates
             ))[:max_contacts]
             accepted = result.npc_id == npc_id and tuple(result.contact_ids) == contacts
+            private_audit.append(self._proposal_audit(
+                phase="contact_selection",
+                npc_id=npc_id,
+                operation_id=context.operation_id,
+                original_proposal={
+                    "npc_id": result.npc_id,
+                    "contact_ids": list(result.contact_ids),
+                    "rationale": result.rationale,
+                },
+                verdict="accepted" if accepted else "rejected",
+                reason=None if accepted else "contact_not_one_hop_or_over_limit",
+                model_id=result.model_id,
+                resolved_hard_outcome_ids=(
+                    ["outcome_hold_position"]
+                    if package.relationship_subnetworks and not accepted else []
+                ),
+            ))
             selections.append({
                 "scene_id": scene["scene_id"],
                 "npc_id": npc_id,
@@ -547,6 +595,14 @@ class NightSimulationService:
             for round_index in range(1, int(scene.get("rounds", 2)) + 1):
                 for npc_id in participants:
                     profile = profiles[npc_id]
+                    one_hop, allowed_topics, actor_allowed = self._actor_night_scope(
+                        session,
+                        package,
+                        scene,
+                        npc_id,
+                        participants,
+                        action_catalog,
+                    )
                     context = NightAgentContext(
                         session_id=session.session_id,
                         account_id=session.account_id,
@@ -564,16 +620,15 @@ class NightSimulationService:
                         big_five=(
                             profile.big_five.as_dict() if profile.big_five else {}
                         ),
-                        counterpart_ids=tuple(
-                            item for item in participants if item != npc_id
-                        ),
+                        counterpart_ids=one_hop,
                         transcript=tuple(transcript),
                         round_index=round_index,
                         scene_goal=str(scene.get("scene_goal", "")),
                         private_context=str(
                             scene.get("private_contexts", {}).get(npc_id, "")
                         ),
-                        allowed_actions=tuple(allowed),
+                        allowed_actions=actor_allowed,
+                        allowed_topics=allowed_topics,
                         model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
                     )
                     result = self._safe_night_turn(context, failures)
@@ -589,12 +644,17 @@ class NightSimulationService:
                         "dialogue": result.dialogue,
                     })
             proposals: list[dict] = []
+            private_audit: list[dict] = []
             allowed_by_id = {str(item["action_id"]): item for item in allowed}
             for npc_id in participants:
                 profile = profiles[npc_id]
-                actor_allowed = tuple(
-                    item for item in allowed
-                    if not item.get("actor_ids") or npc_id in item["actor_ids"]
+                one_hop, allowed_topics, actor_allowed = self._actor_night_scope(
+                    session,
+                    package,
+                    scene,
+                    npc_id,
+                    participants,
+                    action_catalog,
                 )
                 context = NightAgentContext(
                     session_id=session.session_id,
@@ -610,22 +670,38 @@ class NightSimulationService:
                     npc_name=profile.name,
                     role_setting=profile.role_setting,
                     big_five=profile.big_five.as_dict() if profile.big_five else {},
-                    counterpart_ids=tuple(item for item in participants if item != npc_id),
+                    counterpart_ids=one_hop,
                     transcript=tuple(transcript),
                     scene_goal=str(scene.get("scene_goal", "")),
                     private_context=str(
                         scene.get("private_contexts", {}).get(npc_id, "")
                     ),
                     allowed_actions=actor_allowed,
+                    allowed_topics=allowed_topics,
                     model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
                 )
                 result = self._safe_night_turn(context, failures)
                 if result is None:
+                    private_audit.append(self._proposal_audit(
+                        phase="action",
+                        npc_id=npc_id,
+                        operation_id=context.operation_id,
+                        original_proposal=None,
+                        verdict="rejected",
+                        reason="provider_failure",
+                        resolved_hard_outcome_ids=(
+                            ["outcome_hold_position"]
+                            if package.relationship_subnetworks else []
+                        ),
+                    ))
                     proposals.append({
                         "npc_id": npc_id,
-                        "action_id": None,
-                        "accepted": False,
-                        "reason": "夜间行动生成失败，已安全跳过",
+                        "action_id": "night_hold_position",
+                        "target_ids": [],
+                        "topic_ids": [],
+                        "accepted": True,
+                        "fallback": True,
+                        "reason": "夜间行动生成失败，已安全回退",
                     })
                     continue
                 action = next(
@@ -635,33 +711,121 @@ class NightSimulationService:
                     ),
                     None,
                 )
-                valid_targets = set(action.get("allowed_target_ids", ())) if action else set()
-                if (
-                    action is None
-                    or not set(result.target_ids).issubset(valid_targets)
-                    or not set(result.target_ids).issubset(participants)
-                ):
+                authoritative_action = (
+                    action_catalog.get(str(result.action_id)) if action else None
+                )
+                valid_targets = (
+                    set(authoritative_action.get("allowed_target_ids", ()))
+                    if authoritative_action else set()
+                )
+                hidden_markers = tuple(scene.get("hidden_fact_markers", ()))
+                leaked_hidden_fact = any(
+                    marker and marker in f"{result.dialogue or ''}{result.rationale}"
+                    for marker in hidden_markers
+                )
+                rejection_reason = None
+                if result.npc_id != npc_id:
+                    rejection_reason = "actor_not_eligible"
+                elif action is None:
+                    rejection_reason = "action_not_whitelisted"
+                elif not set(result.target_ids).issubset(valid_targets):
+                    rejection_reason = "target_not_allowed_for_action"
+                elif not set(result.target_ids).issubset(one_hop):
+                    rejection_reason = "target_not_one_hop"
+                elif not set(result.topic_ids).issubset(allowed_topics):
+                    rejection_reason = "topic_not_allowed"
+                elif package.relationship_subnetworks and not result.topic_ids:
+                    rejection_reason = "topic_required"
+                elif leaked_hidden_fact:
+                    rejection_reason = "hidden_fact_leakage"
+                if rejection_reason is not None:
+                    private_audit.append(self._proposal_audit(
+                        phase="action",
+                        npc_id=npc_id,
+                        operation_id=context.operation_id,
+                        original_proposal={
+                            "npc_id": result.npc_id,
+                            "action_id": result.action_id,
+                            "target_ids": list(result.target_ids),
+                            "topic_ids": list(result.topic_ids),
+                            "rationale": result.rationale,
+                        },
+                        verdict="rejected",
+                        reason=rejection_reason,
+                        model_id=result.model_id,
+                        resolved_hard_outcome_ids=(
+                            ["outcome_hold_position"]
+                            if package.relationship_subnetworks else []
+                        ),
+                    ))
                     proposals.append({
                         "npc_id": npc_id,
-                        "action_id": result.action_id,
-                        "accepted": False,
-                        "reason": "动作或目标不在剧本白名单",
+                        "model_id": result.model_id,
+                        "action_id": "night_hold_position",
+                        "target_ids": [],
+                        "topic_ids": [],
+                        "accepted": True,
+                        "fallback": True,
+                        "reason": rejection_reason,
                     })
                     continue
+                private_audit.append(self._proposal_audit(
+                    phase="action",
+                    npc_id=npc_id,
+                    operation_id=context.operation_id,
+                    original_proposal={
+                        "npc_id": result.npc_id,
+                        "action_id": result.action_id,
+                        "target_ids": list(result.target_ids),
+                        "topic_ids": list(result.topic_ids),
+                        "rationale": result.rationale,
+                    },
+                    verdict="accepted",
+                    reason=None,
+                    model_id=result.model_id,
+                ))
                 proposals.append({
                     "npc_id": npc_id,
                     "model_id": result.model_id,
                     "action_id": result.action_id,
                     "target_ids": list(result.target_ids),
+                    "topic_ids": list(result.topic_ids),
                     "rationale": result.rationale,
                     "accepted": True,
                 })
             executed: list[str] = []
+            resolved_hard_outcome_ids: list[str] = []
             accepted = [item for item in proposals if item["accepted"]]
+
+            def fallback_selectors(
+                selectors: list[dict], action_id: str, reason: str
+            ) -> None:
+                for proposal in selectors:
+                    proposal.update({
+                        "action_id": "night_hold_position",
+                        "target_ids": [],
+                        "topic_ids": [],
+                        "fallback": True,
+                        "reason": reason,
+                    })
+                for audit in private_audit:
+                    if (
+                        audit["validation_verdict"] == "accepted"
+                        and audit["original_proposal"]
+                        and audit["original_proposal"].get("action_id") == action_id
+                    ):
+                        audit.update({
+                            "validation_verdict": "rejected",
+                            "rejection_reason": reason,
+                            "chosen_fallback": "night_hold_position",
+                            "resolved_hard_outcome_ids": ["outcome_hold_position"],
+                        })
+
             for action_id, action in allowed_by_id.items():
-                if action_id in executed_global:
-                    continue
                 selectors = [item for item in accepted if item["action_id"] == action_id]
+                if action_id in executed_global:
+                    fallback_selectors(selectors, action_id, "per_night_action_limit")
+                    continue
                 resolution = str(action.get("resolution", "unilateral"))
                 required_actors = set(action.get("actor_ids", participants))
                 participating_actors = required_actors & set(participants)
@@ -673,19 +837,60 @@ class NightSimulationService:
                         == participating_actors
                     )
                 if not should_execute:
+                    if (
+                        package.relationship_subnetworks
+                        and resolution == "consensus"
+                        and selectors
+                    ):
+                        fallback_selectors(
+                            selectors, action_id, "consensus_not_reached"
+                        )
                     continue
-                self._scripted_effects.apply(
-                    session,
-                    package,
-                    self._effects(action.get("effects", {})),
-                    source_id=(
-                        f"night_agent:{session.game_state.story_day}:"
-                        f"{scene['scene_id']}:{action_id}"
-                    ),
-                )
-                self._apply_npc_deltas(session, action.get("npc_deltas", {}))
+                if len(executed) >= int(scene.get("max_action_executions", 1_000)):
+                    fallback_selectors(selectors, action_id, "scene_execution_limit")
+                    continue
+                hard_outcome_ids = tuple(action.get("hard_outcome_ids", ()))
+                if package.relationship_subnetworks:
+                    outcomes = package.night_agent_hard_outcomes or {}
+                    if not hard_outcome_ids or any(
+                        outcome_id not in outcomes for outcome_id in hard_outcome_ids
+                    ):
+                        continue
+                    for outcome_id in hard_outcome_ids:
+                        outcome = outcomes[outcome_id]
+                        self._scripted_effects.apply(
+                            session,
+                            package,
+                            self._effects(outcome.get("effects", {})),
+                            source_id=(
+                                f"night_agent:{session.game_state.story_day}:"
+                                f"{scene['scene_id']}:{outcome_id}"
+                            ),
+                        )
+                        self._apply_npc_deltas(
+                            session, outcome.get("npc_deltas", {})
+                        )
+                        resolved_hard_outcome_ids.append(outcome_id)
+                else:
+                    self._scripted_effects.apply(
+                        session,
+                        package,
+                        self._effects(action.get("effects", {})),
+                        source_id=(
+                            f"night_agent:{session.game_state.story_day}:"
+                            f"{scene['scene_id']}:{action_id}"
+                        ),
+                    )
+                    self._apply_npc_deltas(session, action.get("npc_deltas", {}))
                 executed.append(action_id)
                 executed_global.add(action_id)
+                for audit in private_audit:
+                    if (
+                        audit["validation_verdict"] == "accepted"
+                        and audit["original_proposal"]
+                        and audit["original_proposal"].get("action_id") == action_id
+                    ):
+                        audit["resolved_hard_outcome_ids"] = list(hard_outcome_ids)
             return {
                 "scene_id": scene["scene_id"],
                 "group_index": group_index,
@@ -693,6 +898,8 @@ class NightSimulationService:
                 "transcript": transcript,
                 "action_proposals": proposals,
                 "executed_action_ids": executed,
+                "resolved_hard_outcome_ids": resolved_hard_outcome_ids,
+                "private_audit": private_audit,
                 "public_summary": self._public_exchange_summary(
                     scene,
                     executed,
@@ -734,6 +941,140 @@ class NightSimulationService:
             "message": str(last_error),
         })
         return None
+
+    def _actor_night_scope(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        scene: dict,
+        npc_id: str,
+        candidate_ids: tuple[str, ...],
+        action_catalog: dict[str, dict],
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[dict, ...]]:
+        """Project only one-hop contacts, topics and action descriptions to a model."""
+        subnetworks = package.relationship_subnetworks or {}
+        if not subnetworks:
+            contacts = tuple(item for item in candidate_ids if item != npc_id)
+            actions = tuple(
+                self._public_action_candidate(action_catalog[action_id])
+                for action_id in scene.get("action_ids", ())
+                if action_id in action_catalog
+                and self._conditions_match(action_catalog[action_id], session)
+                and (
+                    not action_catalog[action_id].get("actor_ids")
+                    or npc_id in action_catalog[action_id]["actor_ids"]
+                )
+            )
+            return contacts, tuple(scene.get("allowed_topics", ())), actions
+
+        scene_subnetworks = set(scene.get("subnetwork_ids", ()))
+        scene_actions = set(scene.get("action_ids", ()))
+        scene_topics = set(scene.get("allowed_topics", ()))
+        edges = [
+            edge
+            for edge in package.npc_relationships
+            if edge.get("subnetwork") in scene_subnetworks
+            and edge.get("source_npc_id") == npc_id
+            and edge.get("target_npc_id") in candidate_ids
+            and self._night_edge_active(edge, session)
+        ]
+        contact_set = {str(edge["target_npc_id"]) for edge in edges}
+        contacts = tuple(item for item in candidate_ids if item in contact_set)
+        edge_topics = {
+            str(topic)
+            for edge in edges
+            for topic in edge.get("allowed_propagation_topics", ())
+        }
+        edge_actions = {
+            str(action_id)
+            for edge in edges
+            for action_id in edge.get("night_action_ids", ())
+        }
+        subnetwork_topics = {
+            str(topic)
+            for subnetwork_id in scene_subnetworks
+            for topic in subnetworks.get(subnetwork_id, {}).get(
+                "allowed_propagation_topics", ()
+            )
+        }
+        subnetwork_actions = {
+            str(action_id)
+            for subnetwork_id in scene_subnetworks
+            for action_id in subnetworks.get(subnetwork_id, {}).get(
+                "night_action_ids", ()
+            )
+        }
+        allowed_topics = tuple(sorted(
+            edge_topics & subnetwork_topics & scene_topics
+        ))
+        allowed_action_ids = edge_actions & subnetwork_actions & scene_actions
+        allowed_actions = tuple(
+            self._public_action_candidate(action_catalog[action_id])
+            for action_id in scene.get("action_ids", ())
+            if action_id in allowed_action_ids
+            and action_id in action_catalog
+            and self._conditions_match(action_catalog[action_id], session)
+            and (
+                not action_catalog[action_id].get("actor_ids")
+                or npc_id in action_catalog[action_id]["actor_ids"]
+            )
+            and (
+                not action_catalog[action_id].get("allowed_topics")
+                or bool(
+                    set(action_catalog[action_id]["allowed_topics"])
+                    & set(allowed_topics)
+                )
+            )
+        )
+        return contacts, allowed_topics, allowed_actions
+
+    @staticmethod
+    def _public_action_candidate(action: dict) -> dict:
+        return {
+            key: action[key]
+            for key in (
+                "action_id",
+                "name",
+                "description",
+                "allowed_target_ids",
+                "allowed_topics",
+            )
+            if key in action
+        }
+
+    @classmethod
+    def _night_edge_active(cls, edge: dict, session: GameSession) -> bool:
+        day = session.game_state.story_day
+        return (
+            int(edge.get("active_from_day", 1)) <= day
+            and day <= int(edge.get("active_until_day", 89))
+            and cls._conditions_match(edge, session)
+        )
+
+    @staticmethod
+    def _proposal_audit(
+        *,
+        phase: str,
+        npc_id: str,
+        operation_id: str,
+        original_proposal: dict | None,
+        verdict: str,
+        reason: str | None,
+        model_id: str | None = None,
+        resolved_hard_outcome_ids: list[str] | None = None,
+    ) -> dict:
+        return {
+            "phase": phase,
+            "npc_id": npc_id,
+            "original_proposal": original_proposal,
+            "validation_verdict": verdict,
+            "rejection_reason": reason,
+            "chosen_fallback": (
+                "night_hold_position" if verdict == "rejected" else None
+            ),
+            "resolved_hard_outcome_ids": list(resolved_hard_outcome_ids or ()),
+            "model_audit_reference": f"{model_id or 'unavailable'}:{operation_id}",
+        }
 
     @staticmethod
     def _conditions_match(rule: dict, session: GameSession) -> bool:

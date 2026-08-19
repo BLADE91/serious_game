@@ -13,6 +13,9 @@ from serious_game_backend.domain.llm import (
 class FakeRoleLLMGateway:
     """确定性契约替身；只为垂直切片生成可重复的受限角色回合。"""
 
+    def __init__(self, *, night_fixture: str = "legal") -> None:
+        self._night_fixture = night_fixture
+
     def run_turn(self, context: RoleTurnContext) -> RoleTurnResult:
         if any(
             phrase in context.player_text
@@ -79,6 +82,14 @@ class FakeRoleLLMGateway:
         )
 
     def run_night_turn(self, context: NightAgentContext) -> NightAgentResult:
+        if self._night_fixture == "timeout":
+            from serious_game_backend.domain.errors import RoleLLMUnavailableError
+
+            raise RoleLLMUnavailableError("fake night fixture timeout")
+        if self._night_fixture == "malformed":
+            from serious_game_backend.domain.errors import RoleLLMResponseError
+
+            raise RoleLLMResponseError("fake night fixture malformed output")
         model_id = context.model_id or "fake-role-v1"
         if context.phase == "contact_selection":
             preferred = {
@@ -90,6 +101,8 @@ class FakeRoleLLMGateway:
                 if preferred in context.counterpart_ids and context.max_contacts > 0
                 else ()
             )
+            if self._night_fixture == "illegal_contact":
+                contacts = ("npc_not_one_hop",)
             return NightAgentResult(
                 npc_id=context.npc_id,
                 model_id=model_id,
@@ -151,12 +164,26 @@ class FakeRoleLLMGateway:
         targets = tuple(
             item for item in context.counterpart_ids if item in allowed_targets
         )[:1]
+        topic_ids = context.allowed_topics[:1]
+        if self._night_fixture == "illegal_action":
+            preferred = "night_unregistered_action"
+        elif self._night_fixture == "illegal_target":
+            targets = ("npc_not_one_hop",)
+        elif self._night_fixture == "illegal_topic":
+            topic_ids = ("hidden_unregistered_topic",)
+        rationale = "结合刚才的交谈，我选择当前风险最低且符合自身利益的方案。"
+        result_npc_id = context.npc_id
+        if self._night_fixture == "illegal_actor":
+            result_npc_id = "npc_not_eligible"
+        if self._night_fixture == "hidden_fact":
+            rationale = "未公开底稿写明某人的精确隐秘得分为99。"
         return NightAgentResult(
-            npc_id=context.npc_id,
+            npc_id=result_npc_id,
             model_id=model_id,
             action_id=preferred,
             target_ids=targets,
-            rationale="结合刚才的交谈，我选择当前风险最低且符合自身利益的方案。",
+            topic_ids=topic_ids,
+            rationale=rationale,
         )
 
     def run_governance_task(
