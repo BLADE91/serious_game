@@ -79,6 +79,7 @@ def public_variant(
         "name": variant["name"],
         "description": variant.get("description", variant["visible_result"]),
         "cost_action_points": int(variant["action_point_costs"][tier]),
+        "resource_cost_mode": variant["resource_cost_mode"],
         "resource_costs": list(variant["resource_costs"]),
         "visible_result": variant["visible_result"],
         "legal_location_ids": list(variant["legal_location_ids"]),

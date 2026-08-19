@@ -178,6 +178,7 @@
       "target_kind": "household_representative",
       "legal_target_ids": ["npc_zhou_dashan", "npc_zhou_kuiyuan", "npc_zhou_mancang", "npc_wu_xiuying", "npc_he_tiezhu", "npc_tan_laoliu", "npc_ma_changshun", "npc_ning_dehai", "npc_yuan_guilan", "npc_yang_bo", "npc_lao_juetou", "npc_miao_xiwang", "npc_deng_shouben"],
       "action_point_costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
+      "resource_cost_mode": "none",
       "resource_costs": [],
       "visible_result": "形成现场走访记录和待办事项。",
       "hard_outcomes": [{"kind": "follow_up", "id": "governance_action_record"}],
@@ -196,9 +197,10 @@
       "target_kind": "cadre",
       "legal_target_ids": ["npc_jiang_chongyue", "npc_zhao_jianguo", "npc_zheng_xiangdong", "npc_feng_jingzhi", "npc_sun_qiang", "npc_zhou_dashan", "npc_liu_san", "npc_he_xingbang", "npc_luo_jian", "npc_ke_qinian", "npc_shi_wenbin", "npc_zhang_li", "npc_gu_keming", "npc_cui_guanglin"],
       "action_point_costs": {"normal": 2, "sensitive": 3, "acceptance": 4},
+      "resource_cost_mode": "none",
       "resource_costs": [],
       "visible_result": "形成干部访谈记录和待核材料清单。",
-      "hard_outcomes": [{"kind": "document", "id": "governance_action_record"}]
+      "hard_outcomes": [{"kind": "follow_up", "id": "governance_action_record"}]
     },
     {
       "variant_id": "convene_leadership_meeting",
@@ -213,6 +215,7 @@
       "target_kind": "meeting_participant",
       "legal_target_ids": ["npc_zhao_jianguo", "npc_jiang_chongyue", "npc_sun_qiang", "npc_feng_jingzhi", "npc_he_xingbang", "npc_ke_qinian", "npc_gu_keming"],
       "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
+      "resource_cost_mode": "none",
       "resource_costs": [],
       "visible_result": "形成会议记录及依法通过的决议或文件。",
       "hard_outcomes": [{"kind": "document", "id": "meeting_record"}]
@@ -230,7 +233,8 @@
       "target_kind": "meeting_participant",
       "legal_target_ids": ["npc_zhao_jianguo", "npc_feng_jingzhi", "npc_zhou_dashan", "npc_wu_xiuying", "npc_he_tiezhu", "npc_tan_laoliu", "npc_yuan_guilan", "npc_ning_dehai"],
       "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
-      "resource_costs": ["hearing_venue"],
+      "resource_cost_mode": "none",
+      "resource_costs": [],
       "visible_result": "形成公开听证记录和程序性结论。",
       "hard_outcomes": [{"kind": "document", "id": "meeting_record"}]
     },
@@ -247,9 +251,10 @@
       "target_kind": "meeting_participant",
       "legal_target_ids": ["npc_zhou_dashan", "npc_zhou_kuiyuan", "npc_zhou_mancang"],
       "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
-      "resource_costs": ["clan_mediation"],
+      "resource_cost_mode": "none",
+      "resource_costs": [],
       "visible_result": "形成宗族议事记录和后续事项。",
-      "hard_outcomes": [{"kind": "follow_up", "id": "meeting_record"}]
+      "hard_outcomes": [{"kind": "document", "id": "meeting_record"}]
     },
     {
       "variant_id": "consult_county_archives",
@@ -264,7 +269,8 @@
       "target_kind": "available_archive",
       "legal_target_ids": ["available_archives"],
       "action_point_costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
-      "resource_costs": ["county_archives"],
+      "resource_cost_mode": "none",
+      "resource_costs": [],
       "visible_result": "登记本次调阅并展示已依法取得的档案。",
       "hard_outcomes": [{"kind": "document", "id": "archive_read_record"}]
     },
@@ -281,7 +287,8 @@
       "target_kind": "available_archive",
       "legal_target_ids": ["available_archives"],
       "action_point_costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
-      "resource_costs": ["county_hospital_records"],
+      "resource_cost_mode": "none",
+      "resource_costs": [],
       "visible_result": "取得并登记符合授权条件的医院材料。",
       "hard_outcomes": [{"kind": "document", "id": "archive_read_record"}]
     },

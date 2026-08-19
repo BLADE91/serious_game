@@ -8,6 +8,9 @@ from serious_game_backend.domain.action import ActionRule, ResourceActionDefinit
 from serious_game_backend.domain.enums import ActionCostTier, AvailabilityMode, NPCStateTier
 from serious_game_backend.domain.errors import ContentValidationError
 from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
+from serious_game_backend.domain.gameplay_governance import (
+    VARIANT_HARD_OUTCOME_REFERENCES,
+)
 from serious_game_backend.domain.script_package import (
     BigFiveProfile,
     CalendarSegment,
@@ -1085,7 +1088,6 @@ class FileScriptPackageLoader:
 
         location_ids = {item.location_id for item in map_locations}
         npc_ids = {item.npc_id for item in profiles}
-        allowed_outcomes = {"fact", "flag", "state", "resource", "document", "follow_up"}
         required_cost_tiers = {"normal", "sensitive", "acceptance"}
         for item in variants:
             variant_id = str(item.get("variant_id", ""))
@@ -1104,7 +1106,7 @@ class FileScriptPackageLoader:
             required_fields = {
                 "unlock_day", "required_flags", "required_any_flags",
                 "legal_location_ids", "target_kind", "legal_target_ids",
-                "action_point_costs", "resource_costs", "visible_result",
+                "action_point_costs", "resource_cost_mode", "resource_costs", "visible_result",
                 "hard_outcomes",
             }
             missing = sorted(required_fields - set(item))
@@ -1134,22 +1136,30 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(
                     f"启用的行动变体行动点成本无效：{variant_id}"
                 )
-            if not isinstance(item["resource_costs"], list):
+            if (
+                item["resource_cost_mode"] != "none"
+                or not isinstance(item["resource_costs"], list)
+                or item["resource_costs"]
+            ):
                 raise ContentValidationError(
-                    f"启用的行动变体资源成本无效：{variant_id}"
+                    f"variant resource cost has no authoritative settlement: {variant_id}"
                 )
             if not str(item["visible_result"]).strip():
                 raise ContentValidationError(
                     f"启用的行动变体缺少可见结果：{variant_id}"
                 )
             outcomes = item["hard_outcomes"]
+            allowed_references = VARIANT_HARD_OUTCOME_REFERENCES[action_id]
             if not outcomes or any(
-                str(outcome.get("kind", "")) not in allowed_outcomes
-                or not str(outcome.get("id", "")).strip()
+                not isinstance(outcome, dict)
+                or (
+                    str(outcome.get("kind", "")),
+                    str(outcome.get("id", "")),
+                ) not in allowed_references
                 for outcome in outcomes
             ):
                 raise ContentValidationError(
-                    f"enabled variant requires an authoritative hard outcome: {variant_id}"
+                    f"enabled variant requires a registered hard outcome: {variant_id}"
                 )
 
     @staticmethod

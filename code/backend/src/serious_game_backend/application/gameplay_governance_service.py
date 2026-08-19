@@ -393,7 +393,11 @@ class GameplayGovernanceService:
         if definition is None or action_kind not in BASE_ACTION_PERMISSIONS:
             raise ActionUnavailableError("不存在这项基础行动")
         variant = None
-        if package.gameplay_schema_version >= 4 and variant_id:
+        if package.gameplay_schema_version >= 4:
+            if not variant_id or not location_id:
+                raise ActionUnavailableError(
+                    "玩法 Schema v4 必须提交行动变体和合法地点"
+                )
             variant = find_variant(package, variant_id)
             if variant is None or variant.get("action_id") != action_kind:
                 raise ActionUnavailableError("行动变体与基础行动不匹配")
@@ -415,6 +419,11 @@ class GameplayGovernanceService:
             )
             if not selected_targets.issubset(legal_targets):
                 raise ActionUnavailableError("所选对象不属于该行动变体的合法范围")
+            if (
+                variant.get("resource_cost_mode") != "none"
+                or variant.get("resource_costs")
+            ):
+                raise ActionUnavailableError("该行动变体缺少权威资源成本结算器")
         active = next(
             (
                 item for item in session.governance_actions.values()
@@ -516,6 +525,12 @@ class GameplayGovernanceService:
             session.meetings[meeting_id] = meeting
             action.result_ids.append(meeting_id)
             result["meeting"] = self._public_meeting(meeting)
+        if variant is not None:
+            action.hard_outcomes = self._settle_variant_hard_outcomes(
+                action,
+                variant,
+                result,
+            )
         # Some action kinds (notably archive inspection) complete immediately.
         # Serialize only after their authoritative status/result IDs are final.
         result["action"] = asdict(action)
@@ -3597,6 +3612,38 @@ class GameplayGovernanceService:
                 ),
             })
         return result
+
+    @staticmethod
+    def _settle_variant_hard_outcomes(
+        action: GovernanceActionRecord,
+        variant: dict,
+        result: dict,
+    ) -> list[dict]:
+        settled = []
+        for outcome in variant["hard_outcomes"]:
+            outcome_id = str(outcome["id"])
+            if outcome_id == "governance_action_record":
+                authoritative_ids = [action.action_instance_id]
+            elif outcome_id == "meeting_record":
+                meeting = result.get("meeting")
+                authoritative_ids = [meeting["meeting_id"]] if meeting else []
+            elif outcome_id == "archive_read_record":
+                authoritative_ids = [
+                    item["archive_id"] for item in result.get("archives", ())
+                ]
+            else:
+                authoritative_ids = []
+            if not authoritative_ids:
+                raise ActionUnavailableError(
+                    "行动变体未形成声明的权威硬结果",
+                    details={"variant_id": variant["variant_id"], "outcome_id": outcome_id},
+                )
+            settled.append({
+                "kind": outcome["kind"],
+                "id": outcome_id,
+                "authoritative_ids": authoritative_ids,
+            })
+        return settled
 
     @staticmethod
     def _governance_action_cost(

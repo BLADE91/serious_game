@@ -72,7 +72,7 @@ def _variant_config(base: dict) -> dict:
             "action_point_costs": {"normal": 2, "sensitive": 3, "acceptance": 4},
             "resource_costs": [],
             "visible_result": "形成干部访谈记录和待核材料清单。",
-            "hard_outcomes": [{"kind": "document", "id": "governance_action_record"}],
+            "hard_outcomes": [{"kind": "follow_up", "id": "governance_action_record"}],
         },
         {
             "variant_id": "convene_leadership_meeting",
@@ -113,7 +113,8 @@ def _variant_config(base: dict) -> dict:
                 "npc_ning_dehai",
             ],
             "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
-            "resource_costs": ["hearing_venue"],
+            "resource_cost_mode": "none",
+            "resource_costs": [],
             "visible_result": "形成公开听证记录和程序性结论。",
             "hard_outcomes": [{"kind": "document", "id": "meeting_record"}],
         },
@@ -134,9 +135,10 @@ def _variant_config(base: dict) -> dict:
                 "npc_zhou_mancang",
             ],
             "action_point_costs": {"normal": 3, "sensitive": 4, "acceptance": 5},
-            "resource_costs": ["clan_mediation"],
+            "resource_cost_mode": "none",
+            "resource_costs": [],
             "visible_result": "形成宗族议事记录和后续事项。",
-            "hard_outcomes": [{"kind": "follow_up", "id": "meeting_record"}],
+            "hard_outcomes": [{"kind": "document", "id": "meeting_record"}],
         },
         {
             "variant_id": "collect_blood_lead_report",
@@ -155,11 +157,15 @@ def _variant_config(base: dict) -> dict:
             "target_kind": "available_archive",
             "legal_target_ids": ["available_archives"],
             "action_point_costs": {"normal": 1, "sensitive": 2, "acceptance": 2},
-            "resource_costs": ["county_hospital_records"],
+            "resource_cost_mode": "none",
+            "resource_costs": [],
             "visible_result": "取得并登记符合授权条件的医院材料。",
             "hard_outcomes": [{"kind": "document", "id": "archive_read_record"}],
         },
     ]
+    for variant in config["action_variants"]:
+        if variant.get("enabled"):
+            variant.setdefault("resource_cost_mode", "none")
     return config
 
 
@@ -337,6 +343,50 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertEqual(201, response.status_code, response.text)
         self.assertEqual("public_hearing", response.json()["action"]["variant_id"])
         self.assertEqual("loc_liulin_village", response.json()["action"]["location_id"])
+        meeting_id = response.json()["meeting"]["meeting_id"]
+        self.assertEqual(
+            [{
+                "kind": "document",
+                "id": "meeting_record",
+                "authoritative_ids": [meeting_id],
+            }],
+            response.json()["action"]["hard_outcomes"],
+        )
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        action_id = response.json()["action"]["action_instance_id"]
+        self.assertEqual(
+            response.json()["action"]["hard_outcomes"],
+            stored.governance_actions[action_id].hard_outcomes,
+        )
+
+    def test_conversation_variant_persists_follow_up_action_record(self) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": session.state_version,
+                "action_kind": "household_visit",
+                "variant_id": "field_visit",
+                "location_id": "loc_liulin_village",
+                "target_ids": ["npc_zhou_dashan"],
+                "topic": "入户了解诉求",
+            },
+        )
+        self.assertEqual(201, response.status_code, response.text)
+        action = response.json()["action"]
+        self.assertEqual(
+            [{
+                "kind": "follow_up",
+                "id": "governance_action_record",
+                "authoritative_ids": [action["action_instance_id"]],
+            }],
+            action["hard_outcomes"],
+        )
 
     def test_governance_submission_rejects_targets_from_another_variant(self) -> None:
         self._set_story_state(day=31)
@@ -357,6 +407,71 @@ class ActionUnificationV3Tests(unittest.TestCase):
         )
         self.assertEqual(409, response.status_code, response.text)
         self.assertEqual("ACTION_UNAVAILABLE", response.json()["error"]["code"])
+
+    def test_schema_v4_governance_submission_requires_variant_and_location(self) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": session.state_version,
+                "action_kind": "household_visit",
+                "target_ids": ["npc_zhou_dashan"],
+                "topic": "入户了解诉求",
+            },
+        )
+        self.assertEqual(409, response.status_code, response.text)
+        self.assertEqual("ACTION_UNAVAILABLE", response.json()["error"]["code"])
+
+    def test_loader_rejects_unregistered_hard_outcome_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_dir = Path(temp_dir) / "package"
+            shutil.copytree(PACKAGE_ROOT / "pkg_gameplay_v2", package_dir)
+            manifest_path = package_dir / "package_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["package_id"] = "pkg_invalid_hard_outcome_reference"
+            manifest["gameplay_schema_version"] = 4
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            config_path = package_dir / "governance_config.json"
+            config = _variant_config(json.loads(config_path.read_text(encoding="utf-8")))
+            config["action_variants"][0]["hard_outcomes"] = [
+                {"kind": "document", "id": "not_registered"}
+            ]
+            config_path.write_text(
+                json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ContentValidationError) as caught:
+                FileScriptPackageLoader().load(package_dir)
+            self.assertIn("hard outcome", str(caught.exception).lower())
+
+    def test_loader_rejects_nonzero_variant_resource_cost_without_settlement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_dir = Path(temp_dir) / "package"
+            shutil.copytree(PACKAGE_ROOT / "pkg_gameplay_v2", package_dir)
+            manifest_path = package_dir / "package_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["package_id"] = "pkg_unsettled_variant_resource_cost"
+            manifest["gameplay_schema_version"] = 4
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            config_path = package_dir / "governance_config.json"
+            config = _variant_config(json.loads(config_path.read_text(encoding="utf-8")))
+            config["action_variants"][0]["resource_costs"] = ["hearing_venue"]
+            config_path.write_text(
+                json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ContentValidationError) as caught:
+                FileScriptPackageLoader().load(package_dir)
+            self.assertIn("resource cost", str(caught.exception).lower())
 
     def test_loader_rejects_enabled_variant_without_hard_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

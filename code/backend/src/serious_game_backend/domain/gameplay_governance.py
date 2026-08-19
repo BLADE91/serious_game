@@ -15,6 +15,21 @@ BASE_ACTION_PERMISSIONS = {
     "inspect_archives": ("1.3",),
 }
 
+VARIANT_HARD_OUTCOME_REFERENCES = {
+    "household_visit": frozenset({
+        ("follow_up", "governance_action_record"),
+    }),
+    "cadre_interview": frozenset({
+        ("follow_up", "governance_action_record"),
+    }),
+    "leadership_meeting": frozenset({
+        ("document", "meeting_record"),
+    }),
+    "inspect_archives": frozenset({
+        ("document", "archive_read_record"),
+    }),
+}
+
 
 @dataclass(slots=True)
 class GovernanceActionRecord:
@@ -30,6 +45,7 @@ class GovernanceActionRecord:
     archive_ids: tuple[str, ...] = ()
     transcript: list[dict] = field(default_factory=list)
     result_ids: list[str] = field(default_factory=list)
+    hard_outcomes: list[dict] = field(default_factory=list)
     created_at: str = field(default_factory=governance_now_iso)
     completed_at: str | None = None
 
