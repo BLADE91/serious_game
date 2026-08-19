@@ -12,6 +12,7 @@ from serious_game_backend.api.app import create_app
 from serious_game_backend.application.npc_memory_service import NPCMemoryService
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
+from serious_game_backend.domain.conversation import CompletedConversation
 from serious_game_backend.domain.llm import RoleTurnContext
 from serious_game_backend.infrastructure.llm.fake import FakeRoleLLMGateway
 from serious_game_backend.infrastructure.repositories.codec import (
@@ -452,7 +453,30 @@ class RelationshipSqliteRestartTests(unittest.TestCase):
                 "discovery_reason": "会谈确认",
                 "discovery_day": 2,
             }]
+            session.completed_conversations = [CompletedConversation(
+                conversation_id="conv_restart",
+                opportunity_id="opp_restart",
+                npc_id="npc_wu_xiuying",
+                story_day=2,
+                start_reason="story_window",
+                end_reason="player_exit",
+                completion_status="completed",
+                transcript=(
+                    {"speaker": "player", "text": "请把情况讲完整。"},
+                    {"speaker": "npc", "text": "我从头说。"},
+                ),
+                started_at="2026-01-01T00:00:00+00:00",
+                ended_at="2026-01-01T00:01:00+00:00",
+            )]
             runtime.sessions.save(session, expected_version=session.state_version)
+            runtime.npc_memories.record(
+                session_id=session_id,
+                account_id="acct_sqlite_relationship",
+                npc_id="npc_wu_xiuying",
+                operation_id="op_memory_restart",
+                story_day=2,
+                candidate="吴秀英承诺在D60前介绍周大山，当前尚未兑现。",
+            )
 
             restarted = build_container(settings)
             restored = restarted.sessions.get_owned(
@@ -461,6 +485,17 @@ class RelationshipSqliteRestartTests(unittest.TestCase):
             self.assertEqual({"npc_wu_xiuying"}, restored.known_npc_ids)
             self.assertEqual({"npc_wu_xiuying"}, restored.contactable_npc_ids)
             self.assertEqual("confirmed", restored.relationship_edges[0]["visibility"])
+            self.assertEqual(
+                "我从头说。",
+                restored.completed_conversations[0].transcript[1]["text"],
+            )
+            durable = restarted.npc_memories._repository.active_for_npc(
+                session_id, "npc_wu_xiuying", 90
+            )
+            self.assertEqual(1, len(durable))
+            self.assertEqual("commitment", durable[0].memory_type)
+            self.assertEqual(60, durable[0].due_day)
+            self.assertEqual("unresolved", durable[0].resolution_state)
 
 
 if __name__ == "__main__":
