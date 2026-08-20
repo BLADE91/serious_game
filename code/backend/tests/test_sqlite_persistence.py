@@ -5,7 +5,12 @@ from tempfile import TemporaryDirectory
 import unittest
 from dataclasses import replace
 import sqlite3
+from unittest.mock import patch
+from contextlib import contextmanager
 
+from fastapi.testclient import TestClient
+
+from serious_game_backend.api.app import create_app
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.application.hashing import canonical_request_hash
 from serious_game_backend.config import Settings
@@ -17,6 +22,7 @@ from serious_game_backend.infrastructure.repositories.sqlite import (
     SqliteRuntimeStore,
     SqliteRuntimeTransactionRepository,
 )
+from serious_game_backend.infrastructure.repositories.mysql import MySQLSnapshotRepository
 from serious_game_backend.infrastructure.repositories.codec import (
     decode_operation,
     encode_operation,
@@ -27,6 +33,256 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class SqlitePersistenceTests(unittest.TestCase):
+    def test_memory_governance_commit_is_atomic_and_success_snapshot_matches(self) -> None:
+        settings = Settings(
+            environment="test",
+            content_root=BACKEND_ROOT / "content" / "packages",
+            default_package_id="pkg_gameplay_v3",
+            repository="memory",
+            role_llm_provider="fake",
+        )
+        runtime = build_container(settings)
+        session = runtime.game_sessions.start_session(
+            account_id="acct_memory_atomic",
+            package_id="pkg_gameplay_v3",
+            client_request_id="memory-atomic-session",
+            origin_id="mayor",
+        )
+        updated = runtime.sessions.get_owned(session.session_id, "acct_memory_atomic")
+        assert updated is not None
+        updated.state_version += 1
+        updated.flags.add("flag_atomic_effect")
+        updated.touch()
+        history_before = runtime.snapshots.list_history(
+            "acct_memory_atomic", session.session_id
+        )
+        with patch.object(
+            runtime.snapshots,
+            "_insert_snapshot",
+            side_effect=RuntimeError("injected memory snapshot failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "injected memory"):
+                runtime.snapshots.commit_session_snapshot(
+                    updated,
+                    expected_version=session.state_version,
+                    snapshot_type="auto",
+                    reason="governance_operation_committed",
+                )
+        failed = runtime.sessions.get_owned(session.session_id, "acct_memory_atomic")
+        assert failed is not None
+        self.assertEqual(session.state_version, failed.state_version)
+        self.assertNotIn("flag_atomic_effect", failed.flags)
+        self.assertEqual(
+            [item.snapshot_id for item in history_before],
+            [
+                item.snapshot_id for item in runtime.snapshots.list_history(
+                    "acct_memory_atomic", session.session_id
+                )
+            ],
+        )
+        snapshot = runtime.snapshots.commit_session_snapshot(
+            updated,
+            expected_version=session.state_version,
+            snapshot_type="auto",
+            reason="governance_operation_committed",
+        )
+        stored = runtime.sessions.get_owned(session.session_id, "acct_memory_atomic")
+        assert stored is not None
+        self.assertEqual(stored.state_version, snapshot.state_version)
+        self.assertEqual(snapshot.snapshot_id, runtime.snapshots.current_for_session(stored).snapshot_id)
+
+    def test_mysql_governance_adapter_uses_one_transaction_for_session_and_snapshot(self) -> None:
+        class Cursor:
+            def __init__(self, store):
+                self.store = store
+                self.rowcount = 0
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, sql, params):
+                normalized = " ".join(sql.split()).lower()
+                self.store.statements.append(normalized)
+                if normalized.startswith("select snapshot_id"):
+                    self._row = None
+                    self.rowcount = 0
+                elif normalized.startswith("update game_sessions"):
+                    self.rowcount = 1
+                    self.store.staged["version"] = params[1]
+                    self.store.staged["session_payload"] = params[8]
+                elif normalized.startswith("insert into game_snapshots"):
+                    self.store.staged["snapshot_versions"] = [params[7]]
+                    if self.store.fail_insert:
+                        raise RuntimeError("injected mysql snapshot failure")
+
+            def fetchone(self):
+                return self._row
+
+        class Connection:
+            def __init__(self, store):
+                self.store = store
+
+            def cursor(self):
+                return Cursor(self.store)
+
+        class Store:
+            def __init__(self, fail_insert):
+                self.fail_insert = fail_insert
+                self.state = {"version": 1, "snapshot_versions": []}
+                self.staged = {}
+                self.statements = []
+                self.commits = 0
+                self.rollbacks = 0
+
+            def protect_json(self, value, *, purpose):
+                return {"purpose": purpose, "value": value}
+
+            @contextmanager
+            def connect(self):
+                self.staged = {}
+                try:
+                    yield Connection(self)
+                    self.state.update(self.staged)
+                    self.commits += 1
+                except Exception:
+                    self.staged = {}
+                    self.rollbacks += 1
+                    raise
+
+        settings = Settings(
+            environment="test",
+            content_root=BACKEND_ROOT / "content" / "packages",
+            default_package_id="pkg_gameplay_v3",
+            repository="memory",
+            role_llm_provider="fake",
+        )
+        runtime = build_container(settings)
+        session = runtime.game_sessions.start_session(
+            account_id="acct_mysql_adapter",
+            package_id="pkg_gameplay_v3",
+            client_request_id="mysql-adapter-session",
+            origin_id="mayor",
+        )
+        session.state_version = 2
+        session.flags.add("flag_atomic_effect")
+        session.touch()
+        failing_store = Store(True)
+        with self.assertRaisesRegex(RuntimeError, "injected mysql"):
+            MySQLSnapshotRepository(failing_store).commit_session_snapshot(
+                session,
+                expected_version=1,
+                snapshot_type="auto",
+                reason="governance_operation_committed",
+            )
+        self.assertEqual({"version": 1, "snapshot_versions": []}, failing_store.state)
+        self.assertEqual(0, failing_store.commits)
+        self.assertEqual(1, failing_store.rollbacks)
+        self.assertTrue(any(sql.startswith("update game_sessions") for sql in failing_store.statements))
+        self.assertTrue(any(sql.startswith("insert into game_snapshots") for sql in failing_store.statements))
+
+        success_store = Store(False)
+        snapshot = MySQLSnapshotRepository(success_store).commit_session_snapshot(
+            session,
+            expected_version=1,
+            snapshot_type="auto",
+            reason="governance_operation_committed",
+        )
+        self.assertEqual(1, success_store.commits)
+        self.assertEqual(2, success_store.state["version"])
+        self.assertEqual([2], success_store.state["snapshot_versions"])
+        self.assertEqual(2, snapshot.state_version)
+
+    def test_governance_commit_rolls_back_session_when_snapshot_insert_fails(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "governance-atomic.db"
+            settings = Settings(
+                environment="test",
+                content_root=BACKEND_ROOT / "content" / "packages",
+                default_package_id="pkg_gameplay_v3",
+                repository="sqlite",
+                database_path=database,
+                role_llm_provider="fake",
+            )
+            runtime = build_container(settings)
+            client = TestClient(create_app(settings, runtime))
+            headers = {"X-Account-ID": "acct_governance_atomic"}
+            created = client.post(
+                "/api/game/session",
+                headers=headers,
+                json={"client_request_id": "governance-atomic-session"},
+            )
+            self.assertEqual(201, created.status_code, created.text)
+            session_id = created.json()["session_id"]
+            before = runtime.sessions.get_owned(session_id, "acct_governance_atomic")
+            assert before is not None
+            before.pending_decision = None
+            before.flags = {"flag_clan_map"}
+            before.known_fact_ids.add("fact_clan_power_map")
+            before.game_state = replace(
+                before.game_state, story_day=2, days_left=89, action_points=8
+            )
+            runtime.sessions.save(before, expected_version=before.state_version)
+            before = runtime.sessions.get_owned(session_id, "acct_governance_atomic")
+            assert before is not None
+            action = next(
+                variant
+                for family in client.get(
+                    f"/api/game/session/{session_id}/actions", headers=headers
+                ).json()["actions"]
+                for variant in family["variants"]
+                if variant["variant_id"] == "consult_county_archives"
+            )
+            payload = {
+                "state_version": before.state_version,
+                "action_kind": action["action_id"],
+                "variant_id": action["variant_id"],
+                "location_id": action["location_choices"][0]["location_id"],
+                "archive_ids": [action["target_choices"][0]["target_id"]],
+            }
+            history_before = runtime.snapshots.list_history(
+                "acct_governance_atomic", session_id
+            )
+            with patch(
+                "serious_game_backend.infrastructure.repositories.sqlite._insert_snapshot",
+                side_effect=RuntimeError("injected snapshot insert failure"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "injected snapshot"):
+                    client.post(
+                        f"/api/game/session/{session_id}/governance/actions",
+                        headers=headers,
+                        json=payload,
+                    )
+            failed = runtime.sessions.get_owned(session_id, "acct_governance_atomic")
+            assert failed is not None
+            self.assertEqual(before.state_version, failed.state_version)
+            self.assertEqual(before.game_state.action_points, failed.game_state.action_points)
+            self.assertEqual(before.governance_actions, failed.governance_actions)
+            self.assertEqual(
+                [item.snapshot_id for item in history_before],
+                [
+                    item.snapshot_id for item in runtime.snapshots.list_history(
+                        "acct_governance_atomic", session_id
+                    )
+                ],
+            )
+
+            succeeded = client.post(
+                f"/api/game/session/{session_id}/governance/actions",
+                headers=headers,
+                json=payload,
+            )
+            self.assertEqual(201, succeeded.status_code, succeeded.text)
+            stored = runtime.sessions.get_owned(session_id, "acct_governance_atomic")
+            assert stored is not None
+            self.assertEqual(1, len(stored.governance_actions))
+            snapshot = runtime.snapshots.current_for_session(stored)
+            self.assertIsNotNone(snapshot)
+            assert snapshot is not None
+            self.assertEqual(stored.state_version, snapshot.state_version)
+
     def test_old_operation_payload_defaults_to_stable_reservation_owner(self) -> None:
         operation = OperationRecord(
             operation_id="legacy-operation",

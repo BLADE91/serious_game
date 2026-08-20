@@ -92,6 +92,15 @@ class RuntimeTransactionRepository(Protocol):
 
 
 class SnapshotRepository(Protocol):
+    def commit_session_snapshot(
+        self,
+        session: GameSession,
+        *,
+        expected_version: int,
+        snapshot_type: str,
+        reason: str,
+    ) -> GameSnapshot: ...
+
     def get_owned(
         self, account_id: str, session_id: str, snapshot_id: str
     ) -> GameSnapshot | None: ...

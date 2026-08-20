@@ -846,6 +846,9 @@ class TerminalAppTests(unittest.TestCase):
                     "archives": [{
                         "title": "补偿安置方案",
                         "content": "{\"key\":\"internal\",\"value\":\"不得显示\"}",
+                        "private_audit": "SECRET_ROOT_AUDIT",
+                        "prompt": "SECRET_PROMPT",
+                        "debug_notes": {"summary": "SECRET_DEBUG"},
                         "player_sections": [{
                             "heading": "办理原则",
                             "body": "逐户合同必须以实测底账为准。",
@@ -875,6 +878,9 @@ class TerminalAppTests(unittest.TestCase):
         self.assertIn("逐户合同必须以实测底账为准", rendered)
         self.assertNotIn("internal", rendered)
         self.assertNotIn("不得显示", rendered)
+        self.assertNotIn("SECRET_ROOT_AUDIT", rendered)
+        self.assertNotIn("SECRET_PROMPT", rendered)
+        self.assertNotIn("SECRET_DEBUG", rendered)
 
     def test_cancel_governance_recovers_an_active_action(self) -> None:
         class GovernanceApi:

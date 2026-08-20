@@ -151,6 +151,54 @@ class InMemorySnapshotRepository:
         self._slots: dict[tuple[str, str, int], ManualSaveSlot] = {}
         self._lock = RLock()
 
+    def commit_session_snapshot(
+        self,
+        session: GameSession,
+        *,
+        expected_version: int,
+        snapshot_type: str,
+        reason: str,
+    ) -> GameSnapshot:
+        # A shared critical section is the in-memory transaction boundary.
+        with self._sessions._lock, self._lock:
+            current = self._sessions._items.get(session.session_id)
+            if (
+                current is None
+                or current.account_id != session.account_id
+                or current.state_version != expected_version
+            ):
+                raise StateVersionConflictError("状态版本冲突")
+            parents = [
+                item for item in self._snapshots.values()
+                if item.session_id == session.session_id
+                and item.account_id == session.account_id
+                and item.timeline_id == session.timeline_id
+            ]
+            parent_id = (
+                max(parents, key=lambda item: item.state_version).snapshot_id
+                if parents else None
+            )
+            snapshot = build_snapshot(
+                session,
+                snapshot_type=snapshot_type,
+                reason=reason,
+                parent_snapshot_id=parent_id,
+            )
+            if any(
+                item.session_id == snapshot.session_id
+                and item.timeline_id == snapshot.timeline_id
+                and item.state_version == snapshot.state_version
+                for item in self._snapshots.values()
+            ):
+                raise ValueError("duplicate snapshot version")
+            # Validate/insert the snapshot before publishing the session copy.
+            self._insert_snapshot(snapshot)
+            self._sessions._items[session.session_id] = deepcopy(session)
+            return deepcopy(snapshot)
+
+    def _insert_snapshot(self, snapshot: GameSnapshot) -> None:
+        self._snapshots[snapshot.snapshot_id] = deepcopy(snapshot)
+
     def append(
         self,
         session: GameSession,

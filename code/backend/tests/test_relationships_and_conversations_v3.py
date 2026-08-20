@@ -312,7 +312,10 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
         self.assertEqual([ids[0]], [item["conversation_id"] for item in first.json()["items"]])
         self.assertIsNotNone(first.json()["next_cursor"])
         transcript = first.json()["items"][0]["transcript"]
-        self.assertEqual(["player", "npc"], [item["speaker"] for item in transcript])
+        self.assertEqual(
+            ["player", "npc"],
+            [item["speaker_type"] for item in transcript],
+        )
 
         second = self.client.get(
             f"/api/game/session/{self.session_id}/conversations",

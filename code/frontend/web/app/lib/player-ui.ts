@@ -23,6 +23,11 @@ export function archivePlayerSections(value: PlayerRecord | null | undefined): A
   return projected.length ? projected : [{ heading: "档案正文", body: "这份档案暂无可读正文。" }];
 }
 
+export function conversationSpeakerLabel(turn: PlayerRecord, npcName: string): string {
+  const speaker = String(turn.speaker_type || turn.speaker || "npc");
+  return speaker === "player" ? "你" : npcName || "对方";
+}
+
 export function budgetEnvelopeChoices(value: unknown): Array<PlayerRecord & { envelope_id: string; resource_id: string; name: string }> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
   return Object.entries(value as PlayerRecord).flatMap(([envelopeId, raw]) => {

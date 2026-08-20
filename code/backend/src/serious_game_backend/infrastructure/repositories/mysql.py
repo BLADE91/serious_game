@@ -497,6 +497,47 @@ class MySQLSnapshotRepository:
     def __init__(self, store: MySQLRuntimeStore) -> None:
         self._store = store
 
+    def commit_session_snapshot(
+        self,
+        session: GameSession,
+        *,
+        expected_version: int,
+        snapshot_type: str,
+        reason: str,
+    ) -> GameSnapshot:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select snapshot_id from game_snapshots
+                where session_id=%s and account_id=%s and timeline_id=%s
+                order by state_version desc limit 1
+                """,
+                (session.session_id, session.account_id, session.timeline_id),
+            )
+            parent = cursor.fetchone()
+            snapshot = build_snapshot(
+                session,
+                snapshot_type=snapshot_type,
+                reason=reason,
+                parent_snapshot_id=(str(parent["snapshot_id"]) if parent else None),
+            )
+            cursor.execute(
+                """
+                update game_sessions set status=%s, state_version=%s,
+                  processing_action_id=%s, pending_decision_id=%s,
+                  consent_record_id=%s, environment=%s, experiment_group_id=%s,
+                  updated_at=%s, current_snapshot_json=%s
+                where session_id=%s and account_id=%s and state_version=%s
+                """,
+                MySQLGameSessionRepository(self._store)._update_parameters(
+                    session, expected_version
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise StateVersionConflictError("状态版本冲突")
+            _mysql_insert_snapshot(self._store, cursor, snapshot)
+        return snapshot
+
     def get_owned(
         self, account_id: str, session_id: str, snapshot_id: str
     ) -> GameSnapshot | None:

@@ -16,6 +16,7 @@ from serious_game_backend.application.input_review_service import (
     InputReviewService,
     input_rejection_message,
 )
+from serious_game_backend.application.disclosure_gate_service import DisclosureGateService
 from serious_game_backend.application.npc_turn_service import NPCTurnService
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.resource_availability import (
@@ -24,6 +25,7 @@ from serious_game_backend.application.resource_availability import (
 )
 from serious_game_backend.application.action_cost_policy import quote_cost
 from serious_game_backend.application.action_variants import (
+    canonical_opportunity_descriptor,
     find_variant,
     variant_availability,
     variant_target_choices,
@@ -116,6 +118,7 @@ class GameplayGovernanceService:
         scripted_effects: ScriptedEffectService | None = None,
         story_flow: StoryFlowService | None = None,
         snapshots: SnapshotRepository | None = None,
+        disclosure_gate: DisclosureGateService | None = None,
     ) -> None:
         self._sessions = sessions
         self._packages = packages
@@ -126,6 +129,7 @@ class GameplayGovernanceService:
         self._scripted_effects = scripted_effects
         self._story_flow = story_flow
         self._snapshots = snapshots
+        self._disclosure_gate = disclosure_gate or DisclosureGateService()
 
     def overview(self, *, account_id: str, session_id: str) -> dict:
         session, package = self._load(account_id, session_id)
@@ -423,7 +427,13 @@ class GameplayGovernanceService:
             package,
             opportunity_id=opportunity_id,
             action_kind=action_kind,
+            variant_id=variant_id,
+            location_id=location_id,
             target_ids=target_ids,
+            topic=topic,
+            archive_ids=archive_ids,
+            proposed_document_type=proposed_document_type,
+            lead_npc_id=lead_npc_id,
         )
         config = package.governance_config or {}
         definitions = {
@@ -643,6 +653,18 @@ class GameplayGovernanceService:
             ),
             None,
         )
+        fact_boundary = None
+        if opportunity is not None:
+            normalized_text = "".join(text.split()).casefold()
+            repeat_count = sum(
+                item.get("speaker_type") == "player"
+                and "".join(str(item.get("text", "")).split()).casefold()
+                == normalized_text
+                for item in action.transcript
+            )
+            fact_boundary = self._disclosure_gate.role_turn_boundary(
+                session, package, opportunity, repeat_count=repeat_count
+            )
         replies = []
         for npc_id in action.target_ids:
             profile = profiles[npc_id]
@@ -660,9 +682,13 @@ class GameplayGovernanceService:
                     story_day=session.game_state.story_day,
                     opportunity_id=action_instance_id,
                     allowed_fact_ids=(
-                        tuple(opportunity.allowed_fact_ids)
-                        if opportunity is not None
+                        fact_boundary.gate.allowed_fact_ids
+                        if fact_boundary is not None
                         else tuple(sorted(session.known_fact_ids))
+                    ),
+                    required_disclosure_ids=(
+                        fact_boundary.required_disclosure_ids
+                        if fact_boundary is not None else ()
                     ),
                     npc_name=profile.name,
                     npc_state_tier=profile.state_tier.value,
@@ -672,15 +698,23 @@ class GameplayGovernanceService:
                     ),
                     prompt_template=package.role_turn_prompt,
                     prompt_version=package.role_turn_prompt_version,
-                    allowed_fact_texts={
-                        fact_id: package.facts[fact_id].text
-                        for fact_id in (
-                            opportunity.allowed_fact_ids
-                            if opportunity is not None
-                            else session.known_fact_ids
-                        )
-                        if fact_id in package.facts
-                    },
+                    allowed_fact_texts=(
+                        fact_boundary.allowed_fact_texts
+                        if fact_boundary is not None
+                        else {
+                            fact_id: package.facts[fact_id].text
+                            for fact_id in session.known_fact_ids
+                            if fact_id in package.facts
+                        }
+                    ),
+                    allowed_fact_markers=(
+                        fact_boundary.allowed_fact_markers
+                        if fact_boundary is not None else {}
+                    ),
+                    forbidden_fact_markers=(
+                        fact_boundary.forbidden_fact_markers
+                        if fact_boundary is not None else ()
+                    ),
                     conversation_turn_count=sum(
                         item.get("speaker_type") == "player"
                         for item in action.transcript
@@ -888,7 +922,7 @@ class GameplayGovernanceService:
                     transcript=tuple({
                         **({"npc_id": str(item.get("npc_id"))}
                            if item.get("npc_id") else {}),
-                        "speaker": str(item.get("speaker_type", "npc")),
+                        "speaker_type": str(item.get("speaker_type", "npc")),
                         "text": str(item.get("text", "")),
                     } for item in action.transcript),
                     started_at=action.created_at,
@@ -4017,7 +4051,13 @@ class GameplayGovernanceService:
         *,
         opportunity_id: str | None,
         action_kind: str,
+        variant_id: str | None,
+        location_id: str | None,
         target_ids: tuple[str, ...],
+        topic: str,
+        archive_ids: tuple[str, ...],
+        proposed_document_type: str | None,
+        lead_npc_id: str | None,
     ):
         if opportunity_id is None:
             return None
@@ -4032,13 +4072,17 @@ class GameplayGovernanceService:
             opportunity, session
         ):
             raise ActionUnavailableError("人物会谈机会当前不可用")
-        expected_kind = {
-            "home_visit": "household_visit",
-            "field_visit": "household_visit",
-            "heart_to_heart": "cadre_interview",
-            "interview_cadre": "cadre_interview",
-        }.get(opportunity.action_id)
-        if expected_kind != action_kind or target_ids != (opportunity.npc_id,):
+        descriptor = canonical_opportunity_descriptor(session, package, opportunity)
+        if descriptor is None or (
+            action_kind != descriptor["action_id"]
+            or variant_id != descriptor["variant_id"]
+            or location_id != descriptor["preselected_location_id"]
+            or list(target_ids) != descriptor["preselected_npc_ids"]
+            or topic.strip() != descriptor["canonical_topic"]
+            or archive_ids
+            or proposed_document_type is not None
+            or lead_npc_id is not None
+        ):
             raise ActionUnavailableError("统一行动与人物会谈机会不匹配")
         return opportunity
 
@@ -4072,18 +4116,15 @@ class GameplayGovernanceService:
         NPCRelationshipService.synchronize(session, package)
         session.state_version += 1
         session.touch()
-        self._sessions.save(session, expected_version=expected_version)
-        if (
-            self._snapshots is not None
-            and self._snapshots.current_for_session(session) is None
-        ):
-            parent = self._snapshots.latest_for_timeline(session)
-            self._snapshots.append(
+        if self._snapshots is not None:
+            self._snapshots.commit_session_snapshot(
                 session,
+                expected_version=expected_version,
                 snapshot_type="auto",
                 reason="governance_operation_committed",
-                parent_snapshot_id=(parent.snapshot_id if parent is not None else None),
             )
+        else:
+            self._sessions.save(session, expected_version=expected_version)
 
     @staticmethod
     def _meeting(session: GameSession, meeting_id: str) -> MeetingRecord:
@@ -4162,41 +4203,27 @@ class GameplayGovernanceService:
         if include_content:
             result["player_sections"] = (
                 GameplayGovernanceService._archive_player_sections(
-                    value.content
+                    value
                 )
             )
         return result
 
     @staticmethod
-    def _archive_player_sections(content: str) -> list[dict[str, str]]:
-        """Project an internal archive payload into player-readable prose."""
+    def _archive_player_sections(value: ArchiveRecord) -> list[dict[str, str]]:
+        """Strictly project only documented archive schemas into public prose."""
         try:
-            source = json.loads(content)
+            source = json.loads(value.content)
+            parsed_json = True
         except (TypeError, ValueError):
-            source = content
-        public_labels = {
-            "deadline": "期限",
-            "households": "搬迁总盘",
-            "target": "达标线",
-            "core_zone": "用地要求",
-            "budget": "财政授权",
-            "integrity": "廉政底线",
+            source = value.content
+            parsed_json = False
+        field_labels = {
             "registered_population": "登记人口",
             "resettlement_population": "安置人口",
             "legal_residential_area_m2": "合法住宅面积",
             "homestead_recognized_m2": "认定宅基地面积",
             "contracted_land_mu": "承包地面积",
             "ownership_status": "权属情况",
-            **BUDGET_ENVELOPE_LABELS,
-        }
-        ignored_keys = {
-            "key", "id", "ids", "archive_id", "dossier_id", "resource_id",
-            "household_id", "source_id", "source_line", "schema_version",
-            "internal", "raw", "json", "code",
-        }
-        presentation_keys = {
-            "title", "label", "name", "summary", "detail", "description",
-            "text", "value",
         }
         sections: list[dict[str, str]] = []
 
@@ -4213,49 +4240,81 @@ class GameplayGovernanceService:
             if item not in sections:
                 sections.append(item)
 
-        def scalar(value: object) -> str:
-            if isinstance(value, bool):
-                return "是" if value else "否"
-            if isinstance(value, (str, int, float)):
-                return str(value)
+        def scalar(item: object) -> str:
+            if isinstance(item, bool):
+                return "是" if item else "否"
+            if isinstance(item, (str, int, float)):
+                return str(item)
             return ""
 
-        def visit(item: object, inherited_heading: str = "") -> None:
-            if item is None or item == "":
-                return
-            if isinstance(item, list):
-                for entry in item:
-                    visit(entry, inherited_heading)
-                return
-            if not isinstance(item, dict):
-                value = scalar(item)
-                if value:
-                    add(inherited_heading, [value])
-                return
-            heading = next((
-                scalar(item.get(key))
-                for key in ("title", "label", "name")
-                if scalar(item.get(key))
-            ), inherited_heading)
-            body_parts = [
-                scalar(item.get(key))
-                for key in ("value", "summary", "detail", "description", "text")
-                if scalar(item.get(key))
-            ]
-            if body_parts:
-                add(heading, body_parts)
-            for key, entry in item.items():
-                if key in presentation_keys or key in ignored_keys:
+        if isinstance(source, str) and not parsed_json:
+            # Only persisted prose from explicitly public archive classes is trusted.
+            if value.source_type in {
+                "administrative_document", "story_fact", "document",
+                "meeting_minutes", "contract", "household_contract",
+                "interaction",
+            }:
+                add(value.title, [source])
+        elif value.source_id == "public_briefing" and isinstance(source, dict):
+            add(scalar(source.get("title")) or value.title, [scalar(source.get("summary"))])
+            constraints = source.get("hard_constraints")
+            if isinstance(constraints, list):
+                for item in constraints:
+                    if isinstance(item, dict):
+                        add(
+                            scalar(item.get("label")),
+                            [scalar(item.get("value")), scalar(item.get("detail"))],
+                        )
+        elif value.source_id == "households" and isinstance(source, list):
+            for index, item in enumerate(source, start=1):
+                if not isinstance(item, dict):
                     continue
-                nested_heading = public_labels.get(key, inherited_heading)
-                if isinstance(entry, (dict, list)):
-                    visit(entry, nested_heading)
-                    continue
-                value = scalar(entry)
-                if value:
-                    add(public_labels.get(key, "档案记录"), [value])
-
-        visit(source)
+                parts = [
+                    f"{label}：{scalar(item.get(key))}"
+                    for key, label in field_labels.items()
+                    if scalar(item.get(key))
+                ]
+                add(f"第{index}户底账", parts)
+        elif value.source_id == "governance_config" and isinstance(source, dict):
+            envelopes = source.get("budget_envelopes")
+            if isinstance(envelopes, dict):
+                for envelope_id, item in envelopes.items():
+                    if not isinstance(item, dict):
+                        continue
+                    add(
+                        scalar(item.get("label"))
+                        or BUDGET_ENVELOPE_LABELS.get(str(envelope_id), "专项预算"),
+                        [
+                            f"总额度：{scalar(item.get('capacity'))}",
+                            f"可用额度：{scalar(item.get('available'))}",
+                            f"单位：{scalar(item.get('unit'))}",
+                        ],
+                    )
+            pools = source.get("resource_pools")
+            if isinstance(pools, list):
+                for item in pools:
+                    if isinstance(item, dict):
+                        add(
+                            scalar(item.get("name")) or "治理资源",
+                            [
+                                f"容量：{scalar(item.get('capacity'))}",
+                                f"可用日期：第{scalar(item.get('available_day'))}日"
+                                if scalar(item.get("available_day")) else "",
+                            ],
+                        )
+        elif value.source_type in {"meeting", "household_contract"} and isinstance(source, dict):
+            transcript = source.get("transcript")
+            if isinstance(transcript, list):
+                for item in transcript:
+                    if isinstance(item, dict) and scalar(item.get("text")):
+                        speaker = item.get("speaker_type") or item.get("speaker")
+                        add("你的发言" if speaker == "player" else "会谈发言", [scalar(item.get("text"))])
+            if value.source_type == "household_contract":
+                versions = source.get("versions")
+                if isinstance(versions, list):
+                    texts = [scalar(item.get("text")) for item in versions if isinstance(item, dict)]
+                    if any(texts):
+                        add("合同正文", [next(text for text in reversed(texts) if text)])
         return sections or [{
             "heading": "档案正文",
             "body": "这份档案暂无可读正文。",

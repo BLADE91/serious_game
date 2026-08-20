@@ -76,6 +76,9 @@ test("consumes only player-safe archive sections and ignores raw structured cont
   assert.equal(typeof playerUi.archivePlayerSections, "function");
   const sections = playerUi.archivePlayerSections({
     content: JSON.stringify({ title: "内部标题", key: "deadline", value: "90天", detail: "内部细节" }),
+    private_audit: "SECRET_ROOT_AUDIT",
+    prompt: "SECRET_PROMPT",
+    debug_notes: { summary: "SECRET_DEBUG" },
     player_sections: [
       { heading: "期限", body: "90天，到期按真实状态验收。" },
       { heading: "财政授权", body: "当前可安排7800万元。" },
@@ -86,9 +89,16 @@ test("consumes only player-safe archive sections and ignores raw structured cont
     { heading: "财政授权", body: "当前可安排7800万元。" },
   ]);
   const rendered = JSON.stringify(sections);
-  for (const forbidden of ["内部标题", "deadline", "内部细节", '"key"', '"value"', '"detail"']) {
+  for (const forbidden of ["内部标题", "deadline", "内部细节", '"key"', '"value"', '"detail"', "SECRET_ROOT_AUDIT", "SECRET_PROMPT", "SECRET_DEBUG"]) {
     assert.doesNotMatch(rendered, new RegExp(forbidden));
   }
+});
+
+test("labels canonical and legacy conversation speakers for player review", () => {
+  assert.equal(typeof playerUi.conversationSpeakerLabel, "function");
+  assert.equal(playerUi.conversationSpeakerLabel({ speaker_type: "player" }, "吴秀英"), "你");
+  assert.equal(playerUi.conversationSpeakerLabel({ speaker: "player" }, "吴秀英"), "你");
+  assert.equal(playerUi.conversationSpeakerLabel({ speaker_type: "npc" }, "吴秀英"), "吴秀英");
 });
 
 test("uses authoritative budget-envelope labels while retaining IDs only as form values", () => {

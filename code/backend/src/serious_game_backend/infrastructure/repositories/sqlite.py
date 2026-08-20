@@ -144,6 +144,48 @@ class SqliteSnapshotRepository:
     def __init__(self, store: SqliteRuntimeStore) -> None:
         self._store = store
 
+    def commit_session_snapshot(
+        self,
+        session: GameSession,
+        *,
+        expected_version: int,
+        snapshot_type: str,
+        reason: str,
+    ) -> GameSnapshot:
+        with self._store.connect() as connection:
+            parent = connection.execute(
+                """
+                select snapshot_id from runtime_game_snapshots
+                where session_id = ? and account_id = ? and timeline_id = ?
+                order by state_version desc limit 1
+                """,
+                (session.session_id, session.account_id, session.timeline_id),
+            ).fetchone()
+            snapshot = build_snapshot(
+                session,
+                snapshot_type=snapshot_type,
+                reason=reason,
+                parent_snapshot_id=(str(parent["snapshot_id"]) if parent else None),
+            )
+            cursor = connection.execute(
+                """
+                update runtime_game_sessions
+                set status = ?, state_version = ?, processing_action_id = ?,
+                    updated_at = ?, payload_json = ?
+                where session_id = ? and account_id = ? and state_version = ?
+                """,
+                (
+                    session.status.value, session.state_version,
+                    session.processing_action_id, session.updated_at,
+                    dumps(encode_session(session)), session.session_id,
+                    session.account_id, expected_version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise StateVersionConflictError("状态版本冲突")
+            _insert_snapshot(connection, snapshot)
+        return snapshot
+
     def get_owned(
         self, account_id: str, session_id: str, snapshot_id: str
     ) -> GameSnapshot | None:

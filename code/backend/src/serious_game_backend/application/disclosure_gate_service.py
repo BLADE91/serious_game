@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
 from serious_game_backend.domain.script_package import ScriptPackage
+from serious_game_backend.domain.fact_markers import disclosure_markers_for
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,6 +13,15 @@ class DisclosureGate:
     trust_tier: int
     trust_label: str
     allowed_fact_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RoleTurnFactBoundary:
+    gate: DisclosureGate
+    allowed_fact_texts: dict[str, str]
+    allowed_fact_markers: dict[str, tuple[str, ...]]
+    required_disclosure_ids: tuple[str, ...]
+    forbidden_fact_markers: tuple[str, ...]
 
 
 class DisclosureGateService:
@@ -53,3 +63,39 @@ class DisclosureGateService:
                 continue
             values.append(fact_id)
         return DisclosureGate(tier, self.LABELS[tier], tuple(values))
+
+    def role_turn_boundary(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        opportunity: InteractionOpportunity,
+        *,
+        repeat_count: int = 0,
+    ) -> RoleTurnFactBoundary:
+        gate = (
+            self.build(session, package, opportunity, repeat_count=repeat_count)
+            if package.gameplay_schema_version >= 2
+            else DisclosureGate(
+                4, "旧包机会白名单", tuple(opportunity.allowed_fact_ids)
+            )
+        )
+        permitted = set(gate.allowed_fact_ids) | session.known_fact_ids
+        return RoleTurnFactBoundary(
+            gate=gate,
+            allowed_fact_texts={
+                fact_id: package.facts[fact_id].text
+                for fact_id in gate.allowed_fact_ids
+                if fact_id in package.facts
+            },
+            allowed_fact_markers=disclosure_markers_for(gate.allowed_fact_ids),
+            required_disclosure_ids=tuple(sorted(
+                opportunity.required_disclosure_ids.intersection(
+                    gate.allowed_fact_ids
+                )
+            )),
+            forbidden_fact_markers=tuple(
+                fact.title
+                for fact_id, fact in package.facts.items()
+                if fact_id not in permitted and len(fact.title.strip()) >= 4
+            ),
+        )

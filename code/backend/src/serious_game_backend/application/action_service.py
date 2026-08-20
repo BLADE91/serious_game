@@ -37,7 +37,6 @@ from serious_game_backend.application.action_quote_service import ActionQuoteSer
 from serious_game_backend.application.action_handler_registry import ActionHandlerRegistry
 from serious_game_backend.application.trust_derivation_service import TrustDerivationService
 from serious_game_backend.application.disclosure_gate_service import (
-    DisclosureGate,
     DisclosureGateService,
 )
 from serious_game_backend.application.model_input_policy import ModelInputPolicy
@@ -59,7 +58,6 @@ from serious_game_backend.domain.errors import (
 )
 from serious_game_backend.domain.operation import OperationRecord, utc_now_iso
 from serious_game_backend.domain.llm import RoleTurnContext
-from serious_game_backend.domain.fact_markers import disclosure_markers_for
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.domain.conversation import (
     ActiveConversation,
@@ -557,25 +555,8 @@ class ActionService:
             "".join(item.get("player", "").split()).casefold() == normalized_text
             for item in conversation.transcript
         )
-        disclosure_gate = (
-            self._disclosure_gate.build(
-                session, package, opportunity, repeat_count=repeat_count
-            )
-            if package.gameplay_schema_version >= 2
-            else DisclosureGate(
-                4, "旧包机会白名单", tuple(opportunity.allowed_fact_ids)
-            )
-        )
-        allowed_fact_texts = {
-            fact_id: package.facts[fact_id].text
-            for fact_id in disclosure_gate.allowed_fact_ids
-            if fact_id in package.facts
-        }
-        permitted_fact_ids = set(disclosure_gate.allowed_fact_ids) | session.known_fact_ids
-        forbidden_fact_markers = tuple(
-            fact.title
-            for fact_id, fact in package.facts.items()
-            if fact_id not in permitted_fact_ids and len(fact.title.strip()) >= 4
+        fact_boundary = self._disclosure_gate.role_turn_boundary(
+            session, package, opportunity, repeat_count=repeat_count
         )
         memory_items = self._npc_memories.retrieve(
             session_id=session.session_id,
@@ -620,12 +601,8 @@ class ActionService:
                 player_text=(prepared_input.text if prepared_input else command.player_text),
                 story_day=session.game_state.story_day,
                 opportunity_id=opportunity.opportunity_id,
-                allowed_fact_ids=disclosure_gate.allowed_fact_ids,
-                required_disclosure_ids=tuple(sorted(
-                    opportunity.required_disclosure_ids.intersection(
-                        disclosure_gate.allowed_fact_ids
-                    )
-                )),
+                allowed_fact_ids=fact_boundary.gate.allowed_fact_ids,
+                required_disclosure_ids=fact_boundary.required_disclosure_ids,
                 npc_name=profile.name,
                 npc_state_tier=profile.state_tier.value,
                 role_setting=profile.role_setting,
@@ -635,11 +612,9 @@ class ActionService:
                 ),
                 prompt_template=package.role_turn_prompt,
                 prompt_version=package.role_turn_prompt_version,
-                allowed_fact_texts=allowed_fact_texts,
-                allowed_fact_markers=disclosure_markers_for(
-                    disclosure_gate.allowed_fact_ids
-                ),
-                forbidden_fact_markers=forbidden_fact_markers,
+                allowed_fact_texts=fact_boundary.allowed_fact_texts,
+                allowed_fact_markers=fact_boundary.allowed_fact_markers,
+                forbidden_fact_markers=fact_boundary.forbidden_fact_markers,
                 memory_items=memory_items,
                 relationship_context=relationship_context,
                 recent_visible_change_reasons=recent_change_reasons,
@@ -659,7 +634,7 @@ class ActionService:
                         for item in sorted(session.known_fact_ids)
                         if item in package.facts
                     ],
-                    "npc_disclosure_posture": disclosure_gate.trust_label,
+                    "npc_disclosure_posture": fact_boundary.gate.trust_label,
                     "relationship_context": relationship_context,
                     "recent_visible_change_reasons": list(recent_change_reasons),
                     "unresolved_commitments": list(

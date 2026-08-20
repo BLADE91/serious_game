@@ -3,6 +3,7 @@ from __future__ import annotations
 from serious_game_backend.domain.enums import AvailabilityMode
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
+from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
@@ -168,3 +169,45 @@ def default_npc_location(npc_id: str) -> str:
     }:
         return "loc_liulin_village"
     return "loc_county_government"
+
+
+def canonical_opportunity_descriptor(
+    session: GameSession,
+    package: ScriptPackage,
+    opportunity: InteractionOpportunity,
+) -> dict | None:
+    """Return the one authoritative governance route for a people opportunity."""
+    expected_action = {
+        "home_visit": "household_visit",
+        "field_visit": "household_visit",
+        "heart_to_heart": "cadre_interview",
+        "interview_cadre": "cadre_interview",
+    }.get(opportunity.action_id)
+    if expected_action is None:
+        return None
+    for variant in configured_variants(package):
+        if variant.get("action_id") != expected_action:
+            continue
+        if not variant_availability(session, variant)[0]:
+            continue
+        descriptor = public_variant(session, package, variant)
+        if opportunity.npc_id not in {
+            item["target_id"] for item in descriptor["target_choices"]
+        }:
+            continue
+        legal_locations = [
+            item["location_id"] for item in descriptor["location_choices"]
+        ]
+        preferred = default_npc_location(opportunity.npc_id)
+        location_id = (
+            preferred if preferred in legal_locations
+            else (legal_locations[0] if legal_locations else "")
+        )
+        return {
+            **descriptor,
+            "opportunity_id": opportunity.opportunity_id,
+            "preselected_npc_ids": [opportunity.npc_id],
+            "preselected_location_id": location_id,
+            "canonical_topic": opportunity.conversation_goal.strip(),
+        }
+    return None

@@ -46,6 +46,7 @@ from serious_game_backend.api.schemas import (
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.action_cost_policy import quote_cost
 from serious_game_backend.application.action_variants import (
+    canonical_opportunity_descriptor,
     configured_variants,
     default_npc_location,
     public_variant,
@@ -1565,35 +1566,6 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         tier = package.action_cost_tier(session.game_state.story_day)
         npc_profiles = {item.npc_id: item for item in package.npc_profiles}
 
-        def canonical_people_descriptor(opportunity) -> dict | None:
-            npc_id = opportunity.npc_id
-            for variant in configured_variants(package):
-                if variant.get("action_id") not in {
-                    "household_visit", "cadre_interview",
-                } or not variant_availability(session, variant)[0]:
-                    continue
-                descriptor = public_variant(session, package, variant)
-                if npc_id not in {
-                    item["target_id"] for item in descriptor["target_choices"]
-                }:
-                    continue
-                legal_locations = {
-                    item["location_id"] for item in descriptor["location_choices"]
-                }
-                preferred_location = default_npc_location(npc_id)
-                location_id = (
-                    preferred_location
-                    if preferred_location in legal_locations
-                    else next(iter(legal_locations), "")
-                )
-                return {
-                    **descriptor,
-                    "opportunity_id": opportunity.opportunity_id,
-                    "preselected_npc_ids": [npc_id],
-                    "preselected_location_id": location_id,
-                }
-            return None
-
         return {
             "state_version": session.state_version,
             "blocked_reason": gate["action_blocked_reason"],
@@ -1647,7 +1619,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                         else None
                     ),
                     "cost_action_points": package.action_rules[item.action_id].cost_for(tier),
-                    "canonical_action_descriptor": canonical_people_descriptor(item),
+                    "canonical_action_descriptor": canonical_opportunity_descriptor(
+                        session, package, item
+                    ),
                 }
                 for item in values
             ],
@@ -1735,7 +1709,25 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     "start_reason": item.start_reason,
                     "end_reason": item.end_reason,
                     "completion_status": item.completion_status,
-                    "transcript": [dict(turn) for turn in item.transcript],
+                    "transcript": [
+                        {
+                            "speaker_type": str(
+                                turn.get("speaker_type")
+                                or turn.get("speaker")
+                                or "npc"
+                            ),
+                            "text": str(turn.get("text", "")),
+                            **(
+                                {"npc_id": str(turn["npc_id"])}
+                                if turn.get("npc_id") else {}
+                            ),
+                            **(
+                                {"npc_name": str(turn["npc_name"])}
+                                if turn.get("npc_name") else {}
+                            ),
+                        }
+                        for turn in item.transcript
+                    ],
                     "started_at": item.started_at,
                     "ended_at": item.ended_at,
                 }

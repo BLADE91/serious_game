@@ -282,6 +282,7 @@ def build_container(settings: Settings) -> Container:
         scripted_effects,
         story_flow,
         snapshots,
+        disclosure_gate,
     )
     npc_memories = NPCMemoryService(memory_repository)
     auth = AuthService(

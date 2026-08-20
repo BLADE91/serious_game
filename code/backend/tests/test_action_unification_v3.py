@@ -13,6 +13,7 @@ from serious_game_backend.api.app import create_app
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.errors import ContentValidationError
+from serious_game_backend.domain.llm import RoleTurnResult
 from serious_game_backend.infrastructure.script_packages.file_loader import (
     FileScriptPackageLoader,
 )
@@ -715,8 +716,164 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
         self.assertIsNone(history.json()["next_cursor"])
         self.assertEqual(
             ["player", "npc"],
-            [item["speaker"] for item in history.json()["items"][0]["transcript"]],
+            [
+                item["speaker_type"]
+                for item in history.json()["items"][0]["transcript"]
+            ],
         )
+
+    def test_archive_api_strictly_projects_known_schema_and_drops_unknown_secrets(
+        self,
+    ) -> None:
+        session = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert session is not None
+        archive = session.archive_records["archive_project_brief"]
+        archive.content = json.dumps({
+            "title": "云溪县搬迁治理任务书",
+            "summary": "在期限内完成依法治理。",
+            "hard_constraints": [{
+                "key": "deadline",
+                "label": "期限",
+                "value": "90天",
+                "detail": "到期按真实状态验收",
+                "private_audit": "SECRET_NESTED_AUDIT",
+            }],
+            "private_audit": "SECRET_ROOT_AUDIT",
+            "prompt": "SECRET_PROMPT",
+            "debug_notes": {"summary": "SECRET_DEBUG_SUMMARY"},
+            "unknown_scalar": "SECRET_UNKNOWN_SCALAR",
+        }, ensure_ascii=False)
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+        actions = self.client.get(
+            f"/api/game/session/{self.session_id}/actions", headers=self.headers
+        ).json()["actions"]
+        variant = next(
+            variant
+            for action in actions
+            for variant in action["variants"]
+            if variant["variant_id"] == "consult_county_archives"
+        )
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": session.state_version,
+                "action_kind": variant["action_id"],
+                "variant_id": variant["variant_id"],
+                "location_id": variant["location_choices"][0]["location_id"],
+                "archive_ids": ["archive_project_brief"],
+            },
+        )
+        self.assertEqual(201, response.status_code, response.text)
+        rendered = json.dumps(
+            response.json()["archives"][0]["player_sections"],
+            ensure_ascii=False,
+        )
+        self.assertIn("90天", rendered)
+        for secret in (
+            "SECRET_NESTED_AUDIT", "SECRET_ROOT_AUDIT", "SECRET_PROMPT",
+            "SECRET_DEBUG_SUMMARY", "SECRET_UNKNOWN_SCALAR", "private_audit",
+            "debug_notes", "unknown_scalar",
+        ):
+            self.assertNotIn(secret, rendered)
+
+    def test_opportunity_rejects_noncanonical_location_without_partial_state(
+        self,
+    ) -> None:
+        opportunity = self._wu_descriptor()
+        descriptor = opportunity["canonical_action_descriptor"]
+        before = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert before is not None
+        history_before = self.runtime.snapshots.list_history(
+            self.account_id, self.session_id
+        )
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": before.state_version,
+                "action_kind": descriptor["action_id"],
+                "variant_id": descriptor["variant_id"],
+                "location_id": "loc_county_hospital",
+                "target_ids": descriptor["preselected_npc_ids"],
+                "topic": opportunity["conversation_goal"],
+                "opportunity_id": opportunity["opportunity_id"],
+            },
+        )
+        self.assertEqual(409, response.status_code, response.text)
+        after = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert after is not None
+        self.assertEqual(before.state_version, after.state_version)
+        self.assertEqual(before.game_state.action_points, after.game_state.action_points)
+        self.assertEqual(before.governance_actions, after.governance_actions)
+        self.assertEqual(
+            [item.snapshot_id for item in history_before],
+            [
+                item.snapshot_id for item in self.runtime.snapshots.list_history(
+                    self.account_id, self.session_id
+                )
+            ],
+        )
+
+    def test_governance_turn_reuses_disclosure_boundary_and_persists_no_secret(
+        self,
+    ) -> None:
+        opportunity = self._wu_descriptor()
+        descriptor = opportunity["canonical_action_descriptor"]
+        view = self.client.get(
+            f"/api/game/session/{self.session_id}/view", headers=self.headers
+        ).json()
+        started = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": view["state"]["state_version"],
+                "action_kind": descriptor["action_id"],
+                "variant_id": descriptor["variant_id"],
+                "location_id": descriptor["preselected_location_id"],
+                "target_ids": descriptor["preselected_npc_ids"],
+                "topic": opportunity["conversation_goal"],
+                "opportunity_id": opportunity["opportunity_id"],
+            },
+        )
+        self.assertEqual(201, started.status_code, started.text)
+        action_id = started.json()["action"]["action_instance_id"]
+
+        class LeakingGateway:
+            def run_turn(self, context):
+                return RoleTurnResult(
+                    npc_id=context.npc_id,
+                    dialogue="我知道两百万前期协调费的秘密安排。",
+                )
+
+        self.runtime.gameplay_governance._npc_turns._gateway = LeakingGateway()
+        response = self.client.post(
+            (
+                f"/api/game/session/{self.session_id}/governance/actions/"
+                f"{action_id}/turn/stream"
+            ),
+            headers=self.headers,
+            json={
+                "state_version": started.json()["state_version"],
+                "player_text": "吴老师，请说说村里人的真实顾虑。",
+            },
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertIn('"type": "error"', response.text)
+        self.assertNotIn("两百万前期协调费", response.text)
+        stored = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert stored is not None
+        self.assertEqual([], stored.governance_actions[action_id].transcript)
+        self.assertNotIn(
+            "两百万前期协调费",
+            json.dumps([item.__dict__ for item in stored.completed_conversations], ensure_ascii=False),
+        )
+        review = self.client.get(
+            f"/api/game/session/{self.session_id}/conversations",
+            headers=self.headers,
+        )
+        self.assertEqual(200, review.status_code, review.text)
+        self.assertNotIn("两百万前期协调费", review.text)
 
 
 class ActionUnificationV3PackageLifecycleTests(unittest.TestCase):
