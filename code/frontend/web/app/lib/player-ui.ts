@@ -161,6 +161,76 @@ export function createSingleFlight<Args extends unknown[], Result>(fn: (...args:
   };
 }
 
+export function canonicalActionEntry(value: PlayerRecord): PlayerRecord | null {
+  const raw = value.canonical_action_descriptor;
+  const descriptor = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as PlayerRecord
+    : value;
+  const actionId = String(descriptor.action_id || "");
+  const variantId = String(descriptor.variant_id || "");
+  if (!CANONICAL_ACTION_IDS.includes(actionId as typeof CANONICAL_ACTION_IDS[number]) || !variantId) return null;
+  const targetChoices = Array.isArray(descriptor.target_choices) ? descriptor.target_choices as PlayerRecord[] : [];
+  const locationChoices = Array.isArray(descriptor.location_choices) ? descriptor.location_choices as PlayerRecord[] : [];
+  const targetIds = (Array.isArray(descriptor.preselected_npc_ids) ? descriptor.preselected_npc_ids : []).map(String);
+  const legalTargetIds = new Set(targetChoices.map(item => String(item.target_id || item.id || "")));
+  const preselectedNpcIds = targetIds.filter(id => legalTargetIds.has(id));
+  const requestedLocationId = String(descriptor.preselected_location_id || descriptor.location_id || "");
+  const legalLocationIds = new Set(locationChoices.map(item => String(item.location_id || "")));
+  const preselectedLocationId = legalLocationIds.has(requestedLocationId)
+    ? requestedLocationId
+    : String(locationChoices[0]?.location_id || "");
+  return {
+    ...descriptor,
+    action_id: actionId,
+    variant_id: variantId,
+    preselected_npc_ids: preselectedNpcIds,
+    preselected_location_id: preselectedLocationId,
+  };
+}
+
+type GovernanceWriter = {
+  write: (sessionId: string, path: string, method: string, body: PlayerRecord) => Promise<unknown>;
+};
+
+export function submitGovernanceAction(
+  api: GovernanceWriter,
+  sessionId: string,
+  input: {
+    state_version: number;
+    descriptor: PlayerRecord;
+    location_id: string;
+    target_ids: string[];
+    topic: string;
+    archive_ids: string[];
+    proposed_document_type: string | null;
+    lead_npc_id: string | null;
+  },
+) {
+  return api.write(sessionId, "/governance/actions", "POST", {
+    state_version: input.state_version,
+    action_kind: String(input.descriptor.action_id || ""),
+    variant_id: String(input.descriptor.variant_id || ""),
+    location_id: input.location_id,
+    target_ids: input.target_ids,
+    topic: input.topic,
+    archive_ids: input.archive_ids,
+    proposed_document_type: input.proposed_document_type,
+    lead_npc_id: input.lead_npc_id,
+  });
+}
+
+export function primaryScenePlan(value: PlayerRecord): string[] {
+  if (!value.has_session) return [];
+  if (value.active_group_conversation) return ["forced_group_conversation"];
+  const action = value.active_governance_action as PlayerRecord | null;
+  if (action) {
+    return value.active_meeting && action.action_kind === "leadership_meeting"
+      ? ["leadership_meeting"]
+      : ["governance_action"];
+  }
+  return [value.active_conversation ? "conversation" : "narrative"];
+}
+
 export function sessionEntry(value: PlayerRecord): { session_id: string; mode: "review" | "continue"; label: string; canContinue: boolean } {
   const retired = value.package_status === "retired" || value.review_only === true || value.mode === "review_only";
   return retired

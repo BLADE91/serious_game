@@ -18,6 +18,7 @@ from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
+from serious_game_backend.application.stream_lifecycle import StreamCancelled
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.ports import (
     GameSessionRepository,
@@ -108,6 +109,7 @@ class ActionService:
         session_id: str,
         command: ActionCommand,
         stream_event: Callable[[dict], None] | None = None,
+        stream_cancelled: StreamCancelled = None,
     ) -> dict:
         request_hash = canonical_request_hash({
             "session_id": session_id,
@@ -186,6 +188,7 @@ class ActionService:
                 account_id=account_id,
                 operation_id=operation_id,
                 stream_event=stream_event,
+                stream_cancelled=stream_cancelled,
             )
             # 真实 LLM 接入后只允许在这里（事务外）调用。
             current = self._owned_session(session_id, account_id)
@@ -279,6 +282,7 @@ class ActionService:
         account_id: str = "",
         operation_id: str = "",
         stream_event: Callable[[dict], None] | None = None,
+        stream_cancelled: StreamCancelled = None,
     ) -> dict:
         if session.active_group_conversation is not None:
             raise ActionUnavailableError("必须先完成NPC发起的群组会谈")
@@ -615,6 +619,7 @@ class ActionService:
             npc_state,
             random_seed=session.random_seed,
             stream_event=stream_event,
+            stream_cancelled=stream_cancelled,
         )
         if turn.input_relevance == "irrelevant":
             return {

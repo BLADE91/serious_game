@@ -7,6 +7,7 @@ from contextvars import ContextVar
 import json
 import re
 import secrets
+from threading import Event
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -47,6 +48,7 @@ from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.action_cost_policy import quote_cost
 from serious_game_backend.application.action_variants import (
     configured_variants,
+    default_npc_location,
     public_variant,
     variant_availability,
 )
@@ -281,51 +283,60 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         async def generate():
             queue: asyncio.Queue[dict] = asyncio.Queue()
             loop = asyncio.get_running_loop()
+            cancelled = Event()
 
             def emit(event: dict) -> None:
                 loop.call_soon_threadsafe(queue.put_nowait, event)
 
             task = asyncio.create_task(run_in_threadpool(
-                call, stream_event=emit, **kwargs
+                call,
+                stream_event=emit,
+                stream_cancelled=cancelled.is_set,
+                **kwargs,
             ))
-            yield json.dumps({"type": "stream_start"}, ensure_ascii=False) + "\n"
-            while not task.done() or not queue.empty():
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=0.05)
-                except asyncio.TimeoutError:
-                    continue
-                if event.get("type") == "_npc_reply_ready":
-                    acknowledged = event.get("acknowledged")
-                    try:
-                        async for chunk in npc_stream(
-                            {"npc_reply": event["reply"]},
-                            include_start=False,
-                            include_thinking=False,
-                        ):
-                            document = json.loads(chunk)
-                            if document.get("type") != "complete":
-                                yield chunk
-                    finally:
-                        if acknowledged is not None:
-                            acknowledged.set()
-                    continue
-                yield json.dumps(event, ensure_ascii=False) + "\n"
             try:
-                result = await task
-            except Exception:
-                yield json.dumps({
-                    "type": "error",
-                    "code": "NPC_RESPONSE_UNAVAILABLE",
-                    "message": "对方暂时无法回应，请稍后重试。",
-                }, ensure_ascii=False) + "\n"
-                return
-            async for chunk in npc_stream(
-                result,
-                include_start=False,
-                include_thinking=False,
-                include_replies=False,
-            ):
-                yield chunk
+                yield json.dumps({"type": "stream_start"}, ensure_ascii=False) + "\n"
+                while not task.done() or not queue.empty():
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=0.05)
+                    except asyncio.TimeoutError:
+                        continue
+                    if event.get("type") == "_npc_reply_ready":
+                        acknowledged = event.get("acknowledged")
+                        try:
+                            async for chunk in npc_stream(
+                                {"npc_reply": event["reply"]},
+                                include_start=False,
+                                include_thinking=False,
+                            ):
+                                document = json.loads(chunk)
+                                if document.get("type") != "complete":
+                                    yield chunk
+                        finally:
+                            if acknowledged is not None:
+                                acknowledged.set()
+                        continue
+                    yield json.dumps(event, ensure_ascii=False) + "\n"
+                try:
+                    result = await task
+                except Exception:
+                    yield json.dumps({
+                        "type": "error",
+                        "code": "NPC_RESPONSE_UNAVAILABLE",
+                        "message": "对方暂时无法回应，请稍后重试。",
+                    }, ensure_ascii=False) + "\n"
+                    return
+                async for chunk in npc_stream(
+                    result,
+                    include_start=False,
+                    include_thinking=False,
+                    include_replies=False,
+                ):
+                    yield chunk
+            finally:
+                cancelled.set()
+                if not task.done():
+                    task.cancel()
 
         return StreamingResponse(
             generate(),
@@ -1540,6 +1551,34 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             )
         tier = package.action_cost_tier(session.game_state.story_day)
         npc_profiles = {item.npc_id: item for item in package.npc_profiles}
+
+        def canonical_people_descriptor(npc_id: str) -> dict | None:
+            for variant in configured_variants(package):
+                if variant.get("action_id") not in {
+                    "household_visit", "cadre_interview",
+                } or not variant_availability(session, variant)[0]:
+                    continue
+                descriptor = public_variant(session, package, variant)
+                if npc_id not in {
+                    item["target_id"] for item in descriptor["target_choices"]
+                }:
+                    continue
+                legal_locations = {
+                    item["location_id"] for item in descriptor["location_choices"]
+                }
+                preferred_location = default_npc_location(npc_id)
+                location_id = (
+                    preferred_location
+                    if preferred_location in legal_locations
+                    else next(iter(legal_locations), "")
+                )
+                return {
+                    **descriptor,
+                    "preselected_npc_ids": [npc_id],
+                    "preselected_location_id": location_id,
+                }
+            return None
+
         return {
             "state_version": session.state_version,
             "blocked_reason": gate["action_blocked_reason"],
@@ -1593,6 +1632,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                         else None
                     ),
                     "cost_action_points": package.action_rules[item.action_id].cost_for(tier),
+                    "canonical_action_descriptor": canonical_people_descriptor(
+                        item.npc_id
+                    ),
                 }
                 for item in values
             ],

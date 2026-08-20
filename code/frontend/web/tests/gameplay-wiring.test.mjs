@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { primaryScenePlan } from "../app/lib/player-ui.ts";
+
 const shellPath = new URL("../app/GameShell.tsx", import.meta.url);
 const apiPath = new URL("../app/lib/api.ts", import.meta.url);
 
@@ -96,7 +98,16 @@ test("does not report rejected governance input as an NPC success", async () => 
 
 test("renders every non-meeting NPC exchange as a Galgame stage", async () => {
   const shell = await readFile(shellPath, "utf8");
-  assert.match(shell, /action\.action_kind !== "leadership_meeting"/);
+  assert.deepEqual(primaryScenePlan({
+    has_session: true,
+    active_governance_action: { action_kind: "household_visit" },
+    active_meeting: null,
+  }), ["governance_action"]);
+  assert.deepEqual(primaryScenePlan({
+    has_session: true,
+    active_governance_action: { action_kind: "leadership_meeting" },
+    active_meeting: { meeting_id: "meeting-1" },
+  }), ["leadership_meeting"]);
   assert.match(shell, /className="gal-stage governance-gal-stage conversation-mode"/);
   assert.match(shell, /data-testid="governance-gal-scene"/);
   assert.match(shell, /className="gal-portrait" aria-label=\{`\$\{targetName\}立绘`\}/);

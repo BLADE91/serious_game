@@ -5,6 +5,11 @@ from threading import Event
 from typing import Callable
 
 from serious_game_backend.application.ports import RoleLLMGateway
+from serious_game_backend.application.stream_lifecycle import (
+    StreamCancelled,
+    ensure_stream_open,
+    wait_for_stream_ack,
+)
 from serious_game_backend.application.state_delta_validator import StateDeltaValidator
 from serious_game_backend.domain.llm import RoleTurnContext, ValidatedRoleTurn
 from serious_game_backend.domain.npc_state import NPCState
@@ -25,6 +30,7 @@ class NPCTurnService:
         *,
         random_seed: str,
         stream_event: Callable[[dict], None] | None = None,
+        stream_cancelled: StreamCancelled = None,
     ) -> ValidatedRoleTurn:
         identity = {
             "stream_id": f"{context.npc_id}:0",
@@ -40,6 +46,7 @@ class NPCTurnService:
         finally:
             if stream_event is not None:
                 stream_event({"type": "npc_thinking_end", **identity})
+        ensure_stream_open(stream_cancelled)
         if result.npc_id != context.npc_id:
             raise RoleLLMResponseError("角色模型返回了错误的 npc_id")
         if result.input_relevance not in {"relevant", "irrelevant"}:
@@ -120,5 +127,5 @@ class NPCTurnService:
                 },
                 "acknowledged": acknowledged,
             })
-            acknowledged.wait(10)
+            wait_for_stream_ack(acknowledged, stream_cancelled)
         return validated

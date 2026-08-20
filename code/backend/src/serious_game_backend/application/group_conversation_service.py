@@ -9,6 +9,11 @@ from serious_game_backend.application.input_review_service import (
     InputReviewService,
     input_rejection_message,
 )
+from serious_game_backend.application.stream_lifecycle import (
+    StreamCancelled,
+    ensure_stream_open,
+    wait_for_stream_ack,
+)
 from serious_game_backend.application.ports import (
     GameSessionRepository,
     RoleLLMGateway,
@@ -49,6 +54,7 @@ class GroupConversationService:
         state_version: int,
         player_text: str,
         stream_event: Callable[[dict], None] | None = None,
+        stream_cancelled: StreamCancelled = None,
     ) -> dict:
         session = self._sessions.get_owned(session_id, account_id)
         if session is None:
@@ -142,6 +148,7 @@ class GroupConversationService:
             finally:
                 if stream_event is not None:
                     stream_event({"type": "npc_thinking_end", **identity})
+            ensure_stream_open(stream_cancelled)
             if result.npc_id == npc_id and result.dialogue:
                 conversation.add_npc_turn(
                     npc_id=npc_id,
@@ -162,7 +169,7 @@ class GroupConversationService:
                         "reply": turn_dialogues[-1],
                         "acknowledged": acknowledged,
                     })
-                    acknowledged.wait(10)
+                    wait_for_stream_ack(acknowledged, stream_cancelled)
         conversation.turn_count += 1
         completed = conversation.turn_count >= conversation.max_turns
         if completed:

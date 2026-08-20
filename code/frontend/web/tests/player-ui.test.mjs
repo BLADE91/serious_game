@@ -86,6 +86,85 @@ test("prevents overlapping confirmation submissions while preserving retries aft
   assert.equal(calls, 2);
 });
 
+test("routes people and map entries through the same canonical governance request", async () => {
+  assert.equal(typeof playerUi.canonicalActionEntry, "function");
+  assert.equal(typeof playerUi.submitGovernanceAction, "function");
+  const descriptor = {
+    action_id: "household_visit",
+    variant_id: "field_visit",
+    participant_rules: { minimum: 1, maximum: 1 },
+    location_choices: [{ location_id: "loc_village", label: "入村走访" }],
+    target_choices: [{ target_id: "npc_household", label: "住户代表" }],
+  };
+  const peopleEntry = playerUi.canonicalActionEntry({
+    npc_id: "npc_household",
+    canonical_action_descriptor: {
+      ...descriptor,
+      preselected_npc_ids: ["npc_household"],
+      preselected_location_id: "loc_village",
+    },
+  });
+  const mapEntry = playerUi.canonicalActionEntry({
+    ...descriptor,
+    preselected_npc_ids: ["npc_household"],
+    preselected_location_id: "loc_village",
+  });
+  assert.deepEqual(peopleEntry, mapEntry);
+
+  const calls = [];
+  let release;
+  const api = { write: (...args) => {
+    calls.push(args);
+    return new Promise(resolve => { release = () => resolve({ state_version: 8 }); });
+  } };
+  const submit = playerUi.createSingleFlight(() => playerUi.submitGovernanceAction(api, "session-1", {
+    state_version: 7,
+    descriptor: peopleEntry,
+    location_id: "loc_village",
+    target_ids: ["npc_household"],
+    topic: "核实搬迁诉求",
+    archive_ids: [],
+    proposed_document_type: null,
+    lead_npc_id: null,
+  }));
+  const first = submit();
+  const doubleConfirm = submit();
+  assert.strictEqual(first, doubleConfirm);
+  await Promise.resolve();
+  assert.equal(calls.length, 1);
+  release();
+  await first;
+  assert.deepEqual(calls, [["session-1", "/governance/actions", "POST", {
+    state_version: 7,
+    action_kind: "household_visit",
+    variant_id: "field_visit",
+    location_id: "loc_village",
+    target_ids: ["npc_household"],
+    topic: "核实搬迁诉求",
+    archive_ids: [],
+    proposed_document_type: null,
+    lead_npc_id: null,
+  }]]);
+});
+
+test("selects exactly one dedicated primary scene for an active leadership meeting", () => {
+  assert.equal(typeof playerUi.primaryScenePlan, "function");
+  assert.deepEqual(playerUi.primaryScenePlan({
+    has_session: true,
+    active_governance_action: { action_kind: "leadership_meeting" },
+    active_meeting: { meeting_id: "meeting-1" },
+    active_group_conversation: null,
+    active_conversation: null,
+  }), ["leadership_meeting"]);
+  assert.deepEqual(playerUi.primaryScenePlan({
+    has_session: true,
+    active_governance_action: null,
+    active_meeting: null,
+    active_group_conversation: null,
+    active_conversation: { conversation_id: "conversation-1" },
+  }), ["conversation"]);
+});
+
 test("routes retired sessions to review and never offers continue", () => {
   assert.equal(typeof playerUi.sessionEntry, "function");
   assert.deepEqual(playerUi.sessionEntry({ session_id: "old", package_status: "retired", loadable: false }), {

@@ -30,6 +30,11 @@ from serious_game_backend.application.action_variants import (
     participant_rules,
 )
 from serious_game_backend.application.npc_demand_service import NPCDemandService
+from serious_game_backend.application.stream_lifecycle import (
+    StreamCancelled,
+    ensure_stream_open,
+    wait_for_stream_ack,
+)
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
@@ -555,6 +560,7 @@ class GameplayGovernanceService:
         action_instance_id: str,
         player_text: str,
         stream_event: Callable[[dict], None] | None = None,
+        stream_cancelled: StreamCancelled = None,
     ) -> dict:
         session, package = self._load_mutable(
             account_id, session_id, state_version
@@ -654,6 +660,7 @@ class GameplayGovernanceService:
                 npc_state,
                 random_seed=session.random_seed,
                 stream_event=stream_event,
+                stream_cancelled=stream_cancelled,
             )
             if turn.input_relevance == "irrelevant":
                 replies.append({
@@ -820,6 +827,7 @@ class GameplayGovernanceService:
         player_text: str,
         addressed_npc_id: str | None = None,
         stream_event: Callable[[dict], None] | None = None,
+        stream_cancelled: StreamCancelled = None,
     ) -> dict:
         session, package = self._load_mutable(
             account_id, session_id, state_version
@@ -915,6 +923,7 @@ class GameplayGovernanceService:
             finally:
                 if stream_event is not None:
                     stream_event({"type": "npc_thinking_end", **identity})
+            ensure_stream_open(stream_cancelled)
             if result.dialogue:
                 reply = {
                     "speaker_type": "npc",
@@ -933,7 +942,7 @@ class GameplayGovernanceService:
                         "reply": reply,
                         "acknowledged": acknowledged,
                     })
-                    acknowledged.wait(10)
+                    wait_for_stream_ack(acknowledged, stream_cancelled)
         self._commit(session, state_version)
         return {
             "state_version": session.state_version,

@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, canonicalActionFamilies, initialNpcStreamState, peopleRelationshipView, reduceNpcStream, sessionEntry, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -249,7 +249,9 @@ export default function GameShell() {
   const [conversationInput, setConversationInput] = useState("");
   const [npcStream, setNpcStream] = useState(initialNpcStreamState);
   const streamingReplies = npcStream.replies;
-  const performingRef = useRef(false);
+  const performSingleFlightRef = useRef(createSingleFlight(
+    async (operation: () => Promise<boolean>) => operation(),
+  ));
   const contextRef = useRef<HTMLElement>(null);
   const progressBroadcast = state.progress_broadcast as Dict | null;
   const progressBroadcastId = String(progressBroadcast?.broadcast_id || "");
@@ -504,23 +506,33 @@ export default function GameShell() {
   }
 
   async function perform(action: () => Promise<Dict>, success: string | ((result: Dict) => string) = "安排已落实", rebuildNarrative = false, onResult?: (result: Dict) => void) {
-    if (performingRef.current) return false;
-    performingRef.current = true;
-    setBusy(true); setNotice("");
-    try { const result = await action(); onResult?.(result); setFormOpen(null); setConversationInput(""); await refresh(rebuildNarrative ? 0 : narrative.feedCursor, sessionId, false, rebuildNarrative); setNotice(typeof success === "function" ? success(result) : success); return true; }
-    catch (error) {
-      const apiError = error as ApiError;
-      if (apiError?.code === "STATE_VERSION_CONFLICT") {
-        await refresh(0, sessionId, false, true);
-        setNotice("现场情况刚刚更新，请根据最新信息重新选择。");
-      } else if (apiError?.code === "ACTION_UNAVAILABLE" && apiError.details?.action_instance_id) {
-        setFormOpen(null);
-        await refresh(0, sessionId, false, true);
-        setNotice("已有一项治理行动正在进行，已为你切换到当前现场。");
-      } else fail(error);
+    return performSingleFlightRef.current(async () => {
+      setBusy(true); setNotice("");
+      try { const result = await action(); onResult?.(result); setFormOpen(null); setConversationInput(""); await refresh(rebuildNarrative ? 0 : narrative.feedCursor, sessionId, false, rebuildNarrative); setNotice(typeof success === "function" ? success(result) : success); return true; }
+      catch (error) {
+        const apiError = error as ApiError;
+        if (apiError?.code === "STATE_VERSION_CONFLICT") {
+          await refresh(0, sessionId, false, true);
+          setNotice("现场情况刚刚更新，请根据最新信息重新选择。");
+        } else if (apiError?.code === "ACTION_UNAVAILABLE" && apiError.details?.action_instance_id) {
+          setFormOpen(null);
+          await refresh(0, sessionId, false, true);
+          setNotice("已有一项治理行动正在进行，已为你切换到当前现场。");
+        } else fail(error);
+      }
+      finally { setBusy(false); }
+      return false;
+    });
+  }
+
+  function openCanonicalAction(raw: Dict, fallbackTitle: string) {
+    const item = canonicalActionEntry(raw) as Dict | null;
+    if (!item) {
+      setNotice("当前入口没有可安全执行的统一行动描述，请刷新后重试。");
+      return;
     }
-    finally { performingRef.current = false; setBusy(false); }
-    return false;
+    setNotice("");
+    setFormOpen({ title: item.name || item.action_name || fallbackTitle, kind: "resource", item });
   }
 
   function applyNpcStreamEvent(event: NpcStreamEvent) {
@@ -786,6 +798,13 @@ export default function GameShell() {
     : currentLine?.speaker ? playerText(currentLine.speaker) : conversationOpening || !currentLine && state.active_conversation ? activeConversationName : "";
   const stageText = conversationStreamingReply?.text || (currentLine ? playerText(currentLine.text) : pending ? "请阅读当前事项并作出决定。" : "案头暂时平静。可以从行动、会谈或卷宗继续推进。");
   const activeConversation = state.active_conversation || state.active_group_conversation;
+  const primaryScene = primaryScenePlan({
+    has_session: Boolean(sessionId),
+    active_governance_action: activeGovernanceAction,
+    active_meeting: activeMeeting,
+    active_group_conversation: state.active_group_conversation,
+    active_conversation: state.active_conversation,
+  })[0];
 
   return <main className="app-shell">
     <header className="topbar">
@@ -824,7 +843,7 @@ export default function GameShell() {
             {notice && panel !== "manual-saves" && !(activeConversation || (activeGovernanceAction && !activeMeeting)) && <div className="notice" role="status"><b>案头提醒</b><span>{notice}</span></div>}
             {!sessionId && <div className="welcome-block"><span className="eyebrow">云溪县 · 柳林村搬迁专班</span><h2>你有九十天，处理一场正在失控的搬迁。</h2><p>三十六户人家、八千万元预算，还有一条没人愿意说透的旧账。你的每次会谈、批示、承诺和沉默，都会留下痕迹。</p><p>通晓币用于需要模型参与的人物会谈，普通剧情与决定不会消耗通晓币。</p><small>开发：杨钞越　剧情：吉瑞新　美术：章钊林　指导：蒋俊彦、高翔</small><button onClick={() => authRequired && !account ? setAuthOpen(true) : setSessionOpen(true)}>{authRequired && !account ? "登录后赴任" : "接下调令，前往云溪"}</button></div>}
             {thinkingNpcs.length > 0 && <NpcThinkingStatus people={thinkingNpcs} />}
-            {sessionId && !(activeGovernanceAction && !activeMeeting) && !state.active_group_conversation && <section className={activeConversation ? "gal-stage conversation-mode" : "gal-stage"} data-testid={state.active_conversation ? "active-conversation-character" : undefined}>
+            {(primaryScene === "narrative" || primaryScene === "conversation") && <section className={activeConversation ? "gal-stage conversation-mode" : "gal-stage"} data-primary-scene={primaryScene} data-testid={state.active_conversation ? "active-conversation-character" : undefined}>
               {stageSpeaker && <div className="gal-portrait" aria-label={`${stageSpeaker}立绘`}><CharacterPortrait character={stageCharacter} fallbackName={stageSpeaker} priority /></div>}
               <div className={stageSpeaker ? "gal-dialogue has-speaker" : "gal-dialogue narration"}>
                 <header><span>{decisionReady ? "当前必须作出决定" : stageSpeaker || (currentLine ? "县长手记" : "现场暂歇")}</span><small>{playerLines.length ? `今日 ${Math.max(1, narrative.currentIndex + 1)} / ${playerLines.length}` : "等待新消息"}</small></header>
@@ -837,8 +856,9 @@ export default function GameShell() {
               </div>
             </section>}
             {sessionId && showHistory && <section className="history-drawer" aria-label="剧情回看"><header><h3>剧情回看</h3><button onClick={() => setShowHistory(false)}>关闭</button></header><div>{visibleHistoryLines.map(line => <article key={line.id}><small>第 {line.storyDay || "?"} 日 · {line.speaker ? playerText(line.speaker) : "旁白"}</small><span>{playerText(line.text)}</span></article>)}</div></section>}
-            {state.active_group_conversation && <ForcedGroupConversationScene conversation={state.active_group_conversation} streamingReplies={streamingReplies} />}
-            {activeGovernanceAction && <GovernanceActionScene action={activeGovernanceAction} meeting={activeMeeting} overview={governance} streamingReplies={streamingReplies} />}
+            {primaryScene === "forced_group_conversation" && <ForcedGroupConversationScene conversation={state.active_group_conversation} streamingReplies={streamingReplies} />}
+            {primaryScene === "governance_action" && activeGovernanceAction && <GovernanceActionScene action={activeGovernanceAction} overview={governance} streamingReplies={streamingReplies} />}
+            {primaryScene === "leadership_meeting" && activeGovernanceAction && activeMeeting && <LeadershipMeetingScene action={activeGovernanceAction} meeting={activeMeeting} overview={governance} streamingReplies={streamingReplies} />}
           </div>
           <PlayerActionBar state={state} commands={commands} busy={busy} notice={notice} pending={pending} decisionReady={decisionReady} governanceAction={activeGovernanceAction} meeting={activeMeeting} conversationName={activeConversationName} value={conversationInput} onChange={setConversationInput} onSubmit={activeGovernanceAction ? submitGovernanceTurn : submitConversation} onLeave={leaveConversation} onFinishGovernance={finishGovernanceAction} onCancelGovernance={confirmCancelGovernanceAction} onNavigate={loadPanel} onEndDay={confirmEndDay} onOvertime={() => setOvertimeOpen(true)} />
         </section>
@@ -849,17 +869,11 @@ export default function GameShell() {
             {sessionId && <PlayerIdentityCard />}
             {panel === "scene" && <SceneSummary state={state} commands={commands} governanceAction={activeGovernanceAction} decisionReady={decisionReady} onNavigate={loadPanel} onEndDay={confirmEndDay} onOvertime={() => setOvertimeOpen(true)} />}
             {panel === "actions" && <ActionPanel data={panelData} onRun={item => { setNotice(""); setFormOpen({ title: item.name || item.action_name || "安排治理行动", kind: "resource", item }); }} />}
-            {panel === "opportunities" && <OpportunityPanel data={panelData} activeConversation={state.active_conversation || null} onOpenProfile={setCharacterProfileOpen} onContinue={() => void loadPanel("scene")} onStart={item => perform(() => api.action(sessionId, {
-              input_mode: "conversation_start", client_action_id: api.key("conversation-start"), state_version: state.state_version,
-              opportunity_id: item.opportunity_id, target_npc_id: item.npc_id || item.target_npc_id,
-            }), `已进入与 ${playerText(item.npc_name, "对方")} 的会谈`)} />}
+            {panel === "opportunities" && <OpportunityPanel data={panelData} activeConversation={state.active_conversation || null} onOpenProfile={setCharacterProfileOpen} onContinue={() => void loadPanel("scene")} onStart={item => openCanonicalAction(item, `与 ${playerText(item.npc_name, "对方")} 会谈`)} />}
             {panel === "governance" && <GovernancePanel data={panelData} busy={busy} onDisposeDemand={disposeDemand} onOpenRecord={setGovernanceRecordOpen} onOpenArchive={openArchiveDetail} onOpenContract={openContractDetail} />}
             {panel === "desk" && <DeskPanel data={panelData} />}
             {panel === "knowledge" && <KnowledgePanel data={panelData} />}
-            {panel === "map" && <MapPanel data={panelData} blocked={commands.can_act === false} remainingActionPoints={Number(actionPoints)} onRun={item => item.entry_type === "conversation" ? perform(() => api.action(sessionId, {
-              input_mode: "conversation_start", client_action_id: api.key("conversation-start"), state_version: state.state_version,
-              opportunity_id: item.submit?.opportunity_id, target_npc_id: item.submit?.npc_id,
-            }), `已进入与 ${playerText(item.title).replace(/^与|交谈$/g, "") || "对方"} 的会谈`) : (setNotice(""), setFormOpen({ title: item.title || "安排现场事务", kind: "resource", item }))} />}
+            {panel === "map" && <MapPanel data={panelData} blocked={commands.can_act === false} remainingActionPoints={Number(actionPoints)} onRun={item => openCanonicalAction(item, item.title || "安排现场事务")} />}
             {panel === "review" && <ReviewPanel data={panelData} api={api} sessionId={sessionId} />}
             {panel === "manual-saves" && <SavePanel data={panelData} state={state} api={api} sessionId={sessionId} busy={busy} onPerform={perform} onConfirm={setConfirmRequest} />}
           </div>
@@ -921,7 +935,7 @@ function PlayerIdentityCard() {
   return <section className="player-identity-card" data-testid="player-identity-card"><div className="player-portrait"><CharacterPortrait character={player} fallbackName="李致远" /></div><div><small>你的身份</small><h3>{player?.name || "李致远"}</h3><p>{player?.role || "云溪县县长"}</p></div></section>;
 }
 
-function GovernanceActionScene({ action, meeting, overview, streamingReplies }: { action: Dict; meeting: Dict | null; overview: Dict | null; streamingReplies: Dict[] }) {
+function GovernanceActionScene({ action, overview, streamingReplies }: { action: Dict; overview: Dict | null; streamingReplies: Dict[] }) {
   const catalogs = [
     ...arr(get(overview, "target_catalogs.household_representative")),
     ...arr(get(overview, "target_catalogs.cadre")),
@@ -929,30 +943,35 @@ function GovernanceActionScene({ action, meeting, overview, streamingReplies }: 
   ];
   const names = new Map(catalogs.map(item => [String(item.target_id), String(item.label || item.name || "相关人员")]));
   const targets = (Array.isArray(action.target_ids) ? action.target_ids : []).map((id: unknown) => names.get(String(id)) || "相关人员");
-  const transcript = arr(meeting?.transcript || action.transcript);
+  const transcript = arr(action.transcript);
   const title = GOVERNANCE_ACTION_LABELS[String(action.action_kind)] || "治理行动";
-  if (action.action_kind !== "leadership_meeting") {
-    const targetId = String((Array.isArray(action.target_ids) ? action.target_ids : [])[0] || "");
-    const targetName = targets[0] || "对方";
-    const targetCharacter = resolveCharacter(targetId, targetName);
-    const latestReply = streamingReplies.length ? streamingReplies[streamingReplies.length - 1] : null;
-    const latestNpcEntry = [...transcript].reverse().find(entry => entry.speaker_type !== "player");
-    const dialogue = latestReply?.text || latestNpcEntry?.text || "你已经到达现场。先说明来意，再围绕事实、诉求与可行安排展开交流。";
-    const speakerName = playerText(latestReply?.npc_name || latestNpcEntry?.npc_name, targetCharacter?.name || targetName);
-    return <section className="gal-stage governance-gal-stage conversation-mode" data-testid="governance-gal-scene" data-action-kind={String(action.action_kind)}>
-      <div className="gal-scene-meta"><small>正在进行 · {title}</small><strong>{playerText(action.topic, `与${targetName}当面沟通`)}</strong><span>第 {action.story_day || "待定"} 日</span></div>
-      <div className="gal-portrait" aria-label={`${targetName}立绘`}><CharacterPortrait character={targetCharacter} fallbackName={targetName} priority /></div>
-      <div className="gal-dialogue has-speaker">
-        <header><span>{speakerName}</span><small>{targetCharacter?.role || title}{latestReply ? latestReply.complete ? " · 回应完成" : " · 正在回应" : ""}</small></header>
-        <p>{dialogue}{latestReply && !latestReply.complete && <i className="stream-cursor" aria-hidden="true" />}</p>
-        {transcript.length > 0 && <details className="gal-transcript-history"><summary>回看本次交谈记录（{transcript.length}）</summary><div>{transcript.map((entry, index) => <article key={index}><strong>{entry.speaker_type === "player" ? "你" : entry.npc_name || targetName}</strong><p>{entry.text || "对方暂未表态。"}</p></article>)}</div></details>}
-      </div>
-    </section>;
-  }
-  return <section className="governance-scene">
-    <header><div><small>正在进行 · {title}</small><h3>{action.topic || (targets.length ? `与${targets.join("、")}当面沟通` : title)}</h3></div><span>第 {action.story_day || "待定"} 日</span></header>
+  const targetId = String((Array.isArray(action.target_ids) ? action.target_ids : [])[0] || "");
+  const targetName = targets[0] || "对方";
+  const targetCharacter = resolveCharacter(targetId, targetName);
+  const latestReply = streamingReplies.length ? streamingReplies[streamingReplies.length - 1] : null;
+  const latestNpcEntry = [...transcript].reverse().find(entry => entry.speaker_type !== "player");
+  const dialogue = latestReply?.text || latestNpcEntry?.text || "你已经到达现场。先说明来意，再围绕事实、诉求与可行安排展开交流。";
+  const speakerName = playerText(latestReply?.npc_name || latestNpcEntry?.npc_name, targetCharacter?.name || targetName);
+  return <section className="gal-stage governance-gal-stage conversation-mode" data-primary-scene="governance_action" data-testid="governance-gal-scene" data-action-kind={String(action.action_kind)}>
+    <div className="gal-scene-meta"><small>正在进行 · {title}</small><strong>{playerText(action.topic, `与${targetName}当面沟通`)}</strong><span>第 {action.story_day || "待定"} 日</span></div>
+    <div className="gal-portrait" aria-label={`${targetName}立绘`}><CharacterPortrait character={targetCharacter} fallbackName={targetName} priority /></div>
+    <div className="gal-dialogue has-speaker">
+      <header><span>{speakerName}</span><small>{targetCharacter?.role || title}{latestReply ? latestReply.complete ? " · 回应完成" : " · 正在回应" : ""}</small></header>
+      <p>{dialogue}{latestReply && !latestReply.complete && <i className="stream-cursor" aria-hidden="true" />}</p>
+      {transcript.length > 0 && <details className="gal-transcript-history"><summary>回看本次交谈记录（{transcript.length}）</summary><div>{transcript.map((entry, index) => <article key={index}><strong>{entry.speaker_type === "player" ? "你" : entry.npc_name || targetName}</strong><p>{entry.text || "对方暂未表态。"}</p></article>)}</div></details>}
+    </div>
+  </section>;
+}
+
+function LeadershipMeetingScene({ action, meeting, overview, streamingReplies }: { action: Dict; meeting: Dict; overview: Dict | null; streamingReplies: Dict[] }) {
+  const catalogs = arr(get(overview, "target_catalogs.meeting_participants"));
+  const names = new Map(catalogs.map(item => [String(item.target_id), String(item.label || item.name || "相关人员")]));
+  const targets = values(action.target_ids).map(id => names.get(String(id)) || "相关人员");
+  const transcript = arr(meeting.transcript);
+  return <section className="governance-scene leadership-meeting-scene" data-primary-scene="leadership_meeting" data-testid="leadership-meeting-scene">
+    <header><div><small>正在进行 · 班子会议</small><h3>{playerText(action.topic, "班子会议")}</h3></div><span>第 {action.story_day || "待定"} 日</span></header>
     {targets.length > 0 && <p className="scene-participants">在场：{targets.join("、")}</p>}
-    {transcript.length ? <div className="scene-transcript">{transcript.map((entry, index) => <article className={entry.speaker_type === "player" ? "player" : "npc"} key={index}><strong>{entry.speaker_type === "player" ? "你" : entry.npc_name || "对方"}</strong><p>{entry.text || "对方暂未表态。"}</p></article>)}</div> : <div className="scene-opening"><span>启</span><p>{action.action_kind === "leadership_meeting" ? "人员已经到齐。先陈述问题与方案，听取各方意见后再形成决议。" : "你已经到达现场。先说明来意，再围绕事实、诉求与可行安排展开交流。"}</p></div>}
+    {transcript.length ? <div className="scene-transcript">{transcript.map((entry, index) => <article className={entry.speaker_type === "player" ? "player" : "npc"} key={index}><strong>{entry.speaker_type === "player" ? "你" : entry.npc_name || "参会人员"}</strong><p>{entry.text || "对方暂未表态。"}</p></article>)}</div> : <div className="scene-opening"><span>议</span><p>人员已经到齐。先陈述问题与方案，听取各方意见后再形成决议。</p></div>}
     {streamingReplies.length > 0 && <NpcStreamingReplies replies={streamingReplies} />}
   </section>;
 }
@@ -966,7 +985,7 @@ function ForcedGroupConversationScene({ conversation, streamingReplies }: { conv
   const speaker = latestReply ? resolveCharacter(latestReply.npc_id, latestReply.npc_name) : resolveCharacter(latestNpcEntry?.npc_id, latestNpcEntry?.npc_name) || initiator || participants[0] || null;
   const speakerName = playerText(latestReply?.npc_name || latestNpcEntry?.npc_name, speaker?.name || "来访者");
   const dialogue = latestReply?.text || latestNpcEntry?.text || playerText(conversation.opening_narrative, "来访者已经到场，正等你回应当晚最紧迫的问题。");
-  return <section className="gal-stage forced-group-gal-stage conversation-mode" data-testid="forced-group-conversation">
+  return <section className="gal-stage forced-group-gal-stage conversation-mode" data-primary-scene="forced_group_conversation" data-testid="forced-group-conversation">
     <div className="gal-scene-meta"><small>夜间来访 · 必须回应</small><strong>{playerText(conversation.agenda, "在场各方要求当面说明")}</strong><span>{conversation.turn_count || 0} / {conversation.max_turns || 3} 轮</span></div>
     <div className="gal-portrait" aria-label={`${speakerName}立绘`}><CharacterPortrait character={speaker} fallbackName={speakerName} /></div>
     <div className="gal-dialogue has-speaker"><header><span>{speakerName}</span><small>发起人：{initiator?.name || "相关人员"} · {friendlyStatus(conversation.urgency)}</small></header><p>{playerText(dialogue)}{latestReply && !latestReply.complete && <i className="stream-cursor" aria-hidden="true" />}</p>
@@ -1532,12 +1551,16 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
 
   return <form className="stack-form governance-action-form" onSubmit={async event => {
     event.preventDefault(); if (!validSelection || !topicValid) return;
-    await onPerform(() => api.write(sessionId, "/governance/actions", "POST", {
-      state_version: state.state_version, action_kind: actionId, variant_id: variantId, location_id: locationId, target_ids: isArchive ? [] : selectedTargets,
-      topic: isArchive ? "" : effectiveTopic, archive_ids: isArchive || (isMeeting && Boolean(documentType)) ? selectedArchives : [],
+    await onPerform(() => submitGovernanceAction(api, sessionId, {
+      state_version: state.state_version,
+      descriptor: item,
+      location_id: locationId,
+      target_ids: isArchive ? [] : selectedTargets,
+      topic: isArchive ? "" : effectiveTopic,
+      archive_ids: isArchive || (isMeeting && Boolean(documentType)) ? selectedArchives : [],
       proposed_document_type: isMeeting && documentType ? documentType : null,
       lead_npc_id: requiresLead ? leadNpcId : null,
-    }), isMeeting ? "班子会议已经发起" : isArchive ? "档案正文已经调出并记录查阅" : "行动已经发起", false, result => {
+    }) as Promise<Dict>, isMeeting ? "班子会议已经发起" : isArchive ? "档案正文已经调出并记录查阅" : "行动已经发起", false, result => {
       if (isArchive) onArchivesRead(arr(result.archives));
     });
   }}>

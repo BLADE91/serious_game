@@ -305,6 +305,66 @@ class GameplayV2Tests(unittest.TestCase):
         if not failure.empty():
             raise failure.get()
 
+    def test_stream_disconnect_cancels_unacked_worker_without_partial_commit(self) -> None:
+        self.reach_d2_open()
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "gameplay-v2-disconnect-start-0001",
+            "state_version": self.state["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        before = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        cancelled = Event()
+        events: Queue[dict] = Queue()
+        failure: Queue[BaseException] = Queue()
+
+        def emit(event: dict) -> None:
+            events.put(event)
+            if event["type"] == "_npc_reply_ready":
+                cancelled.set()
+
+        def consume() -> None:
+            try:
+                command = ActionRequest(
+                    input_mode="free_text",
+                    client_action_id="gameplay-v2-disconnect-turn-0001",
+                    state_version=started["state_version"],
+                    conversation_id=started["conversation"]["conversation_id"],
+                    opportunity_id="opp_d02_wu_xiuying_first_talk",
+                    target_npc_id="npc_wu_xiuying",
+                    player_text="请说明你现在最担心的搬迁问题。",
+                ).to_command()
+                self.container.actions.execute(
+                    account_id="acct_gameplay_v2",
+                    session_id=self.session_id,
+                    command=command,
+                    stream_event=emit,
+                    stream_cancelled=cancelled.is_set,
+                )
+            except BaseException as exc:  # pragma: no cover - asserted below
+                failure.put(exc)
+
+        worker = Thread(target=consume, daemon=True)
+        worker.start()
+        worker.join(1)
+        self.assertFalse(worker.is_alive(), "disconnected stream worker leaked")
+        error = failure.get_nowait()
+        self.assertIsInstance(error, ConnectionAbortedError)
+        self.assertEqual(
+            ["npc_thinking_start", "npc_thinking_end", "_npc_reply_ready"],
+            [event["type"] for event in list(events.queue)],
+        )
+        stored = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertEqual(before.state_version, stored.state_version)
+        self.assertEqual(before.game_state.action_points, stored.game_state.action_points)
+        self.assertEqual(0, stored.active_conversation.turn_count)
+        self.assertIsNone(stored.processing_action_id)
+
     def test_stream_model_error_ends_thinking_and_does_not_commit_partial_turn(self) -> None:
         self.reach_d2_open()
         started = self.action({

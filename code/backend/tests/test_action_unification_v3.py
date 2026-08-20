@@ -273,6 +273,34 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertTrue(all("submit" not in card for card in cards))
         self.assertTrue(all(card["entry_type"] != "resource_action" for card in cards))
 
+    def test_people_entries_embed_a_legal_canonical_action_descriptor(self) -> None:
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/opportunities",
+            headers=self.headers,
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        opportunities = response.json()["opportunities"]
+        self.assertTrue(opportunities)
+        for opportunity in opportunities:
+            descriptor = opportunity["canonical_action_descriptor"]
+            self.assertIn(descriptor["action_id"], {
+                "household_visit", "cadre_interview",
+            })
+            self.assertTrue(descriptor["variant_id"])
+            self.assertEqual(
+                [opportunity["npc_id"]],
+                descriptor["preselected_npc_ids"],
+            )
+            self.assertIn(
+                opportunity["npc_id"],
+                {item["target_id"] for item in descriptor["target_choices"]},
+            )
+            self.assertIn(
+                descriptor["preselected_location_id"],
+                {item["location_id"] for item in descriptor["location_choices"]},
+            )
+            self.assertNotIn("submit", descriptor)
+
     def test_map_uses_contextual_field_labels_and_keeps_blood_lead_locked(self) -> None:
         def card(location_id: str, variant_id: str) -> dict:
             location = next(
