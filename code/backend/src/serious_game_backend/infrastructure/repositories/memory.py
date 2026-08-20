@@ -367,6 +367,17 @@ class InMemoryRuntimeTransactionRepository:
         research_event: ResearchEvent | None = None,
     ) -> None:
         with self._lock:
+            reserved = self._sessions.get_owned(
+                session.session_id, session.account_id
+            )
+            if (
+                reserved is None
+                or reserved.state_version != expected_version
+                or reserved.processing_action_id != operation.operation_id
+            ):
+                raise StateVersionConflictError(
+                    "动作预留已失效或状态版本冲突"
+                )
             self._sessions.save(session, expected_version=expected_version)
             self._operations.save(operation)
             if (

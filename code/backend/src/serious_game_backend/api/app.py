@@ -279,7 +279,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             },
         )
 
-    def live_npc_stream_response(call, **kwargs) -> StreamingResponse:
+    def live_npc_stream_response(
+        call,
+        *,
+        on_disconnect=None,
+        **kwargs,
+    ) -> StreamingResponse:
         async def generate():
             queue: asyncio.Queue[dict] = asyncio.Queue()
             loop = asyncio.get_running_loop()
@@ -335,6 +340,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     yield chunk
             finally:
                 cancelled.set()
+                if on_disconnect is not None:
+                    try:
+                        on_disconnect()
+                    except Exception:
+                        # Stream closure must remain best-effort; operation
+                        # ownership CAS prevents an obsolete abort from winning.
+                        pass
                 if not task.done():
                     task.cancel()
 
@@ -1740,6 +1752,11 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         account_id = current_account_id(x_account_id)
         return live_npc_stream_response(
             runtime.actions.execute,
+            on_disconnect=lambda: runtime.actions.abort_stream_operation(
+                account_id=account_id,
+                session_id=session_id,
+                client_action_id=body.client_action_id,
+            ),
             account_id=account_id,
             session_id=session_id,
             command=body.to_command(),

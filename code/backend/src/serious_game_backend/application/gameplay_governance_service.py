@@ -584,6 +584,7 @@ class GameplayGovernanceService:
             player_text=text,
             scene_goal=action.topic,
         )
+        ensure_stream_open(stream_cancelled)
         if not relevant:
             session.logs.append({
                 "type": "unrelated_input_rejected",
@@ -699,6 +700,7 @@ class GameplayGovernanceService:
                 "acquired_archive_ids": [],
                 "contract_batch_proposal": None,
             }
+        ensure_stream_open(stream_cancelled)
         action.transcript.append({
             "speaker_type": "player",
             "text": text,
@@ -849,6 +851,7 @@ class GameplayGovernanceService:
             player_text=text,
             scene_goal=meeting.topic,
         )
+        ensure_stream_open(stream_cancelled)
         if not relevant:
             session.logs.append({
                 "type": "unrelated_input_rejected",
@@ -943,6 +946,7 @@ class GameplayGovernanceService:
                         "acknowledged": acknowledged,
                     })
                     wait_for_stream_ack(acknowledged, stream_cancelled)
+        ensure_stream_open(stream_cancelled)
         self._commit(session, state_version)
         return {
             "state_version": session.state_version,

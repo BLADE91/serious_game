@@ -26,4 +26,5 @@ def wait_for_stream_ack(
         if remaining <= 0:
             return False
         if acknowledged.wait(min(0.05, remaining)):
+            ensure_stream_open(cancelled)
             return True

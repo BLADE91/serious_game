@@ -25,10 +25,11 @@ from serious_game_backend.application.scripted_effect_service import (
 from serious_game_backend.application.trust_derivation_service import TrustDerivationService
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
-from serious_game_backend.domain.enums import ActionInputMode
+from serious_game_backend.domain.enums import ActionInputMode, OperationStatus
 from serious_game_backend.domain.errors import (
     ContentValidationError,
     RoleLLMResponseError,
+    StateVersionConflictError,
 )
 from serious_game_backend.domain.llm import NightAgentResult
 from serious_game_backend.domain.story import ScriptedEffects
@@ -364,6 +365,142 @@ class GameplayV2Tests(unittest.TestCase):
         self.assertEqual(before.game_state.action_points, stored.game_state.action_points)
         self.assertEqual(0, stored.active_conversation.turn_count)
         self.assertIsNone(stored.processing_action_id)
+
+    def test_disconnect_during_blocked_model_releases_reservation_and_fences_late_worker(self) -> None:
+        self.reach_d2_open()
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "gameplay-v2-blocked-disconnect-start-0001",
+            "state_version": self.state["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        before = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        original = self.container.actions._npc_turns._gateway
+        entered = Event()
+        release = Event()
+        cancelled = Event()
+        events: Queue[dict] = Queue()
+        failure: Queue[BaseException] = Queue()
+        client_action_id = "gameplay-v2-blocked-disconnect-turn-0001"
+
+        class BlockingGateway:
+            def run_turn(inner_self, context):
+                entered.set()
+                if not release.wait(5):
+                    raise TimeoutError("test did not release blocked model")
+                return original.run_turn(context)
+
+        self.container.actions._npc_turns._gateway = BlockingGateway()
+
+        def consume() -> None:
+            try:
+                command = ActionRequest(
+                    input_mode="free_text",
+                    client_action_id=client_action_id,
+                    state_version=started["state_version"],
+                    conversation_id=started["conversation"]["conversation_id"],
+                    opportunity_id="opp_d02_wu_xiuying_first_talk",
+                    target_npc_id="npc_wu_xiuying",
+                    player_text="请说明你现在最担心的搬迁问题。",
+                ).to_command()
+                self.container.actions.execute(
+                    account_id="acct_gameplay_v2",
+                    session_id=self.session_id,
+                    command=command,
+                    stream_event=events.put,
+                    stream_cancelled=cancelled.is_set,
+                )
+            except BaseException as exc:  # pragma: no cover - asserted below
+                failure.put(exc)
+
+        worker = Thread(target=consume, daemon=True)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(2), "model call was not reached")
+            self.assertEqual("npc_thinking_start", events.get(timeout=1)["type"])
+            reserved = self.container.sessions.get_owned(
+                self.session_id, "acct_gameplay_v2"
+            )
+            operation_id = reserved.processing_action_id
+            self.assertIsNotNone(operation_id)
+            operation = self.container.operations.get(
+                "acct_gameplay_v2", self.session_id, client_action_id
+            )
+            self.assertEqual(OperationStatus.PROCESSING, operation.status)
+
+            cancelled.set()
+            released = self.container.actions.abort_stream_operation(
+                account_id="acct_gameplay_v2",
+                session_id=self.session_id,
+                client_action_id=client_action_id,
+            )
+            self.assertTrue(released)
+            self.assertTrue(worker.is_alive(), "test model must still be blocked")
+            aborted = self.container.sessions.get_owned(
+                self.session_id, "acct_gameplay_v2"
+            )
+            self.assertIsNone(aborted.processing_action_id)
+            self.assertEqual(before.state_version, aborted.state_version)
+            self.assertEqual(
+                before.game_state.action_points,
+                aborted.game_state.action_points,
+            )
+            self.assertEqual(0, aborted.active_conversation.turn_count)
+            operation = self.container.operations.get(
+                "acct_gameplay_v2", self.session_id, client_action_id
+            )
+            self.assertEqual(OperationStatus.FAILED_RETRYABLE, operation.status)
+
+            late_session = reserved
+            late_session.processing_action_id = None
+            late_session.state_version += 1
+            with self.assertRaises(StateVersionConflictError):
+                self.container.actions._transactions.finish_operation(
+                    late_session,
+                    expected_version=before.state_version,
+                    operation=replace(
+                        operation,
+                        status=OperationStatus.SUCCEEDED,
+                        response={"late": True},
+                    ),
+                )
+
+            follow_up = self.container.actions.execute(
+                account_id="acct_gameplay_v2",
+                session_id=self.session_id,
+                command=ActionRequest(
+                    input_mode="conversation_end",
+                    client_action_id="gameplay-v2-after-abort-end-0001",
+                    state_version=aborted.state_version,
+                    conversation_id=started["conversation"]["conversation_id"],
+                ).to_command(),
+            )
+            self.assertEqual(OperationStatus.SUCCEEDED.value, follow_up["status"])
+            self.assertEqual(aborted.state_version + 1, follow_up["state_version"])
+        finally:
+            release.set()
+            worker.join(3)
+            self.container.actions._npc_turns._gateway = original
+
+        self.assertFalse(worker.is_alive(), "late model worker did not unwind")
+        self.assertIsInstance(failure.get_nowait(), ConnectionAbortedError)
+        after_late_return = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertEqual(follow_up["state_version"], after_late_return.state_version)
+        self.assertEqual(
+            before.game_state.action_points,
+            after_late_return.game_state.action_points,
+        )
+        self.assertIsNone(after_late_return.active_conversation)
+        self.assertIsNone(after_late_return.processing_action_id)
+        operation = self.container.operations.get(
+            "acct_gameplay_v2", self.session_id, client_action_id
+        )
+        self.assertEqual(OperationStatus.FAILED_RETRYABLE, operation.status)
 
     def test_stream_model_error_ends_thinking_and_does_not_commit_partial_turn(self) -> None:
         self.reach_d2_open()

@@ -98,12 +98,16 @@ class M3LLMRuntimeTests(unittest.TestCase):
 
         audits = InMemoryLLMCallAuditRepository()
         gateway = OpenAICompatibleRoleLLMGateway(
-            self.settings(), "test-key", audits, transport=transport
+            self.settings(role_llm_timeout_seconds=0.75),
+            "test-key",
+            audits,
+            transport=transport,
         )
         first = gateway.run_turn(self.context())
         second = gateway.run_turn(self.context())
         self.assertEqual(first, second)
         self.assertEqual(1, len(calls))
+        self.assertEqual(0.75, calls[0][2])
         saved = audits.list_for_session("session_m3")
         self.assertEqual("succeeded", saved[0].status)
         self.assertEqual(120, saved[0].input_tokens)

@@ -18,7 +18,10 @@ from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
-from serious_game_backend.application.stream_lifecycle import StreamCancelled
+from serious_game_backend.application.stream_lifecycle import (
+    StreamCancelled,
+    ensure_stream_open,
+)
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.ports import (
     GameSessionRepository,
@@ -190,6 +193,7 @@ class ActionService:
                 stream_event=stream_event,
                 stream_cancelled=stream_cancelled,
             )
+            ensure_stream_open(stream_cancelled)
             # 真实 LLM 接入后只允许在这里（事务外）调用。
             current = self._owned_session(session_id, account_id)
             if current.processing_action_id != operation_id:
@@ -272,6 +276,52 @@ class ActionService:
                     operation=failed_operation,
                 )
             raise
+
+    def abort_stream_operation(
+        self,
+        *,
+        account_id: str,
+        session_id: str,
+        client_action_id: str,
+    ) -> bool:
+        """Invalidate a disconnected stream reservation without waiting for its worker."""
+        operation = self._operations.get(
+            account_id, session_id, client_action_id
+        )
+        if (
+            operation is None
+            or operation.status is not OperationStatus.PROCESSING
+        ):
+            return False
+        current = self._sessions.get_owned(session_id, account_id)
+        if (
+            current is None
+            or current.processing_action_id != operation.operation_id
+        ):
+            return False
+        current.processing_action_id = None
+        current.touch()
+        failed_operation = replace(
+            operation,
+            status=OperationStatus.FAILED_RETRYABLE,
+            error={
+                "code": "NPC_STREAM_DISCONNECTED",
+                "message": "NPC 回应流已中断，本次操作未结算",
+                "details": {},
+                "http_status": 409,
+            },
+            updated_at=utc_now_iso(),
+        )
+        try:
+            self._transactions.finish_operation(
+                current,
+                expected_version=current.state_version,
+                operation=failed_operation,
+            )
+        except StateVersionConflictError:
+            # Another terminal transition won the reservation CAS.
+            return False
+        return True
 
     def _build_draft(
         self,

@@ -82,6 +82,7 @@ class GroupConversationService:
             player_text=text,
             scene_goal=conversation.agenda,
         )
+        ensure_stream_open(stream_cancelled)
         if not relevant:
             session.logs.append({
                 "type": "unrelated_input_rejected",
@@ -170,6 +171,7 @@ class GroupConversationService:
                         "acknowledged": acknowledged,
                     })
                     wait_for_stream_ack(acknowledged, stream_cancelled)
+        ensure_stream_open(stream_cancelled)
         conversation.turn_count += 1
         completed = conversation.turn_count >= conversation.max_turns
         if completed:
