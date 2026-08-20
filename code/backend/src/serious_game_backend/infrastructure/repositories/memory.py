@@ -322,7 +322,7 @@ class InMemoryRuntimeTransactionRepository:
                 )
                 if (
                     session is None
-                    or session.processing_action_id != operation.operation_id
+                    or session.processing_action_id != operation.reservation_id
                 ):
                     continue
                 session.processing_action_id = None
@@ -352,6 +352,15 @@ class InMemoryRuntimeTransactionRepository:
         create_operation: bool,
     ) -> None:
         with self._lock:
+            reserved = self._sessions.get_owned(session.session_id, session.account_id)
+            if (
+                reserved is None
+                or reserved.state_version != expected_version
+                or reserved.processing_action_id is not None
+            ):
+                raise StateVersionConflictError(
+                    "状态版本冲突或已有操作占用当前游戏"
+                )
             self._sessions.save(session, expected_version=expected_version)
             if create_operation:
                 self._operations.create(operation)
@@ -373,7 +382,7 @@ class InMemoryRuntimeTransactionRepository:
             if (
                 reserved is None
                 or reserved.state_version != expected_version
-                or reserved.processing_action_id != operation.operation_id
+                or reserved.processing_action_id != operation.reservation_id
             ):
                 raise StateVersionConflictError(
                     "动作预留已失效或状态版本冲突"

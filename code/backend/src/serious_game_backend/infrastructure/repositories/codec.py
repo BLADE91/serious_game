@@ -412,6 +412,7 @@ def encode_operation(operation: OperationRecord) -> dict:
         "error": operation.error,
         "created_at": operation.created_at,
         "updated_at": operation.updated_at,
+        "lease_token": operation.lease_token,
     }
 
 
@@ -428,4 +429,5 @@ def decode_operation(value: dict) -> OperationRecord:
         error=value.get("error"),
         created_at=str(value["created_at"]),
         updated_at=str(value["updated_at"]),
+        lease_token=str(value.get("lease_token", "")),
     )

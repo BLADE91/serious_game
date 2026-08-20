@@ -11,10 +11,15 @@ from serious_game_backend.application.hashing import canonical_request_hash
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.action import ActionCommand
 from serious_game_backend.domain.enums import ActionInputMode, OperationStatus
+from serious_game_backend.domain.errors import StateVersionConflictError
 from serious_game_backend.domain.operation import OperationRecord
 from serious_game_backend.infrastructure.repositories.sqlite import (
     SqliteRuntimeStore,
     SqliteRuntimeTransactionRepository,
+)
+from serious_game_backend.infrastructure.repositories.codec import (
+    decode_operation,
+    encode_operation,
 )
 
 
@@ -22,6 +27,141 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class SqlitePersistenceTests(unittest.TestCase):
+    def test_old_operation_payload_defaults_to_stable_reservation_owner(self) -> None:
+        operation = OperationRecord(
+            operation_id="legacy-operation",
+            account_id="acct_legacy",
+            session_id="session_legacy",
+            client_action_id="legacy-action",
+            request_hash="legacy-hash",
+        )
+        payload = encode_operation(operation)
+        payload.pop("lease_token")
+
+        restored = decode_operation(payload)
+
+        self.assertEqual("", restored.lease_token)
+        self.assertEqual(restored.operation_id, restored.reservation_id)
+
+    def test_sqlite_finish_cas_rejects_old_lease_after_same_operation_retry(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "attempt-lease-cas.db"
+            settings = Settings(
+                environment="test",
+                content_root=BACKEND_ROOT / "content" / "packages",
+                repository="sqlite",
+                database_path=database_path,
+                role_llm_provider="fake",
+            )
+            runtime = build_container(settings)
+            session = runtime.game_sessions.start_session(
+                account_id="acct_attempt_cas",
+                package_id="pkg_backend_dev_v1",
+                client_request_id="attempt-cas-new-game",
+                origin_id="technical",
+            )
+            transactions = SqliteRuntimeTransactionRepository(
+                SqliteRuntimeStore(database_path)
+            )
+            old = OperationRecord(
+                operation_id="stable-operation-id",
+                account_id="acct_attempt_cas",
+                session_id=session.session_id,
+                client_action_id="stable-client-action",
+                request_hash="stable-hash",
+                lease_token="old-attempt",
+            )
+            old_reserved = runtime.sessions.get_owned(
+                session.session_id, "acct_attempt_cas"
+            )
+            old_reserved.processing_action_id = old.reservation_id
+            transactions.reserve_operation(
+                old_reserved,
+                expected_version=1,
+                operation=old,
+                create_operation=True,
+            )
+            aborted = runtime.sessions.get_owned(
+                session.session_id, "acct_attempt_cas"
+            )
+            aborted.processing_action_id = None
+            transactions.finish_operation(
+                aborted,
+                expected_version=1,
+                operation=replace(
+                    old,
+                    status=OperationStatus.FAILED_RETRYABLE,
+                    error={"code": "DISCONNECTED"},
+                ),
+            )
+
+            retried = replace(
+                old,
+                status=OperationStatus.PROCESSING,
+                attempt_count=2,
+                error=None,
+                lease_token="new-attempt",
+            )
+            retry_reserved = runtime.sessions.get_owned(
+                session.session_id, "acct_attempt_cas"
+            )
+            retry_reserved.processing_action_id = retried.reservation_id
+            transactions.reserve_operation(
+                retry_reserved,
+                expected_version=1,
+                operation=retried,
+                create_operation=False,
+            )
+
+            stale_completion = runtime.sessions.get_owned(
+                session.session_id, "acct_attempt_cas"
+            )
+            stale_completion.processing_action_id = None
+            stale_completion.state_version = 2
+            with self.assertRaises(StateVersionConflictError):
+                transactions.finish_operation(
+                    stale_completion,
+                    expected_version=1,
+                    operation=replace(
+                        old,
+                        status=OperationStatus.SUCCEEDED,
+                        response={"stale": True},
+                    ),
+                )
+
+            protected_session = runtime.sessions.get_owned(
+                session.session_id, "acct_attempt_cas"
+            )
+            protected_operation = runtime.operations.get(
+                "acct_attempt_cas", session.session_id, "stable-client-action"
+            )
+            self.assertEqual(
+                retried.reservation_id, protected_session.processing_action_id
+            )
+            self.assertEqual(OperationStatus.PROCESSING, protected_operation.status)
+            self.assertEqual("new-attempt", protected_operation.lease_token)
+
+            completed = runtime.sessions.get_owned(
+                session.session_id, "acct_attempt_cas"
+            )
+            completed.processing_action_id = None
+            completed.state_version = 2
+            transactions.finish_operation(
+                completed,
+                expected_version=1,
+                operation=replace(
+                    retried,
+                    status=OperationStatus.SUCCEEDED,
+                    response={"state_version": 2},
+                ),
+            )
+            self.assertEqual(
+                OperationStatus.SUCCEEDED,
+                runtime.operations.get(
+                    "acct_attempt_cas", session.session_id, "stable-client-action"
+                ).status,
+            )
+
     def test_startup_recovers_expired_operation_lease_for_explicit_retry(self) -> None:
         with TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "lease.db"

@@ -7,7 +7,6 @@ from contextvars import ContextVar
 import json
 import re
 import secrets
-from threading import Event
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -52,6 +51,7 @@ from serious_game_backend.application.action_variants import (
     public_variant,
     variant_availability,
 )
+from serious_game_backend.application.stream_lifecycle import StreamCancellation
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
@@ -282,23 +282,25 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     def live_npc_stream_response(
         call,
         *,
-        on_disconnect=None,
+        bind_operation_abort: bool = False,
         **kwargs,
     ) -> StreamingResponse:
         async def generate():
             queue: asyncio.Queue[dict] = asyncio.Queue()
             loop = asyncio.get_running_loop()
-            cancelled = Event()
+            cancelled = StreamCancellation()
 
             def emit(event: dict) -> None:
                 loop.call_soon_threadsafe(queue.put_nowait, event)
 
-            task = asyncio.create_task(run_in_threadpool(
-                call,
-                stream_event=emit,
-                stream_cancelled=cancelled.is_set,
+            call_kwargs = {
+                "stream_event": emit,
+                "stream_cancelled": cancelled.is_set,
                 **kwargs,
-            ))
+            }
+            if bind_operation_abort:
+                call_kwargs["stream_cancel_register"] = cancelled.add_callback
+            task = asyncio.create_task(run_in_threadpool(call, **call_kwargs))
             try:
                 yield json.dumps({"type": "stream_start"}, ensure_ascii=False) + "\n"
                 while not task.done() or not queue.empty():
@@ -339,14 +341,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 ):
                     yield chunk
             finally:
-                cancelled.set()
-                if on_disconnect is not None:
-                    try:
-                        on_disconnect()
-                    except Exception:
-                        # Stream closure must remain best-effort; operation
-                        # ownership CAS prevents an obsolete abort from winning.
-                        pass
+                try:
+                    cancelled.cancel()
+                except Exception:
+                    # Stream closure is best-effort; repository CAS is the
+                    # final ownership boundary for operation transitions.
+                    pass
                 if not task.done():
                     task.cancel()
 
@@ -1752,11 +1752,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         account_id = current_account_id(x_account_id)
         return live_npc_stream_response(
             runtime.actions.execute,
-            on_disconnect=lambda: runtime.actions.abort_stream_operation(
-                account_id=account_id,
-                session_id=session_id,
-                client_action_id=body.client_action_id,
-            ),
+            bind_operation_abort=True,
             account_id=account_id,
             session_id=session_id,
             command=body.to_command(),

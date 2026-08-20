@@ -4,7 +4,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 from queue import Empty, Queue
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 import unittest
 
 from fastapi.testclient import TestClient
@@ -22,6 +22,7 @@ from serious_game_backend.application.scripted_delta_resolver import (
 from serious_game_backend.application.scripted_effect_service import (
     ScriptedEffectService,
 )
+from serious_game_backend.application.stream_lifecycle import StreamCancellation
 from serious_game_backend.application.trust_derivation_service import TrustDerivationService
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
@@ -501,6 +502,153 @@ class GameplayV2Tests(unittest.TestCase):
             "acct_gameplay_v2", self.session_id, client_action_id
         )
         self.assertEqual(OperationStatus.FAILED_RETRYABLE, operation.status)
+
+    def test_retry_lease_survives_old_worker_aba_cleanup_and_settles_once(self) -> None:
+        self.reach_d2_open()
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "gameplay-v2-aba-start-0001",
+            "state_version": self.state["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        before = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        original = self.container.actions._npc_turns._gateway
+        old_entered = Event()
+        old_release = Event()
+        old_cancelled = StreamCancellation()
+        retry_entered = Event()
+        retry_release = Event()
+        old_failure: Queue[BaseException] = Queue()
+        retry_failure: Queue[BaseException] = Queue()
+        retry_result: Queue[dict] = Queue()
+        call_lock = Lock()
+        call_count = 0
+        client_action_id = "gameplay-v2-aba-turn-0001"
+
+        class TwoAttemptBlockingGateway:
+            def run_turn(inner_self, context):
+                nonlocal call_count
+                with call_lock:
+                    call_count += 1
+                    attempt = call_count
+                if attempt == 1:
+                    old_entered.set()
+                    if not old_release.wait(5):
+                        raise TimeoutError("test did not release old model")
+                elif attempt == 2:
+                    retry_entered.set()
+                    if not retry_release.wait(5):
+                        raise TimeoutError("test did not release retry model")
+                else:  # pragma: no cover - duplicate settlement guard
+                    raise AssertionError(f"unexpected model attempt {attempt}")
+                return original.run_turn(context)
+
+        def command(*, retry: bool):
+            return ActionRequest(
+                input_mode="free_text",
+                client_action_id=client_action_id,
+                state_version=started["state_version"],
+                conversation_id=started["conversation"]["conversation_id"],
+                opportunity_id="opp_d02_wu_xiuying_first_talk",
+                target_npc_id="npc_wu_xiuying",
+                player_text="请说明你现在最担心的搬迁问题。",
+                retry=retry,
+            ).to_command()
+
+        def old_consume() -> None:
+            try:
+                self.container.actions.execute(
+                    account_id="acct_gameplay_v2",
+                    session_id=self.session_id,
+                    command=command(retry=False),
+                    stream_event=lambda event: None,
+                    stream_cancelled=old_cancelled.is_set,
+                    stream_cancel_register=old_cancelled.add_callback,
+                )
+            except BaseException as exc:  # pragma: no cover - asserted below
+                old_failure.put(exc)
+
+        def retry_consume() -> None:
+            try:
+                retry_result.put(self.container.actions.execute(
+                    account_id="acct_gameplay_v2",
+                    session_id=self.session_id,
+                    command=command(retry=True),
+                    stream_event=lambda event: (
+                        event.get("acknowledged").set()
+                        if event.get("acknowledged") is not None else None
+                    ),
+                ))
+            except BaseException as exc:  # pragma: no cover - asserted below
+                retry_failure.put(exc)
+
+        self.container.actions._npc_turns._gateway = TwoAttemptBlockingGateway()
+        old_worker = Thread(target=old_consume, daemon=True)
+        retry_worker = Thread(target=retry_consume, daemon=True)
+        old_worker.start()
+        try:
+            self.assertTrue(old_entered.wait(2), "old model call was not reached")
+            old_operation = self.container.operations.get(
+                "acct_gameplay_v2", self.session_id, client_action_id
+            )
+            old_cancelled.cancel()
+            aborted_operation = self.container.operations.get(
+                "acct_gameplay_v2", self.session_id, client_action_id
+            )
+            self.assertEqual(
+                OperationStatus.FAILED_RETRYABLE, aborted_operation.status
+            )
+
+            retry_worker.start()
+            self.assertTrue(retry_entered.wait(2), "retry model call was not reached")
+            retried_operation = self.container.operations.get(
+                "acct_gameplay_v2", self.session_id, client_action_id
+            )
+            retry_reservation = self.container.sessions.get_owned(
+                self.session_id, "acct_gameplay_v2"
+            ).processing_action_id
+            self.assertEqual(old_operation.operation_id, retried_operation.operation_id)
+
+            old_release.set()
+            old_worker.join(2)
+            self.assertFalse(old_worker.is_alive(), "old worker did not unwind")
+            self.assertIsInstance(old_failure.get_nowait(), ConnectionAbortedError)
+
+            still_processing = self.container.operations.get(
+                "acct_gameplay_v2", self.session_id, client_action_id
+            )
+            still_reserved = self.container.sessions.get_owned(
+                self.session_id, "acct_gameplay_v2"
+            )
+            self.assertEqual(OperationStatus.PROCESSING, still_processing.status)
+            self.assertEqual(retry_reservation, still_reserved.processing_action_id)
+
+            retry_release.set()
+            retry_worker.join(3)
+        finally:
+            old_release.set()
+            retry_release.set()
+            old_worker.join(1)
+            retry_worker.join(1)
+            self.container.actions._npc_turns._gateway = original
+
+        self.assertFalse(retry_worker.is_alive(), "retry worker did not finish")
+        self.assertTrue(retry_failure.empty(), list(retry_failure.queue))
+        result = retry_result.get_nowait()
+        after = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertEqual(OperationStatus.SUCCEEDED.value, result["status"])
+        self.assertEqual(before.state_version + 1, after.state_version)
+        self.assertEqual(
+            before.game_state.action_points - 1,
+            after.game_state.action_points,
+        )
+        self.assertEqual(1, after.active_conversation.turn_count)
+        self.assertEqual(2, call_count)
 
     def test_stream_model_error_ends_thinking_and_does_not_commit_partial_turn(self) -> None:
         self.reach_d2_open()

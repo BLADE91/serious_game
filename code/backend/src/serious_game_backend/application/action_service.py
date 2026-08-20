@@ -19,6 +19,7 @@ from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
 from serious_game_backend.application.stream_lifecycle import (
+    StreamCancelCallback,
     StreamCancelled,
     ensure_stream_open,
 )
@@ -113,6 +114,7 @@ class ActionService:
         command: ActionCommand,
         stream_event: Callable[[dict], None] | None = None,
         stream_cancelled: StreamCancelled = None,
+        stream_cancel_register: Callable[[StreamCancelCallback], None] | None = None,
     ) -> dict:
         request_hash = canonical_request_hash({
             "session_id": session_id,
@@ -156,10 +158,11 @@ class ActionService:
         operation_id = (
             existing.operation_id if existing is not None else f"act_{secrets.token_hex(12)}"
         )
+        # 128-bit attempt identity remains within MySQL's varchar(64) session
+        # reservation column when combined with the stable action id.
+        lease_token = secrets.token_hex(16)
 
         # 短预留：真实 MySQL 适配器在此做条件更新；不在这之后持数据库锁。
-        session.processing_action_id = operation_id
-        session.touch()
         if existing is None:
             operation = OperationRecord(
                 operation_id=operation_id,
@@ -167,6 +170,7 @@ class ActionService:
                 session_id=session_id,
                 client_action_id=command.client_action_id,
                 request_hash=request_hash,
+                lease_token=lease_token,
             )
         else:
             operation = replace(
@@ -175,13 +179,23 @@ class ActionService:
                 attempt_count=existing.attempt_count + 1,
                 error=None,
                 updated_at=utc_now_iso(),
+                lease_token=lease_token,
             )
+        session.processing_action_id = operation.reservation_id
+        session.touch()
         self._transactions.reserve_operation(
             session,
             expected_version=command.state_version,
             operation=operation,
             create_operation=existing is None,
         )
+        if stream_cancel_register is not None:
+            stream_cancel_register(lambda: self.abort_stream_operation(
+                account_id=account_id,
+                session_id=session_id,
+                client_action_id=command.client_action_id,
+                reservation_id=operation.reservation_id,
+            ))
 
         try:
             draft = self._build_draft(
@@ -196,7 +210,7 @@ class ActionService:
             ensure_stream_open(stream_cancelled)
             # 真实 LLM 接入后只允许在这里（事务外）调用。
             current = self._owned_session(session_id, account_id)
-            if current.processing_action_id != operation_id:
+            if current.processing_action_id != operation.reservation_id:
                 raise SessionBusyError("当前动作预留已失效")
             if current.state_version != command.state_version:
                 raise StateVersionConflictError("状态版本已变化，请刷新后重试")
@@ -256,7 +270,10 @@ class ActionService:
             return response
         except Exception as exc:
             current = self._sessions.get_owned(session_id, account_id)
-            if current is not None and current.processing_action_id == operation_id:
+            if (
+                current is not None
+                and current.processing_action_id == operation.reservation_id
+            ):
                 current.processing_action_id = None
                 current.touch()
                 failure_status = (
@@ -283,6 +300,7 @@ class ActionService:
         account_id: str,
         session_id: str,
         client_action_id: str,
+        reservation_id: str | None = None,
     ) -> bool:
         """Invalidate a disconnected stream reservation without waiting for its worker."""
         operation = self._operations.get(
@@ -293,10 +311,13 @@ class ActionService:
             or operation.status is not OperationStatus.PROCESSING
         ):
             return False
+        expected_reservation = reservation_id or operation.reservation_id
+        if operation.reservation_id != expected_reservation:
+            return False
         current = self._sessions.get_owned(session_id, account_id)
         if (
             current is None
-            or current.processing_action_id != operation.operation_id
+            or current.processing_action_id != expected_reservation
         ):
             return False
         current.processing_action_id = None

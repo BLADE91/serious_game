@@ -740,7 +740,7 @@ class MySQLRuntimeTransactionRepository:
                     (
                         operation.session_id,
                         operation.account_id,
-                        operation.operation_id,
+                        operation.reservation_id,
                     ),
                 )
                 session_row = cursor.fetchone()
@@ -780,7 +780,7 @@ class MySQLRuntimeTransactionRepository:
                         ),
                         session.session_id,
                         session.account_id,
-                        operation.operation_id,
+                        operation.reservation_id,
                     ),
                 )
                 if cursor.rowcount != 1:
@@ -823,7 +823,7 @@ class MySQLRuntimeTransactionRepository:
         parameters = list(MySQLGameSessionRepository(self._store)._update_parameters(
             session, expected_version
         ))
-        parameters.append(operation.operation_id)
+        parameters.append(operation.reservation_id)
         with self._store.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """

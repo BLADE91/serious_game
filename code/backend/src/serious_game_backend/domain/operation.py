@@ -24,6 +24,9 @@ class OperationRecord:
     error: dict[str, Any] | None = None
     created_at: str = ""
     updated_at: str = ""
+    # Stable operation_id is public/idempotent.  lease_token identifies one
+    # concrete execution attempt and must never be reused by a retry.
+    lease_token: str = ""
 
     def __post_init__(self) -> None:
         now = utc_now_iso()
@@ -31,3 +34,14 @@ class OperationRecord:
             object.__setattr__(self, "created_at", now)
         if not self.updated_at:
             object.__setattr__(self, "updated_at", now)
+
+    @property
+    def reservation_id(self) -> str:
+        """Return the CAS owner stored on the session.
+
+        Records created before attempt leases existed intentionally fall back
+        to operation_id so persisted snapshots remain readable and releasable.
+        """
+        if not self.lease_token:
+            return self.operation_id
+        return f"{self.operation_id}~{self.lease_token}"

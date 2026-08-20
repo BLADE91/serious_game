@@ -722,7 +722,7 @@ class SqliteRuntimeTransactionRepository:
                     (
                         operation.session_id,
                         operation.account_id,
-                        operation.operation_id,
+                        operation.reservation_id,
                     ),
                 ).fetchone()
                 if session_row is None:
@@ -753,7 +753,7 @@ class SqliteRuntimeTransactionRepository:
                         dumps(encode_session(session)),
                         session.session_id,
                         session.account_id,
-                        operation.operation_id,
+                        operation.reservation_id,
                     ),
                 )
                 if cursor.rowcount != 1:
@@ -821,7 +821,7 @@ class SqliteRuntimeTransactionRepository:
                   and processing_action_id = ?
                 """,
                 (*self._session_parameters(session, expected_version),
-                 operation.operation_id),
+                 operation.reservation_id),
             )
             if cursor.rowcount != 1:
                 raise StateVersionConflictError("动作预留已失效或状态版本冲突")
