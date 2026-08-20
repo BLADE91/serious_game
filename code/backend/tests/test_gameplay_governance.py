@@ -827,6 +827,27 @@ class GameplayGovernanceTests(unittest.TestCase):
         self.assertEqual(2, sum(
             item["type"] == "npc_end" for item in meeting_events
         ))
+        speaker_events = [
+            (item["type"], item.get("npc_id"))
+            for item in meeting_events
+            if item["type"] in {
+                "npc_thinking_start", "npc_thinking_end", "npc_start", "npc_end"
+            }
+        ]
+        expected_order = ["npc_feng_jingzhi", "npc_zhao_jianguo"]
+        self.assertEqual(
+            [
+                event
+                for npc_id in expected_order
+                for event in (
+                    ("npc_thinking_start", npc_id),
+                    ("npc_thinking_end", npc_id),
+                    ("npc_start", npc_id),
+                    ("npc_end", npc_id),
+                )
+            ],
+            speaker_events,
+        )
         self.assertEqual("complete", meeting_events[-1]["type"])
 
     def test_representative_request_creates_independent_contracts_and_settles_resources(self) -> None:

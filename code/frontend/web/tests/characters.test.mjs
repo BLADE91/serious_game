@@ -53,7 +53,7 @@ test("keeps portrait rendering in the requested UI surfaces with a text fallback
   assert.match(source, /"active-conversation-character"/);
   assert.match(source, /conversation\.turn_count \|\| conversation\.turns_completed/);
   assert.match(source, /data-testid="player-identity-card"/);
-  assert.match(source, /resolveCharacter\(item\.npc_id, item\.target_npc_id, item\.npc_name\)/);
+  assert.match(source, /resolveCharacter\(person\.npc_id, person\.name\)/);
   assert.match(source, /resolveCharacter\(state\.active_conversation\.npc_id, state\.active_conversation\.target_npc_id, state\.active_conversation\.npc_name\)/);
   assert.match(source, /className="avatar"/);
 });

@@ -223,17 +223,34 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 ]
         return []
 
-    async def npc_stream(result: dict):
-        yield json.dumps(
-            {"type": "stream_start"}, ensure_ascii=False
-        ) + "\n"
-        for index, reply in enumerate(npc_reply_items(result)):
+    async def npc_stream(
+        result: dict,
+        *,
+        include_start: bool = True,
+        include_thinking: bool = True,
+        include_replies: bool = True,
+    ):
+        if include_start:
+            yield json.dumps(
+                {"type": "stream_start"}, ensure_ascii=False
+            ) + "\n"
+        for index, reply in enumerate(npc_reply_items(result) if include_replies else ()):
             stream_id = f"{reply.get('npc_id', 'npc')}:{index}"
-            yield json.dumps({
-                "type": "npc_start",
+            identity = {
                 "stream_id": stream_id,
                 "npc_id": reply.get("npc_id", ""),
                 "npc_name": reply.get("npc_name", ""),
+            }
+            if include_thinking:
+                yield json.dumps({
+                    "type": "npc_thinking_start", **identity,
+                }, ensure_ascii=False) + "\n"
+                yield json.dumps({
+                    "type": "npc_thinking_end", **identity,
+                }, ensure_ascii=False) + "\n"
+            yield json.dumps({
+                "type": "npc_start",
+                **identity,
             }, ensure_ascii=False) + "\n"
             text = str(reply["text"])
             for offset in range(0, len(text), 4):
@@ -244,7 +261,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 }, ensure_ascii=False) + "\n"
                 await asyncio.sleep(0.028)
             yield json.dumps({
-                "type": "npc_end", "stream_id": stream_id,
+                "type": "npc_end", **identity,
             }, ensure_ascii=False) + "\n"
         yield json.dumps(
             {"type": "complete", "result": result}, ensure_ascii=False
@@ -253,6 +270,65 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     def npc_stream_response(result: dict) -> StreamingResponse:
         return StreamingResponse(
             npc_stream(result),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    def live_npc_stream_response(call, **kwargs) -> StreamingResponse:
+        async def generate():
+            queue: asyncio.Queue[dict] = asyncio.Queue()
+            loop = asyncio.get_running_loop()
+
+            def emit(event: dict) -> None:
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+
+            task = asyncio.create_task(run_in_threadpool(
+                call, stream_event=emit, **kwargs
+            ))
+            yield json.dumps({"type": "stream_start"}, ensure_ascii=False) + "\n"
+            while not task.done() or not queue.empty():
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=0.05)
+                except asyncio.TimeoutError:
+                    continue
+                if event.get("type") == "_npc_reply_ready":
+                    acknowledged = event.get("acknowledged")
+                    try:
+                        async for chunk in npc_stream(
+                            {"npc_reply": event["reply"]},
+                            include_start=False,
+                            include_thinking=False,
+                        ):
+                            document = json.loads(chunk)
+                            if document.get("type") != "complete":
+                                yield chunk
+                    finally:
+                        if acknowledged is not None:
+                            acknowledged.set()
+                    continue
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+            try:
+                result = await task
+            except Exception:
+                yield json.dumps({
+                    "type": "error",
+                    "code": "NPC_RESPONSE_UNAVAILABLE",
+                    "message": "对方暂时无法回应，请稍后重试。",
+                }, ensure_ascii=False) + "\n"
+                return
+            async for chunk in npc_stream(
+                result,
+                include_start=False,
+                include_thinking=False,
+                include_replies=False,
+            ):
+                yield chunk
+
+        return StreamingResponse(
+            generate(),
             media_type="application/x-ndjson",
             headers={
                 "Cache-Control": "no-cache, no-transform",
@@ -1177,7 +1253,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         x_account_id: str | None = Header(default=None),
     ) -> StreamingResponse:
         account_id = current_account_id(x_account_id)
-        result = await run_in_threadpool(
+        return live_npc_stream_response(
             runtime.gameplay_governance.action_turn,
             account_id=account_id,
             session_id=session_id,
@@ -1185,7 +1261,6 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             action_instance_id=action_instance_id,
             player_text=body.player_text,
         )
-        return npc_stream_response(result)
 
     @app.post(
         "/api/game/session/{session_id}/governance/actions/{action_instance_id}/finish"
@@ -1248,7 +1323,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         x_account_id: str | None = Header(default=None),
     ) -> StreamingResponse:
         account_id = current_account_id(x_account_id)
-        result = await run_in_threadpool(
+        return live_npc_stream_response(
             runtime.gameplay_governance.meeting_turn,
             account_id=account_id,
             session_id=session_id,
@@ -1257,7 +1332,6 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             player_text=body.player_text,
             addressed_npc_id=body.addressed_npc_id,
         )
-        return npc_stream_response(result)
 
     @app.post(
         "/api/game/session/{session_id}/governance/meetings/{meeting_id}/resolve"
@@ -1622,13 +1696,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         x_account_id: str | None = Header(default=None),
     ) -> StreamingResponse:
         account_id = current_account_id(x_account_id)
-        result = await run_in_threadpool(
+        return live_npc_stream_response(
             runtime.actions.execute,
             account_id=account_id,
             session_id=session_id,
             command=body.to_command(),
         )
-        return npc_stream_response(result)
 
     @app.post("/api/game/session/{session_id}/action")
     def execute_action(
@@ -1716,14 +1789,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         x_account_id: str | None = Header(default=None),
     ) -> StreamingResponse:
         account_id = current_account_id(x_account_id)
-        result = await run_in_threadpool(
+        return live_npc_stream_response(
             runtime.group_conversations.reply,
             account_id=account_id,
             session_id=session_id,
             state_version=body.state_version,
             player_text=body.player_text,
         )
-        return npc_stream_response(result)
 
     @app.get("/api/game/session/{session_id}/operations/{client_action_id}")
     async def get_operation(

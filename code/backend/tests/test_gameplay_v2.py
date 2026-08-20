@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Event, Thread
 import unittest
 
 from fastapi.testclient import TestClient
 
 from serious_game_backend.api.app import create_app
+from serious_game_backend.api.schemas import ActionRequest
 from serious_game_backend.application.action_service import ActionService
 from serious_game_backend.application.ending_service import EndingAxisProjector
 from serious_game_backend.application.night_simulation_service import (
@@ -153,6 +156,7 @@ class GameplayV2Tests(unittest.TestCase):
 
     def test_v2_conversation_cannot_be_completed_by_tool_or_zero_turn_exit(self) -> None:
         self.reach_d2_open()
+        points_before = self.state["ledger"]["action_points"]["remaining"]
         bypass = self.client.post(
             f"/api/game/session/{self.session_id}/action",
             json={
@@ -179,6 +183,10 @@ class GameplayV2Tests(unittest.TestCase):
             "conversation_id": started["conversation"]["conversation_id"],
         })
         self.assertEqual("incomplete", ended["completion_status"])
+        self.assertEqual(
+            points_before,
+            ended["visible_state"]["ledger"]["action_points"]["remaining"],
+        )
         internal = self.container.sessions.get_owned(
             self.session_id, "acct_gameplay_v2"
         )
@@ -219,8 +227,13 @@ class GameplayV2Tests(unittest.TestCase):
             self.assertEqual(200, response.status_code)
             events = [json.loads(line) for line in response.iter_lines() if line]
         self.assertEqual(
-            ["stream_start", "npc_start"],
-            [item["type"] for item in events[:2]],
+            [
+                "stream_start",
+                "npc_thinking_start",
+                "npc_thinking_end",
+                "npc_start",
+            ],
+            [item["type"] for item in events[:4]],
         )
         self.assertEqual("npc_end", events[-2]["type"])
         self.assertEqual("complete", events[-1]["type"])
@@ -232,6 +245,118 @@ class GameplayV2Tests(unittest.TestCase):
             self.session_id, "acct_gameplay_v2"
         )
         self.assertEqual(1, stored.active_conversation.turn_count)
+
+    def test_thinking_start_is_observable_while_model_call_is_still_running(self) -> None:
+        self.reach_d2_open()
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "gameplay-v2-live-thinking-start-0001",
+            "state_version": self.state["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        entered = Event()
+        release = Event()
+        original = self.container.actions._npc_turns._gateway
+
+        class BlockingGateway:
+            def run_turn(inner_self, context):
+                entered.set()
+                if not release.wait(3):
+                    raise TimeoutError("test did not release model")
+                return original.run_turn(context)
+
+        self.container.actions._npc_turns._gateway = BlockingGateway()
+        received: Queue[dict] = Queue()
+        failure: Queue[BaseException] = Queue()
+
+        def consume() -> None:
+            try:
+                command = ActionRequest(
+                    input_mode="free_text",
+                    client_action_id="gameplay-v2-live-thinking-turn-0001",
+                    state_version=started["state_version"],
+                    conversation_id=started["conversation"]["conversation_id"],
+                    opportunity_id="opp_d02_wu_xiuying_first_talk",
+                    target_npc_id="npc_wu_xiuying",
+                    player_text="请说明你现在最担心的搬迁问题。",
+                ).to_command()
+                self.container.actions.execute(
+                    account_id="acct_gameplay_v2",
+                    session_id=self.session_id,
+                    command=command,
+                    stream_event=received.put,
+                )
+            except BaseException as exc:  # pragma: no cover - reported below
+                failure.put(exc)
+
+        worker = Thread(target=consume, daemon=True)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(2), "model call was not reached")
+            first = received.get(timeout=1)
+            self.assertEqual("npc_thinking_start", first["type"])
+            self.assertEqual("npc_wu_xiuying", first["npc_id"])
+            self.assertFalse(release.is_set(), "thinking start arrived only after release")
+        finally:
+            release.set()
+            worker.join(5)
+            self.container.actions._npc_turns._gateway = original
+        if not failure.empty():
+            raise failure.get()
+
+    def test_stream_model_error_ends_thinking_and_does_not_commit_partial_turn(self) -> None:
+        self.reach_d2_open()
+        started = self.action({
+            "input_mode": "conversation_start",
+            "client_action_id": "gameplay-v2-error-stream-start-0001",
+            "state_version": self.state["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        before = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        original = self.container.actions._npc_turns._gateway
+
+        class FailingGateway:
+            def run_turn(inner_self, context):
+                raise ConnectionError("private provider detail must not escape")
+
+        self.container.actions._npc_turns._gateway = FailingGateway()
+        try:
+            with self.client.stream(
+                "POST",
+                f"/api/game/session/{self.session_id}/action/stream",
+                headers=self.headers,
+                json={
+                    "input_mode": "free_text",
+                    "client_action_id": "gameplay-v2-error-stream-turn-0001",
+                    "state_version": started["state_version"],
+                    "conversation_id": started["conversation"]["conversation_id"],
+                    "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                    "target_npc_id": "npc_wu_xiuying",
+                    "player_text": "请说明你现在最担心的搬迁问题。",
+                },
+            ) as response:
+                self.assertEqual(200, response.status_code)
+                events = [json.loads(line) for line in response.iter_lines() if line]
+        finally:
+            self.container.actions._npc_turns._gateway = original
+        self.assertEqual(
+            ["stream_start", "npc_thinking_start", "npc_thinking_end", "error"],
+            [event["type"] for event in events],
+        )
+        self.assertEqual("NPC_RESPONSE_UNAVAILABLE", events[-1]["code"])
+        self.assertEqual("对方暂时无法回应，请稍后重试。", events[-1]["message"])
+        self.assertNotIn("private provider", json.dumps(events, ensure_ascii=False))
+        stored = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        self.assertEqual(before.state_version, stored.state_version)
+        self.assertEqual(before.game_state.action_points, stored.game_state.action_points)
+        self.assertEqual(0, stored.active_conversation.turn_count)
+        self.assertIsNone(stored.processing_action_id)
 
     def test_night_dialogues_keeps_scripted_night_and_morning_brief(self) -> None:
         self.resolve_d1()

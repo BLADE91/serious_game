@@ -1,11 +1,13 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type NpcStreamEvent = {
-  type: "stream_start" | "npc_start" | "npc_delta" | "npc_end" | "complete";
+  type: "stream_start" | "npc_thinking_start" | "npc_thinking_end" | "npc_start" | "npc_delta" | "npc_end" | "complete" | "error";
   stream_id?: string;
   npc_id?: string;
   npc_name?: string;
   delta?: string;
   result?: Record<string, unknown>;
+  code?: string;
+  message?: string;
 };
 
 const SANDBOX_ACCOUNT_KEY = "qingjiang-sandbox-account";
@@ -151,11 +153,13 @@ export class GameApi {
     const decoder = new TextDecoder();
     let pending = "";
     let result: Record<string, unknown> | null = null;
+    let streamError: NpcStreamEvent | null = null;
     const consume = (line: string) => {
       if (!line.trim()) return;
       const event = JSON.parse(line) as NpcStreamEvent;
       onEvent(event);
       if (event.type === "complete" && event.result) result = event.result;
+      if (event.type === "error") streamError = event;
     };
     while (true) {
       const { done, value } = await reader.read();
@@ -166,6 +170,7 @@ export class GameApi {
       if (done) break;
     }
     consume(pending);
+    if (streamError) throw new ApiError(streamError.message || "对方暂时无法回应，请稍后重试。", streamError.code || "NPC_RESPONSE_UNAVAILABLE", 503);
     if (!result) throw new ApiError("NPC 回应流提前结束。", "CLIENT_STREAM_INCOMPLETE");
     return result;
   }
@@ -213,6 +218,24 @@ export class GameApi {
     }
   }
   view(sessionId: string, after = 0) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}/view?after=${after}`); }
+  conversations(sessionId: string, filters: { npc_id?: string; story_day?: number; cursor?: string; limit?: number } = {}) {
+    const query = new URLSearchParams();
+    if (filters.npc_id) query.set("npc_id", filters.npc_id);
+    if (filters.story_day) query.set("story_day", String(filters.story_day));
+    if (filters.cursor) query.set("cursor", filters.cursor);
+    if (filters.limit) query.set("limit", String(filters.limit));
+    return this.request<{ items: Record<string, unknown>[]; next_cursor?: string | null }>("GET", `/api/game/session/${encodeURIComponent(sessionId)}/conversations?${query}`);
+  }
+  async completeConversationHistory(sessionId: string, filters: { npc_id?: string; story_day?: number; limit?: number } = {}) {
+    const items: Record<string, unknown>[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.conversations(sessionId, { ...filters, cursor });
+      items.push(...(Array.isArray(page.items) ? page.items : []));
+      cursor = page.next_cursor || undefined;
+    } while (cursor);
+    return items;
+  }
   session(sessionId: string) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}`); }
   panel(sessionId: string, name: string) { return this.request<Record<string, unknown>>("GET", `/api/game/session/${encodeURIComponent(sessionId)}/${name}`); }
   archiveDetail(sessionId: string, archiveId: string) {

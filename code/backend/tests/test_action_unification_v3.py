@@ -238,6 +238,24 @@ class ActionUnificationV3Tests(unittest.TestCase):
         )
         self.assertEqual("household_visit", field_visit["action_id"])
         self.assertIn("visible_result", field_visit)
+        self.assertEqual(
+            {"minimum": 1, "maximum": 1},
+            field_visit["participant_rules"],
+        )
+        self.assertIn(
+            {"location_id": "loc_liulin_village", "label": "入村走访"},
+            field_visit["location_choices"],
+        )
+        meeting_variant = next(
+            variant
+            for action in actions
+            for variant in action["variants"]
+            if variant["variant_id"] == "public_hearing"
+        )
+        self.assertEqual(
+            {"minimum": 2, "maximum": 8},
+            meeting_variant["participant_rules"],
+        )
         self.assertNotIn("resource_action", json.dumps(actions, ensure_ascii=False))
 
     def test_map_uses_non_executable_governance_descriptors(self) -> None:
@@ -250,6 +268,8 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertTrue(all(card["action_id"] in ACTION_FAMILIES for card in cards))
         self.assertTrue(all("preselected_location_id" in card for card in cards))
         self.assertTrue(all("preselected_npc_ids" in card for card in cards))
+        self.assertTrue(all("participant_rules" in card for card in cards))
+        self.assertTrue(all("target_choices" in card for card in cards))
         self.assertTrue(all("submit" not in card for card in cards))
         self.assertTrue(all(card["entry_type"] != "resource_action" for card in cards))
 

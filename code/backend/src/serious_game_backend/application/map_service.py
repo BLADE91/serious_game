@@ -8,6 +8,7 @@ from serious_game_backend.application.action_variants import (
     default_npc_location,
     variant_availability,
     variant_target_choices,
+    public_variant,
 )
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
@@ -161,6 +162,7 @@ class MapService:
                     if npc_id in legal_npc_ids
                     and default_npc_location(npc_id) == location.location_id
                 ]
+                descriptor = public_variant(session, package, variant)
                 cards.append({
                     "title": variant.get("location_labels", {}).get(
                         location.location_id, variant["name"]
@@ -173,6 +175,10 @@ class MapService:
                     "variant_id": variant["variant_id"],
                     "preselected_location_id": location.location_id,
                     "preselected_npc_ids": preselected_npc_ids,
+                    "participant_rules": descriptor["participant_rules"],
+                    "target_kind": descriptor["target_kind"],
+                    "target_choices": descriptor["target_choices"],
+                    "location_choices": descriptor["location_choices"],
                     "available": available,
                     "unavailable_reason": reason,
                 })

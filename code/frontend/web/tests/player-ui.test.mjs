@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { actionPointCost, actionPointLabel, toPlayerText } from "../app/lib/player-ui.ts";
+import * as playerUi from "../app/lib/player-ui.ts";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -22,6 +23,77 @@ test("normalizes every supported action point cost shape including zero", () => 
 
 test("sanitizes player copy", async () => {
   assert.equal(toPlayerText("[BEAT_C01] NPC与玩家对应剧情节点"), "人物与你后续事态");
+});
+
+test("projects exactly the four canonical action families and keeps backend variants", () => {
+  assert.equal(typeof playerUi.canonicalActionFamilies, "function");
+  const projected = playerUi.canonicalActionFamilies([
+    { action_id: "cadre_interview", name: "干部访谈", variants: [{ variant_id: "interview_cadre", target_choices: [{ target_id: "npc_a" }] }] },
+    { action_id: "legacy_tool", name: "旧工具" },
+    { action_id: "inspect_archives", name: "查阅档案", variants: [] },
+    { action_id: "household_visit", name: "入户走访", variants: [{ variant_id: "field_visit", preselected_location_id: "loc_a" }] },
+    { action_id: "leadership_meeting", name: "班子会议", variants: [{ variant_id: "public_hearing" }] },
+  ]);
+  assert.deepEqual(projected.map(item => item.action_id), [
+    "household_visit", "cadre_interview", "leadership_meeting", "inspect_archives",
+  ]);
+  assert.equal(projected[0].variants[0].preselected_location_id, "loc_a");
+  assert.equal(projected[1].variants[0].target_choices[0].target_id, "npc_a");
+});
+
+test("builds a safe people and revealed-relationship view without internal fields", () => {
+  assert.equal(typeof playerUi.peopleRelationshipView, "function");
+  const result = playerUi.peopleRelationshipView({
+    people: [
+      { npc_id: "known", name: "甲", contact_state: "known", trust_band: "working", attitude_band: "neutral", anxiety_band: "uneasy", recent_change_reasons: ["一", "二", "三", "四"], trust_score: 61, personality: { openness: 99 }, hidden_demands: ["秘密"] },
+      { npc_id: "contact", name: "乙", contact_state: "contactable", trust_band: "trusted", attitude_band: "supportive", anxiety_band: "calm", recent_change_reasons: [] },
+      { npc_id: "unknown", name: "未知", contact_state: "unknown", trust_score: 50 },
+    ],
+    relationship_edges: [
+      { edge_id: "shown", source_npc_id: "known", target_npc_id: "contact", visibility: "suspected", channel: "同事", discovery_reason: "公开材料" },
+      { edge_id: "hidden", source_npc_id: "known", target_npc_id: "unknown", visibility: "hidden", private_audit: { prompt: "secret" } },
+    ],
+  });
+  assert.deepEqual(result.people.map(item => [item.npc_id, item.contact_state]), [["known", "known"], ["contact", "contactable"]]);
+  assert.deepEqual(result.people[0].recent_change_reasons, ["一", "二", "三"]);
+  assert.deepEqual(result.edges.map(item => item.edge_id), ["shown"]);
+  const serialized = JSON.stringify(result);
+  for (const forbidden of ["trust_score", "personality", "hidden_demands", "private_audit", "prompt", "unknown"]) {
+    assert.doesNotMatch(serialized, new RegExp(forbidden));
+  }
+});
+
+test("prevents overlapping confirmation submissions while preserving retries after failure", async () => {
+  assert.equal(typeof playerUi.createSingleFlight, "function");
+  let releases;
+  let calls = 0;
+  const submit = playerUi.createSingleFlight(async () => {
+    calls += 1;
+    await new Promise(resolve => { releases = resolve; });
+    if (calls === 1) throw new Error("retryable");
+    return "done";
+  });
+  const first = submit();
+  const duplicate = submit();
+  assert.strictEqual(first, duplicate);
+  await Promise.resolve();
+  releases();
+  await assert.rejects(first, /retryable/);
+  const retry = submit();
+  await Promise.resolve();
+  releases();
+  assert.equal(await retry, "done");
+  assert.equal(calls, 2);
+});
+
+test("routes retired sessions to review and never offers continue", () => {
+  assert.equal(typeof playerUi.sessionEntry, "function");
+  assert.deepEqual(playerUi.sessionEntry({ session_id: "old", package_status: "retired", loadable: false }), {
+    session_id: "old", mode: "review", label: "仅可复盘", canContinue: false,
+  });
+  assert.deepEqual(playerUi.sessionEntry({ session_id: "v3", package_status: "published", loadable: true }), {
+    session_id: "v3", mode: "continue", label: "继续游戏", canContinue: true,
+  });
 });
 
 test("keeps the visible conversation loop and removes the old terminal surface", async () => {
@@ -54,7 +126,7 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   assert.match(source, /data-testid="meeting-resolution-form"/);
   assert.match(source, /末位表态并形成决定/);
   assert.match(source, /指定分管或牵头领导/);
-  assert.match(source, /lead_npc_id: isMeeting \? leadNpcId : null/);
+  assert.match(source, /lead_npc_id: requiresLead \? leadNpcId : null/);
   assert.match(source, /普通干部、村民和外部人员不能进入班子会议/);
   assert.match(source, /resource_mode: "authorization_ceiling"/);
   assert.match(source, /governance-inline-notice/);

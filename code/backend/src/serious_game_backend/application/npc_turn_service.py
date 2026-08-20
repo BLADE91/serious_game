@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from threading import Event
+from typing import Callable
 
 from serious_game_backend.application.ports import RoleLLMGateway
 from serious_game_backend.application.state_delta_validator import StateDeltaValidator
@@ -22,11 +24,22 @@ class NPCTurnService:
         npc_state: NPCState,
         *,
         random_seed: str,
+        stream_event: Callable[[dict], None] | None = None,
     ) -> ValidatedRoleTurn:
+        identity = {
+            "stream_id": f"{context.npc_id}:0",
+            "npc_id": context.npc_id,
+            "npc_name": context.npc_name,
+        }
+        if stream_event is not None:
+            stream_event({"type": "npc_thinking_start", **identity})
         try:
             result = self._gateway.run_turn(context)
         except (ConnectionError, TimeoutError) as exc:
             raise RoleLLMUnavailableError("角色模型暂时不可用") from exc
+        finally:
+            if stream_event is not None:
+                stream_event({"type": "npc_thinking_end", **identity})
         if result.npc_id != context.npc_id:
             raise RoleLLMResponseError("角色模型返回了错误的 npc_id")
         if result.input_relevance not in {"relevant", "irrelevant"}:
@@ -90,9 +103,22 @@ class NPCTurnService:
             for marker in ("请回吧", "不必再谈", "谈话到此", "不谈了", "出去")
         ):
             raise RoleLLMResponseError("角色对白已经送客，但会谈状态仍为 continue")
-        return self._validator.validate_role_turn(
+        validated = self._validator.validate_role_turn(
             result,
             npc_state,
             random_seed=random_seed,
             source_id=context.opportunity_id,
         )
+        if stream_event is not None:
+            acknowledged = Event()
+            stream_event({
+                "type": "_npc_reply_ready",
+                "reply": {
+                    "npc_id": validated.npc_id,
+                    "npc_name": context.npc_name,
+                    "text": validated.dialogue,
+                },
+                "acknowledged": acknowledged,
+            })
+            acknowledged.wait(10)
+        return validated

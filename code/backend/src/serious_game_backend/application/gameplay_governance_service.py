@@ -6,6 +6,8 @@ import json
 import math
 import re
 import secrets
+from threading import Event
+from typing import Callable
 
 from serious_game_backend.application.governance_initializer import (
     sync_known_facts_to_archives,
@@ -25,6 +27,7 @@ from serious_game_backend.application.action_variants import (
     find_variant,
     variant_availability,
     variant_target_choices,
+    participant_rules,
 )
 from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.npc_relationship_service import (
@@ -551,6 +554,7 @@ class GameplayGovernanceService:
         state_version: int,
         action_instance_id: str,
         player_text: str,
+        stream_event: Callable[[dict], None] | None = None,
     ) -> dict:
         session, package = self._load_mutable(
             account_id, session_id, state_version
@@ -649,6 +653,7 @@ class GameplayGovernanceService:
                 ),
                 npc_state,
                 random_seed=session.random_seed,
+                stream_event=stream_event,
             )
             if turn.input_relevance == "irrelevant":
                 replies.append({
@@ -814,6 +819,7 @@ class GameplayGovernanceService:
         meeting_id: str,
         player_text: str,
         addressed_npc_id: str | None = None,
+        stream_event: Callable[[dict], None] | None = None,
     ) -> dict:
         session, package = self._load_mutable(
             account_id, session_id, state_version
@@ -867,37 +873,48 @@ class GameplayGovernanceService:
         replies = []
         for order_index, npc_id in enumerate(ordered):
             profile = profiles[npc_id]
+            identity = {
+                "stream_id": f"{npc_id}:{order_index}",
+                "npc_id": npc_id,
+                "npc_name": profile.name,
+            }
             meeting_role = (
                 "分管或牵头领导：先汇报事实、依据、方案和风险"
                 if order_index == 0
                 else "参会领导：在分管领导汇报后明确表示同意、反对或提出修改意见"
             )
-            result = self._gateway.run_night_turn(NightAgentContext(
-                session_id=session.session_id,
-                account_id=session.account_id,
-                operation_id=(
-                    f"{meeting_id}:turn:{len(meeting.transcript)}:{npc_id}"
-                ),
-                story_day=session.game_state.story_day,
-                scene_id=meeting_id,
-                phase="player_group_dialogue",
-                npc_id=npc_id,
-                npc_name=profile.name,
-                role_setting=profile.role_setting,
-                big_five=(
-                    profile.big_five.as_dict() if profile.big_five else {}
-                ),
-                counterpart_ids=tuple(
-                    item for item in meeting.participant_ids if item != npc_id
-                ),
-                transcript=tuple(meeting.transcript),
-                round_index=sum(
-                    item.get("speaker_type") == "player"
-                    for item in meeting.transcript
-                ),
-                scene_goal=f"{meeting.topic}。你的会议角色：{meeting_role}。",
-                player_text=text,
-            ))
+            if stream_event is not None:
+                stream_event({"type": "npc_thinking_start", **identity})
+            try:
+                result = self._gateway.run_night_turn(NightAgentContext(
+                    session_id=session.session_id,
+                    account_id=session.account_id,
+                    operation_id=(
+                        f"{meeting_id}:turn:{len(meeting.transcript)}:{npc_id}"
+                    ),
+                    story_day=session.game_state.story_day,
+                    scene_id=meeting_id,
+                    phase="player_group_dialogue",
+                    npc_id=npc_id,
+                    npc_name=profile.name,
+                    role_setting=profile.role_setting,
+                    big_five=(
+                        profile.big_five.as_dict() if profile.big_five else {}
+                    ),
+                    counterpart_ids=tuple(
+                        item for item in meeting.participant_ids if item != npc_id
+                    ),
+                    transcript=tuple(meeting.transcript),
+                    round_index=sum(
+                        item.get("speaker_type") == "player"
+                        for item in meeting.transcript
+                    ),
+                    scene_goal=f"{meeting.topic}。你的会议角色：{meeting_role}。",
+                    player_text=text,
+                ))
+            finally:
+                if stream_event is not None:
+                    stream_event({"type": "npc_thinking_end", **identity})
             if result.dialogue:
                 reply = {
                     "speaker_type": "npc",
@@ -909,6 +926,14 @@ class GameplayGovernanceService:
                 }
                 meeting.transcript.append(reply)
                 replies.append(reply)
+                if stream_event is not None:
+                    acknowledged = Event()
+                    stream_event({
+                        "type": "_npc_reply_ready",
+                        "reply": reply,
+                        "acknowledged": acknowledged,
+                    })
+                    acknowledged.wait(10)
         self._commit(session, state_version)
         return {
             "state_version": session.state_version,
@@ -1824,16 +1849,20 @@ class GameplayGovernanceService:
     ) -> None:
         config = package.governance_config or {}
         visible_npc_ids = self._visible_governance_npc_ids(session, package)
+        selection = participant_rules(action_kind)
+        selected_count = len(archive_ids if action_kind == "inspect_archives" else target_ids)
+        if not selection["minimum"] <= selected_count <= selection["maximum"]:
+            raise ActionUnavailableError("所选对象数量不符合行动描述器规则")
         if action_kind == "household_visit":
             allowed = (
                 set(config.get("household_representative_npc_ids", ()))
                 & visible_npc_ids
             )
-            if len(target_ids) != 1 or target_ids[0] not in allowed:
+            if target_ids[0] not in allowed:
                 raise ActionUnavailableError("入户走访必须选择一名家庭代表")
         elif action_kind == "cadre_interview":
             allowed = set(config.get("cadre_npc_ids", ())) & visible_npc_ids
-            if not 1 <= len(target_ids) <= 3 or not set(target_ids).issubset(allowed):
+            if not set(target_ids).issubset(allowed):
                 raise ActionUnavailableError("干部访谈必须选择1至3名已登记干部")
         elif action_kind == "leadership_meeting":
             eligible = set(
@@ -1842,8 +1871,6 @@ class GameplayGovernanceService:
                 else config.get("leadership_meeting_npc_ids", ())
             )
             eligible &= visible_npc_ids
-            if not 2 <= len(target_ids) <= 8:
-                raise ActionUnavailableError("班子会议必须有2至8名领导干部参会")
             if len(set(target_ids)) != len(target_ids) or not set(
                 target_ids
             ).issubset(eligible):

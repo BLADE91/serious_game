@@ -8,6 +8,18 @@ from serious_game_backend.application.npc_relationship_service import (
 )
 
 
+TARGET_SELECTION_RULES = {
+    "household_visit": {"minimum": 1, "maximum": 1},
+    "cadre_interview": {"minimum": 1, "maximum": 3},
+    "leadership_meeting": {"minimum": 2, "maximum": 8},
+    "inspect_archives": {"minimum": 1, "maximum": 100},
+}
+
+
+def participant_rules(action_id: str) -> dict[str, int]:
+    return dict(TARGET_SELECTION_RULES[action_id])
+
+
 def configured_variants(package: ScriptPackage) -> tuple[dict, ...]:
     return tuple(
         dict(item)
@@ -76,6 +88,7 @@ def public_variant(
 ) -> dict:
     tier = package.action_cost_tier(session.game_state.story_day).value
     available, reason = variant_availability(session, variant)
+    location_names = {item.location_id: item.name for item in package.map_locations}
     return {
         "variant_id": variant["variant_id"],
         "action_id": variant["action_id"],
@@ -86,8 +99,20 @@ def public_variant(
         "resource_costs": list(variant["resource_costs"]),
         "visible_result": variant["visible_result"],
         "legal_location_ids": list(variant["legal_location_ids"]),
+        "location_choices": [
+            {
+                "location_id": location_id,
+                "label": str(
+                    variant.get("location_labels", {}).get(
+                        location_id, location_names.get(location_id, location_id)
+                    )
+                ),
+            }
+            for location_id in variant["legal_location_ids"]
+        ],
         "target_kind": variant["target_kind"],
         "target_choices": variant_target_choices(session, package, variant),
+        "participant_rules": participant_rules(str(variant["action_id"])),
         "available": available,
         "unavailable_reason": reason,
     }

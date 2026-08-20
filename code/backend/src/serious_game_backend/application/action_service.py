@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import secrets
+from typing import Callable
 
 from serious_game_backend.application.hashing import canonical_request_hash
 from serious_game_backend.application.idempotency import (
@@ -100,7 +101,14 @@ class ActionService:
         self._model_input_policy = model_input_policy
         self._research_projection = research_projection
 
-    def execute(self, *, account_id: str, session_id: str, command: ActionCommand) -> dict:
+    def execute(
+        self,
+        *,
+        account_id: str,
+        session_id: str,
+        command: ActionCommand,
+        stream_event: Callable[[dict], None] | None = None,
+    ) -> dict:
         request_hash = canonical_request_hash({
             "session_id": session_id,
             **command.canonical_payload(),
@@ -177,6 +185,7 @@ class ActionService:
                 command,
                 account_id=account_id,
                 operation_id=operation_id,
+                stream_event=stream_event,
             )
             # 真实 LLM 接入后只允许在这里（事务外）调用。
             current = self._owned_session(session_id, account_id)
@@ -269,6 +278,7 @@ class ActionService:
         *,
         account_id: str = "",
         operation_id: str = "",
+        stream_event: Callable[[dict], None] | None = None,
     ) -> dict:
         if session.active_group_conversation is not None:
             raise ActionUnavailableError("必须先完成NPC发起的群组会谈")
@@ -604,6 +614,7 @@ class ActionService:
             ),
             npc_state,
             random_seed=session.random_seed,
+            stream_event=stream_event,
         )
         if turn.input_relevance == "irrelevant":
             return {

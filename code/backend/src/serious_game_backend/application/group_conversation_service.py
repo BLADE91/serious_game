@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from threading import Event
+from typing import Callable
 
 from serious_game_backend.application.package_lock import require_locked_package
 from serious_game_backend.application.input_review_service import (
@@ -46,6 +48,7 @@ class GroupConversationService:
         session_id: str,
         state_version: int,
         player_text: str,
+        stream_event: Callable[[dict], None] | None = None,
     ) -> dict:
         session = self._sessions.get_owned(session_id, account_id)
         if session is None:
@@ -98,11 +101,19 @@ class GroupConversationService:
 
         conversation.add_player_turn(text)
         turn_dialogues: list[dict] = []
-        for npc_id in conversation.participant_ids:
+        for order_index, npc_id in enumerate(conversation.participant_ids):
             profile = profiles.get(npc_id)
             if profile is None:
                 continue
-            result = self._gateway.run_night_turn(NightAgentContext(
+            identity = {
+                "stream_id": f"{npc_id}:{order_index}",
+                "npc_id": npc_id,
+                "npc_name": profile.name,
+            }
+            if stream_event is not None:
+                stream_event({"type": "npc_thinking_start", **identity})
+            try:
+                result = self._gateway.run_night_turn(NightAgentContext(
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(
@@ -127,7 +138,10 @@ class GroupConversationService:
                 scene_goal=conversation.agenda,
                 player_text=text,
                 model_id="",
-            ))
+                ))
+            finally:
+                if stream_event is not None:
+                    stream_event({"type": "npc_thinking_end", **identity})
             if result.npc_id == npc_id and result.dialogue:
                 conversation.add_npc_turn(
                     npc_id=npc_id,
@@ -141,6 +155,14 @@ class GroupConversationService:
                     "model_id": result.model_id,
                     "text": result.dialogue,
                 })
+                if stream_event is not None:
+                    acknowledged = Event()
+                    stream_event({
+                        "type": "_npc_reply_ready",
+                        "reply": turn_dialogues[-1],
+                        "acknowledged": acknowledged,
+                    })
+                    acknowledged.wait(10)
         conversation.turn_count += 1
         completed = conversation.turn_count >= conversation.max_turns
         if completed:
