@@ -618,6 +618,22 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
         self.assertEqual(3, ended.json()["visible_state"]["story"]["day"])
 
     def test_people_governance_turn_exposes_recent_qualitative_reason(self) -> None:
+        before = self.client.get(
+            f"/api/game/session/{self.session_id}/opportunities",
+            headers=self.headers,
+        )
+        self.assertEqual(200, before.status_code, before.text)
+        before_person = next(
+            item for item in before.json()["people"]
+            if item["npc_id"] == "npc_wu_xiuying"
+        )
+        self.assertTrue(before_person["recent_change_reasons"])
+        self.assertLessEqual(len(before_person["recent_change_reasons"]), 3)
+        self.assertTrue(any(
+            marker in "".join(before_person["recent_change_reasons"])
+            for marker in ("名册", "剧情", "材料", "工作联系")
+        ))
+
         self._complete_wu_governance_visit()
         response = self.client.get(
             f"/api/game/session/{self.session_id}/opportunities",
@@ -641,6 +657,11 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
             {"calm", "uneasy", "worried", "strained", "critical"},
         )
         self.assertTrue(person["recent_change_reasons"])
+        self.assertLessEqual(len(person["recent_change_reasons"]), 3)
+        reasons = "".join(person["recent_change_reasons"])
+        self.assertIn("本次会谈", reasons)
+        for hidden_marker in ("trust_score", "attitude_score", "anxiety_score"):
+            self.assertNotIn(hidden_marker, reasons)
 
     def test_governance_write_can_be_saved_listed_and_loaded_without_409(self) -> None:
         view = self.client.get(
@@ -714,13 +735,34 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
         self.assertEqual(200, history.status_code, history.text)
         self.assertEqual(1, len(history.json()["items"]))
         self.assertIsNone(history.json()["next_cursor"])
+        record = history.json()["items"][0]
+        self.assertEqual("npc_wu_xiuying", record["npc_id"])
+        self.assertEqual(2, record["story_day"])
+        self.assertEqual("completed", record["completion_status"])
         self.assertEqual(
             ["player", "npc"],
             [
                 item["speaker_type"]
-                for item in history.json()["items"][0]["transcript"]
+                for item in record["transcript"]
             ],
         )
+        self.assertNotIn("npc_id", record["transcript"][0])
+        self.assertEqual(
+            "npc_wu_xiuying", record["transcript"][1]["npc_id"]
+        )
+        self.assertTrue(all(item["text"].strip() for item in record["transcript"]))
+        for params in (
+            {"npc_id": "npc_zhao_jianguo", "story_day": 2},
+            {"npc_id": "npc_wu_xiuying", "story_day": 3},
+        ):
+            with self.subTest(params=params):
+                empty = self.client.get(
+                    f"/api/game/session/{self.session_id}/conversations",
+                    params=params,
+                    headers=self.headers,
+                )
+                self.assertEqual(200, empty.status_code, empty.text)
+                self.assertEqual([], empty.json()["items"])
 
     def test_archive_api_strictly_projects_known_schema_and_drops_unknown_secrets(
         self,
@@ -814,6 +856,64 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
                 )
             ],
         )
+
+    def test_opportunity_rejects_every_tampered_canonical_field_without_partial_state(
+        self,
+    ) -> None:
+        opportunity = self._wu_descriptor()
+        descriptor = opportunity["canonical_action_descriptor"]
+        valid = {
+            "action_kind": descriptor["action_id"],
+            "variant_id": descriptor["variant_id"],
+            "location_id": descriptor["preselected_location_id"],
+            "target_ids": descriptor["preselected_npc_ids"],
+            "topic": descriptor["canonical_topic"],
+            "opportunity_id": opportunity["opportunity_id"],
+        }
+        mutations = {
+            "variant_id": "interview_cadre",
+            "location_id": "loc_county_hospital",
+            "target_ids": ["npc_zhao_jianguo"],
+            "topic": "了解对方对搬迁安排的核心诉求与底线",
+        }
+        for field, value in mutations.items():
+            with self.subTest(field=field):
+                before = self.runtime.sessions.get_owned(
+                    self.session_id, self.account_id
+                )
+                assert before is not None
+                history_before = self.runtime.snapshots.list_history(
+                    self.account_id, self.session_id
+                )
+                response = self.client.post(
+                    f"/api/game/session/{self.session_id}/governance/actions",
+                    headers=self.headers,
+                    json={
+                        "state_version": before.state_version,
+                        **valid,
+                        field: value,
+                    },
+                )
+                self.assertEqual(409, response.status_code, response.text)
+                after = self.runtime.sessions.get_owned(
+                    self.session_id, self.account_id
+                )
+                assert after is not None
+                self.assertEqual(before.state_version, after.state_version)
+                self.assertEqual(
+                    before.game_state.action_points,
+                    after.game_state.action_points,
+                )
+                self.assertEqual(before.governance_actions, after.governance_actions)
+                self.assertEqual(
+                    [item.snapshot_id for item in history_before],
+                    [
+                        item.snapshot_id
+                        for item in self.runtime.snapshots.list_history(
+                            self.account_id, self.session_id
+                        )
+                    ],
+                )
 
     def _assert_governance_role_output_rejected(
         self,

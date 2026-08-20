@@ -249,17 +249,27 @@ export function submitGovernanceAction(
     lead_npc_id: string | null;
   },
 ) {
+  const isCanonicalOpportunity = Boolean(input.descriptor.opportunity_id);
+  const canonicalTargets = (Array.isArray(input.descriptor.preselected_npc_ids)
+    ? input.descriptor.preselected_npc_ids
+    : []).map(String);
   return api.write(sessionId, "/governance/actions", "POST", {
     state_version: input.state_version,
     action_kind: String(input.descriptor.action_id || ""),
     variant_id: String(input.descriptor.variant_id || ""),
-    location_id: input.location_id,
+    location_id: isCanonicalOpportunity
+      ? String(input.descriptor.preselected_location_id || "")
+      : input.location_id,
     opportunity_id: input.descriptor.opportunity_id || null,
-    target_ids: input.target_ids,
-    topic: input.topic,
-    archive_ids: input.archive_ids,
-    proposed_document_type: input.proposed_document_type,
-    lead_npc_id: input.lead_npc_id,
+    target_ids: isCanonicalOpportunity ? canonicalTargets : input.target_ids,
+    topic: isCanonicalOpportunity
+      ? String(input.descriptor.canonical_topic || "")
+      : input.topic,
+    archive_ids: isCanonicalOpportunity ? [] : input.archive_ids,
+    proposed_document_type: isCanonicalOpportunity
+      ? null
+      : input.proposed_document_type,
+    lead_npc_id: isCanonicalOpportunity ? null : input.lead_npc_id,
   });
 }
 

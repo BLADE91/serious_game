@@ -145,6 +145,7 @@ test("routes people and map entries through the same canonical governance reques
     participant_rules: { minimum: 1, maximum: 1 },
     location_choices: [{ location_id: "loc_village", label: "入村走访" }],
     target_choices: [{ target_id: "npc_household", label: "住户代表" }],
+    canonical_topic: "听取吴秀英对搬迁安排的真实诉求",
   };
   const peopleEntry = playerUi.canonicalActionEntry({
     npc_id: "npc_household",
@@ -170,12 +171,12 @@ test("routes people and map entries through the same canonical governance reques
   const submit = playerUi.createSingleFlight(() => playerUi.submitGovernanceAction(api, "session-1", {
     state_version: 7,
     descriptor: peopleEntry,
-    location_id: "loc_village",
-    target_ids: ["npc_household"],
-    topic: "核实搬迁诉求",
-    archive_ids: [],
-    proposed_document_type: null,
-    lead_npc_id: null,
+    location_id: "loc_tampered",
+    target_ids: ["npc_tampered"],
+    topic: "表单中的通用默认主题",
+    archive_ids: ["archive_tampered"],
+    proposed_document_type: "tampered_document",
+    lead_npc_id: "npc_tampered",
   }));
   const first = submit();
   const doubleConfirm = submit();
@@ -184,18 +185,32 @@ test("routes people and map entries through the same canonical governance reques
   assert.equal(calls.length, 1);
   release();
   await first;
-  assert.deepEqual(calls, [["session-1", "/governance/actions", "POST", {
+  const mapSubmit = playerUi.submitGovernanceAction(api, "session-1", {
+    state_version: 7,
+    descriptor: mapEntry,
+    location_id: "loc_tampered_again",
+    target_ids: ["npc_tampered_again"],
+    topic: "另一个表单默认主题",
+    archive_ids: ["archive_tampered_again"],
+    proposed_document_type: "tampered_document",
+    lead_npc_id: "npc_tampered_again",
+  });
+  await Promise.resolve();
+  release();
+  await mapSubmit;
+  const canonicalRequest = ["session-1", "/governance/actions", "POST", {
     state_version: 7,
     action_kind: "household_visit",
     variant_id: "field_visit",
     location_id: "loc_village",
     opportunity_id: "opp-d2-wu",
     target_ids: ["npc_household"],
-    topic: "核实搬迁诉求",
+    topic: "听取吴秀英对搬迁安排的真实诉求",
     archive_ids: [],
     proposed_document_type: null,
     lead_npc_id: null,
-  }]]);
+  }];
+  assert.deepEqual(calls, [canonicalRequest, canonicalRequest]);
 });
 
 test("selects exactly one dedicated primary scene for an active leadership meeting", () => {

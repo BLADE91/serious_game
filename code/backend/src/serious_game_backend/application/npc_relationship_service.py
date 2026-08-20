@@ -235,6 +235,40 @@ class NPCRelationshipService:
         return tuple(dict.fromkeys(reasons))[:3]
 
     @staticmethod
+    def known_source_reason(
+        session: GameSession,
+        package: ScriptPackage,
+        npc_id: str,
+    ) -> str:
+        rules = package.npc_discovery_rules or {}
+        initial_known = rules.get("initial_known_npc_ids")
+        if initial_known is None:
+            initial_known = (package.governance_config or {}).get(
+                "initial_visible_npc_ids", ()
+            )
+        if npc_id in initial_known:
+            return "此人已列入开局工作联系名册。"
+        if any(
+            npc_id in fact.related_npc_ids
+            for fact_id, fact in package.facts.items()
+            if fact_id in session.known_fact_ids
+        ):
+            return "已取得的公开材料提到了此人。"
+        profile = next(
+            (item for item in package.npc_profiles if item.npc_id == npc_id),
+            None,
+        )
+        if profile is not None and any(
+            profile.name in value
+            for item in session.narrative_feed
+            for value in (item.text or "", item.speaker or "")
+        ):
+            return "当前公开剧情已经介绍了此人。"
+        if npc_id in dict(rules.get("by_npc", {})):
+            return "随着搬迁工作推进，此人已进入公开工作联系范围。"
+        return "已有公开办事记录将此人纳入当前工作联系。"
+
+    @staticmethod
     def public_people(session: GameSession, package: ScriptPackage) -> list[dict]:
         NPCRelationshipService.synchronize(session, package)
         profiles = {item.npc_id: item for item in package.npc_profiles}
@@ -247,11 +281,14 @@ class NPCRelationshipService:
                     if npc_id in session.contactable_npc_ids else "known"
                 ),
                 **NPCRelationshipService.relationship_context(session, npc_id),
-                "recent_change_reasons": list(
-                    NPCRelationshipService.recent_visible_change_reasons(
+                "recent_change_reasons": list(dict.fromkeys((
+                    *NPCRelationshipService.recent_visible_change_reasons(
                         session, npc_id
-                    )
-                ),
+                    ),
+                    NPCRelationshipService.known_source_reason(
+                        session, package, npc_id
+                    ),
+                )))[:3],
             }
             for npc_id in sorted(
                 session.known_npc_ids,

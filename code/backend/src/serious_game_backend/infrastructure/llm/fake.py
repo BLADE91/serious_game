@@ -127,12 +127,28 @@ class FakeRoleLLMGateway:
                 rationale="当前还没有形成必须立即找县长处理的共同议题。",
             )
         if context.phase == "player_group_dialogue":
+            viewpoints = (
+                "我建议先把责任边界写清，再逐项核对办理依据。",
+                "群众沟通和信息公开要同步推进，不能留下口径落差。",
+                "程序完整是前提，时间节点和复核责任也要一并明确。",
+                "现有材料还需交叉核验，决议不能超出已经确认的事实。",
+                "执行方案要落实到责任人，并保留发现问题后的纠偏入口。",
+                "镇村衔接必须具体，不能把县级安排变成基层的模糊任务。",
+                "我更关注风险处置，公开说明前应先准备可核验的台账。",
+                "资源安排要与承诺范围一致，避免形成无法兑现的新口子。",
+            )
+            if context.private_context.startswith("分管或牵头领导"):
+                viewpoint = "我先说明现有事实、办理依据、执行方案和主要风险。"
+            else:
+                viewpoint = viewpoints[
+                    sum(ord(character) for character in context.npc_id)
+                    % len(viewpoints)
+                ]
             return NightAgentResult(
                 npc_id=context.npc_id,
                 model_id=model_id,
                 dialogue=(
-                    f"关于“{context.scene_goal}”，我们需要县里给出明确、"
-                    "能够落实的答复。"
+                    f"关于“{context.scene_goal}”，{viewpoint}"
                 ),
             )
         if context.phase == "dialogue":

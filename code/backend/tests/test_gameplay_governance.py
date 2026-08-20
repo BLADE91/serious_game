@@ -897,6 +897,134 @@ class GameplayGovernanceTests(unittest.TestCase):
         ):
             self.assertNotIn(private_instruction, public_transcript)
 
+    def _start_three_person_leadership_meeting(self) -> dict:
+        self._resolve_opening()
+        participant_ids = [
+            "npc_zhao_jianguo",
+            "npc_jiang_chongyue",
+            "npc_sun_qiang",
+        ]
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert stored is not None
+        stored.game_state = replace(
+            stored.game_state,
+            story_day=33,
+            days_left=57,
+        )
+        self.runtime.sessions.save(stored, expected_version=stored.state_version)
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert stored is not None
+        return self._post("/governance/actions", {
+            "state_version": stored.state_version,
+            "action_kind": "leadership_meeting",
+            "target_ids": participant_ids,
+            "lead_npc_id": "npc_zhao_jianguo",
+            "topic": "明确柳林村搬迁责任分工",
+        }, expected=201)
+
+    def test_fake_three_person_meeting_has_distinct_natural_ordered_dialogue(self) -> None:
+        started = self._start_three_person_leadership_meeting()
+        meeting = started["meeting"]
+        turn = self._post(
+            f"/governance/meetings/{meeting['meeting_id']}/turn",
+            {
+                "state_version": started["state_version"],
+                "player_text": "请三位依次说明各自的执行意见。",
+            },
+        )
+        replies = turn["replies"]
+        self.assertEqual(
+            ["npc_zhao_jianguo", "npc_jiang_chongyue", "npc_sun_qiang"],
+            [item["npc_id"] for item in replies],
+        )
+        self.assertEqual(3, len({item["text"] for item in replies}))
+        public = json.dumps(replies, ensure_ascii=False)
+        for marker in ("你的会议角色", "当前角色私有处境", "system prompt"):
+            self.assertNotIn(marker, public)
+
+    def test_private_echo_fallback_is_distinct_for_each_meeting_participant(self) -> None:
+        delegate = self.runtime.gameplay_governance._gateway
+
+        class PrivateEchoGateway:
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+            def run_night_turn(self, context):
+                result = delegate.run_night_turn(context)
+                if context.phase != "player_group_dialogue":
+                    return result
+                return replace(
+                    result,
+                    dialogue=f"你的会议角色：{context.private_context}",
+                )
+
+        self.runtime.gameplay_governance._gateway = PrivateEchoGateway()
+        started = self._start_three_person_leadership_meeting()
+        meeting = started["meeting"]
+        before_turn = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert before_turn is not None
+        action_points_before_turn = before_turn.game_state.action_points
+        flags_before_turn = set(before_turn.flags)
+        with self.client.stream(
+            "POST",
+            (
+                f"/api/game/session/{self.session_id}/governance/meetings/"
+                f"{meeting['meeting_id']}/turn/stream"
+            ),
+            headers=self.headers,
+            json={
+                "state_version": started["state_version"],
+                "player_text": "请三位依次说明各自的执行意见。",
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            events = [json.loads(line) for line in response.iter_lines() if line]
+        replies = events[-1]["result"]["replies"]
+        self.assertEqual(3, len({item["text"] for item in replies}))
+        self.assertEqual(
+            ["npc_zhao_jianguo", "npc_jiang_chongyue", "npc_sun_qiang"],
+            [item["npc_id"] for item in replies],
+        )
+        ordered = [
+            (item["type"], item.get("npc_id"))
+            for item in events
+            if item["type"] in {
+                "npc_thinking_start", "npc_thinking_end", "npc_start", "npc_end"
+            }
+        ]
+        self.assertEqual(
+            [
+                event
+                for npc_id in (
+                    "npc_zhao_jianguo", "npc_jiang_chongyue", "npc_sun_qiang"
+                )
+                for event in (
+                    ("npc_thinking_start", npc_id),
+                    ("npc_thinking_end", npc_id),
+                    ("npc_start", npc_id),
+                    ("npc_end", npc_id),
+                )
+            ],
+            ordered,
+        )
+        public = json.dumps(events, ensure_ascii=False)
+        for marker in ("你的会议角色", "当前角色私有处境", "system prompt"):
+            self.assertNotIn(marker, public)
+        after_turn = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert after_turn is not None
+        self.assertEqual(
+            action_points_before_turn, after_turn.game_state.action_points
+        )
+        self.assertEqual(flags_before_turn, after_turn.flags)
+
     def test_meeting_public_output_boundary_replaces_private_prompt_echo(
         self,
     ) -> None:
