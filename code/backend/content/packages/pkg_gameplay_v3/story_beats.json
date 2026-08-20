@@ -372,6 +372,13 @@
           "text": "摆在你面前的信息是清楚的。赵建国在云溪经营多年，手底下一套现成的班底，熟门熟路，可这套人马的根扎在本地那张关系网里。孙强所在的渡口镇是柳林村的直接上级，镇里的干部对村情最熟，也最容易跟周大山那边穿一条裤子。柳林村里周氏独大，姓周的十一户抱成一团住在村中心，姓刘、姓吴、姓杨的散姓散居村边和河湾下游。周大山是周氏族长，官身族身合在一人身上，祖坟、祠堂、集体分红都攥在周氏这一支手里。",
           "scene_id": "C01_S06",
           "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d02_wu_roster_introduction",
+          "kind": "narration",
+          "text": "花名册上，退休教师吴秀英住在村边。她在村里教了三十年书，是散姓里少数能把话说到众人面前的人。派系图排出骨架后，她会是你最先需要听见的独立声音。",
+          "scene_id": "C01_S06",
+          "presentation_phase": "scene"
         }
       ],
       "opening_decision_id": "dp1_01_taskforce_faction_map",
@@ -1179,14 +1186,29 @@
         {
           "block_id": "d27_source_opening",
           "kind": "narration",
-          "text": "第二十七日上午，一份要往市里报的搬迁进度文件摆到了你的案头。",
+          "text": "第二十七日上午，一份要往市里报的搬迁进度文件摆到了你的案头。红头，市里统一格式，末尾要盖县里的公章、签主管的名。",
           "scene_id": "C02_S07",
           "presentation_phase": "scene"
         },
         {
-          "block_id": "d27_transition_context",
+          "block_id": "d27_real_count",
           "kind": "narration",
-          "text": "围绕“红头文件”，到场各方已经把事实和分歧摆在明面上。有人催你先保住眼前进度，有人要求先把程序与材料核清。时间不因争论停下，你需要先读完现有材料，再从这些互相牵制的主张中选定一条能承担责任的处置路径。",
+          "text": "表格最底下一栏要填已签约多少户。眼下这个数是零：权属还在核，公示期还没满，正式协议要等到下个月才谈得成。",
+          "scene_id": "C02_S07",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d27_sun_proposal",
+          "kind": "dialogue",
+          "text": "孙强把门带上，说松了口的那几户早晚会签，可以先填名字、连夜刻手印，等人真正签了再换回来。",
+          "speaker": "孙强",
+          "scene_id": "C02_S07",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d27_pen",
+          "kind": "narration",
+          "text": "同一个抽屉里还压着上个月的样板户签约成色审核单。你手里的笔悬在半空，表底下那一栏仍空着。",
           "scene_id": "C02_S07",
           "presentation_phase": "scene"
         }
@@ -1208,16 +1230,17 @@
       "allow_end_day": true,
       "opening_blocks": [
         {
-          "block_id": "d28_source_opening",
+          "block_id": "d28_four_fronts",
           "kind": "narration",
-          "text": "第二十八日傍晚，你从渡口镇回县里。车过粮站的时候，路边站着一个人。",
+          "text": "第二十八日上午八点，签约的数字、抽屉里的三张发票、三份相同的环评报告和台阶上的旧账同时摆在你面前。时间只有一份，你也只有一双手。",
           "scene_id": "C02_S08",
           "presentation_phase": "scene"
         },
         {
-          "block_id": "d28_transition_context",
-          "kind": "narration",
-          "text": "围绕“四条战线”，到场各方已经把事实和分歧摆在明面上。有人催你先保住眼前进度，有人要求先把程序与材料核清。时间不因争论停下，你需要先读完现有材料，再从这些互相牵制的主张中选定一条能承担责任的处置路径。",
+          "block_id": "d28_cards",
+          "kind": "dialogue",
+          "text": "郑向东把四张卡片摆成一排：签约攻坚、反腐查案、环评真相、民生维稳。排在前头的能先拿到人手、钱和时间，排在后头的只能先放着。",
+          "speaker": "郑向东",
           "scene_id": "C02_S08",
           "presentation_phase": "scene"
         }
@@ -1242,14 +1265,22 @@
         {
           "block_id": "d29_source_opening",
           "kind": "narration",
-          "text": "第二十九日上午，冯敬之抱着一个文件夹进来。他把文件夹摊开，摊在你桌上。",
+          "text": "第二十九日上午，冯敬之抱着一个文件夹进来，把市里一百五十万元搬迁周转金的到账单摊在你桌上。",
           "scene_id": "C02_S08",
           "presentation_phase": "scene"
         },
         {
-          "block_id": "d29_transition_context",
+          "block_id": "d29_feng_words",
+          "kind": "dialogue",
+          "text": "这笔钱早已列入预算，现在必须定出去向并报市里备案。签约补差、孩子检查、水样复检和突发处置都在等它。",
+          "speaker": "冯敬之",
+          "scene_id": "C02_S08",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d29_four_mouths",
           "kind": "narration",
-          "text": "围绕“一百五十万”，到场各方已经把事实和分歧摆在明面上。有人催你先保住眼前进度，有人要求先把程序与材料核清。时间不因争论停下，你需要先读完现有材料，再从这些互相牵制的主张中选定一条能承担责任的处置路径。",
+          "text": "一百五十万元，四张嘴，一口锅。钱必须全额分完，一分也不能留。",
           "scene_id": "C02_S08",
           "presentation_phase": "scene"
         }
@@ -1318,9 +1349,38 @@
       "allow_end_day": true,
       "opening_blocks": [
         {
+          "block_id": "d30_morning_card",
+          "kind": "narration",
+          "text": "第三十日清晨，郑向东把一张纸放在你桌上：县城茶楼昨晚有人订了包间，柳林村昨夜有人挨家串门，县医院昨天下午来了个外地口音的人问哪里能查血里的铅。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d30_zheng_card",
+          "kind": "dialogue",
+          "text": "县长，就这三条。是不是要紧，我说不好。",
+          "speaker": "郑向东",
+          "scene_id": "C02_S08",
+          "presentation_phase": "scene"
+        },
+        {
           "block_id": "d30_source_opening",
           "kind": "narration",
-          "text": "第三十日夜里，你把这半个月的东西一样一样摊在桌上。",
+          "text": "第三十日夜里，你把这半个月的东西一样一样摊在桌上：三张连号发票、三份数字一模一样的环评报告、一本圈了红圈的学生名册、一张揉皱的烟盒纸、一份报出去的红头文件。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d30_remaining",
+          "kind": "narration",
+          "text": "九十天的工期走掉了三十天，剩下六十天。三十六户人家有的松了口、有的点了头，正式签下来的仍是一户也没有。正式协议要等权属核清、公示期满。",
+          "scene_id": "C02_S08",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d30_lamp",
+          "kind": "narration",
+          "text": "你把台灯关了。楼下院子里的老槐树在风里响。清江在西边流着，隔着二十里地，听不见。",
           "scene_id": "C02_S08",
           "presentation_phase": "scene"
         }
@@ -1758,6 +1818,13 @@
       "allow_actions": true,
       "allow_end_day": true,
       "opening_blocks": [
+        {
+          "block_id": "d46_ke_introduction",
+          "kind": "narration",
+          "text": "儿童初检结果送到之前，环境复核也进入必须正式回答的阶段。县环保站站长柯启年负责河道监测和月报，公开报表与站内台账都要从他手里调取。",
+          "scene_id": "C04_S01",
+          "presentation_phase": "scene"
+        },
         {
           "block_id": "d46_bag",
           "kind": "narration",
@@ -2543,6 +2610,13 @@
           "kind": "narration",
           "text": "第七十日早上七点半，郑向东把晨间卡放在你桌上。宁家昨夜灯亮到很晚，老伴把腌菜坛子搬进了里屋。有人说宁家在收东西，也有人说宁家在藏东西。",
           "scene_id": "C05_S05",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d70_ning_introduction",
+          "kind": "narration",
+          "text": "郑向东手里的未决名单上还写着宁德海。他七十三岁，是退休老党员，村里惯称宁老；这一户要亲自去，不能只派工作组上门。",
+          "scene_id": "C05_S06",
           "presentation_phase": "scene"
         }
       ],

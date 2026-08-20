@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 import os
 
@@ -161,6 +161,13 @@ class Container:
 def build_container(settings: Settings) -> Container:
     loader = FileScriptPackageLoader()
     package_values = loader.load_all(settings.content_root)
+    if settings.default_package_id == "pkg_gameplay_v3":
+        package_values = [
+            replace(package, status="retired")
+            if package.package_id == "pkg_gameplay_v2"
+            else package
+            for package in package_values
+        ]
     field_key = os.getenv(settings.field_encryption_key_env, "")
     field_cipher = (
         FieldCipher(field_key, key_id=settings.field_encryption_key_id)

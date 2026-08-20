@@ -1020,7 +1020,7 @@
       "decision_id": "dp1_08",
       "story_day": 13,
       "title": "下村攻坚的先后",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "花名册已经铺开：吴秀英、袁桂兰、周氏族亲与临江攀比户，先敲哪一扇门？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1081,18 +1081,18 @@
         {
           "block_id": "dp1_08_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "三十六户各有难处，先后次序会改变谁先被听见、谁先起攀比。你必须排定首轮入户的起手顺序。",
           "scene_id": "C01_S09",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp1_08_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "攻坚次序已经排定。专班按这条路逐户敲门，谁先被认真听见、谁因此抬高门槛，会在接下来的入户中显出来。",
           "scene_id": "C01_S09",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -1100,7 +1100,7 @@
       "decision_id": "dp1_09",
       "story_day": 15,
       "title": "夜间串联的初兆",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "周家夜里有人进出，马长顺只敢递一句话。你准备怎样回应这次串联的初兆？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1214,18 +1214,18 @@
         {
           "block_id": "dp1_09_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "夜色已经落在柳林村屋脊上。惊动周家、暗中摸清往来，或先护住递话的人，会把下一章带向不同入口。",
           "scene_id": "C01_S11",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp1_09_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "夜里的布置已经落下。周家是否收手、马长顺是否还敢递话、村口那辆县城牌照的车会不会再来，只能从往后的迹象里判断。",
           "scene_id": "C01_S11",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -1524,7 +1524,7 @@
       "decision_id": "dp2_01",
       "story_day": 17,
       "title": "三张纸",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "三张连号发票并排躺在桌上：立项审计、先查公司、暂压账目，还是当面对质？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1634,18 +1634,18 @@
         {
           "block_id": "dp2_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "四十一张凭证已经摊开。三张发票同日开出、注册地址相同、经办笔迹相似，付款批复栏里签着赵建国的名字。",
           "scene_id": "C02_S01",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp2_01_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "三张发票有了第一条查法。无论程序已经启动，还是材料暂时压下，这条线都会在下一次有人碰它时留下痕迹。",
           "scene_id": "C02_S01",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -1653,7 +1653,7 @@
       "decision_id": "dp2_02",
       "story_day": 18,
       "title": "茶叶盒",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "银行卡压在茶叶下面，钱伟已经离开。追回、暂存套话、收下，还是原样退回？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1761,14 +1761,11 @@
       ],
       "presentation_blocks": [
         {
-          "block_id": "dp2_02_phone_pressure_variant",
+          "block_id": "dp2_02_presentation",
           "kind": "narration",
-          "text": "钱伟没有登门。电话由赵建国转进来，原本放在桌面的那条交易路径已经断了。",
-          "required_flags": [
-            "与钱伟撕破脸"
-          ],
+          "text": "钱伟刚从你的办公室离开。茶叶盒里压着一张没有署名的银行卡，便条写着卡里三十万、密码是你的生日。",
           "scene_id": "C02_S01",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "scene_id": "C02_S01",
@@ -1776,9 +1773,9 @@
         {
           "block_id": "dp2_02_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "茶叶盒和银行卡有了去处。钱伟会从你怎样处理这件东西，判断下一次该带条件来、带证据来，还是不再登门。",
           "scene_id": "C02_S01",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -1786,7 +1783,7 @@
       "decision_id": "dp2_03",
       "story_day": 20,
       "title": "粮站",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "刘三只肯在废弃粮站见你，还把母亲和儿子的安危摆在前面。你怎样接住这句话？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1870,18 +1867,18 @@
         {
           "block_id": "dp2_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "粮站外没有灯。刘三说三本账都是他的字，也说周大山已经三次问起县里查账的动静；他要先知道家人能不能被护住。",
           "scene_id": "C02_S03",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp2_03_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "这场粮站会面停在你的答复上。刘三会不会继续递出账本后的话，要看他接下来感受到的是保障、压力，还是沉默。",
           "scene_id": "C02_S03",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -1889,7 +1886,7 @@
       "decision_id": "dp2_04",
       "story_day": 22,
       "title": "三年不变的数据",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "三份环评报告的铅、镉、砷数值逐项相同，儿童体检汇总表又圈出了血铅数字。你怎样核清这条线？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1997,14 +1994,11 @@
       ],
       "presentation_blocks": [
         {
-          "block_id": "dp2_04_audit_early_variant",
+          "block_id": "dp2_04_presentation",
           "kind": "narration",
-          "text": "审计已经立项，石文斌比原定时间早一天到访，并提醒你三份报告背后的原始口径正在被人收走。",
-          "required_flags": [
-            "已立项审计"
-          ],
+          "text": "石文斌把三年份报告和县医院儿童体检汇总表留在桌上。正式复核、秘密取样、暂时压下，或先拿材料去谈，各有不同风险。",
           "scene_id": "C02_S04",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "scene_id": "C02_S04",
@@ -2012,9 +2006,9 @@
         {
           "block_id": "dp2_04_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "三份报告和那张体检汇总表沿着你选的路径出了门。原始口径会不会还留在原处，要等下一次调取时才知道。",
           "scene_id": "C02_S04",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -2022,7 +2016,7 @@
       "decision_id": "dp2_05",
       "story_day": 25,
       "title": "三十六户怎么攻",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "松口的九户还没有正式按下一个手印，苗喜旺那笔高于标准二十万元的口头承诺又在全村发酵。工作组该用哪条主路？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2143,18 +2137,18 @@
         {
           "block_id": "dp2_05_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "渡口镇会议室里，孙强把台账推到你面前。整体抬价、一户一策、先立规矩，或树起样板，会改变工作组下一次进门的口径。",
           "scene_id": "C02_S05",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp2_05_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "工作组拿到了统一口径。效率、公平、程序或示范被摆在前面之后，村民会拿这条口径与苗喜旺那笔旧承诺反复对照。",
           "scene_id": "C02_S05",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -2162,7 +2156,7 @@
       "decision_id": "ev2_01",
       "story_day": 26,
       "title": "谭老六堵了县政府的门",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "谭老六把四亩坡地的旧材料铺在县政府台阶上，镜头和围观者都在等你的动作。你怎样处置？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2285,18 +2279,18 @@
         {
           "block_id": "ev2_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "谭老六坐在台阶上，说旧修路补偿多年没有说法。台阶下围着人，陈默举着相机，保安队在等一句指令。",
           "scene_id": "C02_S06",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "ev2_01_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "台阶上的处置已经发生，围观者和镜头各自记下了看到的部分。下午的班子会仍要继续，赵建国会在那里谈搬迁与查案能不能同时推进。",
           "scene_id": "C02_S06",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -2304,7 +2298,7 @@
       "decision_id": "dp2_06",
       "story_day": 26,
       "title": "楼道与小楼",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "赵建国提醒你，三年前签字的人仍在班子里；蒋崇岳只问搬迁和查案能不能一起抓。你要怎样站位？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2438,9 +2432,9 @@
         {
           "block_id": "dp2_06_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "你在搬迁与查案之间选定了站位。赵建国、蒋崇岳和班子里的其他人都会照着这次表态，重新判断你是要公开查、暗中查、暂缓，还是借本地的路继续推进。",
           "scene_id": "C02_S06",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -2448,7 +2442,7 @@
       "decision_id": "dp2_07",
       "story_day": 27,
       "title": "红头文件",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "红头文件最底下一栏要填已签约数，真实数字是零；孙强提议先填名字、后换真手印。你报实数还是先把数做出来？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -2535,18 +2529,18 @@
         {
           "block_id": "dp2_07_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "权属还在核，公示期没有满，正式协议要到下个月才谈得成。孙强说松口的人家早晚会签，只是把顺序倒一倒。",
           "scene_id": "C02_S07",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp2_07_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "红头文件按你的决定报了出去。同一个抽屉里的样板户审核单还在，表上的数字和真实手印以后仍会被逐项对上。",
           "scene_id": "C02_S07",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -2554,7 +2548,7 @@
       "decision_id": "dp2_08",
       "story_day": 28,
       "title": "四条战线",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "签约、查案、环评、民生四条战线共用一份人手、钱和时间。请排出完整先后；排序不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3209,18 +3203,18 @@
         {
           "block_id": "dp2_08_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "郑向东把四张卡片摆成一排：签约攻坚、反腐查案、环评真相、民生维稳。第一位到第四位必须全部排定。",
           "scene_id": "C02_S08",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp2_08_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "四条战线的先后已经锁定。排在前面的先拿到人手与时间，排在后面的只能等；第二十八日傍晚，刘三在粮站外等你的车经过。",
           "scene_id": "C02_S08",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -3228,7 +3222,7 @@
       "decision_id": "dp2_09",
       "story_day": 28,
       "title": "烟盒纸",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "刘三递来写着“我怕”的烟盒纸，镇里又准备先查村会计。你要明保、暗保、不接，还是拿他的处境谈条件？本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3334,18 +3328,18 @@
         {
           "block_id": "dp2_09_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "刘三隔着车窗塞进一张揉皱的烟盒纸，上面只有“我怕”三个字。赵建国已在镇上会议里点过他的名。",
           "scene_id": "C02_S08",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp2_09_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "烟盒纸被收进抽屉，刘三也带着你的答复走远。明里或暗里的安排，会决定他和手里那几本账怎样进入下一章。",
           "scene_id": "C02_S08",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },
@@ -3353,7 +3347,7 @@
       "decision_id": "dp2_10",
       "story_day": 29,
       "title": "一百五十万",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "一百五十万元周转金必须在签约补偿、民生安抚、环评复检、应急维稳之间全额分完。本决定不消耗行动点。",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3394,18 +3388,18 @@
         {
           "block_id": "dp2_10_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "冯敬之把到账单摊在桌上。四张嘴共用一口锅：补偿差价、孩子检查、第三方复检和突发处置都在等钱。",
           "scene_id": "C02_S08",
-          "presentation_phase": "decision_setup"
+          "presentation_phase": "scene"
         }
       ],
       "followup_blocks": [
         {
           "block_id": "dp2_10_followup",
           "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
+          "text": "一百五十万元的去向已经备案。它不改变财政预算总数，也不会在本章换来正式签约，却会成为后面几章各条线能否及时起步的地基。",
           "scene_id": "C02_S08",
-          "presentation_phase": "consequence"
+          "presentation_phase": "followup"
         }
       ]
     },

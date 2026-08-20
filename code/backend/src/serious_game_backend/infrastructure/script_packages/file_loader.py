@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 
 from serious_game_backend.domain.action import ActionRule, ResourceActionDefinition
 from serious_game_backend.domain.enums import ActionCostTier, AvailabilityMode, NPCStateTier
@@ -114,6 +115,11 @@ PLAYER_TEXT_INTERNAL_MARKERS = (
     "代码",
 )
 
+SCENE_ID_PATTERN = re.compile(r"^C\d{2}_S\d{2}$")
+SCENE_ASSET_ROOT = (
+    Path(__file__).resolve().parents[5] / "frontend" / "web" / "public" / "scenes"
+)
+
 
 class FileScriptPackageLoader:
     def load_all(self, root: Path) -> list[ScriptPackage]:
@@ -132,6 +138,7 @@ class FileScriptPackageLoader:
         if missing:
             raise ContentValidationError("剧本包缺少文件", details={"missing": missing})
         manifest = self._json(package_dir / "package_manifest.json")
+        gameplay_schema_version = int(manifest.get("gameplay_schema_version", 1))
         computed_hash = self.compute_content_hash(package_dir)
         declared_hash = str(manifest.get("content_hash", ""))
         if manifest.get("status") == "published" and declared_hash != computed_hash:
@@ -196,7 +203,28 @@ class FileScriptPackageLoader:
             if (package_dir / "social_rules.json").is_file()
             else {}
         )
-        gameplay_schema_version = int(manifest.get("gameplay_schema_version", 1))
+        matrix_path = package_dir / "story_acceptance_matrix.json"
+        if (
+            gameplay_schema_version >= 4
+            and str(manifest["package_id"]) == "pkg_gameplay_v3"
+            and not matrix_path.is_file()
+        ):
+            raise ContentValidationError(
+                "schema4 剧本包缺少 D1-D90 验收矩阵",
+                details={
+                    "package": str(manifest["package_id"]),
+                    "day": 1,
+                    "node": "story_acceptance_matrix",
+                    "field": "days",
+                    "reason": "请登记 D1-D90 每日主线或自由行动验收项。",
+                },
+            )
+        story_acceptance_matrix = tuple(
+            dict(item)
+            for item in (
+                self._json(matrix_path).get("days", []) if matrix_path.is_file() else []
+            )
+        )
         metric_bands = self._load_metric_bands(numbers)
         role_prompt_path = package_dir / "prompt_templates" / "role_turn_system.md"
         if not role_prompt_path.is_file():
@@ -227,6 +255,9 @@ class FileScriptPackageLoader:
             limited_household_signatories,
             governance_config,
             npc_demands,
+            social_rules,
+            story_acceptance_matrix,
+            package_id=str(manifest["package_id"]),
             gameplay_schema_version=gameplay_schema_version,
             status=str(manifest["status"]),
         )
@@ -305,6 +336,7 @@ class FileScriptPackageLoader:
             source_sha256=str(catalog_doc.get("source_sha256", "")),
             role_turn_prompt=role_turn_prompt,
             role_turn_prompt_version="role-turn-v2",
+            story_acceptance_matrix=story_acceptance_matrix,
         )
 
     @staticmethod
@@ -1278,6 +1310,132 @@ class FileScriptPackageLoader:
                 )
 
     @staticmethod
+    def _validate_story_acceptance_matrix(
+        matrix,
+        *,
+        package_id: str,
+        story_days,
+        decisions,
+        events,
+        profiles,
+    ) -> None:
+        required_fields = {
+            "story_day",
+            "state",
+            "node_id",
+            "previous_settlement_dependency",
+            "opening_block_ids",
+            "scene_ids",
+            "visible_speakers",
+            "introduced_npc_ids",
+            "prerequisite_narrative_ids",
+            "decision_ids",
+            "decision_display_node_ids",
+            "outcome_transition_ids",
+            "free_action_prompt",
+        }
+
+        def reject(day: int, node: str, field: str, reason: str) -> None:
+            raise ContentValidationError(
+                f"D1-D90 剧情与决策验收矩阵不一致：D{day}/{field}",
+                details={
+                    "package": package_id,
+                    "day": day,
+                    "node": node,
+                    "field": field,
+                    "reason": reason,
+                },
+            )
+
+        if [item.get("story_day") for item in matrix] != list(range(1, 91)):
+            reject(1, "story_acceptance_matrix", "story_day", "矩阵必须按顺序且仅登记 D1-D90。")
+
+        profile_by_name = {item.name: item.npc_id for item in profiles}
+        event_decisions_by_day: dict[int, list[str]] = {}
+        for event in events:
+            decision_id = event.event_id.lower().replace("-", "_")
+            if decision_id in decisions:
+                event_decisions_by_day.setdefault(event.story_day, []).append(decision_id)
+
+        for row in matrix:
+            day = int(row["story_day"])
+            beat = story_days[day]
+            node = beat.beat_id
+            missing = required_fields - set(row)
+            if missing:
+                reject(day, node, sorted(missing)[0], "补齐每日验收字段。")
+            if row["node_id"] != node:
+                reject(day, node, "node_id", "矩阵节点必须与 story beat 一致。")
+            expected_state = "free_action" if beat.day_mode == "free_action" else "main_story"
+            if row["state"] != expected_state:
+                reject(day, node, "state", "主线或自由行动状态必须与 story beat 一致。")
+            opening_ids = [item.block_id for item in beat.opening_blocks]
+            if row["opening_block_ids"] != opening_ids:
+                reject(day, node, "opening_block_ids", "开场叙事必须逐块登记且保持顺序。")
+            direct_ids = [
+                item
+                for item in (beat.opening_decision_id, *beat.decision_ids)
+                if item
+            ]
+            expected_decision_ids = list(dict.fromkeys(
+                [*event_decisions_by_day.get(day, ()), *direct_ids]
+            ))
+            if row["decision_ids"] != expected_decision_ids:
+                reject(day, node, "decision_ids", "决策序列必须包含当日事件处置并保持运行顺序。")
+            day_decisions = [decisions[item] for item in expected_decision_ids]
+            display_ids = [
+                block.block_id
+                for decision in day_decisions
+                for block in decision.presentation_blocks
+            ]
+            if row["prerequisite_narrative_ids"] != display_ids:
+                reject(day, node, "prerequisite_narrative_ids", "每个决策必须登记先读的铺垫叙事。")
+            if row["decision_display_node_ids"] != display_ids:
+                reject(day, node, "decision_display_node_ids", "决策显示节点必须指向真实 presentation block。")
+            outcome_ids = [
+                block.block_id
+                for decision in day_decisions
+                for block in decision.followup_blocks
+            ]
+            if row["outcome_transition_ids"] != outcome_ids:
+                reject(day, node, "outcome_transition_ids", "选择后必须登记真实的后果转场。")
+            scene_ids = list(dict.fromkeys([
+                *(block.scene_id for block in beat.opening_blocks if block.scene_id),
+                *(
+                    block.scene_id
+                    for decision in day_decisions
+                    for block in (*decision.presentation_blocks, *decision.followup_blocks)
+                    if block.scene_id
+                ),
+            ]))
+            if row["scene_ids"] != scene_ids:
+                reject(day, node, "scene_ids", "场景列表必须与开场、决策和后果节点一致。")
+            speakers = list(dict.fromkeys(
+                block.speaker for block in beat.opening_blocks if block.speaker
+            ))
+            if row["visible_speakers"] != speakers:
+                reject(day, node, "visible_speakers", "可见发言人必须与开场叙事一致。")
+            opening_text = "\n".join(
+                f"{block.speaker or ''}\n{block.text}" for block in beat.opening_blocks
+            )
+            introduced = {
+                npc_id
+                for name, npc_id in profile_by_name.items()
+                if name and name in opening_text
+            }
+            if set(row["introduced_npc_ids"]) != introduced:
+                reject(day, node, "introduced_npc_ids", "人物介绍登记必须来自同日玩家可见开场。")
+            dependencies = row["previous_settlement_dependency"]
+            required_dependency = "session_start" if day == 1 else f"D{day - 1}:day_closed"
+            if required_dependency not in dependencies:
+                reject(day, node, "previous_settlement_dependency", "进入当天前必须承接上一日结算。")
+            free_prompt = str(row["free_action_prompt"])
+            if expected_state == "free_action" and not free_prompt.strip():
+                reject(day, node, "free_action_prompt", "自由行动日必须给出清楚的可行动提示。")
+            if expected_state != "free_action" and free_prompt:
+                reject(day, node, "free_action_prompt", "主线日不得伪装成自由行动日。")
+
+    @staticmethod
     def _validate(
         actions,
         calendar,
@@ -1301,7 +1459,10 @@ class FileScriptPackageLoader:
         limited_household_signatories,
         governance_config,
         npc_demands,
+        social_rules,
+        story_acceptance_matrix,
         *,
+        package_id: str,
         gameplay_schema_version: int,
         status: str,
     ) -> None:
@@ -1826,6 +1987,14 @@ class FileScriptPackageLoader:
                 )
         beat_ids: set[str] = set()
         block_ids: set[str] = set()
+        npc_id_by_name = {item.name: item.npc_id for item in profiles}
+        introduced_day_by_npc = {
+            str(npc_id): 1
+            for npc_id in social_rules.get(
+                "npc_discovery_rules", {}
+            ).get("initial_known_npc_ids", ())
+            if str(npc_id) in npc_ids
+        }
         for day, beat in story_days.items():
             if (
                 not beat.beat_id
@@ -1851,7 +2020,14 @@ class FileScriptPackageLoader:
                 and beat.day_mode != "free_action"
             ):
                 raise ContentValidationError(
-                    f"空白剧情日必须明确标记为自由行动：{beat.beat_id}"
+                    f"空白剧情日必须明确标记为自由行动：{beat.beat_id}",
+                    details={
+                        "package": package_id,
+                        "day": day,
+                        "node": beat.beat_id,
+                        "field": "day_mode",
+                        "reason": "当日无主线节点，请保留明确的自由行动提示。",
+                    },
                 )
             matching = [item for item in calendar if item.contains(day)]
             if len(matching) != 1 or matching[0].chapter != beat.chapter:
@@ -1868,6 +2044,22 @@ class FileScriptPackageLoader:
                     raise ContentValidationError(
                         f"story beat 引用未知或跨日决策：{decision_id}"
                     )
+            scheduled_here = tuple(
+                item
+                for item in (beat.opening_decision_id, *beat.decision_ids)
+                if item
+            )
+            if len(scheduled_here) != len(set(scheduled_here)):
+                raise ContentValidationError(
+                    f"同一日不得重复引用同一决策：{beat.beat_id}",
+                    details={
+                        "package": package_id,
+                        "day": day,
+                        "node": beat.beat_id,
+                        "field": "decision_ids",
+                        "reason": "删除重复的决策转移引用。",
+                    },
+                )
             unknown_end_flags = beat.end_day_requires_flags - registered_flags
             if unknown_end_flags:
                 raise ContentValidationError(
@@ -1924,6 +2116,44 @@ class FileScriptPackageLoader:
                         f"story block ID 重复：{block.block_id}"
                     )
                 block_ids.add(block.block_id)
+                if gameplay_schema_version >= 4:
+                    if block.speaker and block.speaker not in npc_id_by_name:
+                        raise ContentValidationError(
+                            f"可见发言人物未登记：{block.speaker}",
+                            details={
+                                "package": package_id,
+                                "day": day,
+                                "node": block.block_id,
+                                "field": "speaker",
+                                "reason": "请改用已登记人物，或先在同一可见节点介绍该人物。",
+                            },
+                        )
+                    if (
+                        not block.scene_id
+                        or not SCENE_ID_PATTERN.fullmatch(block.scene_id)
+                        or not (
+                            SCENE_ASSET_ROOT
+                            / f"{block.scene_id.lower().replace('_', '-')}.webp"
+                        ).is_file()
+                    ):
+                        raise ContentValidationError(
+                            f"剧情块引用的场景资产不存在：{block.block_id}",
+                            details={
+                                "package": package_id,
+                                "day": day,
+                                "node": block.block_id,
+                                "field": "scene_id",
+                                "reason": "请引用前端 public/scenes 中已登记的真实场景资产。",
+                            },
+                        )
+                    visible_text = f"{block.speaker or ''}\n{block.text}"
+                    effective_day = day + (1 if block in beat.night_blocks else 0)
+                    for npc_name, npc_id in npc_id_by_name.items():
+                        if npc_name and npc_name in visible_text:
+                            introduced_day_by_npc[npc_id] = min(
+                                introduced_day_by_npc.get(npc_id, 91),
+                                effective_day,
+                            )
                 unknown_origins = block.origin_ids - set(origins)
                 if unknown_origins:
                     raise ContentValidationError(
@@ -1956,6 +2186,35 @@ class FileScriptPackageLoader:
                 if current_text and current_text == following_text:
                     raise ContentValidationError(
                         f"相邻日期重复同一开场：D{day}/D{day + 1}"
+                    )
+
+        if gameplay_schema_version >= 4:
+            for decision in decisions.values():
+                visible_text = "\n".join((
+                    decision.prompt,
+                    *(f"{item.speaker or ''}\n{item.text}" for item in decision.presentation_blocks),
+                    *(f"{item.speaker or ''}\n{item.text}" for item in decision.followup_blocks),
+                ))
+                for npc_name, npc_id in npc_id_by_name.items():
+                    if npc_name and npc_name in visible_text:
+                        introduced_day_by_npc[npc_id] = min(
+                            introduced_day_by_npc.get(npc_id, 91),
+                            decision.story_day,
+                        )
+            for opportunity in opportunities:
+                if opportunity.availability_mode is AvailabilityMode.CLOSED:
+                    continue
+                introduced_day = introduced_day_by_npc.get(opportunity.npc_id)
+                if introduced_day is None or opportunity.day_min < introduced_day:
+                    raise ContentValidationError(
+                        f"会谈目标在人物介绍前开放：{opportunity.opportunity_id}",
+                        details={
+                            "package": package_id,
+                            "day": opportunity.day_min,
+                            "node": opportunity.opportunity_id,
+                            "field": "npc_id",
+                            "reason": "请先在玩家可见剧情中介绍该人物，再开放主动会谈。",
+                        },
                     )
 
         opportunity_ids = {item.opportunity_id for item in opportunities}
@@ -2050,8 +2309,50 @@ class FileScriptPackageLoader:
                 not decision.presentation_blocks or not decision.followup_blocks
             ):
                 raise ContentValidationError(
-                    f"决策缺少铺垫或后续：{decision.decision_id}"
+                    f"决策缺少铺垫或后续：{decision.decision_id}",
+                    details={
+                        "package": package_id,
+                        "day": decision.story_day,
+                        "node": decision.decision_id,
+                        "field": (
+                            "presentation_blocks"
+                            if not decision.presentation_blocks
+                            else "followup_blocks"
+                        ),
+                        "reason": "请先给出决策前提叙事，并在选择后给出结果转场。",
+                    },
                 )
+            if gameplay_schema_version >= 4:
+                for block in (*decision.presentation_blocks, *decision.followup_blocks):
+                    if block.speaker and block.speaker not in npc_id_by_name:
+                        raise ContentValidationError(
+                            f"可见发言人未登记：{block.speaker}",
+                            details={
+                                "package": package_id,
+                                "day": decision.story_day,
+                                "node": block.block_id,
+                                "field": "speaker",
+                                "reason": "请改用已登记人物，或先在同一可见节点介绍该人物。",
+                            },
+                        )
+                    if (
+                        not block.scene_id
+                        or not SCENE_ID_PATTERN.fullmatch(block.scene_id)
+                        or not (
+                            SCENE_ASSET_ROOT
+                            / f"{block.scene_id.lower().replace('_', '-')}.webp"
+                        ).is_file()
+                    ):
+                        raise ContentValidationError(
+                            f"决策叙事块引用的场景资产不存在：{block.block_id}",
+                            details={
+                                "package": package_id,
+                                "day": decision.story_day,
+                                "node": block.block_id,
+                                "field": "scene_id",
+                                "reason": "请引用前端 public/scenes 中已登记的真实场景资产。",
+                            },
+                        )
             if decision.input_kind not in {"choice", "sorting", "allocation"}:
                 raise ContentValidationError(
                     f"决策输入类型非法：{decision.decision_id}"
@@ -2235,6 +2536,16 @@ class FileScriptPackageLoader:
                         f"决策后续文本引用未知出身：{block.block_id}",
                         details={"origins": sorted(unknown_origins)},
                     )
+
+        if gameplay_schema_version >= 4 and package_id == "pkg_gameplay_v3":
+            FileScriptPackageLoader._validate_story_acceptance_matrix(
+                story_acceptance_matrix,
+                package_id=package_id,
+                story_days=story_days,
+                decisions=decisions,
+                events=events,
+                profiles=profiles,
+            )
 
         for opportunity in opportunities:
             unknown_flags = (

@@ -52,6 +52,12 @@ class StoryFlowService:
         option = decision.option(option_id)
         if option is None or option_id not in pending.option_ids:
             raise ActionUnavailableError("当前决策不包含该选项")
+        resolution_index = sum(
+            1
+            for item in session.logs
+            if item.get("type") == "decision"
+            and item.get("decision_id") == decision_id
+        )
         session.append_narrative(
             story_day=session.game_state.story_day,
             kind="consequence",
@@ -59,6 +65,10 @@ class StoryFlowService:
             beat_id=session.story_beat_id,
             decision_id=decision_id,
             presentation_phase="consequence",
+            content_instance_id=(
+                f"decision:{pending.event_instance_id}:resolution:"
+                f"{resolution_index}:{option_id}"
+            ),
         )
         self._append_blocks(
             session,
@@ -151,7 +161,9 @@ class StoryFlowService:
             return
         session.story_beat_id = beat.beat_id
         is_free_day = not beat.opening_blocks and not (
-            beat.opening_decision_id or beat.decision_ids
+            beat.opening_decision_id
+            or beat.decision_ids
+            or session.pending_decision_queue
         )
         session.append_narrative(
             story_day=story_day,
