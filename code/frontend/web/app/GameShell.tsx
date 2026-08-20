@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -78,29 +78,6 @@ const displayValue = (value: unknown, fallback: string | number = "待定"): str
   return fallback;
 };
 const playerText = toPlayerText;
-const archiveContentLines = (value: unknown): string[] => {
-  let source: unknown = value;
-  if (typeof source === "string") {
-    try { source = JSON.parse(source); } catch { return [playerText(source, "这份档案暂无可读正文。")]; }
-  }
-  const lines: string[] = [];
-  const visit = (item: unknown, heading = "") => {
-    if (item === null || item === undefined || item === "") return;
-    if (Array.isArray(item)) { item.forEach(entry => visit(entry, heading)); return; }
-    if (typeof item === "object") {
-      Object.entries(item as Dict).forEach(([key, entry]) => {
-        if (/(^|_)(id|ids|internal|raw|json|code)$/i.test(key)) return;
-        const label = playerText(key.replaceAll("_", " "));
-        visit(entry, label);
-      });
-      return;
-    }
-    const text = playerText(item);
-    if (text) lines.push(heading ? `${heading}：${text}` : text);
-  };
-  visit(source);
-  return lines.length ? lines : ["这份档案暂无可读正文。"];
-};
 const morningBriefText = (value: unknown) => playerText(value).replace(/^D(\d+)\s*/, "第 $1 日 ");
 const chineseIndex = (index: number) => {
   const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
@@ -508,15 +485,15 @@ export default function GameShell() {
   async function perform(action: () => Promise<Dict>, success: string | ((result: Dict) => string) = "安排已落实", rebuildNarrative = false, onResult?: (result: Dict) => void) {
     return performSingleFlightRef.current(async () => {
       setBusy(true); setNotice("");
-      try { const result = await action(); onResult?.(result); setFormOpen(null); setConversationInput(""); await refresh(rebuildNarrative ? 0 : narrative.feedCursor, sessionId, false, rebuildNarrative); setNotice(typeof success === "function" ? success(result) : success); return true; }
+      try { const result = await action(); onResult?.(result); setFormOpen(null); setConversationInput(""); await refresh(rebuildNarrative ? 0 : narrative.feedCursor, sessionId, false, rebuildNarrative, rebuildNarrative ? "latest" : "start"); setNotice(typeof success === "function" ? success(result) : success); return true; }
       catch (error) {
         const apiError = error as ApiError;
         if (apiError?.code === "STATE_VERSION_CONFLICT") {
-          await refresh(0, sessionId, false, true);
+          await refresh(0, sessionId, false, true, "latest");
           setNotice("现场情况刚刚更新，请根据最新信息重新选择。");
         } else if (apiError?.code === "ACTION_UNAVAILABLE" && apiError.details?.action_instance_id) {
           setFormOpen(null);
-          await refresh(0, sessionId, false, true);
+          await refresh(0, sessionId, false, true, "latest");
           setNotice("已有一项治理行动正在进行，已为你切换到当前现场。");
         } else fail(error);
       }
@@ -1052,12 +1029,7 @@ function MeetingResolutionForm({ meeting, governance, state, busy, notice, onCan
   const [documentTitle, setDocumentTitle] = useState(`${topic}会议决议`);
   const [resourceLimits, setResourceLimits] = useState<Record<string, string>>({});
   const pools = arr(get(governance, "resources.resource_pools"));
-  const envelopes = Object.entries(get(governance, "resources.budget_envelopes", {}) as Dict).map(([id, value]) => ({
-    resource_id: `budget:${id}`,
-    name: `预算信封 ${id}`,
-    capacity: Number((value as Dict)?.capacity || 0),
-    unit: "万元",
-  }));
+  const envelopes = budgetEnvelopeChoices(get(governance, "resources.budget_envelopes", {}));
   const resourceOptions = [...pools, ...envelopes];
   const documentType = String(meeting.proposed_document_type || "");
   const toggleResponsible = (id: string) => setResponsibleIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
@@ -1158,7 +1130,7 @@ function OpportunityPanel({ data, activeConversation, onStart, onContinue, onOpe
     const anotherConversationActive = Boolean(activeConversation) && !isActive;
     const contactable = person.contact_state === "contactable" && Boolean(item.opportunity_id);
     const recentReasons = values(person.recent_change_reasons);
-    return <article key={String(person.npc_id || index)} className={contactable ? "contactable" : "known-only"} data-character-id={character?.id || person.npc_id}><button type="button" className="person-portrait profile-avatar-button" aria-label={`查看${name}人物介绍`} onClick={() => character && onOpenProfile(character)} disabled={!character}><CharacterPortrait character={character} fallbackName={name} /></button><div className="person-copy"><small>{character?.role || "已知人物"} · {contactable ? "当前可联系" : "目前不可联系"}</small><h3>{name}</h3><div className="relationship-bands" aria-label={`${name}关系态势`}><span>信任：{friendlyStatus(person.trust_band)}</span><span>态度：{friendlyStatus(person.attitude_band)}</span><span>焦虑：{friendlyStatus(person.anxiety_band)}</span></div>{recentReasons.length > 0 && <ul className="relationship-reasons">{recentReasons.map((reason, reasonIndex) => <li key={reasonIndex}>{playerText(reason)}</li>)}</ul>}{item.opening_narrative && <p>{playerText(item.opening_narrative || item.conversation_goal || item.conversation_context)}</p>}<div className="item-foot"><span>{contactable ? actionPointLabel(item) : "等待新的联系机会"}</span>{(contactable || isActive) && <button onClick={() => isActive ? onContinue() : onStart(item)} disabled={anotherConversationActive || (!isActive && item.available === false)}>{isActive ? "继续会谈" : anotherConversationActive ? "先结束当前会谈" : "进入会谈"}</button>}</div></div></article>;
+    return <article key={String(person.npc_id || index)} className={contactable ? "contactable" : "known-only"} data-character-id={character?.id || person.npc_id}><button type="button" className="person-portrait profile-avatar-button" aria-label={`查看${name}人物介绍`} onClick={() => character && onOpenProfile(character)} disabled={!character}><CharacterPortrait character={character} fallbackName={name} /></button><div className="person-copy"><small>{character?.role || "已知人物"} · {contactable ? "当前可联系" : "目前不可联系"}</small><h3>{name}</h3><div className="relationship-bands" aria-label={`${name}关系态势`}><span>信任：{qualitativeRelationshipLabel(person.trust_band)}</span><span>态度：{qualitativeRelationshipLabel(person.attitude_band)}</span><span>焦虑：{qualitativeRelationshipLabel(person.anxiety_band)}</span></div>{recentReasons.length > 0 && <ul className="relationship-reasons">{recentReasons.map((reason, reasonIndex) => <li key={reasonIndex}>{playerText(reason)}</li>)}</ul>}{item.opening_narrative && <p>{playerText(item.opening_narrative || item.conversation_goal || item.conversation_context)}</p>}<div className="item-foot"><span>{contactable ? actionPointLabel(item) : "等待新的联系机会"}</span>{(contactable || isActive) && <button onClick={() => isActive ? onContinue() : onStart(item)} disabled={anotherConversationActive || (!isActive && item.available === false)}>{isActive ? "继续会谈" : anotherConversationActive ? "先结束当前会谈" : "进入会谈"}</button>}</div></div></article>;
   }) : <Empty text="尚未认识任何可以载入人物档案的角色。"/>}</div>{edges.length > 0 && <section className="relationship-graph" aria-label="已揭示的人物关系"><h3>已揭示关系</h3><div>{edges.map(edge => <article key={String(edge.edge_id)}><b>{names.get(String(edge.source_npc_id)) || "相关人员"}</b><span>{friendlyStatus(edge.channel)} · {edge.visibility === "confirmed" ? "已确认" : "待核实"}</span><b>{names.get(String(edge.target_npc_id)) || "相关人员"}</b>{edge.discovery_reason && <p>{playerText(edge.discovery_reason)}</p>}</article>)}</div></section>}</div>;
 }
 
@@ -1202,7 +1174,7 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
   const resources = arr(get(governance, "resources.resource_pools"));
   const housing = resources.filter(item => item.category === "housing");
   const services = resources.filter(item => item.category !== "housing" && item.allocatable_scope !== "npc_demand");
-  const envelopes = Object.entries(get(governance, "resources.budget_envelopes", {}));
+  const envelopes = budgetEnvelopeChoices(get(governance, "resources.budget_envelopes", {}));
   const documents = arr(governance.documents);
   const policyDocuments = documents.filter(item => item.document_type === "compensation_policy" && ["issued", "published"].includes(String(item.status)));
   const approvalDocuments = documents.filter(item => ["issued", "published"].includes(String(item.status)));
@@ -1251,7 +1223,7 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
       <h3>逐户资源条款</h3><p>系统只会把下列真实资源写入合同；不满足政策或资源约束时，后端会拒绝生成。</p>
       <div className="contract-field-grid">
         <label>依据补偿方案<select name="policy_document_id" defaultValue={terms.policy_document_id || policyDocuments[0]?.document_id || "doc_compensation_policy_v1"}>{policyDocuments.length ? policyDocuments.map(item => <option key={item.document_id} value={item.document_id}>{item.title}</option>) : <option value="doc_compensation_policy_v1">云溪县柳林村整体搬迁补偿安置方案</option>}</select></label>
-        <label>预算信封<select name="budget_envelope" defaultValue={terms.budget_envelope || "property_land"}>{envelopes.map(([id, item]) => <option key={id} value={id}>{id}（余 {displayValue((item as Dict).available, displayValue((item as Dict).remaining, "待核"))}）</option>)}</select></label>
+        <label>专项预算<select name="budget_envelope" defaultValue={terms.budget_envelope || "property_land"}>{envelopes.map(item => <option key={item.envelope_id} value={item.envelope_id}>{item.name}（余 {displayValue(item.available, displayValue(item.remaining, "待核"))}）</option>)}</select></label>
         <label>现金补偿（万元）<input name="cash_amount" type="number" min="0" max="8000" defaultValue={terms.cash_amount ?? 100} required /></label>
         <label>过渡月份<input name="transition_months" type="number" min="0" max="12" defaultValue={terms.transition_months ?? 12} required /></label>
         <label>付款日<input name="payment_day" type="number" min={Number(get(state, "story.day", 1))} max="90" defaultValue={terms.payment_day ?? Math.min(90, Number(get(state, "story.day", 1)) + 1)} required /></label>
@@ -1270,7 +1242,7 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
 }
 
 function ArchiveReading({ records }: { records: Dict[] }) {
-  return <div className="archive-reading">{records.map((record, index) => <article key={record.archive_id || index}><header><small>{playerText(record.category, "治理档案")} · {friendlyStatus(record.evidence_level)}</small><h3>{playerText(record.title, `档案${chineseIndex(index)}`)}</h3><p>取得于第 {record.acquired_day || "待定"} 日 · {friendlyStatus(record.confidentiality)}</p></header><div className="archive-body">{archiveContentLines(record.content).map((line, lineIndex) => <p key={lineIndex}>{line}</p>)}</div></article>)}</div>;
+  return <div className="archive-reading">{records.map((record, index) => <article key={record.archive_id || index}><header><small>{playerText(record.category, "治理档案")} · {friendlyStatus(record.evidence_level)}</small><h3>{playerText(record.title, `档案${chineseIndex(index)}`)}</h3><p>取得于第 {record.acquired_day || "待定"} 日 · {friendlyStatus(record.confidentiality)}</p></header><div className="archive-body">{archivePlayerSections(record).map((section, sectionIndex) => <section key={`${section.heading}:${sectionIndex}`}><h4>{section.heading}</h4><p>{section.body}</p></section>)}</div></article>)}</div>;
 }
 
 function GovernanceRecordDetail({ record, governance, busy, onAction }: { record: { meeting?: Dict; document?: Dict }; governance: Dict; busy: boolean; onAction: (documentId: string, suffix: string, method: "POST" | "PUT", body: Dict, success: string) => Promise<void> }) {

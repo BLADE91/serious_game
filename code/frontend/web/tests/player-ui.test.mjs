@@ -63,6 +63,45 @@ test("builds a safe people and revealed-relationship view without internal field
   }
 });
 
+test("renders relationship bands as useful qualitative Chinese labels", () => {
+  assert.equal(typeof playerUi.qualitativeRelationshipLabel, "function");
+  assert.equal(playerUi.qualitativeRelationshipLabel("working"), "可协作");
+  assert.equal(playerUi.qualitativeRelationshipLabel("resistant"), "抵触");
+  assert.equal(playerUi.qualitativeRelationshipLabel("worried"), "担忧");
+  assert.equal(playerUi.qualitativeRelationshipLabel("not_assessed"), "尚待观察");
+  assert.notEqual(playerUi.qualitativeRelationshipLabel("working"), "已记录");
+});
+
+test("consumes only player-safe archive sections and ignores raw structured content", () => {
+  assert.equal(typeof playerUi.archivePlayerSections, "function");
+  const sections = playerUi.archivePlayerSections({
+    content: JSON.stringify({ title: "内部标题", key: "deadline", value: "90天", detail: "内部细节" }),
+    player_sections: [
+      { heading: "期限", body: "90天，到期按真实状态验收。" },
+      { heading: "财政授权", body: "当前可安排7800万元。" },
+    ],
+  });
+  assert.deepEqual(sections, [
+    { heading: "期限", body: "90天，到期按真实状态验收。" },
+    { heading: "财政授权", body: "当前可安排7800万元。" },
+  ]);
+  const rendered = JSON.stringify(sections);
+  for (const forbidden of ["内部标题", "deadline", "内部细节", '"key"', '"value"', '"detail"']) {
+    assert.doesNotMatch(rendered, new RegExp(forbidden));
+  }
+});
+
+test("uses authoritative budget-envelope labels while retaining IDs only as form values", () => {
+  assert.equal(typeof playerUi.budgetEnvelopeChoices, "function");
+  const choices = playerUi.budgetEnvelopeChoices({
+    property_land: { label: "房屋与土地补偿", capacity: 3200, available: 2800 },
+    risk_reserve: { label: "风险预备金", capacity: 500, available: 500 },
+  });
+  assert.deepEqual(choices.map(item => item.name), ["房屋与土地补偿", "风险预备金"]);
+  assert.deepEqual(choices.map(item => item.envelope_id), ["property_land", "risk_reserve"]);
+  assert.ok(choices.every(item => !item.name.includes(item.envelope_id)));
+});
+
 test("prevents overlapping confirmation submissions while preserving retries after failure", async () => {
   assert.equal(typeof playerUi.createSingleFlight, "function");
   let releases;
@@ -92,6 +131,7 @@ test("routes people and map entries through the same canonical governance reques
   const descriptor = {
     action_id: "household_visit",
     variant_id: "field_visit",
+    opportunity_id: "opp-d2-wu",
     participant_rules: { minimum: 1, maximum: 1 },
     location_choices: [{ location_id: "loc_village", label: "入村走访" }],
     target_choices: [{ target_id: "npc_household", label: "住户代表" }],
@@ -139,6 +179,7 @@ test("routes people and map entries through the same canonical governance reques
     action_kind: "household_visit",
     variant_id: "field_visit",
     location_id: "loc_village",
+    opportunity_id: "opp-d2-wu",
     target_ids: ["npc_household"],
     topic: "核实搬迁诉求",
     archive_ids: [],

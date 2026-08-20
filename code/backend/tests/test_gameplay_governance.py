@@ -237,6 +237,13 @@ class GameplayGovernanceTests(unittest.TestCase):
             item["capacity"] for item in overview["resources"]["resource_pools"]
             if item["category"] == "housing"
         ))
+        envelopes = overview["resources"]["budget_envelopes"]
+        self.assertEqual("房屋与土地补偿", envelopes["property_land"]["label"])
+        self.assertEqual("风险预备金", envelopes["risk_reserve"]["label"])
+        self.assertTrue(all(
+            envelope_id != item["label"]
+            for envelope_id, item in envelopes.items()
+        ))
 
     def test_archive_inspection_returns_content_and_supports_persisted_reread(
         self,
@@ -261,7 +268,22 @@ class GameplayGovernanceTests(unittest.TestCase):
         self.assertEqual(1, started["cost_action_points"])
         self.assertEqual("completed", started["action"]["status"])
         self.assertEqual(archive_id, started["archives"][0]["archive_id"])
-        self.assertTrue(started["archives"][0]["content"])
+        self.assertNotIn("content", started["archives"][0])
+        self.assertTrue(started["archives"][0]["player_sections"])
+        rendered_sections = started["archives"][0]["player_sections"]
+        rendered_text = "\n".join(
+            f"{item['heading']}\n{item['body']}"
+            for item in rendered_sections
+        )
+        for structural_key in (
+            "detail", "key", "value", "summary", "title",
+            "hard_constraints",
+        ):
+            self.assertNotIn(
+                structural_key,
+                [item["heading"] for item in rendered_sections],
+            )
+            self.assertNotIn(f"{structural_key}：", rendered_text)
         self.assertIn(1, started["archives"][0]["read_at_days"])
 
         reread = self.client.get(
@@ -273,8 +295,8 @@ class GameplayGovernanceTests(unittest.TestCase):
         )
         self.assertEqual(200, reread.status_code, reread.text)
         self.assertEqual(
-            started["archives"][0]["content"],
-            reread.json()["archive"]["content"],
+            started["archives"][0]["player_sections"],
+            reread.json()["archive"]["player_sections"],
         )
         stored = self.runtime.sessions.get_owned(
             self.session_id, "acct_gameplay_governance"
@@ -850,6 +872,56 @@ class GameplayGovernanceTests(unittest.TestCase):
             speaker_events,
         )
         self.assertEqual("complete", meeting_events[-1]["type"])
+        public_stream = json.dumps(meeting_events, ensure_ascii=False)
+        for private_instruction in (
+            "你的会议角色",
+            "分管或牵头领导：",
+            "参会领导：",
+        ):
+            self.assertNotIn(private_instruction, public_stream)
+        overview = self.client.get(
+            f"/api/game/session/{self.session_id}/governance",
+            headers=self.headers,
+        ).json()
+        stored_meeting = next(
+            item for item in overview["meetings"]
+            if item["meeting_id"] == meeting["meeting_id"]
+        )
+        public_transcript = json.dumps(
+            stored_meeting["transcript"], ensure_ascii=False
+        )
+        for private_instruction in (
+            "你的会议角色",
+            "分管或牵头领导：",
+            "参会领导：",
+        ):
+            self.assertNotIn(private_instruction, public_transcript)
+
+    def test_meeting_public_output_boundary_replaces_private_prompt_echo(
+        self,
+    ) -> None:
+        leaked = (
+            "你的会议角色：分管或牵头领导：先汇报事实、依据、方案和风险。"
+        )
+        safe = GameplayGovernanceService._public_meeting_dialogue(
+            leaked,
+            meeting_role="分管或牵头领导：先汇报事实、依据、方案和风险",
+            is_lead=True,
+        )
+        self.assertEqual(
+            "我先把现有事实、办理依据、可行方案和主要风险逐项说明。",
+            safe,
+        )
+        self.assertNotIn("你的会议角色", safe)
+        natural = "房源底账已经核对，七日内可以公开第一批清单。"
+        self.assertEqual(
+            natural,
+            GameplayGovernanceService._public_meeting_dialogue(
+                natural,
+                meeting_role="参会领导：在汇报后明确表态",
+                is_lead=False,
+            ),
+        )
 
     def test_representative_request_creates_independent_contracts_and_settles_resources(self) -> None:
         self._resolve_opening()

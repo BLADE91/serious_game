@@ -40,6 +40,7 @@ class GovernanceActionRecord:
     required_permissions: tuple[str, ...]
     variant_id: str | None = None
     location_id: str | None = None
+    opportunity_id: str | None = None
     status: str = "active"
     topic: str = ""
     archive_ids: tuple[str, ...] = ()

@@ -1241,6 +1241,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             action_kind=body.action_kind,
             variant_id=body.variant_id,
             location_id=body.location_id,
+            opportunity_id=body.opportunity_id,
             target_ids=tuple(body.target_ids),
             topic=body.topic,
             archive_ids=tuple(body.archive_ids),
@@ -1564,7 +1565,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         tier = package.action_cost_tier(session.game_state.story_day)
         npc_profiles = {item.npc_id: item for item in package.npc_profiles}
 
-        def canonical_people_descriptor(npc_id: str) -> dict | None:
+        def canonical_people_descriptor(opportunity) -> dict | None:
+            npc_id = opportunity.npc_id
             for variant in configured_variants(package):
                 if variant.get("action_id") not in {
                     "household_visit", "cadre_interview",
@@ -1586,6 +1588,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 )
                 return {
                     **descriptor,
+                    "opportunity_id": opportunity.opportunity_id,
                     "preselected_npc_ids": [npc_id],
                     "preselected_location_id": location_id,
                 }
@@ -1644,9 +1647,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                         else None
                     ),
                     "cost_action_points": package.action_rules[item.action_id].cost_for(tier),
-                    "canonical_action_descriptor": canonical_people_descriptor(
-                        item.npc_id
-                    ),
+                    "canonical_action_descriptor": canonical_people_descriptor(item),
                 }
                 for item in values
             ],

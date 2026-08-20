@@ -473,6 +473,256 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertEqual(409, response.status_code, response.text)
         self.assertEqual("ACTION_UNAVAILABLE", response.json()["error"]["code"])
 
+
+class GameplayV3PlayerRegressionTests(unittest.TestCase):
+    """Player-facing regressions found through the production v3 API flow."""
+
+    def setUp(self) -> None:
+        self.settings = Settings(
+            environment="test",
+            content_root=PACKAGE_ROOT,
+            default_package_id="pkg_gameplay_v3",
+            repository="memory",
+            role_llm_provider="fake",
+        )
+        self.runtime = build_container(self.settings)
+        self.client = TestClient(create_app(self.settings, self.runtime))
+        self.account_id = "acct_player_regressions"
+        self.headers = {"X-Account-ID": self.account_id}
+        response = self.client.post(
+            "/api/game/session",
+            headers=self.headers,
+            json={"client_request_id": "player-regression-session-0001"},
+        )
+        self.assertEqual(201, response.status_code, response.text)
+        self.session_id = response.json()["session_id"]
+        session = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        self.assertIsNotNone(session)
+        assert session is not None
+        session.pending_decision = None
+        session.flags = {"flag_clan_map"}
+        session.known_fact_ids.add("fact_clan_power_map")
+        session.game_state = replace(
+            session.game_state,
+            story_day=2,
+            days_left=89,
+            action_points=8,
+        )
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+
+    def _wu_descriptor(self) -> dict:
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/opportunities",
+            headers=self.headers,
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        return next(
+            item
+            for item in response.json()["opportunities"]
+            if item["opportunity_id"] == "opp_d02_wu_xiuying_first_talk"
+        )
+
+    def _complete_wu_governance_visit(self) -> dict:
+        opportunity = self._wu_descriptor()
+        descriptor = opportunity["canonical_action_descriptor"]
+        before = self.client.get(
+            f"/api/game/session/{self.session_id}/view", headers=self.headers
+        ).json()
+        started = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": before["state"]["state_version"],
+                "action_kind": descriptor["action_id"],
+                "variant_id": descriptor["variant_id"],
+                "location_id": descriptor["preselected_location_id"],
+                "target_ids": descriptor["preselected_npc_ids"],
+                "topic": opportunity["conversation_goal"],
+                "opportunity_id": opportunity["opportunity_id"],
+            },
+        )
+        self.assertEqual(201, started.status_code, started.text)
+        action_id = started.json()["action"]["action_instance_id"]
+        turn = self.client.post(
+            (
+                f"/api/game/session/{self.session_id}/governance/actions/"
+                f"{action_id}/turn"
+            ),
+            headers=self.headers,
+            json={
+                "state_version": started.json()["state_version"],
+                "player_text": "吴老师，我想先听听村里人真正担心什么。",
+            },
+        )
+        self.assertEqual(200, turn.status_code, turn.text)
+        finished = self.client.post(
+            (
+                f"/api/game/session/{self.session_id}/governance/actions/"
+                f"{action_id}/finish"
+            ),
+            headers=self.headers,
+            json={"state_version": turn.json()["state_version"]},
+        )
+        self.assertEqual(200, finished.status_code, finished.text)
+        return finished.json()
+
+    def test_people_governance_visit_unlocks_required_d2_end_day_and_reaches_d3(
+        self,
+    ) -> None:
+        blocked = self.client.get(
+            f"/api/game/session/{self.session_id}/view", headers=self.headers
+        )
+        self.assertFalse(blocked.json()["commands"]["can_end_day"])
+
+        finished = self._complete_wu_governance_visit()
+
+        latest_view = None
+        for action_points, overtime_used in (
+            (8, False), (7, False), (0, False), (0, True),
+        ):
+            with self.subTest(
+                action_points=action_points,
+                overtime_used=overtime_used,
+            ):
+                stored = self.runtime.sessions.get_owned(
+                    self.session_id, self.account_id
+                )
+                assert stored is not None
+                stored.game_state = replace(
+                    stored.game_state,
+                    action_points=action_points,
+                    overtime_used_today=overtime_used,
+                    overtime_points_today=1 if overtime_used else 0,
+                )
+                self.runtime.sessions.save(
+                    stored, expected_version=stored.state_version
+                )
+                latest_view = self.client.get(
+                    f"/api/game/session/{self.session_id}/view",
+                    headers=self.headers,
+                )
+                self.assertEqual(200, latest_view.status_code, latest_view.text)
+                self.assertTrue(latest_view.json()["commands"]["can_end_day"])
+        assert latest_view is not None
+        ended = self.client.post(
+            f"/api/game/session/{self.session_id}/end-day",
+            headers=self.headers,
+            json={
+                "client_action_id": "player-regression-d2-end-0001",
+                "state_version": latest_view.json()["state"]["state_version"],
+                "active_rest": False,
+            },
+        )
+        self.assertEqual(200, ended.status_code, ended.text)
+        self.assertEqual(3, ended.json()["visible_state"]["story"]["day"])
+
+    def test_people_governance_turn_exposes_recent_qualitative_reason(self) -> None:
+        self._complete_wu_governance_visit()
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/opportunities",
+            headers=self.headers,
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        person = next(
+            item for item in response.json()["people"]
+            if item["npc_id"] == "npc_wu_xiuying"
+        )
+        self.assertIn(
+            person["trust_band"],
+            {"closed", "guarded", "working", "trusted"},
+        )
+        self.assertIn(
+            person["attitude_band"],
+            {"hostile", "resistant", "neutral", "cooperative", "supportive"},
+        )
+        self.assertIn(
+            person["anxiety_band"],
+            {"calm", "uneasy", "worried", "strained", "critical"},
+        )
+        self.assertTrue(person["recent_change_reasons"])
+
+    def test_governance_write_can_be_saved_listed_and_loaded_without_409(self) -> None:
+        view = self.client.get(
+            f"/api/game/session/{self.session_id}/view", headers=self.headers
+        ).json()
+        actions = self.client.get(
+            f"/api/game/session/{self.session_id}/actions", headers=self.headers
+        ).json()["actions"]
+        archive = next(
+            variant
+            for action in actions
+            for variant in action["variants"]
+            if variant["variant_id"] == "consult_county_archives"
+        )
+        first_archive_id = archive["target_choices"][0]["target_id"]
+        inspected = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": view["state"]["state_version"],
+                "action_kind": archive["action_id"],
+                "variant_id": archive["variant_id"],
+                "location_id": archive["location_choices"][0]["location_id"],
+                "archive_ids": [first_archive_id],
+            },
+        )
+        self.assertEqual(201, inspected.status_code, inspected.text)
+        saved = self.client.post(
+            f"/api/game/session/{self.session_id}/manual-saves",
+            headers=self.headers,
+            json={
+                "client_action_id": "player-regression-manual-save-0001",
+                "state_version": inspected.json()["state_version"],
+                "slot_number": 1,
+                "display_name": "查档后的关键节点",
+                "overwrite": False,
+            },
+        )
+        self.assertEqual(200, saved.status_code, saved.text)
+        listed = self.client.get(
+            f"/api/game/session/{self.session_id}/manual-saves",
+            headers=self.headers,
+        )
+        self.assertEqual(200, listed.status_code, listed.text)
+        self.assertEqual(
+            [saved.json()["snapshot_id"]],
+            [item["snapshot_id"] for item in listed.json()["manual_saves"]],
+        )
+        loaded = self.client.post(
+            f"/api/game/session/{self.session_id}/load-snapshot",
+            headers=self.headers,
+            json={
+                "client_action_id": "player-regression-manual-load-0001",
+                "state_version": listed.json()["state_version"],
+                "snapshot_id": saved.json()["snapshot_id"],
+                "confirmed": True,
+            },
+        )
+        self.assertEqual(200, loaded.status_code, loaded.text)
+        self.assertEqual(2, loaded.json()["story_day"])
+
+    def test_finished_people_governance_visit_is_in_conversation_history_once(
+        self,
+    ) -> None:
+        self._complete_wu_governance_visit()
+        history = self.client.get(
+            f"/api/game/session/{self.session_id}/conversations",
+            params={"npc_id": "npc_wu_xiuying", "story_day": 2, "limit": 1},
+            headers=self.headers,
+        )
+        self.assertEqual(200, history.status_code, history.text)
+        self.assertEqual(1, len(history.json()["items"]))
+        self.assertIsNone(history.json()["next_cursor"])
+        self.assertEqual(
+            ["player", "npc"],
+            [item["speaker"] for item in history.json()["items"][0]["transcript"]],
+        )
+
+
+class ActionUnificationV3PackageLifecycleTests(unittest.TestCase):
+    setUp = ActionUnificationV3Tests.setUp
+    _set_story_state = ActionUnificationV3Tests._set_story_state
+
     def test_loader_rejects_unregistered_hard_outcome_reference(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             package_dir = Path(temp_dir) / "package"

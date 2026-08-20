@@ -1,5 +1,43 @@
 export type PlayerRecord = Record<string, unknown>;
 
+const RELATIONSHIP_LABELS: Record<string, string> = {
+  closed: "封闭", guarded: "谨慎", working: "可协作", trusted: "信任",
+  hostile: "对立", resistant: "抵触", neutral: "中立", cooperative: "合作", supportive: "支持",
+  calm: "平稳", uneasy: "不安", worried: "担忧", strained: "紧张", critical: "高度焦虑",
+  not_assessed: "尚待观察",
+};
+
+export function qualitativeRelationshipLabel(value: unknown): string {
+  return RELATIONSHIP_LABELS[String(value)] || "尚待观察";
+}
+
+export function archivePlayerSections(value: PlayerRecord | null | undefined): Array<{ heading: string; body: string }> {
+  const sections = Array.isArray(value?.player_sections) ? value.player_sections : [];
+  const projected = sections.flatMap(raw => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const item = raw as PlayerRecord;
+    const heading = toPlayerText(item.heading, "档案记录");
+    const body = toPlayerText(item.body);
+    return body ? [{ heading, body }] : [];
+  });
+  return projected.length ? projected : [{ heading: "档案正文", body: "这份档案暂无可读正文。" }];
+}
+
+export function budgetEnvelopeChoices(value: unknown): Array<PlayerRecord & { envelope_id: string; resource_id: string; name: string }> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.entries(value as PlayerRecord).flatMap(([envelopeId, raw]) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const item = raw as PlayerRecord;
+    return [{
+      ...item,
+      envelope_id: envelopeId,
+      resource_id: String(item.resource_id || `budget:${envelopeId}`),
+      name: toPlayerText(item.label, "专项预算"),
+      unit: toPlayerText(item.unit, "万元"),
+    }];
+  });
+}
+
 const INTERNAL_PREFIX = /^\s*(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+\s*[·:：\u2014-]\s*)/i;
 const INTERNAL_BRACKET = /[【\[](?:突发[·:：-])?(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+)[】\]]\s*/gi;
 
@@ -211,6 +249,7 @@ export function submitGovernanceAction(
     action_kind: String(input.descriptor.action_id || ""),
     variant_id: String(input.descriptor.variant_id || ""),
     location_id: input.location_id,
+    opportunity_id: input.descriptor.opportunity_id || null,
     target_ids: input.target_ids,
     topic: input.topic,
     archive_ids: input.archive_ids,

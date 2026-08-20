@@ -845,7 +845,11 @@ class TerminalAppTests(unittest.TestCase):
                     "state_version": 8,
                     "archives": [{
                         "title": "补偿安置方案",
-                        "content": "逐户合同必须以实测底账为准。",
+                        "content": "{\"key\":\"internal\",\"value\":\"不得显示\"}",
+                        "player_sections": [{
+                            "heading": "办理原则",
+                            "body": "逐户合同必须以实测底账为准。",
+                        }],
                     }],
                 }
 
@@ -866,7 +870,11 @@ class TerminalAppTests(unittest.TestCase):
 
         self.assertEqual("inspect_archives", api.payload["action_kind"])
         self.assertEqual(["archive_policy"], api.payload["archive_ids"])
-        self.assertIn("逐户合同必须以实测底账为准", "\n".join(output))
+        rendered = "\n".join(output)
+        self.assertIn("办理原则", rendered)
+        self.assertIn("逐户合同必须以实测底账为准", rendered)
+        self.assertNotIn("internal", rendered)
+        self.assertNotIn("不得显示", rendered)
 
     def test_cancel_governance_recovers_an_active_action(self) -> None:
         class GovernanceApi:

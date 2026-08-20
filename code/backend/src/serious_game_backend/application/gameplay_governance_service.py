@@ -42,9 +42,13 @@ from serious_game_backend.application.ports import (
     GameSessionRepository,
     RoleLLMGateway,
     ScriptPackageRepository,
+    SnapshotRepository,
 )
 from serious_game_backend.application.visible_state import VisibleStateProjector
+from serious_game_backend.application.scripted_effect_service import ScriptedEffectService
+from serious_game_backend.application.story_flow_service import StoryFlowService
 from serious_game_backend.domain.enums import AvailabilityMode, SessionStatus
+from serious_game_backend.domain.conversation import CompletedConversation
 from serious_game_backend.domain.errors import (
     ActionUnavailableError,
     InsufficientActionPointsError,
@@ -80,6 +84,17 @@ from serious_game_backend.domain.script_package import (
 )
 
 
+BUDGET_ENVELOPE_LABELS = {
+    "property_land": "房屋与土地补偿",
+    "housing_delivery": "安置住房交付",
+    "moving_transition_reward": "搬迁、过渡与奖励",
+    "attachments_business_graves": "附属物、经营与迁葬",
+    "medical_hardship_employment_school": "医疗、困难、就业与就学",
+    "investigation_legal_publicity": "调查、法律与公开程序",
+    "risk_reserve": "风险预备金",
+}
+
+
 class GameplayGovernanceService:
     """四项基础行动、正式文件和逐户合同的最小权威闭环。"""
 
@@ -98,6 +113,9 @@ class GameplayGovernanceService:
         npc_turns: NPCTurnService,
         projector: VisibleStateProjector,
         input_review: InputReviewService,
+        scripted_effects: ScriptedEffectService | None = None,
+        story_flow: StoryFlowService | None = None,
+        snapshots: SnapshotRepository | None = None,
     ) -> None:
         self._sessions = sessions
         self._packages = packages
@@ -105,6 +123,9 @@ class GameplayGovernanceService:
         self._npc_turns = npc_turns
         self._projector = projector
         self._input_review = input_review
+        self._scripted_effects = scripted_effects
+        self._story_flow = story_flow
+        self._snapshots = snapshots
 
     def overview(self, *, account_id: str, session_id: str) -> dict:
         session, package = self._load(account_id, session_id)
@@ -387,6 +408,7 @@ class GameplayGovernanceService:
         action_kind: str,
         variant_id: str | None = None,
         location_id: str | None = None,
+        opportunity_id: str | None = None,
         target_ids: tuple[str, ...] = (),
         topic: str = "",
         archive_ids: tuple[str, ...] = (),
@@ -395,6 +417,13 @@ class GameplayGovernanceService:
     ) -> dict:
         session, package = self._load_mutable(
             account_id, session_id, state_version
+        )
+        opportunity = self._governance_opportunity(
+            session,
+            package,
+            opportunity_id=opportunity_id,
+            action_kind=action_kind,
+            target_ids=target_ids,
         )
         config = package.governance_config or {}
         definitions = {
@@ -490,6 +519,9 @@ class GameplayGovernanceService:
             required_permissions=BASE_ACTION_PERMISSIONS[action_kind],
             variant_id=variant_id,
             location_id=location_id,
+            opportunity_id=(
+                opportunity.opportunity_id if opportunity is not None else None
+            ),
             topic=topic.strip(),
             archive_ids=archive_ids,
         )
@@ -604,6 +636,13 @@ class GameplayGovernanceService:
                 "contract_batch_proposal": None,
             }
         profiles = {item.npc_id: item for item in package.npc_profiles}
+        opportunity = next(
+            (
+                item for item in package.interaction_opportunities
+                if item.opportunity_id == action.opportunity_id
+            ),
+            None,
+        )
         replies = []
         for npc_id in action.target_ids:
             profile = profiles[npc_id]
@@ -620,7 +659,11 @@ class GameplayGovernanceService:
                     player_text=text,
                     story_day=session.game_state.story_day,
                     opportunity_id=action_instance_id,
-                    allowed_fact_ids=tuple(sorted(session.known_fact_ids)),
+                    allowed_fact_ids=(
+                        tuple(opportunity.allowed_fact_ids)
+                        if opportunity is not None
+                        else tuple(sorted(session.known_fact_ids))
+                    ),
                     npc_name=profile.name,
                     npc_state_tier=profile.state_tier.value,
                     role_setting=profile.role_setting,
@@ -631,7 +674,11 @@ class GameplayGovernanceService:
                     prompt_version=package.role_turn_prompt_version,
                     allowed_fact_texts={
                         fact_id: package.facts[fact_id].text
-                        for fact_id in session.known_fact_ids
+                        for fact_id in (
+                            opportunity.allowed_fact_ids
+                            if opportunity is not None
+                            else session.known_fact_ids
+                        )
                         if fact_id in package.facts
                     },
                     conversation_turn_count=sum(
@@ -681,12 +728,40 @@ class GameplayGovernanceService:
                         0, min(100, npc_state.anxiety_score + turn.anxiety_delta)
                     ),
                 )
+                visible_reasons = []
+                if turn.attitude_delta > 0:
+                    visible_reasons.append("本次会谈中的回应使对方更愿意合作。")
+                elif turn.attitude_delta < 0:
+                    visible_reasons.append("本次会谈中的表达使对方更为抵触。")
+                if turn.anxiety_delta > 0:
+                    visible_reasons.append("本次会谈增加了对方对后续风险的担忧。")
+                elif turn.anxiety_delta < 0:
+                    visible_reasons.append("本次会谈缓解了对方对后续风险的担忧。")
+                for reason in visible_reasons:
+                    session.logs.append({
+                        "type": "relationship_change",
+                        "story_day": session.game_state.story_day,
+                        "npc_id": npc_id,
+                        "reason": reason,
+                        "visible_to_player": True,
+                    })
             replies.append({
                 "npc_id": npc_id,
                 "npc_name": profile.name,
                 "text": turn.dialogue,
                 "input_relevance": "relevant",
             })
+            if turn.disclosure_id is not None:
+                session.known_fact_ids.add(turn.disclosure_id)
+                session.logs.append({
+                    "type": "governance_conversation_disclosure",
+                    "story_day": session.game_state.story_day,
+                    "action_instance_id": action.action_instance_id,
+                    "opportunity_id": action.opportunity_id,
+                    "npc_id": npc_id,
+                    "disclosure_id": turn.disclosure_id,
+                    "visible_to_player": False,
+                })
         if replies and all(
             reply["input_relevance"] == "irrelevant"
             for reply in replies
@@ -761,6 +836,63 @@ class GameplayGovernanceService:
             )
             if meeting is not None and meeting.status == "discussion":
                 raise ActionUnavailableError("班子会议必须先形成决议或中止记录")
+        opportunity = next(
+            (
+                item for item in package.interaction_opportunities
+                if item.opportunity_id == action.opportunity_id
+            ),
+            None,
+        )
+        if opportunity is not None:
+            player_turns = sum(
+                item.get("speaker_type") == "player" for item in action.transcript
+            )
+            disclosed = {
+                str(item.get("disclosure_id"))
+                for item in session.logs
+                if item.get("type") == "governance_conversation_disclosure"
+                and item.get("action_instance_id") == action.action_instance_id
+                and item.get("disclosure_id")
+            }
+            completed = (
+                player_turns >= opportunity.minimum_turns
+                and opportunity.required_disclosure_ids.issubset(disclosed)
+            )
+            if completed:
+                self._apply_governance_opportunity_completion(
+                    session, package, opportunity
+                )
+            session.logs.append({
+                "type": "conversation_ended",
+                "story_day": session.game_state.story_day,
+                "opportunity_id": opportunity.opportunity_id,
+                "conversation_id": action.action_instance_id,
+                "npc_id": opportunity.npc_id,
+                "ended_by": "player",
+                "completion_status": "completed" if completed else "incomplete",
+                "cost_action_points": 0,
+                "visible_to_player": True,
+            })
+            if not any(
+                item.conversation_id == action.action_instance_id
+                for item in session.completed_conversations
+            ):
+                session.completed_conversations.append(CompletedConversation(
+                    conversation_id=action.action_instance_id,
+                    opportunity_id=opportunity.opportunity_id,
+                    npc_id=opportunity.npc_id,
+                    story_day=action.story_day,
+                    start_reason="governance_action",
+                    end_reason="player_exit",
+                    completion_status=("completed" if completed else "incomplete"),
+                    transcript=tuple({
+                        **({"npc_id": str(item.get("npc_id"))}
+                           if item.get("npc_id") else {}),
+                        "speaker": str(item.get("speaker_type", "npc")),
+                        "text": str(item.get("text", "")),
+                    } for item in action.transcript),
+                    started_at=action.created_at,
+                ))
         action.status = "completed"
         action.completed_at = governance_now_iso()
         self._commit(session, state_version)
@@ -920,19 +1052,30 @@ class GameplayGovernanceService:
                         item.get("speaker_type") == "player"
                         for item in meeting.transcript
                     ),
-                    scene_goal=f"{meeting.topic}。你的会议角色：{meeting_role}。",
+                    scene_goal=meeting.topic,
+                    private_context=meeting_role,
+                    forbidden_disclosure_markers=(
+                        "你的会议角色",
+                        "当前角色私有处境",
+                        meeting_role,
+                    ),
                     player_text=text,
                 ))
             finally:
                 if stream_event is not None:
                     stream_event({"type": "npc_thinking_end", **identity})
             ensure_stream_open(stream_cancelled)
-            if result.dialogue:
+            public_dialogue = self._public_meeting_dialogue(
+                result.dialogue,
+                meeting_role=meeting_role,
+                is_lead=order_index == 0,
+            )
+            if public_dialogue:
                 reply = {
                     "speaker_type": "npc",
                     "npc_id": npc_id,
                     "npc_name": profile.name,
-                    "text": result.dialogue,
+                    "text": public_dialogue,
                     "model_id": result.model_id,
                     "meeting_role": "lead_report" if order_index == 0 else "member_position",
                 }
@@ -955,6 +1098,33 @@ class GameplayGovernanceService:
             "replies": replies,
             "transcript": meeting.transcript,
         }
+
+    @staticmethod
+    def _public_meeting_dialogue(
+        dialogue: str | None,
+        *,
+        meeting_role: str,
+        is_lead: bool,
+    ) -> str:
+        text = (dialogue or "").strip()
+        private_markers = (
+            "你的会议角色",
+            "当前角色私有处境",
+            "system prompt",
+            "developer message",
+            "分管或牵头领导：",
+            "参会领导：",
+            meeting_role,
+        )
+        if text and not any(
+            marker.lower() in text.lower()
+            for marker in private_markers
+            if marker
+        ):
+            return text
+        if is_lead:
+            return "我先把现有事实、办理依据、可行方案和主要风险逐项说明。"
+        return "我听完汇报后再明确表态，责任、期限和风险都要写进决议。"
 
     def resolve_meeting(
         self,
@@ -3750,6 +3920,10 @@ class GameplayGovernanceService:
             status_totals = totals(resource_id)
             blocked = sum(status_totals.values())
             envelopes[envelope_id] = {
+                "resource_id": resource_id,
+                "label": BUDGET_ENVELOPE_LABELS.get(
+                    envelope_id, "专项预算"
+                ),
                 "capacity": int(capacity),
                 **status_totals,
                 "blocked_total": blocked,
@@ -3809,6 +3983,65 @@ class GameplayGovernanceService:
             ]["decision_mode"]
         )
 
+    def _apply_governance_opportunity_completion(
+        self, session: GameSession, package: ScriptPackage, opportunity
+    ) -> None:
+        effects = opportunity.completion_effects
+        if self._scripted_effects is not None and (
+            effects.metric_deltas
+            or effects.ledger_deltas
+            or effects.open_flags
+            or effects.close_flags
+            or effects.state_assignments
+        ):
+            self._scripted_effects.apply(
+                session,
+                package,
+                effects,
+                source_id=f"opportunity:{opportunity.opportunity_id}",
+            )
+        session.flags.update(opportunity.completion_flags)
+        session.known_fact_ids.update(opportunity.completion_fact_ids)
+        if self._story_flow is not None:
+            self._story_flow.append_blocks(session, opportunity.completion_blocks)
+        if (
+            opportunity.completion_decision_id
+            and opportunity.completion_decision_id not in session.pending_decision_queue
+        ):
+            session.pending_decision_queue.insert(0, opportunity.completion_decision_id)
+
+    @staticmethod
+    def _governance_opportunity(
+        session: GameSession,
+        package: ScriptPackage,
+        *,
+        opportunity_id: str | None,
+        action_kind: str,
+        target_ids: tuple[str, ...],
+    ):
+        if opportunity_id is None:
+            return None
+        opportunity = next(
+            (
+                item for item in package.interaction_opportunities
+                if item.opportunity_id == opportunity_id
+            ),
+            None,
+        )
+        if opportunity is None or not NPCRelationshipService._base_opportunity_available(
+            opportunity, session
+        ):
+            raise ActionUnavailableError("人物会谈机会当前不可用")
+        expected_kind = {
+            "home_visit": "household_visit",
+            "field_visit": "household_visit",
+            "heart_to_heart": "cadre_interview",
+            "interview_cadre": "cadre_interview",
+        }.get(opportunity.action_id)
+        if expected_kind != action_kind or target_ids != (opportunity.npc_id,):
+            raise ActionUnavailableError("统一行动与人物会谈机会不匹配")
+        return opportunity
+
     def _load(
         self, account_id: str, session_id: str
     ) -> tuple[GameSession, ScriptPackage]:
@@ -3840,6 +4073,17 @@ class GameplayGovernanceService:
         session.state_version += 1
         session.touch()
         self._sessions.save(session, expected_version=expected_version)
+        if (
+            self._snapshots is not None
+            and self._snapshots.current_for_session(session) is None
+        ):
+            parent = self._snapshots.latest_for_timeline(session)
+            self._snapshots.append(
+                session,
+                snapshot_type="auto",
+                reason="governance_operation_committed",
+                parent_snapshot_id=(parent.snapshot_id if parent is not None else None),
+            )
 
     @staticmethod
     def _meeting(session: GameSession, meeting_id: str) -> MeetingRecord:
@@ -3916,8 +4160,106 @@ class GameplayGovernanceService:
             "related_npc_ids": list(value.related_npc_ids),
         }
         if include_content:
-            result["content"] = value.content
+            result["player_sections"] = (
+                GameplayGovernanceService._archive_player_sections(
+                    value.content
+                )
+            )
         return result
+
+    @staticmethod
+    def _archive_player_sections(content: str) -> list[dict[str, str]]:
+        """Project an internal archive payload into player-readable prose."""
+        try:
+            source = json.loads(content)
+        except (TypeError, ValueError):
+            source = content
+        public_labels = {
+            "deadline": "期限",
+            "households": "搬迁总盘",
+            "target": "达标线",
+            "core_zone": "用地要求",
+            "budget": "财政授权",
+            "integrity": "廉政底线",
+            "registered_population": "登记人口",
+            "resettlement_population": "安置人口",
+            "legal_residential_area_m2": "合法住宅面积",
+            "homestead_recognized_m2": "认定宅基地面积",
+            "contracted_land_mu": "承包地面积",
+            "ownership_status": "权属情况",
+            **BUDGET_ENVELOPE_LABELS,
+        }
+        ignored_keys = {
+            "key", "id", "ids", "archive_id", "dossier_id", "resource_id",
+            "household_id", "source_id", "source_line", "schema_version",
+            "internal", "raw", "json", "code",
+        }
+        presentation_keys = {
+            "title", "label", "name", "summary", "detail", "description",
+            "text", "value",
+        }
+        sections: list[dict[str, str]] = []
+
+        def add(heading: str, body_parts: list[str]) -> None:
+            body = "。".join(
+                part.strip().rstrip("。")
+                for part in body_parts
+                if part and part.strip()
+            )
+            if not body:
+                return
+            body = f"{body}。"
+            item = {"heading": heading or "档案记录", "body": body}
+            if item not in sections:
+                sections.append(item)
+
+        def scalar(value: object) -> str:
+            if isinstance(value, bool):
+                return "是" if value else "否"
+            if isinstance(value, (str, int, float)):
+                return str(value)
+            return ""
+
+        def visit(item: object, inherited_heading: str = "") -> None:
+            if item is None or item == "":
+                return
+            if isinstance(item, list):
+                for entry in item:
+                    visit(entry, inherited_heading)
+                return
+            if not isinstance(item, dict):
+                value = scalar(item)
+                if value:
+                    add(inherited_heading, [value])
+                return
+            heading = next((
+                scalar(item.get(key))
+                for key in ("title", "label", "name")
+                if scalar(item.get(key))
+            ), inherited_heading)
+            body_parts = [
+                scalar(item.get(key))
+                for key in ("value", "summary", "detail", "description", "text")
+                if scalar(item.get(key))
+            ]
+            if body_parts:
+                add(heading, body_parts)
+            for key, entry in item.items():
+                if key in presentation_keys or key in ignored_keys:
+                    continue
+                nested_heading = public_labels.get(key, inherited_heading)
+                if isinstance(entry, (dict, list)):
+                    visit(entry, nested_heading)
+                    continue
+                value = scalar(entry)
+                if value:
+                    add(public_labels.get(key, "档案记录"), [value])
+
+        visit(source)
+        return sections or [{
+            "heading": "档案正文",
+            "body": "这份档案暂无可读正文。",
+        }]
 
     def _public_document(
         self,

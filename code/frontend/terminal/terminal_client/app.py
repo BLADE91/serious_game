@@ -611,7 +611,15 @@ class TerminalApp:
             )
             self.state_version = int(result["state_version"])
             for archive in result.get("archives", []):
-                self.output(f"【{archive['title']}】\n{archive.get('content', '')}")
+                sections = [
+                    section for section in archive.get("player_sections", [])
+                    if isinstance(section, dict) and section.get("body")
+                ]
+                body = "\n\n".join(
+                    f"{section.get('heading', '档案记录')}\n{section['body']}"
+                    for section in sections
+                ) or "这份档案暂无可读正文。"
+                self.output(f"【{archive['title']}】\n{body}")
             return
 
         if action_kind == "leadership_meeting":

@@ -271,8 +271,17 @@ def build_container(settings: Settings) -> Container:
     endings = EndingService(EndingAxisProjector())
     npc_turns = NPCTurnService(role_llm, validator)
     input_review = InputReviewService(role_llm)
+    story_flow = StoryFlowService()
     gameplay_governance = GameplayGovernanceService(
-        sessions, packages, role_llm, npc_turns, projector, input_review
+        sessions,
+        packages,
+        role_llm,
+        npc_turns,
+        projector,
+        input_review,
+        scripted_effects,
+        story_flow,
+        snapshots,
     )
     npc_memories = NPCMemoryService(memory_repository)
     auth = AuthService(
@@ -311,7 +320,6 @@ def build_container(settings: Settings) -> Container:
         ) if settings.research_enabled else None
     )
     opportunities = InteractionOpportunityService()
-    story_flow = StoryFlowService()
     return Container(
         settings=settings,
         sessions=sessions,
