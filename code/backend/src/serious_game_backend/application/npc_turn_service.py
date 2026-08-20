@@ -14,6 +14,7 @@ from serious_game_backend.application.state_delta_validator import StateDeltaVal
 from serious_game_backend.domain.llm import RoleTurnContext, ValidatedRoleTurn
 from serious_game_backend.domain.npc_state import NPCState
 from serious_game_backend.domain.errors import RoleLLMResponseError, RoleLLMUnavailableError
+from serious_game_backend.domain.fact_markers import normalize_fact_signature
 
 
 class NPCTurnService:
@@ -99,6 +100,26 @@ class NPCTurnService:
             for marker in context.forbidden_fact_markers
         ):
             raise RoleLLMResponseError("角色模型在对白中泄露了知识边界外的事实")
+        output_values = (
+            result.dialogue,
+            result.disclosure_id or "",
+            result.memory_candidate or "",
+            result.exit_narrative or "",
+            *result.risk_notes,
+            *result.will_share_with,
+        )
+        normalized_outputs = tuple(
+            normalize_fact_signature(value)
+            for value in output_values
+            if value
+        )
+        if any(
+            signature in output
+            for signatures in context.forbidden_fact_signatures.values()
+            for signature in signatures
+            for output in normalized_outputs
+        ):
+            raise RoleLLMResponseError("角色模型输出包含知识边界外的事实")
         if result.memory_candidate and len(result.memory_candidate.strip()) > 500:
             raise RoleLLMResponseError("角色模型记忆候选过长")
         if result.conversation_state not in {"continue", "end"}:

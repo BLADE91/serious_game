@@ -615,6 +615,7 @@ class ActionService:
                 allowed_fact_texts=fact_boundary.allowed_fact_texts,
                 allowed_fact_markers=fact_boundary.allowed_fact_markers,
                 forbidden_fact_markers=fact_boundary.forbidden_fact_markers,
+                forbidden_fact_signatures=fact_boundary.forbidden_fact_signatures,
                 memory_items=memory_items,
                 relationship_context=relationship_context,
                 recent_visible_change_reasons=recent_change_reasons,

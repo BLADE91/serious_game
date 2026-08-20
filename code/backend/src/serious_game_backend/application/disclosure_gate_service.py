@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.interaction_opportunity import InteractionOpportunity
 from serious_game_backend.domain.script_package import ScriptPackage
-from serious_game_backend.domain.fact_markers import disclosure_markers_for
+from serious_game_backend.domain.fact_markers import (
+    disclosure_markers_for,
+    forbidden_fact_signatures,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +25,7 @@ class RoleTurnFactBoundary:
     allowed_fact_markers: dict[str, tuple[str, ...]]
     required_disclosure_ids: tuple[str, ...]
     forbidden_fact_markers: tuple[str, ...]
+    forbidden_fact_signatures: dict[str, tuple[str, ...]]
 
 
 class DisclosureGateService:
@@ -97,5 +101,8 @@ class DisclosureGateService:
                 fact.title
                 for fact_id, fact in package.facts.items()
                 if fact_id not in permitted and len(fact.title.strip()) >= 4
+            ),
+            forbidden_fact_signatures=forbidden_fact_signatures(
+                package.facts, permitted
             ),
         )

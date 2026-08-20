@@ -715,6 +715,10 @@ class GameplayGovernanceService:
                         fact_boundary.forbidden_fact_markers
                         if fact_boundary is not None else ()
                     ),
+                    forbidden_fact_signatures=(
+                        fact_boundary.forbidden_fact_signatures
+                        if fact_boundary is not None else {}
+                    ),
                     conversation_turn_count=sum(
                         item.get("speaker_type") == "player"
                         for item in action.transcript

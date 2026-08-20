@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import unicodedata
+
+from serious_game_backend.domain.story import FactDefinition
+
 
 FACT_DISCLOSURE_MARKERS: dict[str, tuple[str, ...]] = {
     "fact_clan_power_map": (
@@ -33,3 +37,50 @@ def disclosure_markers_for(fact_ids: tuple[str, ...]) -> dict[str, tuple[str, ..
         fact_id: FACT_DISCLOSURE_MARKERS.get(fact_id, ())
         for fact_id in fact_ids
     }
+
+
+def normalize_fact_signature(value: str) -> str:
+    """Normalize formatting variants without turning short generic words into bans."""
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKC", value).casefold()
+        if character.isalnum()
+    )
+
+
+def fact_safety_signature(fact: FactDefinition) -> tuple[str, ...]:
+    """Build a deterministic, specific signature from authoritative fact fields."""
+    candidates: list[tuple[str, int]] = [
+        (fact.fact_id, 8),
+        (fact.title, 4),
+        (fact.text, 8),
+        (fact.source_label, 8),
+        (fact.use_hint, 12),
+    ]
+    candidates.extend(
+        (marker, 4) for marker in FACT_DISCLOSURE_MARKERS.get(fact.fact_id, ())
+    )
+    if fact.text.startswith(fact.title):
+        remainder = fact.text[len(fact.title):].lstrip("的：:，,；;。 ")
+        candidates.append((remainder, 8))
+    values: list[str] = []
+    for raw, minimum_length in candidates:
+        normalized = normalize_fact_signature(raw)
+        if len(normalized) < minimum_length or normalized in values:
+            continue
+        values.append(normalized)
+    return tuple(values)
+
+
+def forbidden_fact_signatures(
+    facts: dict[str, FactDefinition],
+    permitted_fact_ids: set[str],
+) -> dict[str, tuple[str, ...]]:
+    values: dict[str, tuple[str, ...]] = {}
+    for fact_id, fact in facts.items():
+        if fact_id in permitted_fact_ids:
+            continue
+        signature = fact_safety_signature(fact)
+        if signature:
+            values[fact_id] = signature
+    return values

@@ -23,6 +23,7 @@ class RoleTurnContext:
     allowed_fact_texts: dict[str, str] = field(default_factory=dict)
     allowed_fact_markers: dict[str, tuple[str, ...]] = field(default_factory=dict)
     forbidden_fact_markers: tuple[str, ...] = ()
+    forbidden_fact_signatures: dict[str, tuple[str, ...]] = field(default_factory=dict)
     memory_items: tuple[str, ...] = ()
     relationship_context: dict[str, str] = field(default_factory=dict)
     recent_visible_change_reasons: tuple[str, ...] = ()

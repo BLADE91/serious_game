@@ -9,6 +9,11 @@ from serious_game_backend.domain.enums import NPCStateTier
 from serious_game_backend.domain.errors import RoleLLMResponseError
 from serious_game_backend.domain.llm import RoleTurnContext, RoleTurnResult
 from serious_game_backend.domain.npc_state import NPCState
+from serious_game_backend.domain.fact_markers import (
+    fact_safety_signature,
+    normalize_fact_signature,
+)
+from serious_game_backend.domain.story import FactDefinition
 
 
 class StubRoleLLMGateway:
@@ -126,6 +131,22 @@ class LlmBoundaryTests(unittest.TestCase):
                 NPCState(npc_id=context.npc_id, state_tier=NPCStateTier.LIMITED),
                 random_seed="seed",
             )
+
+    def test_fact_signature_keeps_specific_phrases_without_banning_generic_words(
+        self,
+    ) -> None:
+        signature = fact_safety_signature(FactDefinition(
+            fact_id="fact_two_million_fee",
+            title="两百万前期协调费",
+            text="两百万前期协调费的凭证需要说明真实去处。",
+            source_label="开局财政与项目卷宗，后续凭证核验",
+            use_hint="可追问经手人、审批链、收款方与实际用途。",
+        ))
+        self.assertIn("facttwomillionfee", signature)
+        self.assertIn("两百万前期协调费", signature)
+        self.assertIn("凭证需要说明真实去处", signature)
+        self.assertNotIn(normalize_fact_signature("凭证"), signature)
+        self.assertNotIn(normalize_fact_signature("材料"), signature)
 
 
 if __name__ == "__main__":
