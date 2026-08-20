@@ -183,15 +183,34 @@ class StorySemanticsV3Tests(unittest.TestCase):
 
     def test_d18_premise_does_not_contradict_the_same_day_opening(self) -> None:
         package = FileScriptPackageLoader().load(PACKAGE_DIR)
-        opening = "\n".join(
-            item.text for item in package.story_day(18).opening_blocks
+        normal_opening = "\n".join(
+            item.text
+            for item in package.story_day(18).opening_blocks
+            if item.is_visible(origin_id="technical", flags=set())
         )
-        premise = "\n".join(
-            item.text for item in package.decisions["dp2_02"].presentation_blocks
+        normal_premise = "\n".join(
+            item.text
+            for item in package.decisions["dp2_02"].presentation_blocks
+            if item.is_visible(origin_id="technical", flags=set())
+        )
+        broken_flags = {"与钱伟撕破脸"}
+        phone_opening = "\n".join(
+            item.text
+            for item in package.story_day(18).opening_blocks
+            if item.is_visible(origin_id="technical", flags=broken_flags)
+        )
+        phone_premise = "\n".join(
+            item.text
+            for item in package.decisions["dp2_02"].presentation_blocks
+            if item.is_visible(origin_id="technical", flags=broken_flags)
         )
 
-        self.assertIn("钱伟坐在你办公室", opening)
-        self.assertNotIn("钱伟没有登门", premise)
+        self.assertIn("钱伟坐在你办公室", normal_opening)
+        self.assertIn("茶叶盒里压着", normal_premise)
+        self.assertNotIn("钱伟没有登门", normal_premise)
+        self.assertIn("钱伟没有登门", phone_opening)
+        self.assertIn("赵建国", phone_premise)
+        self.assertNotIn("钱伟坐在你办公室", phone_opening)
 
     def test_every_emitted_story_entry_has_a_stable_content_instance_id(self) -> None:
         package = FileScriptPackageLoader().load(PACKAGE_DIR)

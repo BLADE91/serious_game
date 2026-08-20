@@ -31,7 +31,7 @@ class Settings:
     environment: str = "sandbox"
     host: str = "0.0.0.0"
     port: int = 8100
-    default_package_id: str = "pkg_gameplay_v2"
+    default_package_id: str = "pkg_gameplay_v3"
     content_root: Path = BACKEND_ROOT / "content" / "packages"
     repository: str = "sqlite"
     database_path: Path = BACKEND_ROOT / "data" / "serious_game.db"

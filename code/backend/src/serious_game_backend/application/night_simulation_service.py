@@ -131,6 +131,7 @@ class NightSimulationService:
                 visible_night_blocks,
                 propagated,
                 agent_exchanges,
+                package_id=package.package_id,
             ),
             "propagation_count": len(propagated),
             "agent_exchanges": agent_exchanges,
@@ -1443,7 +1444,16 @@ class NightSimulationService:
         visible_blocks,
         propagated: list[dict],
         agent_exchanges: list[dict],
+        *,
+        package_id: str,
     ) -> list[str]:
+        if package_id == "pkg_gameplay_v3" and day == 29:
+            observed = [
+                StoryFlowService.public_text(item.text)
+                for item in visible_blocks
+                if item.presentation_phase == "morning"
+            ]
+            return observed[:3] or ["县城昨夜无事。"]
         # night_blocks 已在前一晚进入叙事 feed；晨间卡不再复制同一批文本。
         lines: list[str] = []
         if propagated:

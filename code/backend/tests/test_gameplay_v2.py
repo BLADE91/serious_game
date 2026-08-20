@@ -49,6 +49,7 @@ class GameplayV2Tests(unittest.TestCase):
         settings = Settings(
             environment="test",
             content_root=BACKEND_ROOT / "content" / "packages",
+            default_package_id="pkg_gameplay_v2",
             repository="memory",
             role_llm_provider="fake",
         )

@@ -154,6 +154,21 @@ class DecisionOptionDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionTextVariant:
+    required_flags: frozenset[str] = frozenset()
+    forbidden_flags: frozenset[str] = frozenset()
+    title: str | None = None
+    prompt: str | None = None
+    option_texts: dict[str, str] = field(default_factory=dict)
+    option_consequences: dict[str, str] = field(default_factory=dict)
+
+    def matches(self, flags: set[str]) -> bool:
+        return self.required_flags.issubset(flags) and not bool(
+            self.forbidden_flags & flags
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionDefinition:
     decision_id: str
     story_day: int
@@ -173,6 +188,7 @@ class DecisionDefinition:
     early_day: int | None = None
     early_required_flags: frozenset[str] = frozenset()
     presentation_blocks: tuple[NarrativeBlock, ...] = ()
+    text_variants: tuple[DecisionTextVariant, ...] = ()
 
     def option(self, option_id: str) -> DecisionOptionDefinition | None:
         return next((item for item in self.options if item.option_id == option_id), None)
@@ -189,6 +205,33 @@ class DecisionDefinition:
             self.early_day == story_day
             and bool(self.early_required_flags)
             and self.early_required_flags.issubset(flags)
+        )
+
+    def text_variant(self, flags: set[str]) -> DecisionTextVariant | None:
+        return next((item for item in self.text_variants if item.matches(flags)), None)
+
+    def visible_title(self, flags: set[str]) -> str:
+        variant = self.text_variant(flags)
+        return variant.title if variant is not None and variant.title else self.title
+
+    def visible_prompt(self, flags: set[str]) -> str:
+        variant = self.text_variant(flags)
+        return variant.prompt if variant is not None and variant.prompt else self.prompt
+
+    def visible_option_text(self, option: DecisionOptionDefinition, flags: set[str]) -> str:
+        variant = self.text_variant(flags)
+        return (
+            variant.option_texts.get(option.option_id, option.text)
+            if variant is not None
+            else option.text
+        )
+
+    def visible_consequence(self, option: DecisionOptionDefinition, flags: set[str]) -> str:
+        variant = self.text_variant(flags)
+        return (
+            variant.option_consequences.get(option.option_id, option.consequence)
+            if variant is not None
+            else option.consequence
         )
 
 

@@ -1764,6 +1764,19 @@
           "block_id": "dp2_02_presentation",
           "kind": "narration",
           "text": "钱伟刚从你的办公室离开。茶叶盒里压着一张没有署名的银行卡，便条写着卡里三十万、密码是你的生日。",
+          "forbidden_flags": [
+            "与钱伟撕破脸"
+          ],
+          "scene_id": "C02_S01",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "dp2_02_phone_presentation",
+          "kind": "narration",
+          "text": "赵建国在电话里转达钱伟的施压。钱伟没有登门，茶叶盒和银行卡也没有出现在办公室。",
+          "required_flags": [
+            "与钱伟撕破脸"
+          ],
           "scene_id": "C02_S01",
           "presentation_phase": "scene"
         }
@@ -1774,8 +1787,41 @@
           "block_id": "dp2_02_followup",
           "kind": "narration",
           "text": "茶叶盒和银行卡有了去处。钱伟会从你怎样处理这件东西，判断下一次该带条件来、带证据来，还是不再登门。",
+          "forbidden_flags": [
+            "与钱伟撕破脸"
+          ],
           "scene_id": "C02_S01",
           "presentation_phase": "followup"
+        },
+        {
+          "block_id": "dp2_02_phone_followup",
+          "kind": "narration",
+          "text": "电话里的施压有了答复。钱伟不会登门，赵建国已经知道你怎样回应。",
+          "required_flags": [
+            "与钱伟撕破脸"
+          ],
+          "scene_id": "C02_S01",
+          "presentation_phase": "followup"
+        }
+      ],
+      "text_variants": [
+        {
+          "required_flags": [
+            "与钱伟撕破脸"
+          ],
+          "title": "电话施压",
+          "prompt": "赵建国在电话里转达钱伟的施压。明确回绝、继续套话、接受条件，还是不把话说死？本决定不消耗行动点。",
+          "option_texts": {
+            "a": "明确回绝电话里的施压，把话说死。",
+            "b": "继续通话，态度含糊，把钱伟的口风套出来再定。",
+            "c": "接受钱伟提出的条件。",
+            "d": "结束通话，不说重话，也不留话柄。"
+          },
+          "option_consequences": {
+            "a": "你在电话里明确回绝了赵建国转达的施压",
+            "b": "电话里有人说漏一句，说八千万的盘子里，有六千万是钱伟早就算好的",
+            "d": "电话结束，话没有说死"
+          }
         }
       ]
     },

@@ -33,6 +33,7 @@ from serious_game_backend.domain.story import (
     ConditionalEffectDefinition,
     DecisionDefinition,
     DecisionOptionDefinition,
+    DecisionTextVariant,
     FactDefinition,
     NarrativeBlock,
     OriginDefinition,
@@ -119,6 +120,12 @@ SCENE_ID_PATTERN = re.compile(r"^C\d{2}_S\d{2}$")
 SCENE_ASSET_ROOT = (
     Path(__file__).resolve().parents[5] / "frontend" / "web" / "public" / "scenes"
 )
+STORY_AUTHORITY_CONTRACT = (
+    Path(__file__).resolve().parents[4]
+    / "content"
+    / "authority"
+    / "story_authority_d13_d30.json"
+)
 
 
 class FileScriptPackageLoader:
@@ -180,8 +187,10 @@ class FileScriptPackageLoader:
         opportunities = self._load_opportunities(
             self._json(package_dir / "interaction_opportunities.json")
         )
-        story_days = self._load_story_days(self._json(package_dir / "story_beats.json"))
-        decisions = self._load_decisions(self._json(package_dir / "decisions.json"))
+        story_document = self._json(package_dir / "story_beats.json")
+        decision_document = self._json(package_dir / "decisions.json")
+        story_days = self._load_story_days(story_document)
+        decisions = self._load_decisions(decision_document)
         origins = self._load_origins(self._json(package_dir / "origins.json"))
         facts = self._load_facts(self._json(package_dir / "facts.json"))
         public_briefing = self._load_public_briefing(
@@ -261,6 +270,12 @@ class FileScriptPackageLoader:
             gameplay_schema_version=gameplay_schema_version,
             status=str(manifest["status"]),
         )
+        if gameplay_schema_version >= 4 and str(manifest["package_id"]) == "pkg_gameplay_v3":
+            self._validate_story_authority_contract(
+                story_document,
+                decision_document,
+                package_id=str(manifest["package_id"]),
+            )
         self._validate_night_agents(
             social_rules,
             profiles=profiles,
@@ -338,6 +353,82 @@ class FileScriptPackageLoader:
             role_turn_prompt_version="role-turn-v2",
             story_acceptance_matrix=story_acceptance_matrix,
         )
+
+    @staticmethod
+    def _validate_story_authority_contract(
+        story_document: dict,
+        decision_document: dict,
+        *,
+        package_id: str,
+    ) -> None:
+        if not STORY_AUTHORITY_CONTRACT.is_file():
+            raise ContentValidationError(
+                "D13-D30 独立权威契约缺失",
+                details={
+                    "package": package_id,
+                    "day": 13,
+                    "node": "beat_d13_m2",
+                    "field": "authority_contract",
+                    "reason": "请恢复 package 外的母稿锚点文件。",
+                },
+            )
+        contract = FileScriptPackageLoader._json(STORY_AUTHORITY_CONTRACT)
+        rows = contract.get("days", [])
+        if [row.get("story_day") for row in rows] != list(range(13, 31)):
+            raise ContentValidationError(
+                "D13-D30 独立权威契约覆盖不完整",
+                details={
+                    "package": package_id,
+                    "day": 13,
+                    "node": "beat_d13_m2",
+                    "field": "authority_contract",
+                    "reason": "权威契约必须按顺序且仅覆盖 D13-D30。",
+                },
+            )
+        beats = {
+            int(item.get("story_day", 0)): item
+            for item in story_document.get("beats", [])
+        }
+        decisions_by_day: dict[int, list[dict]] = {}
+        for decision in decision_document.get("decisions", []):
+            decisions_by_day.setdefault(int(decision.get("story_day", 0)), []).append(
+                decision
+            )
+        for row in rows:
+            day = int(row["story_day"])
+            beat = beats.get(day)
+            node = str(beat.get("beat_id")) if beat is not None else f"beat_d{day:02d}"
+            projection = {
+                "beat": beat,
+                "decisions": decisions_by_day.get(day, []),
+            }
+            actual = hashlib.sha256(
+                json.dumps(
+                    projection,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            expected = str(row.get("sha256", ""))
+            source_lines = row.get("source_lines", [])
+            if actual != expected or not (
+                isinstance(source_lines, list)
+                and len(source_lines) == 2
+                and all(isinstance(value, int) and value > 0 for value in source_lines)
+            ):
+                raise ContentValidationError(
+                    f"D{day} 内容偏离独立母稿锚点",
+                    details={
+                        "package": package_id,
+                        "day": day,
+                        "node": node,
+                        "field": "authority_contract",
+                        "reason": (
+                            f"请依据最终剧本.md:{source_lines} 核对人物、数字、事实与条件分支。"
+                        ),
+                    },
+                )
 
     @staticmethod
     def _validate_night_agents(
@@ -1184,6 +1275,37 @@ class FileScriptPackageLoader:
                 early_required_flags=frozenset(item.get("early_required_flags", [])),
                 presentation_blocks=FileScriptPackageLoader._load_blocks(
                     item.get("presentation_blocks", [])
+                ),
+                text_variants=tuple(
+                    DecisionTextVariant(
+                        required_flags=frozenset(
+                            variant.get("required_flags", [])
+                        ),
+                        forbidden_flags=frozenset(
+                            variant.get("forbidden_flags", [])
+                        ),
+                        title=(
+                            str(variant["title"])
+                            if variant.get("title") is not None
+                            else None
+                        ),
+                        prompt=(
+                            str(variant["prompt"])
+                            if variant.get("prompt") is not None
+                            else None
+                        ),
+                        option_texts={
+                            str(key): str(value)
+                            for key, value in variant.get("option_texts", {}).items()
+                        },
+                        option_consequences={
+                            str(key): str(value)
+                            for key, value in variant.get(
+                                "option_consequences", {}
+                            ).items()
+                        },
+                    )
+                    for variant in item.get("text_variants", [])
                 ),
             )
         return result
@@ -2113,7 +2235,14 @@ class FileScriptPackageLoader:
                     )
                 if block.block_id in block_ids:
                     raise ContentValidationError(
-                        f"story block ID 重复：{block.block_id}"
+                        f"story block ID 重复：{block.block_id}",
+                        details={
+                            "package": package_id,
+                            "day": beat.story_day,
+                            "node": block.block_id,
+                            "field": "block_id",
+                            "reason": "每个叙事块 ID 必须在剧本包内唯一。",
+                        },
                     )
                 block_ids.add(block.block_id)
                 if gameplay_schema_version >= 4:
@@ -2368,6 +2497,36 @@ class FileScriptPackageLoader:
                         f"分配题输入协议非法：{decision.decision_id}"
                     )
             option_ids = [item.option_id for item in decision.options]
+            for variant_index, variant in enumerate(decision.text_variants):
+                unknown_variant_flags = (
+                    variant.required_flags | variant.forbidden_flags
+                ) - registered_flags
+                unknown_variant_options = (
+                    set(variant.option_texts) | set(variant.option_consequences)
+                ) - set(option_ids)
+                variant_texts = (
+                    *((variant.title,) if variant.title is not None else ()),
+                    *((variant.prompt,) if variant.prompt is not None else ()),
+                    *variant.option_texts.values(),
+                    *variant.option_consequences.values(),
+                )
+                if unknown_variant_flags or unknown_variant_options or any(
+                    not value.strip()
+                    or any(marker in value for marker in PLAYER_TEXT_INTERNAL_MARKERS)
+                    for value in variant_texts
+                ):
+                    raise ContentValidationError(
+                        f"决策条件文案非法：{decision.decision_id}",
+                        details={
+                            "package": package_id,
+                            "day": decision.story_day,
+                            "node": f"{decision.decision_id}:variant:{variant_index}",
+                            "field": "text_variants",
+                            "reason": (
+                                "条件文案必须引用已登记旗标和现有选项，且不得为空或泄漏内部标记。"
+                            ),
+                        },
+                    )
             sorting_ids = all(
                 "_" in option_id
                 and len(parts := option_id.split("_")) == len(set(parts))
@@ -2527,7 +2686,14 @@ class FileScriptPackageLoader:
                     )
                 if block.block_id in block_ids:
                     raise ContentValidationError(
-                        f"story block ID 重复：{block.block_id}"
+                        f"story block ID 重复：{block.block_id}",
+                        details={
+                            "package": package_id,
+                            "day": decision.story_day,
+                            "node": block.block_id,
+                            "field": "block_id",
+                            "reason": "每个叙事块 ID 必须在剧本包内唯一。",
+                        },
                     )
                 block_ids.add(block.block_id)
                 unknown_origins = block.origin_ids - set(origins)
@@ -2634,6 +2800,13 @@ class FileScriptPackageLoader:
                     )
                 if block.block_id in block_ids:
                     raise ContentValidationError(
-                        f"story block ID 重复：{block.block_id}"
+                        f"story block ID 重复：{block.block_id}",
+                        details={
+                            "package": package_id,
+                            "day": opportunity.day_min,
+                            "node": block.block_id,
+                            "field": "block_id",
+                            "reason": "每个叙事块 ID 必须在剧本包内唯一。",
+                        },
                     )
                 block_ids.add(block.block_id)

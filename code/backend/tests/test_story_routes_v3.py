@@ -206,6 +206,45 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 if item.get("type") == "decision"
             )
             self.assertGreaterEqual(len(sequence), 70)
+            choice_by_decision = dict(sequence)
+            if route_index == 0:
+                self.assertEqual("a", choice_by_decision["dp2_01"])
+                d30_morning = [
+                    item.text
+                    for item in stored.narrative_feed
+                    if item.story_day == 30 and item.kind == "morning_card"
+                ]
+                self.assertEqual(
+                    [
+                        "县城茶楼昨晚有人订了包间，订到子夜。",
+                        "柳林村昨夜有人挨家串门，说的还是苗喜旺那笔钱。",
+                    ],
+                    d30_morning,
+                )
+            if route_index == 1:
+                self.assertEqual("d", choice_by_decision["dp2_01"])
+                d18_text = "\n".join(
+                    item.text for item in stored.narrative_feed if item.story_day == 18
+                )
+                self.assertIn("赵建国", d18_text)
+                self.assertIn("钱伟没有登门", d18_text)
+                self.assertNotIn("钱伟坐在你办公室", d18_text)
+                self.assertNotIn(
+                    "县城茶楼昨晚有人订了包间",
+                    "\n".join(
+                        item.text
+                        for item in stored.narrative_feed
+                        if item.story_day in {29, 30}
+                    ),
+                )
+                self.assertEqual(
+                    ["县城昨夜无事。"],
+                    [
+                        item.text
+                        for item in stored.narrative_feed
+                        if item.story_day == 30 and item.kind == "morning_card"
+                    ],
+                )
             route_sequences.append(sequence)
             player_text = "\n".join(item.text for item in stored.narrative_feed)
             for marker in (

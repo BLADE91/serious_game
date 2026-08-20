@@ -855,7 +855,7 @@
       "story_day": 18,
       "chapter": 2,
       "day_mode": "simulated",
-      "title": "第十八日·茶叶盒底下的卡",
+      "title": "第十八日·钱伟的施压",
       "allow_actions": false,
       "allow_end_day": true,
       "opening_blocks": [
@@ -863,6 +863,9 @@
           "block_id": "d18_qian_arrival",
           "kind": "narration",
           "text": "第十八日下午四点，宏达化工法人代表钱伟坐在你办公室的沙发上。他自己带了茶叶，说是明前的，不值钱，只是认个门。",
+          "forbidden_flags": [
+            "与钱伟撕破脸"
+          ],
           "scene_id": "C02_S01",
           "presentation_phase": "scene"
         },
@@ -871,6 +874,9 @@
           "kind": "dialogue",
           "text": "柳林村三十六户里，有二十几户在宏达做过工，或者家里有人在厂里做过工。您想让这个村按时搬，绕不开我。",
           "speaker": "钱伟",
+          "forbidden_flags": [
+            "与钱伟撕破脸"
+          ],
           "scene_id": "C02_S01",
           "presentation_phase": "npc"
         },
@@ -878,6 +884,9 @@
           "block_id": "d18_box",
           "kind": "narration",
           "text": "他说完起身离开。茶叶盒还在桌上。你掀开盖子，茶叶下面压着一张没有署名的银行卡，旁边的便条写着卡里三十万，密码是你的生日。门已经关上，走廊里没有脚步声。",
+          "forbidden_flags": [
+            "与钱伟撕破脸"
+          ],
           "scene_id": "C02_S01",
           "presentation_phase": "scene"
         },
@@ -885,6 +894,29 @@
           "block_id": "d18_choice_setup",
           "kind": "narration",
           "text": "当面追回、暂存套话、收下，还是不留重话地退回，每一种处置都会留下不同的关系和证据。",
+          "forbidden_flags": [
+            "与钱伟撕破脸"
+          ],
+          "scene_id": "C02_S01",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d18_phone_pressure",
+          "kind": "narration",
+          "text": "第十八日下午，赵建国打来电话，转达钱伟对搬迁进度的施压。钱伟没有登门，办公室里也没有茶叶盒或银行卡。",
+          "required_flags": [
+            "与钱伟撕破脸"
+          ],
+          "scene_id": "C02_S01",
+          "presentation_phase": "scene"
+        },
+        {
+          "block_id": "d18_phone_choice_setup",
+          "kind": "narration",
+          "text": "明确回绝、继续套话、接受条件，还是不把话说死，每一种回应都会留下不同的关系和证据。",
+          "required_flags": [
+            "与钱伟撕破脸"
+          ],
           "scene_id": "C02_S01",
           "presentation_phase": "scene"
         }
@@ -1294,7 +1326,7 @@
             "与钱伟撕破脸"
           ],
           "scene_id": "C02_S08",
-          "presentation_phase": "night"
+          "presentation_phase": "morning"
         },
         {
           "block_id": "d29_comparison",
@@ -1304,14 +1336,7 @@
             "砸钱普涨"
           ],
           "scene_id": "C02_S08",
-          "presentation_phase": "night"
-        },
-        {
-          "block_id": "d29_hospital",
-          "kind": "night",
-          "text": "县医院昨天下午来了个外地口音的人，问哪个科室能查血里的铅。",
-          "scene_id": "C02_S08",
-          "presentation_phase": "night"
+          "presentation_phase": "morning"
         }
       ],
       "night_effects": {},
@@ -1349,16 +1374,9 @@
       "allow_end_day": true,
       "opening_blocks": [
         {
-          "block_id": "d30_morning_card",
-          "kind": "narration",
-          "text": "第三十日清晨，郑向东把一张纸放在你桌上：县城茶楼昨晚有人订了包间，柳林村昨夜有人挨家串门，县医院昨天下午来了个外地口音的人问哪里能查血里的铅。",
-          "scene_id": "C02_S08",
-          "presentation_phase": "scene"
-        },
-        {
           "block_id": "d30_zheng_card",
           "kind": "dialogue",
-          "text": "县长，就这三条。是不是要紧，我说不好。",
+          "text": "县长，纸上的就是昨夜能核实的动静。是不是要紧，我说不好。",
           "speaker": "郑向东",
           "scene_id": "C02_S08",
           "presentation_phase": "scene"

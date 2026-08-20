@@ -606,7 +606,9 @@
         "d18_qian_arrival",
         "d18_qian_offer",
         "d18_box",
-        "d18_choice_setup"
+        "d18_choice_setup",
+        "d18_phone_pressure",
+        "d18_phone_choice_setup"
       ],
       "scene_ids": [
         "C02_S01"
@@ -615,19 +617,23 @@
         "钱伟"
       ],
       "introduced_npc_ids": [
-        "npc_qian_wei"
+        "npc_qian_wei",
+        "npc_zhao_jianguo"
       ],
       "prerequisite_narrative_ids": [
-        "dp2_02_presentation"
+        "dp2_02_presentation",
+        "dp2_02_phone_presentation"
       ],
       "decision_ids": [
         "dp2_02"
       ],
       "decision_display_node_ids": [
-        "dp2_02_presentation"
+        "dp2_02_presentation",
+        "dp2_02_phone_presentation"
       ],
       "outcome_transition_ids": [
-        "dp2_02_followup"
+        "dp2_02_followup",
+        "dp2_02_phone_followup"
       ],
       "free_action_prompt": ""
     },
@@ -995,11 +1001,9 @@
         "dp2_10_followup",
         "d29_teahouse",
         "d29_comparison",
-        "d29_hospital",
         "D29:day_closed"
       ],
       "opening_block_ids": [
-        "d30_morning_card",
         "d30_zheng_card",
         "d30_source_opening",
         "d30_remaining",

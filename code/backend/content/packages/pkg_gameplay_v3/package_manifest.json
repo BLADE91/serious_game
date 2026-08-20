@@ -1,13 +1,13 @@
 {
   "package_id": "pkg_gameplay_v3",
   "title": "浊流之上",
-  "package_version": "3.2.0-story-validated",
+  "package_version": "3.2.1-authority-locked",
   "source_version": "最终剧本_20260723",
-  "content_hash": "sha256:117ecce10802d33016ee9d97985d633c5a97a523837cc40603ac4409f2f91506",
+  "content_hash": "sha256:701ea5dbfa52aedf4d886f35d9cc4ccae7f32ed76ee65e29f927cd3d859eda6c",
   "status": "published",
   "gameplay_schema_version": 4,
   "script_schema_version": 2,
   "rules_schema_version": 3,
-  "notes": "D1-D90 验收矩阵、剧情语义校验、D13-D30 时序修复与三路线回放通过；五类夜间关系子网及服务端白名单硬结算保持不变。",
+  "notes": "D1-D90 验收矩阵与 D13-D30 独立母稿哈希锁定；D18 钱伟登门/赵建国电话分支、D30 动态晨间卡及三路线回放通过。",
   "source_sha256": "sha256:594c907b5953a402cf22d8d6fe1d0a3c0dc302126b65d04e35bf3813fb62585e"
 }

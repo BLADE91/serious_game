@@ -26,7 +26,11 @@ class StoryFlowService:
             return
         self._append_blocks(
             session,
-            beat.night_blocks,
+            tuple(
+                block
+                for block in beat.night_blocks
+                if block.presentation_phase != "morning"
+            ),
             beat_id=beat.beat_id,
             presentation_phase="night",
         )
@@ -61,7 +65,7 @@ class StoryFlowService:
         session.append_narrative(
             story_day=session.game_state.story_day,
             kind="consequence",
-            text=self.public_text(option.consequence),
+            text=self.public_text(decision.visible_consequence(option, session.flags)),
             beat_id=session.story_beat_id,
             decision_id=decision_id,
             presentation_phase="consequence",
@@ -285,7 +289,7 @@ class StoryFlowService:
         session.append_narrative(
             story_day=session.game_state.story_day,
             kind="decision",
-            text=StoryFlowService.public_text(decision.prompt),
+            text=StoryFlowService.public_text(decision.visible_prompt(session.flags)),
             content_instance_id=presentation_entry_id,
             beat_id=session.story_beat_id,
             decision_id=decision_id,
@@ -298,12 +302,18 @@ class StoryFlowService:
             decision_id=decision.decision_id,
             option_ids=available_ids,
             presented_state_version=session.state_version,
-            visible_title=StoryFlowService.public_text(decision.title),
-            visible_text=StoryFlowService.public_text(decision.prompt),
+            visible_title=StoryFlowService.public_text(
+                decision.visible_title(session.flags)
+            ),
+            visible_text=StoryFlowService.public_text(
+                decision.visible_prompt(session.flags)
+            ),
             options=tuple(
                 VisibleDecisionOption(
                     item.option_id,
-                    StoryFlowService.public_text(item.text),
+                    StoryFlowService.public_text(
+                        decision.visible_option_text(item, session.flags)
+                    ),
                     available=availability[item.option_id],
                     unavailable_reason=(
                         None if availability[item.option_id] else item.unavailable_reason
