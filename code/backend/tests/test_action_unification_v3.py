@@ -819,6 +819,7 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
         self,
         result: RoleTurnResult,
         *forbidden_values: str,
+        forbidden_fact_id: str = "fact_two_million_fee",
     ) -> None:
         opportunity = self._wu_descriptor()
         descriptor = opportunity["canonical_action_descriptor"]
@@ -864,7 +865,7 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
         stored = self.runtime.sessions.get_owned(self.session_id, self.account_id)
         assert stored is not None
         self.assertEqual([], stored.governance_actions[action_id].transcript)
-        self.assertNotIn("fact_two_million_fee", stored.known_fact_ids)
+        self.assertNotIn(forbidden_fact_id, stored.known_fact_ids)
         durable = self.runtime.npc_memories._repository.active_for_npc(
             self.session_id, "npc_wu_xiuying", 2
         )
@@ -914,6 +915,27 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
                 exit_narrative="她拒绝再谈200万前期协调费。",
             ),
             "200万前期协调费",
+        )
+
+    def test_governance_rejects_registered_short_usb_alias_in_dialogue(self) -> None:
+        self._assert_governance_role_output_rejected(
+            RoleTurnResult(
+                npc_id="placeholder",
+                dialogue="我知道那个优盘的下落。",
+            ),
+            "优盘",
+            forbidden_fact_id="fact_shi_usb",
+        )
+
+    def test_governance_rejects_plain_string_sequence_field_fail_safe(self) -> None:
+        self._assert_governance_role_output_rejected(
+            RoleTurnResult(
+                npc_id="placeholder",
+                dialogue="我只能谈村里的公开顾虑。",
+                will_share_with="优盘",
+            ),
+            "优盘",
+            forbidden_fact_id="fact_shi_usb",
         )
 
     def test_legacy_action_rejects_forbidden_memory_before_durable_write(self) -> None:
@@ -972,6 +994,64 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
             headers=self.headers,
         )
         self.assertNotIn("凭证需要说明真实去处", review.text)
+
+    def test_legacy_action_rejects_short_usb_alias_before_durable_memory(self) -> None:
+        session = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert session is not None
+        started = self.client.post(
+            f"/api/game/session/{self.session_id}/action",
+            headers=self.headers,
+            json={
+                "input_mode": "conversation_start",
+                "client_action_id": "legacy-short-alias-start-0001",
+                "state_version": session.state_version,
+                "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                "target_npc_id": "npc_wu_xiuying",
+            },
+        )
+        self.assertEqual(200, started.status_code, started.text)
+        conversation_id = started.json()["conversation"]["conversation_id"]
+
+        class MemoryLeakGateway:
+            def run_turn(self, context):
+                return RoleTurnResult(
+                    npc_id=context.npc_id,
+                    dialogue="我只能谈村里的公开顾虑。",
+                    memory_candidate="优盘",
+                )
+
+        self.runtime.npc_turns._gateway = MemoryLeakGateway()
+        response = self.client.post(
+            f"/api/game/session/{self.session_id}/action/stream",
+            headers=self.headers,
+            json={
+                "input_mode": "free_text",
+                "client_action_id": "legacy-short-alias-turn-0001",
+                "state_version": started.json()["state_version"],
+                "conversation_id": conversation_id,
+                "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                "target_npc_id": "npc_wu_xiuying",
+                "player_text": "吴老师，请说说村里人的真实顾虑。",
+            },
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertIn('"type": "error"', response.text)
+        self.assertNotIn("优盘", response.text)
+        stored = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert stored is not None
+        self.assertEqual([], stored.active_conversation.transcript)
+        self.assertNotIn("fact_shi_usb", stored.known_fact_ids)
+        self.assertEqual(
+            (),
+            self.runtime.npc_memories._repository.active_for_npc(
+                self.session_id, "npc_wu_xiuying", 2
+            ),
+        )
+        review = self.client.get(
+            f"/api/game/session/{self.session_id}/conversations",
+            headers=self.headers,
+        )
+        self.assertNotIn("优盘", review.text)
 
 
 class ActionUnificationV3PackageLifecycleTests(unittest.TestCase):

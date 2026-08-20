@@ -50,21 +50,22 @@ def normalize_fact_signature(value: str) -> str:
 
 def fact_safety_signature(fact: FactDefinition) -> tuple[str, ...]:
     """Build a deterministic, specific signature from authoritative fact fields."""
-    candidates: list[tuple[str, int]] = [
+    derived_candidates: list[tuple[str, int]] = [
         (fact.fact_id, 8),
         (fact.title, 4),
         (fact.text, 8),
         (fact.source_label, 8),
         (fact.use_hint, 12),
     ]
-    candidates.extend(
-        (marker, 4) for marker in FACT_DISCLOSURE_MARKERS.get(fact.fact_id, ())
-    )
     if fact.text.startswith(fact.title):
         remainder = fact.text[len(fact.title):].lstrip("的：:，,；;。 ")
-        candidates.append((remainder, 8))
+        derived_candidates.append((remainder, 8))
     values: list[str] = []
-    for raw, minimum_length in candidates:
+    for raw in FACT_DISCLOSURE_MARKERS.get(fact.fact_id, ()):
+        normalized = normalize_fact_signature(raw)
+        if normalized and normalized not in values:
+            values.append(normalized)
+    for raw, minimum_length in derived_candidates:
         normalized = normalize_fact_signature(raw)
         if len(normalized) < minimum_length or normalized in values:
             continue
