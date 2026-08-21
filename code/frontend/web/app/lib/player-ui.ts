@@ -88,8 +88,41 @@ export function governanceCancelMessage(action: PlayerRecord | null | undefined)
     : "确认中止当前行动？已经消耗的精力不会返还。";
 }
 
+export function governanceFinishMessage(action: PlayerRecord | null | undefined): string {
+  return action?.cost_status === "pending"
+    ? "本次行动未形成有效交流，未消耗精力，也未产生完成效果。"
+    : "本次行动已经收束，取得的材料已收入案头。";
+}
+
 export function governanceLocationLocked(descriptor: PlayerRecord | null | undefined): boolean {
   return Boolean(descriptor?.opportunity_id) || descriptor?.location_locked === true;
+}
+
+export function governanceLocationLockMessage(
+  descriptor: PlayerRecord | null | undefined,
+): string {
+  if (descriptor?.opportunity_id) return "人物会谈机会已锁定本次办理地点。";
+  if (descriptor?.location_locked === true) return "地图入口已锁定本次办理地点。";
+  return "";
+}
+
+export function governanceActionTitle(
+  action: PlayerRecord | null | undefined,
+  fallback: string,
+): string {
+  const title = action?.display_title;
+  return typeof title === "string" && title.trim() ? title.trim() : fallback;
+}
+
+export function governanceActionProgressLabels(
+  action: PlayerRecord | null | undefined,
+  fallback: string,
+): { footer: string; task: string } {
+  const title = governanceActionTitle(action, fallback);
+  return {
+    footer: `${title}进行中`,
+    task: `完成正在进行的${title}`,
+  };
 }
 
 const CANONICAL_ACTION_IDS = [

@@ -37,6 +37,18 @@ test("explains whether cancelling an active governance action spends energy", ()
   );
 });
 
+test("describes an unfinished governance action without claiming completion", () => {
+  assert.equal(typeof playerUi.governanceFinishMessage, "function");
+  assert.equal(
+    playerUi.governanceFinishMessage({ cost_status: "pending" }),
+    "本次行动未形成有效交流，未消耗精力，也未产生完成效果。",
+  );
+  assert.equal(
+    playerUi.governanceFinishMessage({ cost_status: "committed" }),
+    "本次行动已经收束，取得的材料已收入案头。",
+  );
+});
+
 test("projects exactly the four canonical action families and keeps backend variants", () => {
   assert.equal(typeof playerUi.canonicalActionFamilies, "function");
   const projected = playerUi.canonicalActionFamilies([
@@ -235,6 +247,32 @@ test("locks every map-launched action to its authoritative location", async () =
   assert.equal(playerUi.governanceLocationLocked({ location_locked: true }), true);
   assert.equal(playerUi.governanceLocationLocked({ opportunity_id: "opp-1" }), true);
   assert.equal(playerUi.governanceLocationLocked({ variant_id: "field_visit" }), false);
+  assert.equal(
+    playerUi.governanceLocationLockMessage({ location_locked: true }),
+    "地图入口已锁定本次办理地点。",
+  );
+  assert.equal(
+    playerUi.governanceLocationLockMessage({ opportunity_id: "opp-1" }),
+    "人物会谈机会已锁定本次办理地点。",
+  );
+  assert.equal(playerUi.governanceLocationLockMessage({ variant_id: "field_visit" }), "");
+  assert.equal(
+    playerUi.governanceActionTitle(
+      { display_title: "化工厂现场核查", action_kind: "household_visit" },
+      "入户走访",
+    ),
+    "化工厂现场核查",
+  );
+  assert.deepEqual(
+    playerUi.governanceActionProgressLabels(
+      { display_title: "化工厂现场核查" },
+      "入户走访",
+    ),
+    {
+      footer: "化工厂现场核查进行中",
+      task: "完成正在进行的化工厂现场核查",
+    },
+  );
   const entry = playerUi.canonicalActionEntry({
     action_id: "household_visit",
     variant_id: "field_visit",

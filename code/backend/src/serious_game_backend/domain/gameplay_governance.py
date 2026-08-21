@@ -42,6 +42,7 @@ class GovernanceActionRecord:
     location_id: str | None = None
     opportunity_id: str | None = None
     map_entry_id: str | None = None
+    display_title: str | None = None
     cost_action_points: int = 0
     cost_status: str = "committed"
     cost_committed_at: str | None = None

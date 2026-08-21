@@ -454,6 +454,7 @@ class GameplayGovernanceService:
         )
         if opportunity is not None and map_entry_id is not None:
             raise ActionUnavailableError("人物会谈机会不能伪装成地图入口")
+        map_descriptor = None
         if map_entry_id is not None:
             map_descriptor = canonical_map_entry_descriptor(
                 session, package, map_entry_id
@@ -565,6 +566,11 @@ class GameplayGovernanceService:
                 opportunity.opportunity_id if opportunity is not None else None
             ),
             map_entry_id=map_entry_id,
+            display_title=(
+                str(map_descriptor["title"])
+                if map_descriptor is not None
+                else None
+            ),
             cost_action_points=cost,
             cost_status="committed" if cost_is_immediate else "pending",
             cost_committed_at=(governance_now_iso() if cost_is_immediate else None),

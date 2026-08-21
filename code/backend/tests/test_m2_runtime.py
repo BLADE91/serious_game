@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import hashlib
 import unittest
 
 from fastapi.testclient import TestClient
@@ -9,10 +8,12 @@ from fastapi.testclient import TestClient
 from serious_game_backend.api.app import create_app
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
+from serious_game_backend.infrastructure.script_packages.file_loader import (
+    FileScriptPackageLoader,
+)
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_ROOT.parents[1]
 
 
 class M2RuntimeTests(unittest.TestCase):
@@ -237,8 +238,10 @@ class M2RuntimeTests(unittest.TestCase):
         self.assertEqual(81, report["counts"]["runtime_decisions"])
         self.assertEqual(29, report["counts"]["source_night_blocks"])
         self.assertEqual(9, report["counts"]["conditional_night_rules"])
-        source_hash = hashlib.sha256((REPO_ROOT / "最终剧本.md").read_bytes()).hexdigest()
-        self.assertEqual(f"sha256:{source_hash}", report["source_sha256"])
+        locked_package = FileScriptPackageLoader().load(
+            BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v2"
+        )
+        self.assertEqual(locked_package.source_sha256, report["source_sha256"])
         self.assertEqual(3, result["visible_state"]["story"]["day"])
 
 

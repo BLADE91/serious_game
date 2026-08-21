@@ -5,6 +5,7 @@ from serious_game_backend.application.interaction_opportunity_service import (
 )
 from serious_game_backend.application.action_variants import (
     map_entry_identifier,
+    map_variant_title,
     configured_variants,
     default_npc_location,
     variant_availability,
@@ -154,6 +155,7 @@ class MapService:
                     available = False
                     reason = reason or f"第 {location.unlock_day} 日后开放"
                 target_choices = variant_target_choices(session, package, variant)
+                descriptor = public_variant(session, package, variant)
                 legal_npc_ids = {
                     item["target_id"] for item in target_choices
                     if str(item["target_id"]).startswith("npc_")
@@ -163,11 +165,12 @@ class MapService:
                     if npc_id in legal_npc_ids
                     and default_npc_location(npc_id) == location.location_id
                 ]
-                descriptor = public_variant(session, package, variant)
+                if len(preselected_npc_ids) > int(
+                    descriptor["participant_rules"]["maximum"]
+                ):
+                    preselected_npc_ids = []
                 cards.append({
-                    "title": variant.get("location_labels", {}).get(
-                        location.location_id, variant["name"]
-                    ),
+                    "title": map_variant_title(variant, location.location_id),
                     "entry_type": "governance_navigation",
                     "description": variant.get(
                         "description", variant["visible_result"]

@@ -277,6 +277,30 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertTrue(all("submit" not in card for card in cards))
         self.assertTrue(all(card["entry_type"] != "resource_action" for card in cards))
 
+    def test_late_game_map_preselection_never_exceeds_participant_limit(self) -> None:
+        self._set_story_state(day=46)
+        cards = [
+            card
+            for location in self._map()["locations"]
+            for card in location["entry_cards"]
+        ]
+        self.assertTrue(cards)
+        for card in cards:
+            self.assertLessEqual(
+                len(card["preselected_npc_ids"]),
+                card["participant_rules"]["maximum"],
+                card["map_entry_id"],
+            )
+        village_visit = next(
+            card
+            for location in self._map()["locations"]
+            if location["location_id"] == "loc_liulin_village"
+            for card in location["entry_cards"]
+            if card["variant_id"] == "field_visit"
+        )
+        if len(village_visit["target_choices"]) > 1:
+            self.assertEqual([], village_visit["preselected_npc_ids"])
+
     def test_map_entry_locks_location_and_rejects_tampering_without_partial_state(
         self,
     ) -> None:
@@ -335,6 +359,7 @@ class ActionUnificationV3Tests(unittest.TestCase):
         )
         self.assertEqual(201, valid.status_code, valid.text)
         self.assertEqual(card["map_entry_id"], valid.json()["action"]["map_entry_id"])
+        self.assertEqual(card["title"], valid.json()["action"]["display_title"])
         self.assertEqual(
             "loc_hongda_factory", valid.json()["action"]["location_id"]
         )

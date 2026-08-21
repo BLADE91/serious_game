@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceCancelMessage, governanceLocationLocked, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -583,6 +583,10 @@ export default function GameShell() {
   const activeMeeting = activeGovernanceAction?.action_kind === "leadership_meeting"
     ? arr(governance?.meetings).find(item => item.action_instance_id === activeGovernanceAction.action_instance_id) || null
     : null;
+  const activeGovernanceLabels = governanceActionProgressLabels(
+    activeGovernanceAction,
+    GOVERNANCE_ACTION_LABELS[activeGovernanceAction?.action_kind] || "治理行动",
+  );
   const activeConversationCharacter = state.active_conversation
     ? resolveCharacter(state.active_conversation.npc_id, state.active_conversation.target_npc_id, state.active_conversation.npc_name)
     : null;
@@ -661,7 +665,7 @@ export default function GameShell() {
     }
     await perform(() => api.write(sessionId, `/governance/actions/${encodeURIComponent(String(activeGovernanceAction.action_instance_id))}/finish`, "POST", {
       state_version: state.state_version,
-    }), "本次行动已经收束，取得的材料已收入案头");
+    }), governanceFinishMessage(activeGovernanceAction));
   }
 
   async function submitMeetingResolution(resolution: Dict) {
@@ -859,7 +863,7 @@ export default function GameShell() {
       </div>
     </section>
 
-    <footer><span>{sessionId ? "每次行动与决定都会自动保存" : "准备好后，从右上角进入游戏"}</span><span>{activeGovernanceAction ? `${GOVERNANCE_ACTION_LABELS[activeGovernanceAction.action_kind] || "治理行动"}进行中` : activeConversation ? "会谈进行中" : pending ? decisionReady ? "等待你的决定" : "请继续阅读当前剧情" : sessionId ? "请合理分配今日精力" : "清江水急，民心难测"}</span></footer>
+    <footer><span>{sessionId ? "每次行动与决定都会自动保存" : "准备好后，从右上角进入游戏"}</span><span>{activeGovernanceAction ? activeGovernanceLabels.footer : activeConversation ? "会谈进行中" : pending ? decisionReady ? "等待你的决定" : "请继续阅读当前剧情" : sessionId ? "请合理分配今日精力" : "清江水急，民心难测"}</span></footer>
 
     {authOpen && <Modal title={authRequired ? account ? "账号中心" : "登录治理档案" : "本地试玩"} onClose={() => setAuthOpen(false)}>{authRequired ? account ? <div className="account-card"><small>当前账号</small><strong>{account}</strong><p>你的游戏进度已绑定当前账号，重新登录后仍可继续。</p>{authError && <div className="notice">{authError}</div>}{modelConsentRequired && <button className="secondary" onClick={() => setConsentOpen(true)} disabled={busy}>模型与数据授权</button>}<button onClick={logoutAccount} disabled={busy}>退出登录</button></div> : <form className="stack-form" onSubmit={authenticate}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>登录</button>{selfRegistration && <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>注册</button>}</div><p>{authMode === "login" ? "登录后可继续这个账号的历史进度。" : "创建账号后即可保留多条游戏进度。"}</p>{authError && <div className="notice">{authError}</div>}<label>用户名<input name="username" minLength={authMode === "register" ? 3 : 1} maxLength={32} autoComplete="username" required autoFocus /></label><label>密码<input name="password" type="password" minLength={authMode === "register" ? 8 : 1} maxLength={256} autoComplete={authMode === "register" ? "new-password" : "current-password"} required /></label><button disabled={busy}>{busy ? "正在处理…" : authMode === "login" ? "登录并继续" : "注册并开始"}</button></form> : <div className="account-card"><small>当前身份</small><strong>本地试玩</strong><p>无需注册。游戏进度会保存在这台电脑上。</p></div>}</Modal>}
     {sessionOpen && <Modal title="进入清江县" onClose={() => { setSessionOpen(false); setSavedSessionsOpen(false); }}><div className="session-actions"><button onClick={() => openSession("new")}>开始新游戏<span>从上任第一天开始一条新的九十天时间线</span></button><button onClick={showSavedSessions} className={savedSessionsOpen ? "selected" : ""}>查看已有进度<span>可继续当前版本，或复盘已退役剧本</span></button></div>{savedSessionsOpen && <div className="saved-session-list" aria-live="polite">{busy && !savedSessions.length && <div className="form-loading">正在整理存档…</div>}{savedSessionsError && <div className="notice">{savedSessionsError}</div>}{!busy && !savedSessionsError && !savedSessions.length && <div className="empty-state"><p>还没有保存过的游戏，可以从新游戏开始。</p></div>}{savedSessions.map((saved, index) => { const entry = sessionEntry(saved); return <button key={saved.session_id} className={entry.mode === "review" ? "review-only" : entry.mode === "unavailable" ? "unavailable" : ""} disabled={entry.openKind === null} onClick={() => { if (entry.openKind) openSession(entry.openKind, String(saved.session_id)); }}><span><b>进度{chineseIndex(index)} · {entry.label}</b><small>第 {saved.story_day || 1} 日 · {entry.mode === "review" ? "仅可复盘" : entry.mode === "unavailable" ? entry.unavailableReason : friendlyStatus(saved.status)}</small></span><time>{saved.updated_at ? new Date(saved.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</time></button>; })}</div>}</Modal>}
@@ -922,7 +926,10 @@ function GovernanceActionScene({ action, overview, streamingReplies }: { action:
   const names = new Map(catalogs.map(item => [String(item.target_id), String(item.label || item.name || "相关人员")]));
   const targets = (Array.isArray(action.target_ids) ? action.target_ids : []).map((id: unknown) => names.get(String(id)) || "相关人员");
   const transcript = arr(action.transcript);
-  const title = GOVERNANCE_ACTION_LABELS[String(action.action_kind)] || "治理行动";
+  const title = governanceActionTitle(
+    action,
+    GOVERNANCE_ACTION_LABELS[String(action.action_kind)] || "治理行动",
+  );
   const targetId = String((Array.isArray(action.target_ids) ? action.target_ids : [])[0] || "");
   const targetName = targets[0] || "对方";
   const targetCharacter = resolveCharacter(targetId, targetName);
@@ -1072,7 +1079,11 @@ function SceneSummary({ state, commands, governanceAction, decisionReady, onNavi
   const pending = state.pending_decision;
   const day = Number(get(state, "story.day", 1));
   const overtimeAvailable = Boolean(get(state, "ledger.action_points.overtime_available"));
-  const current = pending ? decisionReady ? "处理当前必须决定的事项" : "继续阅读当前剧情" : governanceAction ? `完成正在进行的${GOVERNANCE_ACTION_LABELS[governanceAction.action_kind] || "治理行动"}` : active ? "完成正在进行的会谈" : commands.can_end_day ? "决定继续工作还是结束今日" : "选择一项行动或会谈";
+  const governanceLabels = governanceActionProgressLabels(
+    governanceAction,
+    GOVERNANCE_ACTION_LABELS[governanceAction?.action_kind] || "治理行动",
+  );
+  const current = pending ? decisionReady ? "处理当前必须决定的事项" : "继续阅读当前剧情" : governanceAction ? governanceLabels.task : active ? "完成正在进行的会谈" : commands.can_end_day ? "决定继续工作还是结束今日" : "选择一项行动或会谈";
   return <div className="scene-summary"><section className="objective-card"><small>当前首要事项</small><h3>{current}</h3><p>{pending ? decisionReady ? "相关情节已经展开，请根据现场信息作出选择。" : "请按顺序读完当前现场；相关情节出现后才会开放决定。" : governanceAction ? "在左侧现场继续交流；取得所需信息后，记得正式结束行动。" : active ? "认真回应对方；你的措辞和承诺都会被记录。" : overtimeAvailable ? "精力归零后可申请一次加班；新增精力会增加日终疲惫。" : "查看行动成本和开放条件，再决定如何使用今日精力。"}</p></section>{day <= 3 && <section className="tutorial-card"><small>上手指引</small><ol><li className={pending ? "active" : "done"}><b>{pending && !decisionReady ? "读完现场并处理决定" : "处理必须决定的事项"}</b><span>剧情决定不消耗精力，读完铺垫后才会开放</span></li><li className={!pending && !commands.can_end_day ? "active" : ""}><b>安排工作或展开会谈</b><span>行动前会明确显示固定精力成本</span></li><li className={governanceAction ? "active" : commands.can_end_day ? "active" : ""}><b>{governanceAction ? "收束当前行动" : "结束今日"}</b><span>{governanceAction ? "交流后从左下方结束行动" : "夜间会结算后续影响，私下联络仅汇入次晨简报"}</span></li></ol></section>}<div className="quick-links"><button onClick={() => onNavigate(governanceAction ? "governance" : "actions")}>{governanceAction ? "查看治理进展" : "查看行动"}</button><button onClick={() => onNavigate("desk")}>阅读任务卷宗</button>{overtimeAvailable && !governanceAction && <button onClick={onOvertime}>申请加班</button>}{commands.can_end_day && !governanceAction && <button className="primary" onClick={onEndDay}>结束今日</button>}</div></div>;
 }
 
@@ -1463,6 +1474,7 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
   const isArchive = actionId === "inspect_archives";
   const isCanonicalOpportunity = Boolean(item.opportunity_id);
   const isLocationLocked = governanceLocationLocked(item);
+  const locationLockMessage = governanceLocationLockMessage(item);
   const requiresLead = isMeeting && variantId === "convene_leadership_meeting";
 
   useEffect(() => {
@@ -1542,7 +1554,7 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
     });
   }}>
     <p>{item.description}</p>
-    {locationChoices.length > 1 && <label>办理地点<select value={locationId} disabled={isLocationLocked} onChange={event => setLocationId(event.target.value)}>{locationChoices.map(choice => <option key={String(choice.location_id)} value={String(choice.location_id)}>{playerText(choice.label, choice.location_id)}</option>)}</select>{isLocationLocked && <small>地图入口已锁定本次办理地点。</small>}</label>}
+    {locationChoices.length > 1 && <label>办理地点<select value={locationId} disabled={isLocationLocked} onChange={event => setLocationId(event.target.value)}>{locationChoices.map(choice => <option key={String(choice.location_id)} value={String(choice.location_id)}>{playerText(choice.label, choice.location_id)}</option>)}</select>{locationLockMessage && <small>{locationLockMessage}</small>}</label>}
     {isMeeting && <fieldset className="choice-fieldset"><legend>本次会议要解决什么</legend><p className="field-help">发言和最终决议都会围绕这个核心问题展开。</p><div className="choice-grid topic-choices">{MEETING_TOPICS.map(value => <label className={meetingTopicMode === "preset" && topic === value ? "choice-card selected" : "choice-card"} key={value}><input type="radio" name="meeting-topic" value={value} checked={meetingTopicMode === "preset" && topic === value} onChange={() => { setMeetingTopicMode("preset"); setTopic(value); }} /><span>{value}</span></label>)}<label className={meetingTopicMode === "custom" ? "choice-card selected" : "choice-card"}><input type="radio" name="meeting-topic" value={CUSTOM_MEETING_TOPIC} checked={meetingTopicMode === "custom"} onChange={() => setMeetingTopicMode("custom")} /><span><b>自定义会议主题</b><small>输入本次会议需要讨论的具体事项</small></span></label></div>{meetingTopicMode === "custom" && <label className="custom-topic-field">会议主题<input value={customMeetingTopic} onChange={event => setCustomMeetingTopic(event.target.value)} maxLength={200} required autoFocus placeholder="例如：讨论柳林村临时安置点启用与责任分工" /><small>{customMeetingTopic.trim().length} / 200</small></label>}</fieldset>}
     {!isMeeting && !isArchive && <label>本次重点了解什么<textarea value={topic} readOnly={isCanonicalOpportunity} onChange={event => setTopic(event.target.value)} maxLength={500} required placeholder="例如：核实对方最关心的补偿、住房或程序问题" /></label>}
     {!isArchive && <fieldset className="choice-fieldset"><legend>{isMeeting ? "参会领导（选择二至八人）" : actionId === "cadre_interview" ? "访谈对象（选择一至三人）" : "走访对象（选择一人）"}</legend>{isMeeting && <p className="field-help">这里只列出已随剧情公开、且在设定中具有领导职务的干部；普通干部、村民和外部人员不能进入班子会议。</p>}<div className="choice-grid character-choice-grid">{targetChoices.map(choice => { const id = String(choice.target_id || choice.id); const selected = selectedTargets.includes(id); const fallbackName = playerText(choice.label || choice.name, "未命名对象"); return <CharacterChoiceCard key={id} character={resolveCharacter(id, fallbackName)} fallbackName={fallbackName} inputId={`governance-person-${actionId}-${id}`} type={maxTargets === 1 ? "radio" : "checkbox"} name="targets" value={id} checked={selected} disabled={isCanonicalOpportunity} onChange={() => toggleTarget(id)} onOpenProfile={onOpenProfile} />; })}</div><small>已选择 {selectedTargets.length} 人{selectedTargets.length < minTargets ? `，还需选择 ${minTargets - selectedTargets.length} 人` : ""}</small></fieldset>}

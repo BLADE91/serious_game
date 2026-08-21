@@ -134,6 +134,12 @@ def map_entry_identifier(location_id: str, variant_id: str) -> str:
     return f"map:{location_id}:{variant_id}"
 
 
+def map_variant_title(variant: dict, location_id: str) -> str:
+    return str(
+        variant.get("location_labels", {}).get(location_id, variant.get("name", "治理行动"))
+    )
+
+
 def canonical_map_entry_descriptor(
     session: GameSession,
     package: ScriptPackage,
@@ -158,6 +164,7 @@ def canonical_map_entry_descriptor(
                 return None
             return {
                 **public_variant(session, package, variant),
+                "title": map_variant_title(variant, location.location_id),
                 "map_entry_id": expected_id,
                 "location_locked": True,
                 "preselected_location_id": location.location_id,
