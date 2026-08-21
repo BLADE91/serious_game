@@ -239,10 +239,28 @@ test("selects exactly one dedicated primary scene for an active leadership meeti
 test("routes retired sessions to review and never offers continue", () => {
   assert.equal(typeof playerUi.sessionEntry, "function");
   assert.deepEqual(playerUi.sessionEntry({ session_id: "old", package_status: "retired", loadable: false }), {
-    session_id: "old", mode: "review", label: "仅可复盘", canContinue: false,
+    session_id: "old", mode: "review", label: "仅可复盘", canContinue: false, openKind: "review", unavailableReason: "",
   });
   assert.deepEqual(playerUi.sessionEntry({ session_id: "v3", package_status: "published", loadable: true }), {
-    session_id: "v3", mode: "continue", label: "继续游戏", canContinue: true,
+    session_id: "v3", mode: "continue", label: "继续游戏", canContinue: true, openKind: "load", unavailableReason: "",
+  });
+});
+
+test("keeps unavailable content disabled and never maps it to a review request", () => {
+  assert.deepEqual(playerUi.sessionEntry({
+    session_id: "mismatch",
+    mode: "content_unavailable",
+    content_available: false,
+    review_available: false,
+    loadable: false,
+    unavailable_reason: "该进度锁定的剧本内容已不在当前版本中，暂时无法打开。",
+  }), {
+    session_id: "mismatch",
+    mode: "unavailable",
+    label: "内容不可用",
+    canContinue: false,
+    openKind: null,
+    unavailableReason: "该进度锁定的剧本内容已不在当前版本中，暂时无法打开。",
   });
 });
 

@@ -43,7 +43,10 @@ from serious_game_backend.api.schemas import (
     SubjectRequestBody,
     StartSessionRequest,
 )
-from serious_game_backend.application.package_lock import require_locked_package
+from serious_game_backend.application.package_lock import (
+    locked_package_access,
+    require_locked_package,
+)
 from serious_game_backend.application.action_cost_policy import quote_cost
 from serious_game_backend.application.action_variants import (
     canonical_opportunity_descriptor,
@@ -914,12 +917,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     ) -> dict:
         account_id = current_account_id(x_account_id)
         def summary(session) -> dict:
-            package = runtime.packages.get(session.package_id)
-            loadable = bool(
-                package
-                and package.package_version == session.package_version
-                and package.content_hash == session.package_content_hash
-            )
+            _, access = locked_package_access(runtime.packages, session)
             return {
                 "session_id": session.session_id,
                 "story_day": session.game_state.story_day,
@@ -927,13 +925,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 "state_version": session.state_version,
                 "created_at": session.created_at,
                 "updated_at": session.updated_at,
-                "loadable": loadable,
-                "mode": (
-                    "playable"
-                    if loadable and package is not None and package.status != "retired"
-                    else "review_only"
-                ),
-                "unavailable_reason": None if loadable else "该进度使用旧版剧本内容，当前版本无法安全载入",
+                **access,
             }
         return {
             "sessions": [summary(session) for session in runtime.sessions.list_for_account(account_id)]

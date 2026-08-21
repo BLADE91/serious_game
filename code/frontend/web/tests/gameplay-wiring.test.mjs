@@ -81,12 +81,15 @@ test("uses in-game confirmation panels instead of browser-native blocking dialog
   assert.match(shell, /覆盖已有关键节点/);
 });
 
-test("lists all saves and routes version-locked progress to read-only review", async () => {
+test("routes retired saves to review and disables unavailable locked content", async () => {
   const [shell, api] = await Promise.all([readFile(shellPath, "utf8"), readFile(apiPath, "utf8")]);
   assert.match(api, /\/api\/game\/sessions/);
   assert.match(shell, /sessionEntry\(saved\)/);
   assert.match(shell, /entry\.mode === "review"/);
   assert.match(shell, /仅可复盘/);
+  assert.match(shell, /disabled=\{entry\.openKind === null\}/);
+  assert.match(shell, /if \(entry\.openKind\) openSession\(entry\.openKind/);
+  assert.match(shell, /entry\.unavailableReason/);
 });
 
 test("does not report rejected governance input as an NPC success", async () => {

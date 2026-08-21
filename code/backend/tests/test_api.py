@@ -103,6 +103,69 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(all(item["loadable"] is True for item in sessions))
         self.assertTrue(all(item["unavailable_reason"] is None for item in sessions))
 
+    def test_content_mismatch_is_unavailable_not_review_only_across_read_contracts(self) -> None:
+        created = self._new_session()
+        session_id = created["session_id"]
+        stored = self.runtime.sessions.get_owned(session_id, "acct_api")
+        stored.package_content_hash = "sha256:old-content-no-longer-installed"
+        self.runtime.sessions.save(stored, expected_version=stored.state_version)
+
+        listed = self.client.get("/api/game/sessions", headers=self.headers)
+        self.assertEqual(200, listed.status_code, listed.text)
+        summary = next(
+            item for item in listed.json()["sessions"]
+            if item["session_id"] == session_id
+        )
+        self.assertFalse(summary["content_available"])
+        self.assertFalse(summary["review_available"])
+        self.assertFalse(summary["loadable"])
+        self.assertEqual("content_unavailable", summary["mode"])
+        self.assertTrue(summary["unavailable_reason"])
+
+        expected_contract = {
+            "mode": "content_unavailable",
+            "content_available": False,
+            "review_available": False,
+            "loadable": False,
+            "unavailable_reason": summary["unavailable_reason"],
+        }
+        for suffix in ("", "/view", "/review"):
+            with self.subTest(suffix=suffix):
+                response = self.client.get(
+                    f"/api/game/session/{session_id}{suffix}", headers=self.headers
+                )
+                self.assertEqual(503, response.status_code, response.text)
+                error = response.json()["error"]
+                self.assertEqual("SESSION_CONTENT_UNAVAILABLE", error["code"])
+                self.assertEqual(expected_contract, error["details"])
+                self.assertNotIn("expected_hash", response.text)
+                self.assertNotIn("actual_hash", response.text)
+
+    def test_missing_locked_package_uses_the_same_unavailable_contract(self) -> None:
+        created = self._new_session()
+        session_id = created["session_id"]
+        stored = self.runtime.sessions.get_owned(session_id, "acct_api")
+        stored.package_id = "pkg_removed_from_runtime"
+        self.runtime.sessions.save(stored, expected_version=stored.state_version)
+
+        summary = self.client.get(
+            "/api/game/sessions", headers=self.headers
+        ).json()["sessions"][0]
+        self.assertEqual("content_unavailable", summary["mode"])
+        self.assertFalse(summary["content_available"])
+        self.assertFalse(summary["review_available"])
+        review = self.client.get(
+            f"/api/game/session/{session_id}/review", headers=self.headers
+        )
+        self.assertEqual(503, review.status_code, review.text)
+        self.assertEqual(
+            {key: summary[key] for key in (
+                "mode", "content_available", "review_available", "loadable",
+                "unavailable_reason",
+            )},
+            review.json()["error"]["details"],
+        )
+
     def test_llm_action_endpoint_runs_outside_event_loop(self) -> None:
         route = next(
             item for item in self.client.app.routes

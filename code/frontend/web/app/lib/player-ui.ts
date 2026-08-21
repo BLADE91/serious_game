@@ -293,9 +293,27 @@ export function primaryScenePlan(value: PlayerRecord): string[] {
   return [value.active_conversation ? "conversation" : "narrative"];
 }
 
-export function sessionEntry(value: PlayerRecord): { session_id: string; mode: "review" | "continue"; label: string; canContinue: boolean } {
+export function sessionEntry(value: PlayerRecord): {
+  session_id: string;
+  mode: "review" | "continue" | "unavailable";
+  label: string;
+  canContinue: boolean;
+  openKind: "review" | "load" | null;
+  unavailableReason: string;
+} {
   const retired = value.package_status === "retired" || value.review_only === true || value.mode === "review_only";
+  const unavailable = value.mode === "content_unavailable"
+    || value.content_available === false
+    || (value.loadable === false && !retired);
+  if (unavailable) return {
+    session_id: String(value.session_id || ""),
+    mode: "unavailable",
+    label: "内容不可用",
+    canContinue: false,
+    openKind: null,
+    unavailableReason: String(value.unavailable_reason || "该进度锁定的剧本内容已不在当前版本中，暂时无法打开。"),
+  };
   return retired
-    ? { session_id: String(value.session_id || ""), mode: "review", label: "仅可复盘", canContinue: false }
-    : { session_id: String(value.session_id || ""), mode: "continue", label: "继续游戏", canContinue: value.loadable !== false };
+    ? { session_id: String(value.session_id || ""), mode: "review", label: "仅可复盘", canContinue: false, openKind: "review", unavailableReason: "" }
+    : { session_id: String(value.session_id || ""), mode: "continue", label: "继续游戏", canContinue: true, openKind: "load", unavailableReason: "" };
 }

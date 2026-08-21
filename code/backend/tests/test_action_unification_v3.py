@@ -1272,6 +1272,10 @@ class ActionUnificationV3PackageLifecycleTests(unittest.TestCase):
             if item["session_id"] == self.session_id
         )
         self.assertEqual("review_only", summary["mode"])
+        self.assertTrue(summary["content_available"])
+        self.assertTrue(summary["review_available"])
+        self.assertTrue(summary["loadable"])
+        self.assertIsNone(summary["unavailable_reason"])
 
     def test_retired_session_view_feed_and_review_remain_readable(self) -> None:
         self._retire_fixture_package()

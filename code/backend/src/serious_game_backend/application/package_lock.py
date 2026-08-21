@@ -6,25 +6,46 @@ from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
 
 
+CONTENT_UNAVAILABLE_REASON = "该进度锁定的剧本内容已不在当前版本中，暂时无法打开。"
+
+
+def locked_package_access(
+    packages: ScriptPackageRepository,
+    session: GameSession,
+) -> tuple[ScriptPackage | None, dict]:
+    package = packages.get(session.package_id)
+    content_available = bool(
+        package
+        and package.package_version == session.package_version
+        and package.content_hash == session.package_content_hash
+    )
+    if not content_available:
+        return package, {
+            "mode": "content_unavailable",
+            "content_available": False,
+            "review_available": False,
+            "loadable": False,
+            "unavailable_reason": CONTENT_UNAVAILABLE_REASON,
+        }
+    review_only = package is not None and package.status == "retired"
+    return package, {
+        "mode": "review_only" if review_only else "playable",
+        "content_available": True,
+        "review_available": True,
+        "loadable": True,
+        "unavailable_reason": None,
+    }
+
+
 def require_locked_package(
     packages: ScriptPackageRepository,
     session: GameSession,
 ) -> ScriptPackage:
-    package = packages.get(session.package_id)
-    if package is None:
-        raise SessionContentUnavailableError("游戏锁定的剧本包不存在")
-    if (
-        package.package_version != session.package_version
-        or package.content_hash != session.package_content_hash
-    ):
+    package, access = locked_package_access(packages, session)
+    if not access["content_available"]:
         raise SessionContentUnavailableError(
-            "游戏锁定的剧本包版本或内容哈希不匹配",
-            details={
-                "package_id": session.package_id,
-                "expected_version": session.package_version,
-                "actual_version": package.package_version,
-                "expected_hash": session.package_content_hash,
-                "actual_hash": package.content_hash,
-            },
+            access["unavailable_reason"],
+            details=access,
         )
+    assert package is not None
     return package
