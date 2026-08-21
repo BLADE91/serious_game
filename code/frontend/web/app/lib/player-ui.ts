@@ -88,6 +88,10 @@ export function governanceCancelMessage(action: PlayerRecord | null | undefined)
     : "确认中止当前行动？已经消耗的精力不会返还。";
 }
 
+export function governanceLocationLocked(descriptor: PlayerRecord | null | undefined): boolean {
+  return Boolean(descriptor?.opportunity_id) || descriptor?.location_locked === true;
+}
+
 const CANONICAL_ACTION_IDS = [
   "household_visit",
   "cadre_interview",
@@ -264,6 +268,7 @@ export function submitGovernanceAction(
   },
 ) {
   const isCanonicalOpportunity = Boolean(input.descriptor.opportunity_id);
+  const isLockedLocation = governanceLocationLocked(input.descriptor);
   const canonicalTargets = (Array.isArray(input.descriptor.preselected_npc_ids)
     ? input.descriptor.preselected_npc_ids
     : []).map(String);
@@ -271,9 +276,12 @@ export function submitGovernanceAction(
     state_version: input.state_version,
     action_kind: String(input.descriptor.action_id || ""),
     variant_id: String(input.descriptor.variant_id || ""),
-    location_id: isCanonicalOpportunity
+    location_id: isLockedLocation
       ? String(input.descriptor.preselected_location_id || "")
       : input.location_id,
+    ...(input.descriptor.map_entry_id
+      ? { map_entry_id: String(input.descriptor.map_entry_id) }
+      : {}),
     opportunity_id: input.descriptor.opportunity_id || null,
     target_ids: isCanonicalOpportunity ? canonicalTargets : input.target_ids,
     topic: isCanonicalOpportunity

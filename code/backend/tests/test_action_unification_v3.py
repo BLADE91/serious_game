@@ -271,8 +271,73 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertTrue(all("preselected_npc_ids" in card for card in cards))
         self.assertTrue(all("participant_rules" in card for card in cards))
         self.assertTrue(all("target_choices" in card for card in cards))
+        self.assertTrue(all(card["location_locked"] is True for card in cards))
+        self.assertTrue(all(card["map_entry_id"].startswith("map:") for card in cards))
+        self.assertEqual(len(cards), len({card["map_entry_id"] for card in cards}))
         self.assertTrue(all("submit" not in card for card in cards))
         self.assertTrue(all(card["entry_type"] != "resource_action" for card in cards))
+
+    def test_map_entry_locks_location_and_rejects_tampering_without_partial_state(
+        self,
+    ) -> None:
+        self._set_story_state(day=3)
+        factory = next(
+            item for item in self._map()["locations"]
+            if item["location_id"] == "loc_hongda_factory"
+        )
+        card = next(
+            item for item in factory["entry_cards"]
+            if item["variant_id"] == "field_visit"
+        )
+        target_id = card["target_choices"][0]["target_id"]
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        assert session is not None
+        before_version = session.state_version
+        before_points = session.game_state.action_points
+        before_actions = dict(session.governance_actions)
+        payload = {
+            "state_version": before_version,
+            "action_kind": card["action_id"],
+            "variant_id": card["variant_id"],
+            "location_id": card["preselected_location_id"],
+            "map_entry_id": card["map_entry_id"],
+            "target_ids": [target_id],
+            "topic": "核查化工厂周边的搬迁与环境情况",
+        }
+        mutations = {
+            "location": {"location_id": "loc_liulin_village"},
+            "action": {"action_kind": "cadre_interview"},
+            "variant": {"variant_id": "interview_cadre"},
+            "entry": {"map_entry_id": "map:loc_hongda_factory:missing"},
+        }
+        for label, mutation in mutations.items():
+            with self.subTest(label=label):
+                tampered = self.client.post(
+                    f"/api/game/session/{self.session_id}/governance/actions",
+                    headers=self.headers,
+                    json={**payload, **mutation},
+                )
+                self.assertEqual(409, tampered.status_code, tampered.text)
+                unchanged = self.runtime.sessions.get_owned(
+                    self.session_id, "acct_action_unification"
+                )
+                assert unchanged is not None
+                self.assertEqual(before_version, unchanged.state_version)
+                self.assertEqual(before_points, unchanged.game_state.action_points)
+                self.assertEqual(before_actions, unchanged.governance_actions)
+
+        valid = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json=payload,
+        )
+        self.assertEqual(201, valid.status_code, valid.text)
+        self.assertEqual(card["map_entry_id"], valid.json()["action"]["map_entry_id"])
+        self.assertEqual(
+            "loc_hongda_factory", valid.json()["action"]["location_id"]
+        )
 
     def test_people_entries_embed_a_legal_canonical_action_descriptor(self) -> None:
         response = self.client.get(

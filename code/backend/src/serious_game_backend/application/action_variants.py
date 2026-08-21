@@ -130,6 +130,41 @@ def find_variant(package: ScriptPackage, variant_id: str) -> dict | None:
     )
 
 
+def map_entry_identifier(location_id: str, variant_id: str) -> str:
+    return f"map:{location_id}:{variant_id}"
+
+
+def canonical_map_entry_descriptor(
+    session: GameSession,
+    package: ScriptPackage,
+    map_entry_id: str,
+) -> dict | None:
+    """Rebuild an executable map entry from authoritative session content."""
+    for location in package.map_locations:
+        if session.game_state.story_day < location.unlock_day:
+            continue
+        if not location.required_flags.issubset(session.flags):
+            continue
+        for variant in configured_variants(package):
+            if location.location_id not in variant.get("legal_location_ids", ()):
+                continue
+            expected_id = map_entry_identifier(
+                location.location_id, str(variant.get("variant_id", ""))
+            )
+            if expected_id != map_entry_id:
+                continue
+            available, _ = variant_availability(session, variant)
+            if not available:
+                return None
+            return {
+                **public_variant(session, package, variant),
+                "map_entry_id": expected_id,
+                "location_locked": True,
+                "preselected_location_id": location.location_id,
+            }
+    return None
+
+
 def visible_governance_npc_ids(
     session: GameSession,
     package: ScriptPackage,

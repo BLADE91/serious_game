@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceCancelMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceCancelMessage, governanceLocationLocked, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -1462,6 +1462,7 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
   const isMeeting = actionId === "leadership_meeting";
   const isArchive = actionId === "inspect_archives";
   const isCanonicalOpportunity = Boolean(item.opportunity_id);
+  const isLocationLocked = governanceLocationLocked(item);
   const requiresLead = isMeeting && variantId === "convene_leadership_meeting";
 
   useEffect(() => {
@@ -1541,7 +1542,7 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
     });
   }}>
     <p>{item.description}</p>
-    {locationChoices.length > 1 && <label>办理地点<select value={locationId} disabled={isCanonicalOpportunity} onChange={event => setLocationId(event.target.value)}>{locationChoices.map(choice => <option key={String(choice.location_id)} value={String(choice.location_id)}>{playerText(choice.label, choice.location_id)}</option>)}</select></label>}
+    {locationChoices.length > 1 && <label>办理地点<select value={locationId} disabled={isLocationLocked} onChange={event => setLocationId(event.target.value)}>{locationChoices.map(choice => <option key={String(choice.location_id)} value={String(choice.location_id)}>{playerText(choice.label, choice.location_id)}</option>)}</select>{isLocationLocked && <small>地图入口已锁定本次办理地点。</small>}</label>}
     {isMeeting && <fieldset className="choice-fieldset"><legend>本次会议要解决什么</legend><p className="field-help">发言和最终决议都会围绕这个核心问题展开。</p><div className="choice-grid topic-choices">{MEETING_TOPICS.map(value => <label className={meetingTopicMode === "preset" && topic === value ? "choice-card selected" : "choice-card"} key={value}><input type="radio" name="meeting-topic" value={value} checked={meetingTopicMode === "preset" && topic === value} onChange={() => { setMeetingTopicMode("preset"); setTopic(value); }} /><span>{value}</span></label>)}<label className={meetingTopicMode === "custom" ? "choice-card selected" : "choice-card"}><input type="radio" name="meeting-topic" value={CUSTOM_MEETING_TOPIC} checked={meetingTopicMode === "custom"} onChange={() => setMeetingTopicMode("custom")} /><span><b>自定义会议主题</b><small>输入本次会议需要讨论的具体事项</small></span></label></div>{meetingTopicMode === "custom" && <label className="custom-topic-field">会议主题<input value={customMeetingTopic} onChange={event => setCustomMeetingTopic(event.target.value)} maxLength={200} required autoFocus placeholder="例如：讨论柳林村临时安置点启用与责任分工" /><small>{customMeetingTopic.trim().length} / 200</small></label>}</fieldset>}
     {!isMeeting && !isArchive && <label>本次重点了解什么<textarea value={topic} readOnly={isCanonicalOpportunity} onChange={event => setTopic(event.target.value)} maxLength={500} required placeholder="例如：核实对方最关心的补偿、住房或程序问题" /></label>}
     {!isArchive && <fieldset className="choice-fieldset"><legend>{isMeeting ? "参会领导（选择二至八人）" : actionId === "cadre_interview" ? "访谈对象（选择一至三人）" : "走访对象（选择一人）"}</legend>{isMeeting && <p className="field-help">这里只列出已随剧情公开、且在设定中具有领导职务的干部；普通干部、村民和外部人员不能进入班子会议。</p>}<div className="choice-grid character-choice-grid">{targetChoices.map(choice => { const id = String(choice.target_id || choice.id); const selected = selectedTargets.includes(id); const fallbackName = playerText(choice.label || choice.name, "未命名对象"); return <CharacterChoiceCard key={id} character={resolveCharacter(id, fallbackName)} fallbackName={fallbackName} inputId={`governance-person-${actionId}-${id}`} type={maxTargets === 1 ? "radio" : "checkbox"} name="targets" value={id} checked={selected} disabled={isCanonicalOpportunity} onChange={() => toggleTarget(id)} onOpenProfile={onOpenProfile} />; })}</div><small>已选择 {selectedTargets.length} 人{selectedTargets.length < minTargets ? `，还需选择 ${minTargets - selectedTargets.length} 人` : ""}</small></fieldset>}

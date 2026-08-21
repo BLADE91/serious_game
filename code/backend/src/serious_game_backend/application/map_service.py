@@ -4,6 +4,7 @@ from serious_game_backend.application.interaction_opportunity_service import (
     InteractionOpportunityService,
 )
 from serious_game_backend.application.action_variants import (
+    map_entry_identifier,
     configured_variants,
     default_npc_location,
     variant_availability,
@@ -173,6 +174,10 @@ class MapService:
                     ),
                     "action_id": variant["action_id"],
                     "variant_id": variant["variant_id"],
+                    "map_entry_id": map_entry_identifier(
+                        location.location_id, variant["variant_id"]
+                    ),
+                    "location_locked": True,
                     "preselected_location_id": location.location_id,
                     "preselected_npc_ids": preselected_npc_ids,
                     "participant_rules": descriptor["participant_rules"],

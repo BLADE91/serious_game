@@ -1235,6 +1235,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             variant_id=body.variant_id,
             location_id=body.location_id,
             opportunity_id=body.opportunity_id,
+            map_entry_id=body.map_entry_id,
             target_ids=tuple(body.target_ids),
             topic=body.topic,
             archive_ids=tuple(body.archive_ids),

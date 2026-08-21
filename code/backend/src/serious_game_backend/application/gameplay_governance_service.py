@@ -25,6 +25,7 @@ from serious_game_backend.application.resource_availability import (
 )
 from serious_game_backend.application.action_cost_policy import quote_cost
 from serious_game_backend.application.action_variants import (
+    canonical_map_entry_descriptor,
     canonical_opportunity_descriptor,
     find_variant,
     variant_availability,
@@ -428,6 +429,7 @@ class GameplayGovernanceService:
         variant_id: str | None = None,
         location_id: str | None = None,
         opportunity_id: str | None = None,
+        map_entry_id: str | None = None,
         target_ids: tuple[str, ...] = (),
         topic: str = "",
         archive_ids: tuple[str, ...] = (),
@@ -450,6 +452,20 @@ class GameplayGovernanceService:
             proposed_document_type=proposed_document_type,
             lead_npc_id=lead_npc_id,
         )
+        if opportunity is not None and map_entry_id is not None:
+            raise ActionUnavailableError("人物会谈机会不能伪装成地图入口")
+        if map_entry_id is not None:
+            map_descriptor = canonical_map_entry_descriptor(
+                session, package, map_entry_id
+            )
+            if map_descriptor is None:
+                raise ActionUnavailableError("地图入口当前不可用")
+            if (
+                map_descriptor["action_id"] != action_kind
+                or map_descriptor["variant_id"] != variant_id
+                or map_descriptor["preselected_location_id"] != location_id
+            ):
+                raise ActionUnavailableError("地图入口与所选行动或地点不匹配")
         config = package.governance_config or {}
         definitions = {
             str(item["action_id"]): item
@@ -548,6 +564,7 @@ class GameplayGovernanceService:
             opportunity_id=(
                 opportunity.opportunity_id if opportunity is not None else None
             ),
+            map_entry_id=map_entry_id,
             cost_action_points=cost,
             cost_status="committed" if cost_is_immediate else "pending",
             cost_committed_at=(governance_now_iso() if cost_is_immediate else None),

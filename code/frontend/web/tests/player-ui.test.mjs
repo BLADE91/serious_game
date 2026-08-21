@@ -230,6 +230,55 @@ test("routes people and map entries through the same canonical governance reques
   assert.deepEqual(calls, [canonicalRequest, canonicalRequest]);
 });
 
+test("locks every map-launched action to its authoritative location", async () => {
+  assert.equal(typeof playerUi.governanceLocationLocked, "function");
+  assert.equal(playerUi.governanceLocationLocked({ location_locked: true }), true);
+  assert.equal(playerUi.governanceLocationLocked({ opportunity_id: "opp-1" }), true);
+  assert.equal(playerUi.governanceLocationLocked({ variant_id: "field_visit" }), false);
+  const entry = playerUi.canonicalActionEntry({
+    action_id: "household_visit",
+    variant_id: "field_visit",
+    map_entry_id: "map:loc_hongda_factory:field_visit",
+    location_locked: true,
+    preselected_location_id: "loc_hongda_factory",
+    preselected_npc_ids: [],
+    participant_rules: { minimum: 1, maximum: 1 },
+    location_choices: [
+      { location_id: "loc_liulin_village", label: "入村走访" },
+      { location_id: "loc_hongda_factory", label: "化工厂现场核查" },
+    ],
+    target_choices: [{ target_id: "npc_household", label: "住户代表" }],
+  });
+  assert.equal(entry.location_locked, true);
+  assert.equal(entry.map_entry_id, "map:loc_hongda_factory:field_visit");
+
+  const calls = [];
+  const api = { write: (...args) => { calls.push(args); return Promise.resolve({}); } };
+  await playerUi.submitGovernanceAction(api, "session-map", {
+    state_version: 11,
+    descriptor: entry,
+    location_id: "loc_liulin_village",
+    target_ids: ["npc_household"],
+    topic: "核查化工厂周边的搬迁与环境情况",
+    archive_ids: [],
+    proposed_document_type: null,
+    lead_npc_id: null,
+  });
+  assert.deepEqual(calls[0][3], {
+    state_version: 11,
+    action_kind: "household_visit",
+    variant_id: "field_visit",
+    location_id: "loc_hongda_factory",
+    map_entry_id: "map:loc_hongda_factory:field_visit",
+    opportunity_id: null,
+    target_ids: ["npc_household"],
+    topic: "核查化工厂周边的搬迁与环境情况",
+    archive_ids: [],
+    proposed_document_type: null,
+    lead_npc_id: null,
+  });
+});
+
 test("selects exactly one dedicated primary scene for an active leadership meeting", () => {
   assert.equal(typeof playerUi.primaryScenePlan, "function");
   assert.deepEqual(playerUi.primaryScenePlan({
