@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 from pathlib import Path
+import re
 import shutil
 from tempfile import TemporaryDirectory
 import unittest
@@ -11,6 +12,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from serious_game_backend.application.story_flow_service import StoryFlowService
+from serious_game_backend.application.player_text_policy import validate_player_visible_text
 from serious_game_backend.domain.errors import ContentValidationError
 from serious_game_backend.infrastructure.script_packages.file_loader import (
     FileScriptPackageLoader,
@@ -25,6 +27,37 @@ PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
 
 
 class StorySemanticsV3Tests(unittest.TestCase):
+    def test_player_visible_text_rejects_ascii_comma_in_chinese_context_only(self) -> None:
+        with self.assertRaises(ContentValidationError):
+            validate_player_visible_text("他点了头,转身离开。")
+        validate_player_visible_text("fact_id,debug")
+        validate_player_visible_text("alpha,beta")
+
+    def test_d74_and_d75_package_copy_has_no_chinese_ascii_comma(self) -> None:
+        package = FileScriptPackageLoader().load(PACKAGE_DIR)
+        for day in (74, 75):
+            beat = package.story_day(day)
+            values = [item.text for item in (*beat.opening_blocks, *beat.night_blocks)]
+            for decision in package.decisions.values():
+                if decision.story_day != day:
+                    continue
+                values.extend((decision.title, decision.prompt))
+                values.extend(item.text for item in decision.options)
+                values.extend(item.consequence for item in decision.options)
+                values.extend(item.text for item in decision.presentation_blocks)
+                values.extend(item.text for item in decision.followup_blocks)
+            self.assertFalse(
+                any(re.search(r"(?<=[\u3400-\u9fff]),|,(?=[\u3400-\u9fff])", value) for value in values),
+                f"D{day} still contains an ASCII comma in Chinese player copy",
+            )
+
+    def test_v3_loader_applies_player_text_policy_to_endings(self) -> None:
+        def mutate(document: dict) -> None:
+            document["main_endings"][0]["text"] = "他点了头,转身离开。"
+
+        package_dir = self.mutate_package("ending_rules.json", mutate)
+        with self.assertRaises(ContentValidationError):
+            FileScriptPackageLoader().load(package_dir)
     def mutate_package(self, filename: str, mutate) -> Path:
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

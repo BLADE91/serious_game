@@ -2795,7 +2795,7 @@
         {
           "block_id": "d75_phone",
           "kind": "night",
-          "text": "晚上九点十分,你办公室的座机响了。",
+          "text": "晚上九点十分，你办公室的座机响了。",
           "scene_id": "C05_S07",
           "presentation_phase": "night"
         }

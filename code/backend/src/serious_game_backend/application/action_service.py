@@ -1048,6 +1048,15 @@ class ActionService:
                 self._story_flow.present_next_decision(session, package)
         else:
             repeat_decision = False
+            presented_decision = session.pending_decision
+            selected_option_label = next(
+                (
+                    item.text
+                    for item in presented_decision.options
+                    if item.option_id == draft["option_id"]
+                ),
+                draft["option_id"],
+            ) if presented_decision is not None else draft["option_id"]
             pending_context = dict(
                 session.pending_decision.context if session.pending_decision else {}
             )
@@ -1087,6 +1096,19 @@ class ActionService:
                 "story_day": session.game_state.story_day,
                 "decision_id": draft["decision_id"],
                 "option_id": draft["option_id"],
+                "visible_title": (
+                    presented_decision.visible_title
+                    if presented_decision is not None else ""
+                ),
+                "visible_prompt": (
+                    presented_decision.visible_text
+                    if presented_decision is not None else ""
+                ),
+                "visible_scene_id": (
+                    presented_decision.scene_id
+                    if presented_decision is not None else None
+                ),
+                "selected_option_label": selected_option_label,
                 "cost_action_points": decision_cost,
                 "visible_to_player": True,
                 **(

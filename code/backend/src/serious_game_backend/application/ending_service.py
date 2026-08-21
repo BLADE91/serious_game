@@ -261,7 +261,7 @@ class EndingService:
         session.append_narrative(
             story_day=90,
             kind="ending",
-            text=f"结局：{main.name} · {sub.title}\n\n{main.text}\n\n{rendered_sub_text}",
+            text=f"余波：{sub.title}\n\n{main.text}\n\n{rendered_sub_text}",
             content_instance_id="ending:final",
         )
         return result

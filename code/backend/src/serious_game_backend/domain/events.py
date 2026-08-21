@@ -23,6 +23,7 @@ class PendingDecision:
     presented_state_version: int = 1
     visible_title: str = ""
     visible_text: str = ""
+    scene_id: str | None = None
     options: tuple[VisibleDecisionOption, ...] = ()
     input_kind: str = "choice"
     input_schema: dict | None = None

@@ -12,6 +12,7 @@ _HIDDEN_METRIC_DELTA = re.compile(
     r"\d+\s*(?:到|至|[-~—])\s*[+\-]?\d+)"
 )
 _ADJACENT_PUNCTUATION = re.compile(r"[，。；：！？]{2,}")
+_ASCII_COMMA_IN_CHINESE = re.compile(r"(?<=[\u3400-\u9fff]),|,(?=[\u3400-\u9fff])")
 _TERMINAL = ("。", "！", "？", "…")
 _SOFT_TERMINAL = ("，", "；", "：", ",", ";", ":")
 
@@ -21,6 +22,8 @@ def validate_player_visible_text(text: str) -> None:
         raise ContentValidationError("玩家可见文本不得暴露隐藏指标的精确数值变化")
     if _ADJACENT_PUNCTUATION.search(text):
         raise ContentValidationError("玩家可见文本包含紧邻的重复标点")
+    if _ASCII_COMMA_IN_CHINESE.search(text):
+        raise ContentValidationError("中文玩家可见文本不得使用半角逗号")
 
 
 def player_visible_sentence(text: str) -> str:

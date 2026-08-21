@@ -322,6 +322,7 @@ class StoryFlowService:
             visible_text=StoryFlowService.session_public_text(
                 decision.visible_prompt(session.flags), session
             ),
+            scene_id=decision.visible_scene_id(session.flags),
             options=tuple(
                 VisibleDecisionOption(
                     item.option_id,

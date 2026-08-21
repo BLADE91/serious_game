@@ -3,11 +3,11 @@
   "title": "浊流之上",
   "package_version": "3.2.1-authority-locked",
   "source_version": "最终剧本_20260723",
-  "content_hash": "sha256:cd26744a8f3653bd2b4b19c95083e0cc91b71adb437b1b4fba13a257d50e0fcb",
+  "content_hash": "sha256:193f03cdcbadede1f0e8e4be1346956197b37e98cfbce7a9c3439fab41bf3365",
   "status": "published",
   "gameplay_schema_version": 4,
   "script_schema_version": 2,
   "rules_schema_version": 3,
   "notes": "D1-D90 验收矩阵与 D13-D30 独立母稿哈希锁定；D18 钱伟登门/赵建国电话分支、D30 动态晨间卡及三路线回放通过。",
-  "source_sha256": "sha256:594c907b5953a402cf22d8d6fe1d0a3c0dc302126b65d04e35bf3813fb62585e"
+  "source_sha256": "sha256:f05f266483b832bddc226d46685afcffc41e2dadcc14a631782487570f3bdda7"
 }

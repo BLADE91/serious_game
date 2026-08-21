@@ -2380,6 +2380,13 @@ class FileScriptPackageLoader:
         sub_ids = {item.sub_ending_id for item in sub_endings}
         if len(main_ids) != len(main_endings) or len(sub_ids) != len(sub_endings):
             raise ContentValidationError("结局 ID 必须唯一")
+        if gameplay_schema_version >= 4:
+            for ending in main_endings:
+                validate_player_visible_text(ending.name)
+                validate_player_visible_text(ending.text)
+            for ending in sub_endings:
+                validate_player_visible_text(ending.title)
+                validate_player_visible_text(ending.text)
         for ending in main_endings:
             if set(ending.sub_ending_ids) - sub_ids:
                 raise ContentValidationError(f"主结局引用未知亚结局：{ending.ending_id}")

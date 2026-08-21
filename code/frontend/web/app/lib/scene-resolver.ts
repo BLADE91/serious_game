@@ -32,6 +32,7 @@ export type SceneViewInput = {
   itemCount: number;
   currentStoryDay?: unknown;
   decisionId?: unknown;
+  pendingSceneId?: unknown;
   mainEndingId?: unknown;
   beatId?: unknown;
 };
@@ -97,12 +98,12 @@ export const STORY_SCENES: readonly SceneDefinition[] = [
   scene("C04_S07", "拂晓迎检材料", ["beat_d59_m2", "beat_d60_m2"], ["d59_source_opening", "d60_source_opening", "d60_source_night"], ["ev4_04", "dp4_10", "dp4_11"]),
 
   scene("C05_S01", "三十天倒计时", ["beat_d61_m2", "beat_d62_m2"], ["d61_source_opening"], ["dp5_01"]),
-  scene("C05_S02", "白日祠堂", ["beat_d63_m2"], ["d63_source_opening"], ["dp5_02"]),
+  scene("C05_S02", "白日祠堂", ["beat_d63_m2"], ["d63_source_opening", "dp5_09_presentation", "dp5_09_followup"], ["dp5_02", "dp5_09"]),
   scene("C05_S03", "后山坟地控制线", ["beat_d64_m2", "beat_d65_m2", "beat_d66_m2"], ["d64_source_opening", "d66_source_opening"], ["dp5_03", "ev5_01"]),
   scene("C05_S04", "周满仓院落账本", ["beat_d67_m2", "beat_d68_m2", "beat_d69_m2"], ["d67_source_opening", "d69_source_opening"], ["dp5_04", "dp5_05", "dp5_04_recovery", "dp5_05_recovery"]),
   scene("C05_S05", "四十一年未签字", ["beat_d70_m2", "beat_d71_m2"], ["d70_source_opening", "d71_source_opening"], ["dp5_06"]),
   scene("C05_S06", "小卖部账本", ["beat_d72_m2", "beat_d73_m2"], ["d72_source_opening", "d73_source_opening", "d73_source_night"], ["ev5_02", "dp5_07"]),
-  scene("C05_S07", "儿科走廊补偿信封", ["beat_d74_m2", "beat_d75_m2"], ["d74_source_opening", "d75_source_opening", "d75_phone"], ["dp5_08", "dp5_09", "dp5_10", "dp5_11", "dp5_12", "ev5_03"]),
+  scene("C05_S07", "儿科走廊补偿信封", ["beat_d74_m2", "beat_d75_m2"], ["d74_source_opening", "d75_source_opening", "d75_phone"], ["dp5_08", "dp5_10", "dp5_11", "dp5_12", "ev5_03"]),
 
   scene("C06_S01", "招待所深夜审账", ["beat_d76_m2", "beat_d77_m2"], ["d76_source_opening", "d77_source_opening"], ["dp6_01", "dp6_02"]),
   scene("C06_S02", "铁盒证物", ["beat_d78_m2", "beat_d79_m2", "beat_d80_m2", "beat_d81_m2"], ["d78_source_opening", "d79_source_opening", "d80_source_opening", "d81_source_opening"], ["dp6_03", "ev6_01", "dp6_04", "dp6_05"]),
@@ -194,6 +195,8 @@ export function resolveScene(input: SceneResolveInput = {}): ResolvedScene {
 // not inherit today's decision/beat, while a new decision, ending, or day with
 // no opening block must not be masked by yesterday's final feed item.
 export function resolveSceneForView(input: SceneViewInput): ResolvedScene {
+  const pendingSceneId = id(input.pendingSceneId);
+  if (pendingSceneId) return resolveScene({ sceneId: pendingSceneId });
   const mainEndingId = id(input.mainEndingId);
   if (mainEndingId && !input.line) return resolveScene({ mainEndingId });
   if (input.line) return resolveScene(input.line);

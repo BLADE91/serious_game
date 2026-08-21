@@ -63,6 +63,7 @@ def encode_session(session: GameSession) -> dict:
             ),
             "visible_title": session.pending_decision.visible_title,
             "visible_text": session.pending_decision.visible_text,
+            "scene_id": session.pending_decision.scene_id,
             "options": [asdict(item) for item in session.pending_decision.options],
             "input_kind": session.pending_decision.input_kind,
             "input_schema": session.pending_decision.input_schema,
@@ -193,6 +194,7 @@ def decode_session(value: dict) -> GameSession:
             ),
             visible_title=str(pending_value["visible_title"]),
             visible_text=str(pending_value["visible_text"]),
+            scene_id=pending_value.get("scene_id"),
             options=tuple(
                 VisibleDecisionOption(**item)
                 for item in pending_value.get("options", [])

@@ -13768,8 +13768,8 @@
       "options": [
         {
           "option_id": "a",
-          "text": "当场把孩子的长期治疗写进搬迁协议,县财政兜到底",
-          "consequence": "你把话说死在纸上,他把手印按在纸上",
+          "text": "当场把孩子的长期治疗写进搬迁协议，县财政兜到底",
+          "consequence": "你把话说死在纸上，他把手印按在纸上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -13821,7 +13821,7 @@
         },
         {
           "option_id": "b",
-          "text": "提上回筛查那件事,让他还这个人情",
+          "text": "提上回筛查那件事，让他还这个人情",
           "consequence": "他签了",
           "effects": {
             "metric_deltas": {},
@@ -13892,7 +13892,7 @@
         },
         {
           "option_id": "c",
-          "text": "向他保证宏达会停,先把字签下来",
+          "text": "向他保证宏达会停，先把字签下来",
           "consequence": "他会去问",
           "effects": {
             "metric_deltas": {
@@ -13916,8 +13916,8 @@
         },
         {
           "option_id": "d",
-          "text": "只谈搬迁条款,孩子的病归卫健口子管",
-          "consequence": "他站起来进了病房,把门带上",
+          "text": "只谈搬迁条款，孩子的病归卫健口子管",
+          "consequence": "他站起来进了病房，把门带上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -13944,8 +13944,8 @@
         },
         {
           "option_id": "e",
-          "text": "今天什么都不谈,陪他在病房门口坐到查房",
-          "consequence": "你在那张塑料凳上坐了两个钟头,一个字没提搬迁",
+          "text": "今天什么都不谈，陪他在病房门口坐到查房",
+          "consequence": "你在那张塑料凳上坐了两个钟头，一个字没提搬迁",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -13997,7 +13997,7 @@
       "options": [
         {
           "option_id": "a",
-          "text": "上县政府常务会议,从一期项目里硬挪出用地指标,把批文签下来",
+          "text": "上县政府常务会议，从一期项目里硬挪出用地指标，把批文签下来",
           "consequence": "常务会议开了四十分钟",
           "effects": {
             "metric_deltas": {
@@ -14097,8 +14097,8 @@
         },
         {
           "option_id": "b",
-          "text": "先出一份带公章的会议纪要顶上,批文等指标下来再补",
-          "consequence": "纪要盖了章,周大山把它折好收进上衣口袋",
+          "text": "先出一份带公章的会议纪要顶上，批文等指标下来再补",
+          "consequence": "纪要盖了章，周大山把它折好收进上衣口袋",
           "effects": {
             "metric_deltas": {},
             "ledger_deltas": {},
@@ -14215,8 +14215,8 @@
         },
         {
           "option_id": "c",
-          "text": "把这件事交办给自然资源局,让他们按程序走,你不出面",
-          "consequence": "自然资源局按程序办,程序卡在用地指标上,指标要过会才能挪",
+          "text": "把这件事交办给自然资源局，让他们按程序走，你不出面",
+          "consequence": "自然资源局按程序办，程序卡在用地指标上，指标要过会才能挪",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14239,7 +14239,7 @@
         },
         {
           "option_id": "d",
-          "text": "批文办不下来,加补偿标准换他签字",
+          "text": "批文办不下来，加补偿标准换他签字",
           "consequence": "他站起来往祠堂里走",
           "effects": {
             "metric_deltas": {
@@ -14264,7 +14264,7 @@
         },
         {
           "option_id": "e",
-          "text": "把周大山带到县里,让他自己看这道手续卡在哪一环",
+          "text": "把周大山带到县里，让他自己看这道手续卡在哪一环",
           "consequence": "他在自然资源局的走廊里站了一个下午",
           "effects": {
             "metric_deltas": {
@@ -14288,13 +14288,13 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C05_S07",
+      "scene_id": "C05_S02",
       "presentation_blocks": [
         {
           "block_id": "dp5_09_presentation",
           "kind": "narration",
           "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S07",
+          "scene_id": "C05_S02",
           "presentation_phase": "decision_setup"
         }
       ],
@@ -14303,7 +14303,7 @@
           "block_id": "dp5_09_followup",
           "kind": "narration",
           "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S07",
+          "scene_id": "C05_S02",
           "presentation_phase": "consequence"
         }
       ]
@@ -14318,8 +14318,8 @@
       "options": [
         {
           "option_id": "a",
-          "text": "把普查表推过去,只讲一件事,不动这个雷,雷会自己响",
-          "consequence": "他把普查表从头看到尾,看了很久",
+          "text": "把普查表推过去，只讲一件事，不动这个雷，雷会自己响",
+          "consequence": "他把普查表从头看到尾，看了很久",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -14409,7 +14409,7 @@
         },
         {
           "option_id": "b",
-          "text": "把普查表推过去,讲那个七岁的孩子,讲我们不能装看不见",
+          "text": "把普查表推过去，讲那个七岁的孩子，讲我们不能装看不见",
           "consequence": "他点头",
           "effects": {
             "metric_deltas": {
@@ -14438,8 +14438,8 @@
         },
         {
           "option_id": "c",
-          "text": "把普查表推过去,讲柳林村的人已经不信县里了",
-          "consequence": "他把眼镜戴上,又摘下来",
+          "text": "把普查表推过去，讲柳林村的人已经不信县里了",
+          "consequence": "他把眼镜戴上，又摘下来",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -14467,7 +14467,7 @@
         },
         {
           "option_id": "d",
-          "text": "把普查表推过去,叫他一声老哥,请他念在这几年的交情上帮你一把",
+          "text": "把普查表推过去，叫他一声老哥，请他念在这几年的交情上帮你一把",
           "consequence": "他沉默了大概十秒钟",
           "effects": {
             "metric_deltas": {
@@ -14497,8 +14497,8 @@
         },
         {
           "option_id": "e",
-          "text": "把普查表压在文件夹最底下,今天只汇报搬迁进度",
-          "consequence": "你把搬迁进度汇报完,他点了点头,让你走",
+          "text": "把普查表压在文件夹最底下，今天只汇报搬迁进度",
+          "consequence": "你把搬迁进度汇报完，他点了点头，让你走",
           "effects": {
             "metric_deltas": {
               "cadre_discontent": [
@@ -14546,8 +14546,8 @@
       "options": [
         {
           "option_id": "a",
-          "text": "认。柳林村是稳住了,搬迁签得差不多,血铅也压下去了,你点头,认下领导这个说法",
-          "consequence": "你点了头,说领导看得准,云溪这一摊子基本稳住了",
+          "text": "认。柳林村是稳住了，搬迁签得差不多，血铅也压下去了，你点头，认下领导这个说法",
+          "consequence": "你点了头，说领导看得准，云溪这一摊子基本稳住了",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14576,7 +14576,7 @@
         },
         {
           "option_id": "b",
-          "text": "不认。你把收官三户、未决名册上仍未结清的户和县医院那个孩子摆出来,说这摊子还没到能说稳住的时候",
+          "text": "不认。你把收官三户、未决名册上仍未结清的户和县医院那个孩子摆出来，说这摊子还没到能说稳住的时候",
           "consequence": "你把那三户和那个孩子摆了出来",
           "effects": {
             "metric_deltas": {
@@ -14640,7 +14640,7 @@
         {
           "option_id": "a_b_c_d_e",
           "text": "A > B > C > D > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14674,7 +14674,7 @@
         {
           "option_id": "a_b_c_e_d",
           "text": "A > B > C > E > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14708,7 +14708,7 @@
         {
           "option_id": "a_b_d_c_e",
           "text": "A > B > D > C > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14742,7 +14742,7 @@
         {
           "option_id": "a_b_d_e_c",
           "text": "A > B > D > E > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14776,7 +14776,7 @@
         {
           "option_id": "a_b_e_c_d",
           "text": "A > B > E > C > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14810,7 +14810,7 @@
         {
           "option_id": "a_b_e_d_c",
           "text": "A > B > E > D > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14844,7 +14844,7 @@
         {
           "option_id": "a_c_b_d_e",
           "text": "A > C > B > D > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14878,7 +14878,7 @@
         {
           "option_id": "a_c_b_e_d",
           "text": "A > C > B > E > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14912,7 +14912,7 @@
         {
           "option_id": "a_c_d_b_e",
           "text": "A > C > D > B > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14946,7 +14946,7 @@
         {
           "option_id": "a_c_d_e_b",
           "text": "A > C > D > E > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -14980,7 +14980,7 @@
         {
           "option_id": "a_c_e_b_d",
           "text": "A > C > E > B > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15014,7 +15014,7 @@
         {
           "option_id": "a_c_e_d_b",
           "text": "A > C > E > D > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15048,7 +15048,7 @@
         {
           "option_id": "a_d_b_c_e",
           "text": "A > D > B > C > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15082,7 +15082,7 @@
         {
           "option_id": "a_d_b_e_c",
           "text": "A > D > B > E > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15116,7 +15116,7 @@
         {
           "option_id": "a_d_c_b_e",
           "text": "A > D > C > B > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15150,7 +15150,7 @@
         {
           "option_id": "a_d_c_e_b",
           "text": "A > D > C > E > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15184,7 +15184,7 @@
         {
           "option_id": "a_d_e_b_c",
           "text": "A > D > E > B > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15218,7 +15218,7 @@
         {
           "option_id": "a_d_e_c_b",
           "text": "A > D > E > C > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15252,7 +15252,7 @@
         {
           "option_id": "a_e_b_c_d",
           "text": "A > E > B > C > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15286,7 +15286,7 @@
         {
           "option_id": "a_e_b_d_c",
           "text": "A > E > B > D > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15320,7 +15320,7 @@
         {
           "option_id": "a_e_c_b_d",
           "text": "A > E > C > B > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15354,7 +15354,7 @@
         {
           "option_id": "a_e_c_d_b",
           "text": "A > E > C > D > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15388,7 +15388,7 @@
         {
           "option_id": "a_e_d_b_c",
           "text": "A > E > D > B > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15422,7 +15422,7 @@
         {
           "option_id": "a_e_d_c_b",
           "text": "A > E > D > C > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15456,7 +15456,7 @@
         {
           "option_id": "b_a_c_d_e",
           "text": "B > A > C > D > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15490,7 +15490,7 @@
         {
           "option_id": "b_a_c_e_d",
           "text": "B > A > C > E > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15524,7 +15524,7 @@
         {
           "option_id": "b_a_d_c_e",
           "text": "B > A > D > C > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15558,7 +15558,7 @@
         {
           "option_id": "b_a_d_e_c",
           "text": "B > A > D > E > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15592,7 +15592,7 @@
         {
           "option_id": "b_a_e_c_d",
           "text": "B > A > E > C > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15626,7 +15626,7 @@
         {
           "option_id": "b_a_e_d_c",
           "text": "B > A > E > D > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15660,7 +15660,7 @@
         {
           "option_id": "b_c_a_d_e",
           "text": "B > C > A > D > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15694,7 +15694,7 @@
         {
           "option_id": "b_c_a_e_d",
           "text": "B > C > A > E > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15728,7 +15728,7 @@
         {
           "option_id": "b_c_d_a_e",
           "text": "B > C > D > A > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15762,7 +15762,7 @@
         {
           "option_id": "b_c_d_e_a",
           "text": "B > C > D > E > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15792,7 +15792,7 @@
         {
           "option_id": "b_c_e_a_d",
           "text": "B > C > E > A > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15822,7 +15822,7 @@
         {
           "option_id": "b_c_e_d_a",
           "text": "B > C > E > D > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15852,7 +15852,7 @@
         {
           "option_id": "b_d_a_c_e",
           "text": "B > D > A > C > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15886,7 +15886,7 @@
         {
           "option_id": "b_d_a_e_c",
           "text": "B > D > A > E > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15920,7 +15920,7 @@
         {
           "option_id": "b_d_c_a_e",
           "text": "B > D > C > A > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15954,7 +15954,7 @@
         {
           "option_id": "b_d_c_e_a",
           "text": "B > D > C > E > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -15984,7 +15984,7 @@
         {
           "option_id": "b_d_e_a_c",
           "text": "B > D > E > A > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16014,7 +16014,7 @@
         {
           "option_id": "b_d_e_c_a",
           "text": "B > D > E > C > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16044,7 +16044,7 @@
         {
           "option_id": "b_e_a_c_d",
           "text": "B > E > A > C > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16074,7 +16074,7 @@
         {
           "option_id": "b_e_a_d_c",
           "text": "B > E > A > D > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16104,7 +16104,7 @@
         {
           "option_id": "b_e_c_a_d",
           "text": "B > E > C > A > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16134,7 +16134,7 @@
         {
           "option_id": "b_e_c_d_a",
           "text": "B > E > C > D > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16164,7 +16164,7 @@
         {
           "option_id": "b_e_d_a_c",
           "text": "B > E > D > A > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16194,7 +16194,7 @@
         {
           "option_id": "b_e_d_c_a",
           "text": "B > E > D > C > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16224,7 +16224,7 @@
         {
           "option_id": "c_a_b_d_e",
           "text": "C > A > B > D > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16258,7 +16258,7 @@
         {
           "option_id": "c_a_b_e_d",
           "text": "C > A > B > E > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16292,7 +16292,7 @@
         {
           "option_id": "c_a_d_b_e",
           "text": "C > A > D > B > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16326,7 +16326,7 @@
         {
           "option_id": "c_a_d_e_b",
           "text": "C > A > D > E > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16360,7 +16360,7 @@
         {
           "option_id": "c_a_e_b_d",
           "text": "C > A > E > B > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16394,7 +16394,7 @@
         {
           "option_id": "c_a_e_d_b",
           "text": "C > A > E > D > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16428,7 +16428,7 @@
         {
           "option_id": "c_b_a_d_e",
           "text": "C > B > A > D > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16462,7 +16462,7 @@
         {
           "option_id": "c_b_a_e_d",
           "text": "C > B > A > E > D",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16496,7 +16496,7 @@
         {
           "option_id": "c_b_d_a_e",
           "text": "C > B > D > A > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16530,7 +16530,7 @@
         {
           "option_id": "c_b_d_e_a",
           "text": "C > B > D > E > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16560,7 +16560,7 @@
         {
           "option_id": "c_b_e_a_d",
           "text": "C > B > E > A > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16590,7 +16590,7 @@
         {
           "option_id": "c_b_e_d_a",
           "text": "C > B > E > D > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16620,7 +16620,7 @@
         {
           "option_id": "c_d_a_b_e",
           "text": "C > D > A > B > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16654,7 +16654,7 @@
         {
           "option_id": "c_d_a_e_b",
           "text": "C > D > A > E > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16688,7 +16688,7 @@
         {
           "option_id": "c_d_b_a_e",
           "text": "C > D > B > A > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16722,7 +16722,7 @@
         {
           "option_id": "c_d_b_e_a",
           "text": "C > D > B > E > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16752,7 +16752,7 @@
         {
           "option_id": "c_d_e_a_b",
           "text": "C > D > E > A > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16782,7 +16782,7 @@
         {
           "option_id": "c_d_e_b_a",
           "text": "C > D > E > B > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16812,7 +16812,7 @@
         {
           "option_id": "c_e_a_b_d",
           "text": "C > E > A > B > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16842,7 +16842,7 @@
         {
           "option_id": "c_e_a_d_b",
           "text": "C > E > A > D > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16872,7 +16872,7 @@
         {
           "option_id": "c_e_b_a_d",
           "text": "C > E > B > A > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16902,7 +16902,7 @@
         {
           "option_id": "c_e_b_d_a",
           "text": "C > E > B > D > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16932,7 +16932,7 @@
         {
           "option_id": "c_e_d_a_b",
           "text": "C > E > D > A > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16962,7 +16962,7 @@
         {
           "option_id": "c_e_d_b_a",
           "text": "C > E > D > B > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -16992,7 +16992,7 @@
         {
           "option_id": "d_a_b_c_e",
           "text": "D > A > B > C > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17026,7 +17026,7 @@
         {
           "option_id": "d_a_b_e_c",
           "text": "D > A > B > E > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17060,7 +17060,7 @@
         {
           "option_id": "d_a_c_b_e",
           "text": "D > A > C > B > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17094,7 +17094,7 @@
         {
           "option_id": "d_a_c_e_b",
           "text": "D > A > C > E > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17128,7 +17128,7 @@
         {
           "option_id": "d_a_e_b_c",
           "text": "D > A > E > B > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17162,7 +17162,7 @@
         {
           "option_id": "d_a_e_c_b",
           "text": "D > A > E > C > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17196,7 +17196,7 @@
         {
           "option_id": "d_b_a_c_e",
           "text": "D > B > A > C > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17230,7 +17230,7 @@
         {
           "option_id": "d_b_a_e_c",
           "text": "D > B > A > E > C",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17264,7 +17264,7 @@
         {
           "option_id": "d_b_c_a_e",
           "text": "D > B > C > A > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17298,7 +17298,7 @@
         {
           "option_id": "d_b_c_e_a",
           "text": "D > B > C > E > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17328,7 +17328,7 @@
         {
           "option_id": "d_b_e_a_c",
           "text": "D > B > E > A > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17358,7 +17358,7 @@
         {
           "option_id": "d_b_e_c_a",
           "text": "D > B > E > C > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17388,7 +17388,7 @@
         {
           "option_id": "d_c_a_b_e",
           "text": "D > C > A > B > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17422,7 +17422,7 @@
         {
           "option_id": "d_c_a_e_b",
           "text": "D > C > A > E > B",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17456,7 +17456,7 @@
         {
           "option_id": "d_c_b_a_e",
           "text": "D > C > B > A > E",
-          "consequence": "郑向东按这个次序排工,头几天的人手都压到村东头那几户上",
+          "consequence": "郑向东按这个次序排工，头几天的人手都压到村东头那几户上",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17490,7 +17490,7 @@
         {
           "option_id": "d_c_b_e_a",
           "text": "D > C > B > E > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17520,7 +17520,7 @@
         {
           "option_id": "d_c_e_a_b",
           "text": "D > C > E > A > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17550,7 +17550,7 @@
         {
           "option_id": "d_c_e_b_a",
           "text": "D > C > E > B > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17580,7 +17580,7 @@
         {
           "option_id": "d_e_a_b_c",
           "text": "D > E > A > B > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17610,7 +17610,7 @@
         {
           "option_id": "d_e_a_c_b",
           "text": "D > E > A > C > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17640,7 +17640,7 @@
         {
           "option_id": "d_e_b_a_c",
           "text": "D > E > B > A > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17670,7 +17670,7 @@
         {
           "option_id": "d_e_b_c_a",
           "text": "D > E > B > C > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17700,7 +17700,7 @@
         {
           "option_id": "d_e_c_a_b",
           "text": "D > E > C > A > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17730,7 +17730,7 @@
         {
           "option_id": "d_e_c_b_a",
           "text": "D > E > C > B > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17760,7 +17760,7 @@
         {
           "option_id": "e_a_b_c_d",
           "text": "E > A > B > C > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17790,7 +17790,7 @@
         {
           "option_id": "e_a_b_d_c",
           "text": "E > A > B > D > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17820,7 +17820,7 @@
         {
           "option_id": "e_a_c_b_d",
           "text": "E > A > C > B > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17850,7 +17850,7 @@
         {
           "option_id": "e_a_c_d_b",
           "text": "E > A > C > D > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17880,7 +17880,7 @@
         {
           "option_id": "e_a_d_b_c",
           "text": "E > A > D > B > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17910,7 +17910,7 @@
         {
           "option_id": "e_a_d_c_b",
           "text": "E > A > D > C > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17940,7 +17940,7 @@
         {
           "option_id": "e_b_a_c_d",
           "text": "E > B > A > C > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -17970,7 +17970,7 @@
         {
           "option_id": "e_b_a_d_c",
           "text": "E > B > A > D > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18000,7 +18000,7 @@
         {
           "option_id": "e_b_c_a_d",
           "text": "E > B > C > A > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18030,7 +18030,7 @@
         {
           "option_id": "e_b_c_d_a",
           "text": "E > B > C > D > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18060,7 +18060,7 @@
         {
           "option_id": "e_b_d_a_c",
           "text": "E > B > D > A > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18090,7 +18090,7 @@
         {
           "option_id": "e_b_d_c_a",
           "text": "E > B > D > C > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18120,7 +18120,7 @@
         {
           "option_id": "e_c_a_b_d",
           "text": "E > C > A > B > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18150,7 +18150,7 @@
         {
           "option_id": "e_c_a_d_b",
           "text": "E > C > A > D > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18180,7 +18180,7 @@
         {
           "option_id": "e_c_b_a_d",
           "text": "E > C > B > A > D",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18210,7 +18210,7 @@
         {
           "option_id": "e_c_b_d_a",
           "text": "E > C > B > D > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18240,7 +18240,7 @@
         {
           "option_id": "e_c_d_a_b",
           "text": "E > C > D > A > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18270,7 +18270,7 @@
         {
           "option_id": "e_c_d_b_a",
           "text": "E > C > D > B > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18300,7 +18300,7 @@
         {
           "option_id": "e_d_a_b_c",
           "text": "E > D > A > B > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18330,7 +18330,7 @@
         {
           "option_id": "e_d_a_c_b",
           "text": "E > D > A > C > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18360,7 +18360,7 @@
         {
           "option_id": "e_d_b_a_c",
           "text": "E > D > B > A > C",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18390,7 +18390,7 @@
         {
           "option_id": "e_d_b_c_a",
           "text": "E > D > B > C > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18420,7 +18420,7 @@
         {
           "option_id": "e_d_c_a_b",
           "text": "E > D > C > A > B",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18450,7 +18450,7 @@
         {
           "option_id": "e_d_c_b_a",
           "text": "E > D > C > B > A",
-          "consequence": "人手先往上级对接和廉政线上压,村东头那三户的攻坚往后挪了几天",
+          "consequence": "人手先往上级对接和廉政线上压，村东头那三户的攻坚往后挪了几天",
           "effects": {
             "metric_deltas": {
               "public_trust": [
@@ -18525,8 +18525,8 @@
       "options": [
         {
           "option_id": "a",
-          "text": "让他上来,把门关上,听他说完",
-          "consequence": "门一关,他坐下,他不提那些地和证",
+          "text": "让他上来，把门关上，听他说完",
+          "consequence": "门一关，他坐下，他不提那些地和证",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -18550,8 +18550,8 @@
         },
         {
           "option_id": "b",
-          "text": "让他上来,把门开着,叫郑向东在外间坐着",
-          "consequence": "门开着,外间坐着郑向东",
+          "text": "让他上来，把门开着，叫郑向东在外间坐着",
+          "consequence": "门开着，外间坐着郑向东",
           "effects": {
             "metric_deltas": {
               "cadre_discontent": [
@@ -18571,7 +18571,7 @@
         },
         {
           "option_id": "c",
-          "text": "不见他,让他把话在电话里说完,然后挂掉",
+          "text": "不见他，让他把话在电话里说完，然后挂掉",
           "consequence": "你把话筒放回去",
           "effects": {
             "metric_deltas": {

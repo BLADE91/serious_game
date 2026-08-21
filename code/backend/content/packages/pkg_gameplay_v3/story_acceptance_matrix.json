@@ -2341,7 +2341,8 @@
         "d74_transition_context"
       ],
       "scene_ids": [
-        "C05_S07"
+        "C05_S07",
+        "C05_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [

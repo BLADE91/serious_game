@@ -55,6 +55,17 @@ test("binds the D18 hostile phone and D25 work meeting to their matching scenes"
   assert.notEqual(meeting.title, "吴秀英红圈名册");
 });
 
+test("lets the authoritative pending D74 scene replace the previous pediatric line", () => {
+  const resolved = resolveSceneForView({
+    line: { sceneId: "C05_S07", storyDay: 74 },
+    currentStoryDay: 74,
+    pendingSceneId: "C05_S02",
+    decisionId: "dp5_09",
+  });
+  assert.equal(resolved.id, "C05_S02");
+  assert.equal(resolved.title, "白日祠堂");
+});
+
 test("uses a neutral scene when the current record has no scene binding", () => {
   assert.equal(resolveSceneForView({ line: { storyDay: 1 }, currentStoryDay: 1 }).id, "N00");
 });

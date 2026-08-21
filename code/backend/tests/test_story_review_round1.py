@@ -152,6 +152,9 @@ class StoryReviewRound1Tests(unittest.TestCase):
         self.assertNotIn("茶叶", option_by_id["d"]["text"])
 
         stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+        selected_label = next(
+            item["text"] for item in pending["options"] if item["option_id"] == "a"
+        )
         self.submit_decision(client, session_id, headers, stored, "dp2_02", "a")
         consequence = "\n".join(
             item["text"]
@@ -160,6 +163,22 @@ class StoryReviewRound1Tests(unittest.TestCase):
         )
         self.assertIn("电话", consequence)
         self.assertNotIn("追回", consequence)
+
+        stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+        stored.game_state = replace(stored.game_state, story_day=90)
+        container.sessions.save(stored, expected_version=stored.state_version)
+        review = client.get(
+            f"/api/game/session/{session_id}/review", headers=headers
+        )
+        self.assertEqual(200, review.status_code, review.text)
+        recorded = next(
+            item for item in review.json()["decision_timeline"]
+            if item["decision_id"] == "dp2_02"
+        )
+        self.assertEqual(pending["title"], recorded["title"])
+        self.assertEqual(selected_label, recorded["choice"])
+        self.assertIn("赵建国", recorded["prompt"])
+        self.assertEqual("C01_S08", recorded["scene_id"])
 
     def test_d18_keeps_qian_visit_when_dp2_01_does_not_break_with_him(self) -> None:
         container, client, session_id, headers = self.build_api("d18-visit")
@@ -190,6 +209,92 @@ class StoryReviewRound1Tests(unittest.TestCase):
         self.assertNotIn("钱伟没有登门", visible_text)
         self.assertTrue(options["c"]["available"])
         self.assertIn("追回", options["a"]["text"])
+
+        stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+        selected_label = options["a"]["text"]
+        self.submit_decision(client, session_id, headers, stored, "dp2_02", "a")
+        review = client.get(
+            f"/api/game/session/{session_id}/review", headers=headers
+        )
+        self.assertEqual(200, review.status_code, review.text)
+        recorded = next(
+            item for item in review.json()["decision_timeline"]
+            if item["decision_id"] == "dp2_02"
+        )
+        self.assertEqual(
+            entered["visible_state"]["pending_decision"]["title"],
+            recorded["title"],
+        )
+        self.assertEqual(selected_label, recorded["choice"])
+        self.assertEqual("C02_S01", recorded["scene_id"])
+
+    def test_d74_second_decision_switches_from_pediatrics_to_ancestral_hall(self) -> None:
+        container, client, session_id, headers = self.build_api("d74-scenes")
+        session = self.reset_to_day(container, session_id, headers, 74)
+        entered = client.get(
+            f"/api/game/session/{session_id}/view", headers=headers
+        ).json()
+        self.assertEqual("dp5_08", entered["state"]["pending_decision"]["decision_id"])
+        self.assertEqual("C05_S07", entered["state"]["pending_decision"]["scene_id"])
+
+        result = self.submit_decision(
+            client, session_id, headers, session, "dp5_08", "a"
+        )
+        pending = result["visible_state"]["pending_decision"]
+        self.assertEqual("dp5_09", pending["decision_id"])
+        self.assertEqual("场景三·祠堂那块地。", pending["title"])
+        self.assertEqual("C05_S02", pending["scene_id"])
+
+    def test_multistage_decision_journals_each_presented_choice(self) -> None:
+        container, client, session_id, headers = self.build_api("multistage-journal")
+        session = self.reset_to_day(container, session_id, headers, 51)
+        first = client.get(
+            f"/api/game/session/{session_id}/view", headers=headers
+        ).json()["state"]["pending_decision"]
+        first_label = next(
+            item["text"] for item in first["options"] if item["option_id"] == "a"
+        )
+        repeated = self.submit_decision(
+            client, session_id, headers, session, "dp4_04", "a"
+        )
+        second = repeated["visible_state"]["pending_decision"]
+        stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+        second_label = next(
+            item["text"] for item in second["options"] if item["option_id"] == "c"
+        )
+        self.submit_decision(client, session_id, headers, stored, "dp4_04", "c")
+
+        review = client.get(
+            f"/api/game/session/{session_id}/review", headers=headers
+        ).json()
+        recorded = [
+            item for item in review["decision_timeline"]
+            if item["decision_id"] == "dp4_04"
+        ]
+        self.assertEqual([first_label, second_label], [item["choice"] for item in recorded])
+        self.assertTrue(all(item["title"] == first["title"] for item in recorded))
+        self.assertTrue(all(item["prompt"] == first["text"] for item in recorded))
+        self.assertTrue(all(item["scene_id"] == first["scene_id"] for item in recorded))
+
+    def test_legacy_decision_log_uses_safe_base_copy_fallback(self) -> None:
+        container, client, session_id, headers = self.build_api("legacy-journal")
+        session = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+        session.logs = [{
+            "type": "decision",
+            "story_day": 18,
+            "decision_id": "dp2_02",
+            "option_id": "a",
+            "visible_to_player": True,
+        }]
+        container.sessions.save(session, expected_version=session.state_version)
+        package = container.packages.get("pkg_gameplay_v3")
+        recorded = client.get(
+            f"/api/game/session/{session_id}/review", headers=headers
+        ).json()["decision_timeline"][0]
+        self.assertEqual(package.decisions["dp2_02"].title, recorded["title"])
+        self.assertEqual(package.decisions["dp2_02"].prompt, recorded["prompt"])
+        self.assertEqual(package.decisions["dp2_02"].scene_id, recorded["scene_id"])
+        self.assertEqual(package.decisions["dp2_02"].option("a").text, recorded["choice"])
 
     def test_d30_morning_card_uses_only_observed_d29_night_records(self) -> None:
         cases = (

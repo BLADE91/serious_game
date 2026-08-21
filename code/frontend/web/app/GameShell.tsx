@@ -759,6 +759,7 @@ export default function GameShell() {
     currentIndex: narrative.currentIndex,
     itemCount: playerLines.length,
     currentStoryDay: story.day,
+    pendingSceneId: decisionReady ? pending?.scene_id : undefined,
     mainEndingId: get(state, "ending.main_ending_id") || get(state, "ending_result.main_ending_id") || state.main_ending_id,
     beatId: get(state, "story.beat_id") || get(state, "story.story_beat_id") || state.story_beat_id,
   });

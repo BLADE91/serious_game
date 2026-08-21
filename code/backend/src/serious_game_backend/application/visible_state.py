@@ -56,6 +56,7 @@ class VisibleStateProjector:
                 ],
                 "title": session.pending_decision.visible_title,
                 "text": session.pending_decision.visible_text,
+                "scene_id": session.pending_decision.scene_id,
                 "input_kind": session.pending_decision.input_kind,
                 "input_schema": input_schema or None,
                 "presentation_entry_id": (

@@ -15,8 +15,25 @@ class ReviewService:
                 "story_day": item["story_day"],
                 "decision_id": item["decision_id"],
                 "title": (
-                    package.decisions[item["decision_id"]].title
-                    if item["decision_id"] in package.decisions else "剧情决策"
+                    item.get("visible_title")
+                    or (
+                        package.decisions[item["decision_id"]].title
+                        if item["decision_id"] in package.decisions else "剧情决策"
+                    )
+                ),
+                "prompt": (
+                    item.get("visible_prompt")
+                    or (
+                        package.decisions[item["decision_id"]].prompt
+                        if item["decision_id"] in package.decisions else ""
+                    )
+                ),
+                "scene_id": (
+                    item.get("visible_scene_id")
+                    or (
+                        package.decisions[item["decision_id"]].scene_id
+                        if item["decision_id"] in package.decisions else None
+                    )
                 ),
                 "option_id": item["option_id"],
                 "choice": self._decision_choice(package, item),
@@ -127,6 +144,9 @@ class ReviewService:
 
     @staticmethod
     def _decision_choice(package: ScriptPackage, log: dict) -> str:
+        recorded = log.get("selected_option_label")
+        if isinstance(recorded, str) and recorded.strip():
+            return recorded
         decision = package.decisions.get(log.get("decision_id"))
         option = decision.option(log.get("option_id")) if decision else None
         return option.text if option is not None else str(log.get("option_id", ""))
