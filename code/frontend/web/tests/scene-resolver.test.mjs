@@ -43,6 +43,18 @@ test("keeps historical and current-state scene identifiers in separate time cont
   assert.equal(resolveSceneForView({ currentStoryDay: 90, mainEndingId: "ending_24" }).id, "E24");
 });
 
+test("binds the D18 hostile phone and D25 work meeting to their matching scenes", () => {
+  const phone = resolveScene({ contentInstanceId: "block:d18_phone_pressure", beatId: "beat_d18_m2" });
+  assert.equal(phone.id, "C01_S08");
+  assert.equal(phone.title, "赵建国办公室");
+  assert.notEqual(phone.title, "晨间三张纸与茶叶盒");
+
+  const meeting = resolveScene({ contentInstanceId: "block:d25_meeting", beatId: "beat_d25_m2" });
+  assert.equal(meeting.id, "C01_S06");
+  assert.equal(meeting.title, "渡口镇工作组例会");
+  assert.notEqual(meeting.title, "吴秀英红圈名册");
+});
+
 test("uses a neutral scene when the current record has no scene binding", () => {
   assert.equal(resolveSceneForView({ line: { storyDay: 1 }, currentStoryDay: 1 }).id, "N00");
 });

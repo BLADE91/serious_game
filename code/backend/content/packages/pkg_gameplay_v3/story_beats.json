@@ -651,7 +651,7 @@
       "story_day": 13,
       "chapter": 1,
       "day_mode": "simulated",
-      "title": "程序这道红线上的取舍一落定，首轮试水便算收了尾。签约栏里的数字或增或平，",
+      "title": "程序这道红线上的取舍一落定，首轮试水便算收了尾。",
       "allow_actions": false,
       "allow_end_day": true,
       "opening_blocks": [
@@ -907,7 +907,7 @@
           "required_flags": [
             "与钱伟撕破脸"
           ],
-          "scene_id": "C02_S01",
+          "scene_id": "C01_S08",
           "presentation_phase": "scene"
         },
         {
@@ -917,7 +917,7 @@
           "required_flags": [
             "与钱伟撕破脸"
           ],
-          "scene_id": "C02_S01",
+          "scene_id": "C01_S08",
           "presentation_phase": "scene"
         }
       ],
@@ -1127,14 +1127,14 @@
           "block_id": "d25_meeting",
           "kind": "narration",
           "text": "第二十五日，签约工作组例会开在渡口镇政府。孙强把台账推到你面前：松口的九户还没有正式按下一个手印，九十天的期限已经过去将近三分之一。",
-          "scene_id": "C02_S05",
+          "scene_id": "C01_S06",
           "presentation_phase": "scene"
         },
         {
           "block_id": "d25_miao",
           "kind": "narration",
           "text": "第一个点头的苗喜旺曾得到高于标准二十万元的口头承诺。如今这二十万成了全村的一根刺，谁来谈都先问别人拿了多少。周大山和周氏族亲仍一动不动，理由是祖坟和祠堂。",
-          "scene_id": "C02_S05",
+          "scene_id": "C01_S06",
           "presentation_phase": "scene"
         },
         {
@@ -1142,14 +1142,14 @@
           "kind": "dialogue",
           "text": "整体抬价、一户一策、先把规矩立起来，还是树一个样板户，今天得定一条主路。再摇摆下去，工作组不知道该拿什么口径进门。",
           "speaker": "孙强",
-          "scene_id": "C02_S05",
+          "scene_id": "C01_S06",
           "presentation_phase": "npc"
         },
         {
           "block_id": "d25_choice_setup",
           "kind": "narration",
           "text": "会议室里坐着七八个人，所有人都在等你开口。效率、公平、程序和示范四种办法各有代价，没有哪一条会立刻带来三十个手印。",
-          "scene_id": "C02_S05",
+          "scene_id": "C01_S06",
           "presentation_phase": "scene"
         }
       ],

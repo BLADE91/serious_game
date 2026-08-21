@@ -611,7 +611,8 @@
         "d18_phone_choice_setup"
       ],
       "scene_ids": [
-        "C02_S01"
+        "C02_S01",
+        "C01_S08"
       ],
       "visible_speakers": [
         "钱伟"
@@ -808,7 +809,7 @@
         "d25_choice_setup"
       ],
       "scene_ids": [
-        "C02_S05"
+        "C01_S06"
       ],
       "visible_speakers": [
         "孙强"

@@ -26,6 +26,32 @@ ANXIETY_BANDS = (
     (100, "critical"),
 )
 
+RELATIONSHIP_BAND_REASONS = {
+    "trust": {
+        "closed": "对方尚未建立可依赖的信任基础",
+        "guarded": "对方仍会谨慎核对你的说法和兑现",
+        "working": "对方愿意在已有接触基础上继续沟通",
+        "trusted": "多次可见互动已形成较稳定的信任",
+        "not_assessed": "目前还没有足够公开互动可作判断",
+    },
+    "attitude": {
+        "hostile": "对方公开表现出明显对立",
+        "resistant": "对方仍在抵触当前推进方式",
+        "neutral": "对方尚未公开站到支持或反对一边",
+        "cooperative": "对方愿意配合当前沟通和核验",
+        "supportive": "对方已公开表现出积极支持",
+        "not_assessed": "目前还没有足够公开互动可作判断",
+    },
+    "anxiety": {
+        "calm": "公开表现中暂未出现明显担忧",
+        "uneasy": "对方对后续安排仍有轻微不安",
+        "worried": "对方对自身处境和后续安排有明确担忧",
+        "strained": "可见压力已明显影响对方的判断",
+        "critical": "公开表现显示对方正承受很强的风险压力",
+        "not_assessed": "目前还没有足够公开互动可作判断",
+    },
+}
+
 
 def qualitative_band(
     score: int | None,
@@ -235,6 +261,40 @@ class NPCRelationshipService:
         return tuple(dict.fromkeys(reasons))[:3]
 
     @staticmethod
+    def public_relationship_reasons(
+        session: GameSession,
+        package: ScriptPackage,
+        npc_id: str,
+    ) -> dict[str, str]:
+        context = NPCRelationshipService.relationship_context(session, npc_id)
+        latest_by_dimension: dict[str, str] = {}
+        for item in reversed(session.logs):
+            if (
+                item.get("type") != "relationship_change"
+                or item.get("npc_id") != npc_id
+                or not item.get("visible_to_player", False)
+            ):
+                continue
+            dimension = str(item.get("dimension", ""))
+            reason = str(item.get("reason", "")).strip()
+            if dimension in {"trust", "attitude", "anxiety"} and reason:
+                latest_by_dimension.setdefault(dimension, reason)
+        source = NPCRelationshipService.known_source_reason(
+            session, package, npc_id
+        ).rstrip("。")
+        labels = {"trust": "信任", "attitude": "态度", "anxiety": "焦虑"}
+        return {
+            dimension: latest_by_dimension.get(
+                dimension,
+                (
+                    f"{source}；尚无直接互动改变{labels[dimension]}，"
+                    f"{RELATIONSHIP_BAND_REASONS[dimension][context[f'{dimension}_band']]}。"
+                ),
+            )
+            for dimension in ("trust", "attitude", "anxiety")
+        }
+
+    @staticmethod
     def known_source_reason(
         session: GameSession,
         package: ScriptPackage,
@@ -272,8 +332,17 @@ class NPCRelationshipService:
     def public_people(session: GameSession, package: ScriptPackage) -> list[dict]:
         NPCRelationshipService.synchronize(session, package)
         profiles = {item.npc_id: item for item in package.npc_profiles}
-        return [
-            {
+        values = []
+        for npc_id in sorted(
+            session.known_npc_ids,
+            key=lambda item: (profiles[item].name, item),
+        ):
+            if npc_id not in profiles:
+                continue
+            reasons = NPCRelationshipService.public_relationship_reasons(
+                session, package, npc_id
+            )
+            values.append({
                 "npc_id": npc_id,
                 "name": profiles[npc_id].name,
                 "contact_state": (
@@ -281,21 +350,10 @@ class NPCRelationshipService:
                     if npc_id in session.contactable_npc_ids else "known"
                 ),
                 **NPCRelationshipService.relationship_context(session, npc_id),
-                "recent_change_reasons": list(dict.fromkeys((
-                    *NPCRelationshipService.recent_visible_change_reasons(
-                        session, npc_id
-                    ),
-                    NPCRelationshipService.known_source_reason(
-                        session, package, npc_id
-                    ),
-                )))[:3],
-            }
-            for npc_id in sorted(
-                session.known_npc_ids,
-                key=lambda item: (profiles[item].name, item),
-            )
-            if npc_id in profiles
-        ]
+                "relationship_reasons": reasons,
+                "recent_change_reasons": list(reasons.values())[:3],
+            })
+        return values
 
     @staticmethod
     def public_edges(session: GameSession, package: ScriptPackage) -> list[dict]:

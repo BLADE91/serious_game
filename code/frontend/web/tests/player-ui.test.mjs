@@ -45,7 +45,7 @@ test("builds a safe people and revealed-relationship view without internal field
   assert.equal(typeof playerUi.peopleRelationshipView, "function");
   const result = playerUi.peopleRelationshipView({
     people: [
-      { npc_id: "known", name: "甲", contact_state: "known", trust_band: "working", attitude_band: "neutral", anxiety_band: "uneasy", recent_change_reasons: ["一", "二", "三", "四"], trust_score: 61, personality: { openness: 99 }, hidden_demands: ["秘密"] },
+      { npc_id: "known", name: "甲", contact_state: "known", trust_band: "working", attitude_band: "neutral", anxiety_band: "uneasy", relationship_reasons: { trust: "按公开履约记录判断", attitude: "尚未公开表态", anxiety: "仍担忧后续安置" }, recent_change_reasons: ["一", "二", "三", "四"], trust_score: 61, personality: { openness: 99 }, hidden_demands: ["秘密"] },
       { npc_id: "contact", name: "乙", contact_state: "contactable", trust_band: "trusted", attitude_band: "supportive", anxiety_band: "calm", recent_change_reasons: [] },
       { npc_id: "unknown", name: "未知", contact_state: "unknown", trust_score: 50 },
     ],
@@ -56,6 +56,11 @@ test("builds a safe people and revealed-relationship view without internal field
   });
   assert.deepEqual(result.people.map(item => [item.npc_id, item.contact_state]), [["known", "known"], ["contact", "contactable"]]);
   assert.deepEqual(result.people[0].recent_change_reasons, ["一", "二", "三"]);
+  assert.deepEqual(result.people[0].relationship_reasons, {
+    trust: "按公开履约记录判断",
+    attitude: "尚未公开表态",
+    anxiety: "仍担忧后续安置",
+  });
   assert.deepEqual(result.edges.map(item => item.edge_id), ["shown"]);
   const serialized = JSON.stringify(result);
   for (const forbidden of ["trust_score", "personality", "hidden_demands", "private_audit", "prompt", "unknown"]) {

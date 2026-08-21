@@ -71,6 +71,10 @@ def progress_broadcast(session: GameSession) -> dict | None:
         )
 
     signals: list[str] = []
+    if lag:
+        signals.append(
+            f"签约进度落后阶段参考{lag}户：需要把核权、协商和落笔真正推进到户。"
+        )
     if state.public_trust <= 40:
         signals.append("群众信任承压：催得越急，越要把账和依据讲清楚。")
     if state.social_stability <= 40:
@@ -88,7 +92,7 @@ def progress_broadcast(session: GameSession) -> dict | None:
     if expired:
         signals.append(f"已有{expired}项诉求错过处置窗口：日历不会替你补签。")
     if not signals:
-        signals.append("当前没有明显失速信号，但领先不是免检，程序和兑现仍要跟上。")
+        signals.append("签约进度达到阶段参考；程序、兑现和后续风险仍要逐项复核。")
 
     return {
         "broadcast_id": f"progress_d{day}",

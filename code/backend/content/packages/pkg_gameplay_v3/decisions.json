@@ -1531,7 +1531,7 @@
         {
           "option_id": "a",
           "text": "当场批条子，责成审计局对搬迁工程支出立项专项审计，把三张发票写进立项报告。",
-          "consequence": "审计立项文件当天下午发出，赵建国当晚打电话给蒋崇岳",
+          "consequence": "审计立项文件当天下午发出，赵建国当晚打电话给蒋崇岳，查账的动静已经传到县委。",
           "effects": {
             "metric_deltas": {
               "political_credit": [
@@ -1777,7 +1777,7 @@
           "required_flags": [
             "与钱伟撕破脸"
           ],
-          "scene_id": "C02_S01",
+          "scene_id": "C01_S08",
           "presentation_phase": "scene"
         }
       ],
@@ -1800,7 +1800,7 @@
           "required_flags": [
             "与钱伟撕破脸"
           ],
-          "scene_id": "C02_S01",
+          "scene_id": "C01_S08",
           "presentation_phase": "followup"
         }
       ],
@@ -1809,6 +1809,7 @@
           "required_flags": [
             "与钱伟撕破脸"
           ],
+          "scene_id": "C01_S08",
           "title": "电话施压",
           "prompt": "赵建国在电话里转达钱伟的施压。明确回绝、继续套话、接受条件，还是不把话说死？本决定不消耗行动点。",
           "option_texts": {
@@ -2178,13 +2179,13 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C02_S05",
+      "scene_id": "C01_S06",
       "presentation_blocks": [
         {
           "block_id": "dp2_05_presentation",
           "kind": "narration",
           "text": "渡口镇会议室里，孙强把台账推到你面前。整体抬价、一户一策、先立规矩，或树起样板，会改变工作组下一次进门的口径。",
-          "scene_id": "C02_S05",
+          "scene_id": "C01_S06",
           "presentation_phase": "scene"
         }
       ],
@@ -2193,7 +2194,7 @@
           "block_id": "dp2_05_followup",
           "kind": "narration",
           "text": "工作组拿到了统一口径。效率、公平、程序或示范被摆在前面之后，村民会拿这条口径与苗喜旺那笔旧承诺反复对照。",
-          "scene_id": "C02_S05",
+          "scene_id": "C01_S06",
           "presentation_phase": "followup"
         }
       ]
@@ -2495,7 +2496,7 @@
         {
           "option_id": "a",
           "text": "是零就报零。表上填实数，后面附一页纸，把权属没核清、公示期没满的缘由一条条写清楚。顺手把上个月样板户那几个手印，调出来一个一个比对过去。",
-          "consequence": "政治资本 +5 到 +10。",
+          "consequence": "你按实数上报，并把程序尚未走完的原因逐项附上；这份不回避难看的报告让责任和依据都留在了纸面上。",
           "effects": {
             "metric_deltas": {
               "public_trust": [

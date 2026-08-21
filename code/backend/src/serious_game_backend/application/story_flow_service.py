@@ -7,6 +7,7 @@ from serious_game_backend.domain.events import PendingDecision, VisibleDecisionO
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.story import DecisionOptionDefinition, StoryDayDefinition
+from serious_game_backend.application.player_text_policy import player_visible_sentence
 
 
 class StoryFlowService:
@@ -65,7 +66,9 @@ class StoryFlowService:
         session.append_narrative(
             story_day=session.game_state.story_day,
             kind="consequence",
-            text=self.public_text(decision.visible_consequence(option, session.flags)),
+            text=self.session_public_text(
+                decision.visible_consequence(option, session.flags), session
+            ),
             beat_id=session.story_beat_id,
             decision_id=decision_id,
             presentation_phase="consequence",
@@ -174,7 +177,9 @@ class StoryFlowService:
             kind="day_intro",
             text=(
                 f"第{story_day}日，今天没有必须处理的主线事项，可以自由安排行动。"
-                if is_free_day else f"第{story_day}日，{self.public_text(beat.title)}。"
+                if is_free_day else self.session_public_text(
+                    f"第{story_day}日，{beat.title}", session
+                )
             ),
             content_instance_id=f"day:{story_day}:intro",
             beat_id=beat.beat_id,
@@ -213,7 +218,7 @@ class StoryFlowService:
             session.append_narrative(
                 story_day=session.game_state.story_day,
                 kind=block.kind,
-                text=StoryFlowService.public_text(block.text),
+                text=StoryFlowService.session_public_text(block.text, session),
                 speaker=block.speaker,
                 content_instance_id=f"block:{block.block_id}",
                 block_id=block.block_id,
@@ -277,7 +282,14 @@ class StoryFlowService:
         if not available_ids:
             raise ContentValidationError(f"当前决策没有可达选项：{decision_id}")
         self_context = dict(context)
-        event_instance_id = f"evt_{session.session_id}_{decision.decision_id}"
+        presentation_index = sum(
+            1 for item in session.logs
+            if item.get("type") == "decision_presented"
+            and item.get("decision_id") == decision_id
+        )
+        event_instance_id = (
+            f"evt_{session.session_id}_{decision.decision_id}_p{presentation_index}"
+        )
         StoryFlowService._append_blocks(
             session,
             decision.presentation_blocks,
@@ -289,11 +301,13 @@ class StoryFlowService:
         session.append_narrative(
             story_day=session.game_state.story_day,
             kind="decision",
-            text=StoryFlowService.public_text(decision.visible_prompt(session.flags)),
+            text=StoryFlowService.session_public_text(
+                decision.visible_prompt(session.flags), session
+            ),
             content_instance_id=presentation_entry_id,
             beat_id=session.story_beat_id,
             decision_id=decision_id,
-            scene_id=decision.scene_id,
+            scene_id=decision.visible_scene_id(session.flags),
             presentation_phase="decision",
             read_gate="decision",
         )
@@ -302,17 +316,17 @@ class StoryFlowService:
             decision_id=decision.decision_id,
             option_ids=available_ids,
             presented_state_version=session.state_version,
-            visible_title=StoryFlowService.public_text(
-                decision.visible_title(session.flags)
+            visible_title=StoryFlowService.session_public_text(
+                decision.visible_title(session.flags), session
             ),
-            visible_text=StoryFlowService.public_text(
-                decision.visible_prompt(session.flags)
+            visible_text=StoryFlowService.session_public_text(
+                decision.visible_prompt(session.flags), session
             ),
             options=tuple(
                 VisibleDecisionOption(
                     item.option_id,
-                    StoryFlowService.public_text(
-                        decision.visible_option_text(item, session.flags)
+                    StoryFlowService.session_public_text(
+                        decision.visible_option_text(item, session.flags), session
                     ),
                     available=availability[item.option_id],
                     unavailable_reason=(
@@ -334,7 +348,7 @@ class StoryFlowService:
         })
 
     @classmethod
-    def public_text(cls, text: str) -> str:
+    def _without_internal_markers(cls, text: str) -> str:
         if not any(marker in text for marker in cls.INTERNAL_MARKERS):
             return text
         parts = []
@@ -342,4 +356,19 @@ class StoryFlowService:
             value = sentence.strip()
             if value and not any(marker in value for marker in cls.INTERNAL_MARKERS):
                 parts.append(value)
-        return "。".join(parts) + ("。" if parts else "相关处置已经记录，后续影响将在剧情中体现。")
+        return (
+            "。".join(parts) + ("。" if parts else "")
+            if parts else "相关处置已经记录，后续影响将在剧情中体现。"
+        )
+
+    @classmethod
+    def public_text(cls, text: str) -> str:
+        """Validate and normalize text under the gameplay-v3 player policy."""
+        return player_visible_sentence(cls._without_internal_markers(text))
+
+    @classmethod
+    def session_public_text(cls, text: str, session: GameSession) -> str:
+        clean = cls._without_internal_markers(text)
+        if session.package_id == "pkg_gameplay_v3":
+            return player_visible_sentence(clean)
+        return clean

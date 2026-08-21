@@ -627,8 +627,21 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
             item for item in before.json()["people"]
             if item["npc_id"] == "npc_wu_xiuying"
         )
+        expected_topic = next(
+            item["conversation_goal"]
+            for item in before.json()["opportunities"]
+            if item["opportunity_id"] == "opp_d02_wu_xiuying_first_talk"
+        )
         self.assertTrue(before_person["recent_change_reasons"])
         self.assertLessEqual(len(before_person["recent_change_reasons"]), 3)
+        self.assertEqual(
+            {"trust", "attitude", "anxiety"},
+            set(before_person["relationship_reasons"]),
+        )
+        self.assertTrue(all(
+            before_person["relationship_reasons"][dimension].strip()
+            for dimension in ("trust", "attitude", "anxiety")
+        ))
         self.assertTrue(any(
             marker in "".join(before_person["recent_change_reasons"])
             for marker in ("名册", "剧情", "材料", "工作联系")
@@ -658,8 +671,13 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
         )
         self.assertTrue(person["recent_change_reasons"])
         self.assertLessEqual(len(person["recent_change_reasons"]), 3)
+        self.assertEqual(
+            {"trust", "attitude", "anxiety"},
+            set(person["relationship_reasons"]),
+        )
         reasons = "".join(person["recent_change_reasons"])
         self.assertIn("本次会谈", reasons)
+        self.assertIn(expected_topic, reasons)
         for hidden_marker in ("trust_score", "attitude_score", "anxiety_score"):
             self.assertNotIn(hidden_marker, reasons)
 

@@ -160,6 +160,26 @@ class StorySemanticsV3Tests(unittest.TestCase):
         )
         self.assertIn("重复", error.message)
 
+    def test_hidden_metric_delta_in_player_consequence_is_rejected_at_load(self) -> None:
+        def mutate(document: dict) -> None:
+            decision = next(
+                item for item in document["decisions"] if item["decision_id"] == "dp2_07"
+            )
+            decision["options"][0]["consequence"] = "政治资本 +5 到 +10。"
+
+        package_dir = self.mutate_package("decisions.json", mutate)
+        with self.assertRaises(ContentValidationError):
+            FileScriptPackageLoader().load(package_dir)
+
+    def test_adjacent_player_punctuation_is_rejected_at_load(self) -> None:
+        def mutate(document: dict) -> None:
+            beat = next(item for item in document["beats"] if item["story_day"] == 13)
+            beat["opening_blocks"][0]["text"] = "首轮攻坚已经排定，。"
+
+        package_dir = self.mutate_package("story_beats.json", mutate)
+        with self.assertRaises(ContentValidationError):
+            FileScriptPackageLoader().load(package_dir)
+
     def test_d13_to_d30_decisions_use_event_specific_premises_and_followups(self) -> None:
         package = FileScriptPackageLoader().load(PACKAGE_DIR)
         generic_fragments = (

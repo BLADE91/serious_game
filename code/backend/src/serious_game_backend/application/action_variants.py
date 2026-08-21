@@ -180,8 +180,12 @@ def canonical_opportunity_descriptor(
     expected_action = {
         "home_visit": "household_visit",
         "field_visit": "household_visit",
+        "welfare_medical_safety_net": "household_visit",
         "heart_to_heart": "cadre_interview",
         "interview_cadre": "cadre_interview",
+        "liaise_zhang_li": "cadre_interview",
+        "private_testimony": "cadre_interview",
+        "meet_party_secretary": "cadre_interview",
     }.get(opportunity.action_id)
     if expected_action is None:
         return None

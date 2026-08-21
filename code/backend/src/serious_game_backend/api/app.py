@@ -1566,6 +1566,61 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         tier = package.action_cost_tier(session.game_state.story_day)
         npc_profiles = {item.npc_id: item for item in package.npc_profiles}
 
+        def public_opportunity(item) -> dict:
+            descriptor = canonical_opportunity_descriptor(session, package, item)
+            return {
+                "opportunity_id": item.opportunity_id,
+                "npc_id": item.npc_id,
+                "npc_name": (
+                    npc_profiles[item.npc_id].name
+                    if item.npc_id in npc_profiles else item.npc_id
+                ),
+                "npc_title": (
+                    _public_npc_description(
+                        npc_profiles[item.npc_id].name,
+                        npc_profiles[item.npc_id].role_setting,
+                    )[0]
+                    if item.npc_id in npc_profiles else "剧情人物"
+                ),
+                "npc_introduction": (
+                    _public_npc_description(
+                        npc_profiles[item.npc_id].name,
+                        npc_profiles[item.npc_id].role_setting,
+                    )[1]
+                    if item.npc_id in npc_profiles
+                    else "当前剧情中的可接触人物。"
+                ),
+                "entry_type": item.entry_type,
+                "action_id": item.action_id,
+                "action_name": package.action_rules[item.action_id].name,
+                "conversation_context": _opportunity_context(
+                    item.entry_type,
+                    package.action_rules[item.action_id].name,
+                ),
+                "opening_narrative": item.opening_narrative,
+                "conversation_goal": item.conversation_goal,
+                "related_materials": related_materials(
+                    session, package, item.npc_id
+                ),
+                "conversation_active": (
+                    session.active_conversation is not None
+                    and session.active_conversation.opportunity_id == item.opportunity_id
+                ),
+                "conversation_id": (
+                    session.active_conversation.conversation_id
+                    if session.active_conversation is not None
+                    and session.active_conversation.opportunity_id == item.opportunity_id
+                    else None
+                ),
+                "cost_action_points": package.action_rules[item.action_id].cost_for(tier),
+                "canonical_action_descriptor": descriptor,
+                "cta_available": descriptor is not None,
+                "no_cta_reason": (
+                    None if descriptor is not None
+                    else "该人物当前仅可查看公开档案，尚无可安全执行的统一会谈入口。"
+                ),
+            }
+
         return {
             "state_version": session.state_version,
             "blocked_reason": gate["action_blocked_reason"],
@@ -1573,58 +1628,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "relationship_edges": NPCRelationshipService.public_edges(
                 session, package
             ),
-            "opportunities": [
-                {
-                    "opportunity_id": item.opportunity_id,
-                    "npc_id": item.npc_id,
-                    "npc_name": (
-                        npc_profiles[item.npc_id].name
-                        if item.npc_id in npc_profiles else item.npc_id
-                    ),
-                    "npc_title": (
-                        _public_npc_description(
-                            npc_profiles[item.npc_id].name,
-                            npc_profiles[item.npc_id].role_setting,
-                        )[0]
-                        if item.npc_id in npc_profiles else "剧情人物"
-                    ),
-                    "npc_introduction": (
-                        _public_npc_description(
-                            npc_profiles[item.npc_id].name,
-                            npc_profiles[item.npc_id].role_setting,
-                        )[1]
-                        if item.npc_id in npc_profiles
-                        else "当前剧情中的可接触人物。"
-                    ),
-                    "entry_type": item.entry_type,
-                    "action_id": item.action_id,
-                    "action_name": package.action_rules[item.action_id].name,
-                    "conversation_context": _opportunity_context(
-                        item.entry_type,
-                        package.action_rules[item.action_id].name,
-                    ),
-                    "opening_narrative": item.opening_narrative,
-                    "conversation_goal": item.conversation_goal,
-                    "related_materials": related_materials(
-                        session, package, item.npc_id
-                    ),
-                    "conversation_active": (
-                        session.active_conversation is not None
-                        and session.active_conversation.opportunity_id == item.opportunity_id
-                    ),
-                    "conversation_id": (
-                        session.active_conversation.conversation_id
-                        if session.active_conversation is not None
-                        and session.active_conversation.opportunity_id == item.opportunity_id
-                        else None
-                    ),
-                    "cost_action_points": package.action_rules[item.action_id].cost_for(tier),
-                    "canonical_action_descriptor": canonical_opportunity_descriptor(
-                        session, package, item
-                    ),
-                }
-                for item in values
-            ],
+            "opportunities": [public_opportunity(item) for item in values],
         }
 
     @app.get("/api/game/session/{session_id}/conversations")

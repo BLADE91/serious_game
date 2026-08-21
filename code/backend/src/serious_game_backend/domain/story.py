@@ -161,6 +161,7 @@ class DecisionTextVariant:
     prompt: str | None = None
     option_texts: dict[str, str] = field(default_factory=dict)
     option_consequences: dict[str, str] = field(default_factory=dict)
+    scene_id: str | None = None
 
     def matches(self, flags: set[str]) -> bool:
         return self.required_flags.issubset(flags) and not bool(
@@ -217,6 +218,10 @@ class DecisionDefinition:
     def visible_prompt(self, flags: set[str]) -> str:
         variant = self.text_variant(flags)
         return variant.prompt if variant is not None and variant.prompt else self.prompt
+
+    def visible_scene_id(self, flags: set[str]) -> str | None:
+        variant = self.text_variant(flags)
+        return variant.scene_id if variant is not None and variant.scene_id else self.scene_id
 
     def visible_option_text(self, option: DecisionOptionDefinition, flags: set[str]) -> str:
         variant = self.text_variant(flags)

@@ -115,6 +115,7 @@ PLAYER_TEXT_INTERNAL_MARKERS = (
     "玩家",
     "代码",
 )
+from serious_game_backend.application.player_text_policy import validate_player_visible_text
 
 SCENE_ID_PATTERN = re.compile(r"^C\d{2}_S\d{2}$")
 SCENE_ASSET_ROOT = (
@@ -1304,6 +1305,10 @@ class FileScriptPackageLoader:
                                 "option_consequences", {}
                             ).items()
                         },
+                        scene_id=(
+                            str(variant["scene_id"])
+                            if variant.get("scene_id") else None
+                        ),
                     )
                     for variant in item.get("text_variants", [])
                 ),
@@ -2131,6 +2136,8 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(
                     f"story beat 标题混入内部说明：{beat.beat_id}"
                 )
+            if gameplay_schema_version >= 4:
+                validate_player_visible_text(beat.title)
             if beat.beat_id in beat_ids:
                 raise ContentValidationError(f"beat_id 重复：{beat.beat_id}")
             beat_ids.add(beat.beat_id)
@@ -2233,6 +2240,8 @@ class FileScriptPackageLoader:
                     raise ContentValidationError(
                         f"story block 混入内部说明：{block.block_id}"
                     )
+                if gameplay_schema_version >= 4:
+                    validate_player_visible_text(block.text)
                 if block.block_id in block_ids:
                     raise ContentValidationError(
                         f"story block ID 重复：{block.block_id}",
@@ -2420,6 +2429,13 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(
                     f"决策玩家文本混入内部说明：{decision.decision_id}"
                 )
+            if gameplay_schema_version >= 4:
+                validate_player_visible_text(decision.title)
+                validate_player_visible_text(decision.prompt)
+                for block in (
+                    *decision.presentation_blocks, *decision.followup_blocks
+                ):
+                    validate_player_visible_text(block.text)
             if decision.cost_source not in {
                 "interrupt", "desk", "collective", "attached", "contract"
             }:
@@ -2527,6 +2543,19 @@ class FileScriptPackageLoader:
                             ),
                         },
                     )
+                if gameplay_schema_version >= 4:
+                    for value in variant_texts:
+                        validate_player_visible_text(value)
+                    if variant.scene_id and (
+                        not SCENE_ID_PATTERN.fullmatch(variant.scene_id)
+                        or not (
+                            SCENE_ASSET_ROOT
+                            / f"{variant.scene_id.lower().replace('_', '-')}.webp"
+                        ).is_file()
+                    ):
+                        raise ContentValidationError(
+                            f"决策条件场景资产不存在：{decision.decision_id}"
+                        )
             sorting_ids = all(
                 "_" in option_id
                 and len(parts := option_id.split("_")) == len(set(parts))
@@ -2549,6 +2578,9 @@ class FileScriptPackageLoader:
                     raise ContentValidationError(
                         f"决策选项字段不能为空：{decision.decision_id}"
                     )
+                if gameplay_schema_version >= 4:
+                    validate_player_visible_text(option.text)
+                    validate_player_visible_text(option.consequence)
                 if gameplay_schema_version >= 3 and any(
                     marker in value
                     for value in (option.text, option.consequence)

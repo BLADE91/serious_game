@@ -120,9 +120,14 @@ class NightSimulationService:
         record = {
             "story_day": day,
             "beat_id": beat.beat_id if beat else None,
-            "lines": [StoryFlowService.public_text(item.text) for item in visible_night_blocks],
+            "lines": [
+                StoryFlowService.session_public_text(item.text, session)
+                for item in visible_night_blocks
+            ],
             "summary": (
-                StoryFlowService.public_text(visible_night_blocks[-1].text)
+                StoryFlowService.session_public_text(
+                    visible_night_blocks[-1].text, session
+                )
                 if visible_night_blocks
                 else f"第{day}日夜间结转完成"
             ),

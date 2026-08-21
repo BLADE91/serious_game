@@ -105,6 +105,7 @@ type PublicPerson = {
   trust_band: string;
   attitude_band: string;
   anxiety_band: string;
+  relationship_reasons: { trust: string; attitude: string; anxiety: string };
   recent_change_reasons: string[];
 };
 
@@ -124,6 +125,8 @@ export function peopleRelationshipView(value: PlayerRecord | null | undefined): 
     const item = raw as PlayerRecord;
     const contactState = String(item.contact_state || "");
     if (!new Set(["known", "contactable"]).has(contactState)) return [];
+    const rawReasons = item.relationship_reasons && typeof item.relationship_reasons === "object" && !Array.isArray(item.relationship_reasons)
+      ? item.relationship_reasons as PlayerRecord : {};
     return [{
       npc_id: String(item.npc_id || ""),
       name: String(item.name || ""),
@@ -131,6 +134,11 @@ export function peopleRelationshipView(value: PlayerRecord | null | undefined): 
       trust_band: String(item.trust_band || "not_assessed"),
       attitude_band: String(item.attitude_band || "not_assessed"),
       anxiety_band: String(item.anxiety_band || "not_assessed"),
+      relationship_reasons: {
+        trust: String(rawReasons.trust || ""),
+        attitude: String(rawReasons.attitude || ""),
+        anxiety: String(rawReasons.anxiety || ""),
+      },
       recent_change_reasons: (Array.isArray(item.recent_change_reasons) ? item.recent_change_reasons : []).slice(0, 3).map(String),
     }];
   });

@@ -499,7 +499,9 @@ class ActionService:
                 ),
                 "parameters": parameters,
                 "cost": 0,
-                "narrative": self._story_flow.public_text(option.consequence),
+                "narrative": self._story_flow.session_public_text(
+                    option.consequence, session
+                ),
             }
         if command.input_mode is ActionInputMode.OVERTIME:
             state = session.game_state
@@ -863,19 +865,29 @@ class ActionService:
                     ),
                 )
                 visible_reasons = []
+                public_topic = (
+                    opportunity.conversation_goal.strip()
+                    if opportunity is not None else "当前事项"
+                ) or "当前事项"
+                if draft["trust_consumption"] < 0:
+                    visible_reasons.append((
+                        "trust",
+                        f"围绕“{public_topic}”的本次会谈触及了对方的信任边界。",
+                    ))
                 if turn.attitude_delta > 0:
-                    visible_reasons.append("本次会谈中的回应使对方更愿意合作。")
+                    visible_reasons.append(("attitude", f"围绕“{public_topic}”的本次会谈中，回应使对方更愿意合作。"))
                 elif turn.attitude_delta < 0:
-                    visible_reasons.append("本次会谈中的表达使对方更为抵触。")
+                    visible_reasons.append(("attitude", f"围绕“{public_topic}”的本次会谈中，表达使对方更为抵触。"))
                 if turn.anxiety_delta > 0:
-                    visible_reasons.append("本次会谈增加了对方对后续风险的担忧。")
+                    visible_reasons.append(("anxiety", f"围绕“{public_topic}”的本次会谈增加了对方对后续风险的担忧。"))
                 elif turn.anxiety_delta < 0:
-                    visible_reasons.append("本次会谈缓解了对方对后续风险的担忧。")
-                for reason in visible_reasons:
+                    visible_reasons.append(("anxiety", f"围绕“{public_topic}”的本次会谈缓解了对方对后续风险的担忧。"))
+                for dimension, reason in visible_reasons:
                     session.logs.append({
                         "type": "relationship_change",
                         "story_day": session.game_state.story_day,
                         "npc_id": draft["npc_id"],
+                        "dimension": dimension,
                         "reason": reason,
                         "visible_to_player": True,
                     })
