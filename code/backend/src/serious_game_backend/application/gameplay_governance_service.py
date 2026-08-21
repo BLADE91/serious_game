@@ -33,16 +33,24 @@ from serious_game_backend.application.action_variants import (
 )
 from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.stream_lifecycle import (
+    StreamCancelCallback,
     StreamCancelled,
     ensure_stream_open,
     wait_for_stream_ack,
 )
+from serious_game_backend.application.turn_operation_lease import (
+    TurnLease,
+    TurnOperationLeaseService,
+)
+from serious_game_backend.application.night_turn_safety import validate_night_turn_result
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
 from serious_game_backend.application.ports import (
     GameSessionRepository,
+    OperationRepository,
     RoleLLMGateway,
+    RuntimeTransactionRepository,
     ScriptPackageRepository,
     SnapshotRepository,
 )
@@ -119,6 +127,8 @@ class GameplayGovernanceService:
         story_flow: StoryFlowService | None = None,
         snapshots: SnapshotRepository | None = None,
         disclosure_gate: DisclosureGateService | None = None,
+        operations: OperationRepository | None = None,
+        transactions: RuntimeTransactionRepository | None = None,
     ) -> None:
         self._sessions = sessions
         self._packages = packages
@@ -130,6 +140,11 @@ class GameplayGovernanceService:
         self._story_flow = story_flow
         self._snapshots = snapshots
         self._disclosure_gate = disclosure_gate or DisclosureGateService()
+        self._leases = (
+            TurnOperationLeaseService(sessions, operations, transactions)
+            if operations is not None and transactions is not None
+            else None
+        )
 
     def overview(self, *, account_id: str, session_id: str) -> dict:
         session, package = self._load(account_id, session_id)
@@ -601,12 +616,62 @@ class GameplayGovernanceService:
         state_version: int,
         action_instance_id: str,
         player_text: str,
+        client_action_id: str | None = None,
+        retry: bool = False,
         stream_event: Callable[[dict], None] | None = None,
         stream_cancelled: StreamCancelled = None,
+        stream_cancel_register: Callable[[StreamCancelCallback], None] | None = None,
     ) -> dict:
-        session, package = self._load_mutable(
-            account_id, session_id, state_version
+        if self._leases is None:
+            raise RuntimeError("治理会谈操作仓储未配置")
+        text = player_text.strip()
+        key = client_action_id or self._leases.legacy_client_action_id({
+            "kind": "governance_action_turn",
+            "action_instance_id": action_instance_id,
+            "state_version": state_version,
+            "player_text": text,
+        })
+        reserved = self._leases.reserve(
+            account_id=account_id,
+            session_id=session_id,
+            client_action_id=key,
+            state_version=state_version,
+            request_payload={
+                "kind": "governance_action_turn",
+                "action_instance_id": action_instance_id,
+                "state_version": state_version,
+                "player_text": text,
+            },
+            retry=retry,
+            stream_cancel_register=stream_cancel_register,
         )
+        if isinstance(reserved, dict):
+            return reserved
+        try:
+            return self._action_turn_reserved(
+                lease=reserved,
+                action_instance_id=action_instance_id,
+                player_text=text,
+                stream_event=stream_event,
+                stream_cancelled=stream_cancelled,
+            )
+        except Exception as exc:
+            self._leases.fail(reserved, exc)
+            raise
+
+    def _action_turn_reserved(
+        self,
+        *,
+        lease: TurnLease,
+        action_instance_id: str,
+        player_text: str,
+        stream_event: Callable[[dict], None] | None,
+        stream_cancelled: StreamCancelled,
+    ) -> dict:
+        assert self._leases is not None
+        session = lease.session
+        package = require_locked_package(self._packages, session)
+        state_version = lease.expected_version
         action = session.governance_actions.get(action_instance_id)
         if action is None:
             raise NotFoundError("基础行动实例不存在")
@@ -636,15 +701,13 @@ class GameplayGovernanceService:
                 "reason": review_reason,
                 "visible_to_player": False,
             })
-            self._commit(session, state_version)
-            return {
-                "state_version": session.state_version,
+            return self._complete_leased_turn(lease, package, {
                 "input_rejected": True,
                 "message": input_rejection_message(review_reason),
                 "replies": [],
                 "acquired_archive_ids": [],
                 "contract_batch_proposal": None,
-            }
+            })
         profiles = {item.npc_id: item for item in package.npc_profiles}
         opportunity = next(
             (
@@ -665,6 +728,17 @@ class GameplayGovernanceService:
             fact_boundary = self._disclosure_gate.role_turn_boundary(
                 session, package, opportunity, repeat_count=repeat_count
             )
+        else:
+            fact_boundary = self._disclosure_gate.session_boundary(session, package)
+
+        def deferred_stream(event: dict) -> None:
+            if event.get("type") == "_npc_reply_ready":
+                acknowledged = event.get("acknowledged")
+                if acknowledged is not None:
+                    acknowledged.set()
+                return
+            # Thinking/reply events are released in participant order only
+            # after the authoritative transaction succeeds.
         replies = []
         for npc_id in action.target_ids:
             profile = profiles[npc_id]
@@ -745,7 +819,7 @@ class GameplayGovernanceService:
                 ),
                 npc_state,
                 random_seed=session.random_seed,
-                stream_event=stream_event,
+                stream_event=deferred_stream if stream_event is not None else None,
                 stream_cancelled=stream_cancelled,
             )
             if turn.input_relevance == "irrelevant":
@@ -806,15 +880,13 @@ class GameplayGovernanceService:
             reply["input_relevance"] == "irrelevant"
             for reply in replies
         ):
-            self._commit(session, state_version)
-            return {
-                "state_version": session.state_version,
+            return self._complete_leased_turn(lease, package, {
                 "input_rejected": True,
                 "message": input_rejection_message(review_reason),
                 "replies": [],
                 "acquired_archive_ids": [],
                 "contract_batch_proposal": None,
-            }
+            })
         ensure_stream_open(stream_cancelled)
         action.transcript.append({
             "speaker_type": "player",
@@ -838,17 +910,16 @@ class GameplayGovernanceService:
             proposal = self._detect_and_create_contract_batch(
                 session, package, action.target_ids[0], text
             )
-        self._commit(session, state_version)
-        return {
-            "state_version": session.state_version,
+        response = self._complete_leased_turn(lease, package, {
             "input_rejected": False,
             "replies": replies,
             "acquired_archive_ids": acquired,
             "contract_batch_proposal": (
                 asdict(proposal) if proposal is not None else None
             ),
-            "visible_state": self._projector.project(session, package),
-        }
+        }, include_visible_state=True)
+        self._emit_committed_replies(replies, stream_event, stream_cancelled)
+        return response
 
     def finish_action(
         self,
@@ -1000,12 +1071,66 @@ class GameplayGovernanceService:
         meeting_id: str,
         player_text: str,
         addressed_npc_id: str | None = None,
+        client_action_id: str | None = None,
+        retry: bool = False,
         stream_event: Callable[[dict], None] | None = None,
         stream_cancelled: StreamCancelled = None,
+        stream_cancel_register: Callable[[StreamCancelCallback], None] | None = None,
     ) -> dict:
-        session, package = self._load_mutable(
-            account_id, session_id, state_version
+        if self._leases is None:
+            raise RuntimeError("治理会谈操作仓储未配置")
+        text = player_text.strip()
+        key = client_action_id or self._leases.legacy_client_action_id({
+            "kind": "governance_meeting_turn",
+            "meeting_id": meeting_id,
+            "state_version": state_version,
+            "player_text": text,
+            "addressed_npc_id": addressed_npc_id,
+        })
+        reserved = self._leases.reserve(
+            account_id=account_id,
+            session_id=session_id,
+            client_action_id=key,
+            state_version=state_version,
+            request_payload={
+                "kind": "governance_meeting_turn",
+                "meeting_id": meeting_id,
+                "state_version": state_version,
+                "player_text": text,
+                "addressed_npc_id": addressed_npc_id,
+            },
+            retry=retry,
+            stream_cancel_register=stream_cancel_register,
         )
+        if isinstance(reserved, dict):
+            return reserved
+        try:
+            return self._meeting_turn_reserved(
+                lease=reserved,
+                meeting_id=meeting_id,
+                player_text=text,
+                addressed_npc_id=addressed_npc_id,
+                stream_event=stream_event,
+                stream_cancelled=stream_cancelled,
+            )
+        except Exception as exc:
+            self._leases.fail(reserved, exc)
+            raise
+
+    def _meeting_turn_reserved(
+        self,
+        *,
+        lease: TurnLease,
+        meeting_id: str,
+        player_text: str,
+        addressed_npc_id: str | None,
+        stream_event: Callable[[dict], None] | None,
+        stream_cancelled: StreamCancelled,
+    ) -> dict:
+        assert self._leases is not None
+        session = lease.session
+        package = require_locked_package(self._packages, session)
+        state_version = lease.expected_version
         meeting = self._meeting(session, meeting_id)
         if meeting.status != "discussion":
             raise ActionUnavailableError("会议已经结束讨论")
@@ -1033,16 +1158,15 @@ class GameplayGovernanceService:
                 "reason": review_reason,
                 "visible_to_player": False,
             })
-            self._commit(session, state_version)
-            return {
-                "state_version": session.state_version,
+            return self._complete_leased_turn(lease, package, {
                 "meeting_id": meeting_id,
                 "input_rejected": True,
                 "message": input_rejection_message(review_reason),
                 "replies": [],
                 "transcript": meeting.transcript,
-            }
+            })
         profiles = {item.npc_id: item for item in package.npc_profiles}
+        fact_boundary = self._disclosure_gate.session_boundary(session, package)
         meeting.transcript.append({
             "speaker_type": "player",
             "text": text,
@@ -1056,20 +1180,12 @@ class GameplayGovernanceService:
         replies = []
         for order_index, npc_id in enumerate(ordered):
             profile = profiles[npc_id]
-            identity = {
-                "stream_id": f"{npc_id}:{order_index}",
-                "npc_id": npc_id,
-                "npc_name": profile.name,
-            }
             meeting_role = (
                 "分管或牵头领导：先汇报事实、依据、方案和风险"
                 if order_index == 0
                 else "参会领导：在分管领导汇报后明确表示同意、反对或提出修改意见"
             )
-            if stream_event is not None:
-                stream_event({"type": "npc_thinking_start", **identity})
-            try:
-                result = self._gateway.run_night_turn(NightAgentContext(
+            raw_result = self._gateway.run_night_turn(NightAgentContext(
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=(
@@ -1100,16 +1216,28 @@ class GameplayGovernanceService:
                         meeting_role,
                     ),
                     player_text=text,
-                ))
-            finally:
-                if stream_event is not None:
-                    stream_event({"type": "npc_thinking_end", **identity})
+            ))
             ensure_stream_open(stream_cancelled)
+            result = validate_night_turn_result(
+                raw_result,
+                expected_npc_id=npc_id,
+                forbidden_fact_signatures=fact_boundary.forbidden_fact_signatures,
+            )
             public_dialogue = self._public_meeting_dialogue(
                 result.dialogue,
                 meeting_role=meeting_role,
                 is_lead=order_index == 0,
                 participant_index=order_index,
+            )
+            result = validate_night_turn_result(
+                replace(result, dialogue=public_dialogue),
+                expected_npc_id=npc_id,
+                forbidden_fact_signatures=fact_boundary.forbidden_fact_signatures,
+                forbidden_markers=(
+                    "你的会议角色",
+                    "当前角色私有处境",
+                    meeting_role,
+                ),
             )
             if public_dialogue:
                 reply = {
@@ -1122,23 +1250,58 @@ class GameplayGovernanceService:
                 }
                 meeting.transcript.append(reply)
                 replies.append(reply)
-                if stream_event is not None:
-                    acknowledged = Event()
-                    stream_event({
-                        "type": "_npc_reply_ready",
-                        "reply": reply,
-                        "acknowledged": acknowledged,
-                    })
-                    wait_for_stream_ack(acknowledged, stream_cancelled)
         ensure_stream_open(stream_cancelled)
-        self._commit(session, state_version)
-        return {
-            "state_version": session.state_version,
+        response = self._complete_leased_turn(lease, package, {
             "meeting_id": meeting_id,
             "input_rejected": False,
             "replies": replies,
             "transcript": meeting.transcript,
-        }
+        })
+        self._emit_committed_replies(replies, stream_event, stream_cancelled)
+        return response
+
+    def _complete_leased_turn(
+        self,
+        lease: TurnLease,
+        package: ScriptPackage,
+        response: dict,
+        *,
+        include_visible_state: bool = False,
+    ) -> dict:
+        assert self._leases is not None
+        NPCDemandService.sync(lease.session, package)
+        NPCRelationshipService.synchronize(lease.session, package)
+        return self._leases.complete(lease, lambda committed: {
+            **response,
+            **(
+                {"visible_state": self._projector.project(committed, package)}
+                if include_visible_state else {}
+            ),
+        })
+
+    @staticmethod
+    def _emit_committed_replies(
+        replies: list[dict],
+        stream_event: Callable[[dict], None] | None,
+        stream_cancelled: StreamCancelled,
+    ) -> None:
+        if stream_event is None:
+            return
+        for reply in replies:
+            identity = {
+                "stream_id": f"{reply['npc_id']}:committed",
+                "npc_id": reply["npc_id"],
+                "npc_name": reply["npc_name"],
+            }
+            stream_event({"type": "npc_thinking_start", **identity})
+            stream_event({"type": "npc_thinking_end", **identity})
+            acknowledged = Event()
+            stream_event({
+                "type": "_npc_reply_ready",
+                "reply": reply,
+                "acknowledged": acknowledged,
+            })
+            wait_for_stream_ack(acknowledged, stream_cancelled)
 
     @staticmethod
     def _public_meeting_dialogue(

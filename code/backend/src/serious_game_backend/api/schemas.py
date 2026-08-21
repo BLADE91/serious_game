@@ -164,6 +164,8 @@ class GroupConversationTurnRequest(BaseModel):
 
     state_version: int = Field(ge=1)
     player_text: str = Field(min_length=1, max_length=2000)
+    client_action_id: str | None = Field(default=None, min_length=8, max_length=128)
+    retry: bool = False
 
 
 class GovernanceActionStartRequest(BaseModel):
@@ -197,6 +199,8 @@ class GovernanceTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     state_version: int = Field(ge=1)
     player_text: str = Field(min_length=1, max_length=4000)
+    client_action_id: str | None = Field(default=None, min_length=8, max_length=128)
+    retry: bool = False
 
 
 class GovernanceFinishRequest(BaseModel):

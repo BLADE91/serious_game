@@ -559,7 +559,7 @@ export default function GameShell() {
     const conversation = state.active_conversation;
     if (group) {
       await performNpcStream(onEvent => api.streamWrite(sessionId, "/group-conversation/turn/stream", {
-        state_version: state.state_version, player_text: text,
+        client_action_id: api.key("group-turn"), state_version: state.state_version, player_text: text,
       }, onEvent), "你的回应已经传达给在场各方");
     } else if (conversation) {
       await performNpcStream(onEvent => api.streamWrite(sessionId, "/action/stream", {
@@ -598,12 +598,12 @@ export default function GameShell() {
     if (!text || !activeGovernanceAction) return;
     if (activeMeeting) {
       await performNpcStream(onEvent => api.streamWrite(sessionId, `/governance/meetings/${encodeURIComponent(String(activeMeeting.meeting_id))}/turn/stream`, {
-        state_version: state.state_version, player_text: text, addressed_npc_id: null,
+        client_action_id: api.key("meeting-turn"), state_version: state.state_version, player_text: text, addressed_npc_id: null,
       }, onEvent), "你的意见已经传达给全体参会人员");
       return;
     }
     await performNpcStream(onEvent => api.streamWrite(sessionId, `/governance/actions/${encodeURIComponent(String(activeGovernanceAction.action_instance_id))}/turn/stream`, {
-      state_version: state.state_version, player_text: text,
+      client_action_id: api.key("governance-turn"), state_version: state.state_version, player_text: text,
     }, onEvent), result => result.input_rejected
       ? playerText(result.message, "这句话没有送达，请说明你想了解的具体问题。")
       : "你的询问已经得到回应", result => {

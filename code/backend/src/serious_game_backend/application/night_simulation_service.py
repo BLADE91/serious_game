@@ -12,16 +12,16 @@ from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.application.trust_derivation_service import TrustDerivationService
 from serious_game_backend.application.story_flow_service import StoryFlowService
+from serious_game_backend.application.night_turn_safety import (
+    NightTurnSafetyError,
+    validate_night_turn_result,
+)
+from serious_game_backend.domain.fact_markers import forbidden_fact_signatures
 from serious_game_backend.domain.errors import (
     RoleLLMBudgetExceededError,
     RoleLLMResponseError,
     RoleLLMUnavailableError,
 )
-
-
-class _NightAgentDisclosureError(RoleLLMResponseError):
-    code = "NIGHT_AGENT_HIDDEN_FACT_LEAKAGE"
-    retryable = False
 
 
 class NightSimulationService:
@@ -238,7 +238,13 @@ class NightSimulationService:
                     allowed_followup_type=followup_type,
                     forbidden_disclosure_markers=forbidden_disclosure_markers,
                 )
-                result = self._safe_night_turn(context, failures)
+                result = self._safe_night_turn(
+                    context,
+                    failures,
+                    forbidden_signatures=forbidden_fact_signatures(
+                        package.facts, set(session.known_fact_ids)
+                    ),
+                )
                 if result is None:
                     continue
                 proposal = {
@@ -296,7 +302,11 @@ class NightSimulationService:
                             ),
                     )
                     response = self._safe_night_turn(
-                        response_context, failures
+                        response_context,
+                        failures,
+                        forbidden_signatures=forbidden_fact_signatures(
+                            package.facts, set(session.known_fact_ids)
+                        ),
                     )
                     if response is None:
                         proposal["responses"].append({
@@ -480,7 +490,13 @@ class NightSimulationService:
                 max_contacts=max_contacts,
                 model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
             )
-            result = self._safe_night_turn(context, failures)
+            result = self._safe_night_turn(
+                context,
+                failures,
+                forbidden_signatures=forbidden_fact_signatures(
+                    package.facts, set(session.known_fact_ids)
+                ),
+            )
             if result is None:
                 failure = self._failure_for_operation(
                     failures, context.operation_id
@@ -573,7 +589,11 @@ class NightSimulationService:
                     ),
                 )
                 response = self._safe_night_turn(
-                    response_context, failures
+                    response_context,
+                    failures,
+                    forbidden_signatures=forbidden_fact_signatures(
+                        package.facts, set(session.known_fact_ids)
+                    ),
                 )
                 if response is None:
                     failure = self._failure_for_operation(
@@ -720,7 +740,13 @@ class NightSimulationService:
                         ),
                         model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
                     )
-                    result = self._safe_night_turn(context, failures)
+                    result = self._safe_night_turn(
+                        context,
+                        failures,
+                        forbidden_signatures=forbidden_fact_signatures(
+                            package.facts, set(session.known_fact_ids)
+                        ),
+                    )
                     if result is None:
                         failure = self._failure_for_operation(
                             failures, context.operation_id
@@ -817,7 +843,13 @@ class NightSimulationService:
                     ),
                     model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
                 )
-                result = self._safe_night_turn(context, failures)
+                result = self._safe_night_turn(
+                    context,
+                    failures,
+                    forbidden_signatures=forbidden_fact_signatures(
+                        package.facts, set(session.known_fact_ids)
+                    ),
+                )
                 if result is None:
                     failure = self._failure_for_operation(
                         failures, context.operation_id
@@ -1145,6 +1177,8 @@ class NightSimulationService:
         self,
         context: NightAgentContext,
         failures: list[dict],
+        *,
+        forbidden_signatures: dict[str, tuple[str, ...]],
     ):
         """Retry transient night-agent failures without blocking day settlement."""
         if self._night_llm is None:
@@ -1154,15 +1188,19 @@ class NightSimulationService:
         for attempt in range(1, 3):
             attempts = attempt
             try:
-                result = self._night_llm.run_night_turn(context)
-                if self._contains_forbidden_disclosure(result, context):
-                    raise _NightAgentDisclosureError(
-                        "夜间 Agent 输出包含未授权隐藏事实",
-                        details={
-                            "original_proposal": self._night_result_document(result)
-                        },
+                raw_result = self._night_llm.run_night_turn(context)
+                try:
+                    return validate_night_turn_result(
+                        raw_result,
+                        expected_npc_id=context.npc_id,
+                        forbidden_fact_signatures=forbidden_signatures,
+                        forbidden_markers=context.forbidden_disclosure_markers,
                     )
-                return result
+                except NightTurnSafetyError as exc:
+                    # Never persist the rejected payload: it may itself contain
+                    # the unauthorized fact that triggered this boundary.
+                    exc.details["original_proposal"] = None
+                    raise
             except (
                 RoleLLMBudgetExceededError,
                 RoleLLMResponseError,
@@ -1186,22 +1224,6 @@ class NightSimulationService:
             ),
         })
         return None
-
-    @staticmethod
-    def _contains_forbidden_disclosure(
-        result: NightAgentResult,
-        context: NightAgentContext,
-    ) -> bool:
-        text = "\n".join((
-            result.dialogue or "",
-            result.rationale,
-            result.agenda,
-            *result.demands,
-        ))
-        return any(
-            marker and marker in text
-            for marker in context.forbidden_disclosure_markers
-        )
 
     @staticmethod
     def _night_result_document(result: NightAgentResult) -> dict:

@@ -1025,6 +1025,117 @@ class GameplayGovernanceTests(unittest.TestCase):
         )
         self.assertEqual(flags_before_turn, after_turn.flags)
 
+    def test_meeting_unknown_fact_is_rejected_before_stream_and_transcript(self) -> None:
+        delegate = self.runtime.gameplay_governance._gateway
+        package = self.runtime.packages.get("pkg_gameplay_v2")
+        secret = package.facts["fact_lead_287"].text
+
+        class FactLeakGateway:
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+            def run_night_turn(self, context):
+                result = delegate.run_night_turn(context)
+                return replace(result, dialogue=secret)
+
+        self.runtime.gameplay_governance._gateway = FactLeakGateway()
+        started = self._start_three_person_leadership_meeting()
+        meeting = started["meeting"]
+        with self.client.stream(
+            "POST",
+            (
+                f"/api/game/session/{self.session_id}/governance/meetings/"
+                f"{meeting['meeting_id']}/turn/stream"
+            ),
+            headers=self.headers,
+            json={
+                "client_action_id": "meeting-secret-boundary-0001",
+                "state_version": started["state_version"],
+                "player_text": "请三位说明公开办理意见。",
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            events = [json.loads(line) for line in response.iter_lines() if line]
+        public = json.dumps(events, ensure_ascii=False)
+        self.assertNotIn(secret, public)
+        self.assertFalse(any(item["type"] == "npc_start" for item in events))
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert stored is not None
+        persisted = stored.meetings[meeting["meeting_id"]]
+        self.assertEqual([], persisted.transcript)
+        self.assertIsNone(stored.processing_action_id)
+
+    def test_free_governance_turn_uses_global_fact_boundary_and_allows_known_fact(self) -> None:
+        self._resolve_opening()
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "household_visit",
+            "target_ids": ["npc_zhou_dashan"],
+            "topic": "了解公开搬迁诉求",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+        package = self.runtime.packages.get("pkg_gameplay_v2")
+        secret = package.facts["fact_lead_287"].text
+        delegate = self.runtime.gameplay_governance._npc_turns._gateway
+
+        class FactLeakGateway:
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+            def run_turn(self, context):
+                return replace(delegate.run_turn(context), dialogue=secret)
+
+        self.runtime.gameplay_governance._npc_turns._gateway = FactLeakGateway()
+        path = (
+            f"/api/game/session/{self.session_id}/governance/actions/"
+            f"{action_id}/turn/stream"
+        )
+        with self.client.stream(
+            "POST",
+            path,
+            headers=self.headers,
+            json={
+                "client_action_id": "free-turn-secret-0001",
+                "state_version": started["state_version"],
+                "player_text": "请说明当前公开情况。",
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            blocked_events = [json.loads(line) for line in response.iter_lines() if line]
+        self.assertNotIn(secret, json.dumps(blocked_events, ensure_ascii=False))
+        self.assertFalse(any(item["type"] == "npc_start" for item in blocked_events))
+        blocked = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert blocked is not None
+        self.assertEqual([], blocked.governance_actions[action_id].transcript)
+        self.assertIsNone(blocked.processing_action_id)
+
+        blocked.known_fact_ids.add("fact_lead_287")
+        self.runtime.sessions.save(blocked, expected_version=blocked.state_version)
+        with self.client.stream(
+            "POST",
+            path,
+            headers=self.headers,
+            json={
+                "client_action_id": "free-turn-known-0001",
+                "state_version": blocked.state_version,
+                "player_text": "请复述已经公开确认的情况。",
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            allowed_events = [json.loads(line) for line in response.iter_lines() if line]
+        self.assertIn(secret, json.dumps(allowed_events, ensure_ascii=False))
+        self.assertEqual("complete", allowed_events[-1]["type"])
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert stored is not None
+        transcript = stored.governance_actions[action_id].transcript
+        self.assertEqual(["player", "npc"], [item["speaker_type"] for item in transcript])
+
     def test_meeting_public_output_boundary_replaces_private_prompt_echo(
         self,
     ) -> None:

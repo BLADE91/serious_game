@@ -162,6 +162,7 @@ class ApiClient:
             "POST",
             f"{self._session_path(session_id)}/group-conversation/turn",
             {
+                "client_action_id": self.new_key("group-turn"),
                 "state_version": state_version,
                 "player_text": player_text,
             },

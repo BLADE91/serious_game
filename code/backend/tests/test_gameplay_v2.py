@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 import json
 from pathlib import Path
 from queue import Empty, Queue
@@ -16,6 +16,9 @@ from serious_game_backend.application.ending_service import EndingAxisProjector
 from serious_game_backend.application.night_simulation_service import (
     NightSimulationService,
 )
+from serious_game_backend.application.night_turn_safety import (
+    validate_night_turn_result,
+)
 from serious_game_backend.application.scripted_delta_resolver import (
     ScriptedDeltaResolver,
 )
@@ -30,9 +33,15 @@ from serious_game_backend.domain.enums import ActionInputMode, OperationStatus
 from serious_game_backend.domain.errors import (
     ContentValidationError,
     RoleLLMResponseError,
+    SessionBusyError,
     StateVersionConflictError,
 )
 from serious_game_backend.domain.llm import NightAgentResult
+from serious_game_backend.domain.fact_markers import (
+    FACT_DISCLOSURE_MARKERS,
+    forbidden_fact_signatures,
+)
+from serious_game_backend.domain.conversation import ForcedGroupConversation
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.infrastructure.repositories.codec import (
     decode_session,
@@ -45,6 +54,66 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 class GameplayV2Tests(unittest.TestCase):
+    def test_night_turn_safety_covers_fact_id_title_text_alias_and_shape(self) -> None:
+        package = self.container.packages.get("pkg_gameplay_v2")
+        fact = package.facts["fact_shi_usb"]
+        forbidden = forbidden_fact_signatures(package.facts, set())
+        candidates = (
+            fact.fact_id,
+            fact.title,
+            fact.text,
+            *FACT_DISCLOSURE_MARKERS[fact.fact_id],
+        )
+        for candidate in candidates:
+            with self.subTest(candidate=candidate):
+                with self.assertRaises(RoleLLMResponseError):
+                    validate_night_turn_result(
+                        NightAgentResult(
+                            npc_id="npc_shi_hongmei",
+                            model_id="malicious",
+                            dialogue=candidate,
+                        ),
+                        expected_npc_id="npc_shi_hongmei",
+                        forbidden_fact_signatures=forbidden,
+                    )
+        for fact_id, aliases in FACT_DISCLOSURE_MARKERS.items():
+            for alias in aliases:
+                if len(alias) >= 4:
+                    continue
+                with self.subTest(short_alias=(fact_id, alias)):
+                    with self.assertRaises(RoleLLMResponseError):
+                        validate_night_turn_result(
+                            NightAgentResult(
+                                npc_id="npc_shi_hongmei",
+                                model_id="malicious",
+                                rationale=alias,
+                            ),
+                            expected_npc_id="npc_shi_hongmei",
+                            forbidden_fact_signatures=forbidden,
+                        )
+        with self.assertRaises(RoleLLMResponseError):
+            validate_night_turn_result(
+                replace(
+                    NightAgentResult(
+                        npc_id="npc_shi_hongmei", model_id="malicious"
+                    ),
+                    demands="优盘",
+                ),
+                expected_npc_id="npc_shi_hongmei",
+                forbidden_fact_signatures={},
+            )
+        allowed = forbidden_fact_signatures(package.facts, {fact.fact_id})
+        result = validate_night_turn_result(
+            NightAgentResult(
+                npc_id="npc_shi_hongmei",
+                model_id="legal",
+                dialogue=fact.text,
+            ),
+            expected_npc_id="npc_shi_hongmei",
+            forbidden_fact_signatures=allowed,
+        )
+        self.assertEqual(fact.text, result.dialogue)
+
     def setUp(self) -> None:
         settings = Settings(
             environment="test",
@@ -1471,6 +1540,266 @@ class GameplayV2Tests(unittest.TestCase):
             stored.completed_group_conversations,
             restored.completed_group_conversations,
         )
+
+    def test_forced_group_rejects_unknown_fact_before_stream_or_transcript(self) -> None:
+        delegate = self.container.group_conversations._gateway
+        package = self.container.packages.get("pkg_gameplay_v2")
+        secret = package.facts["fact_lead_287"].text
+
+        class LeakingGateway:
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+            def run_night_turn(self, context):
+                result = delegate.run_night_turn(context)
+                return replace(result, dialogue=secret)
+
+        self.container.group_conversations._gateway = LeakingGateway()
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        assert session is not None
+        session.pending_decision = None
+        session.active_group_conversation = ForcedGroupConversation(
+            conversation_id="group_security_boundary",
+            conversation_type="cadre_meeting",
+            initiator_npc_id="npc_zhao_jianguo",
+            participant_ids=("npc_zhao_jianguo", "npc_sun_qiang"),
+            agenda="讨论次日公开工作安排",
+            demands=("明确责任",),
+            urgency="high",
+            story_day=session.game_state.story_day,
+            max_turns=3,
+            status="active",
+        )
+        self.container.sessions.save(session, expected_version=session.state_version)
+
+        with self.client.stream(
+            "POST",
+            f"/api/game/session/{self.session_id}/group-conversation/turn/stream",
+            headers=self.headers,
+            json={
+                "client_action_id": "group-secret-boundary-0001",
+                "state_version": session.state_version,
+                "player_text": "请说明公开工作安排。",
+            },
+        ) as response:
+            self.assertEqual(200, response.status_code)
+            events = [json.loads(line) for line in response.iter_lines() if line]
+        public = json.dumps(events, ensure_ascii=False)
+        self.assertNotIn(secret, public)
+        self.assertFalse(any(item["type"] == "npc_start" for item in events))
+        stored = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        assert stored is not None and stored.active_group_conversation is not None
+        self.assertEqual([], stored.active_group_conversation.transcript)
+        self.assertIsNone(stored.processing_action_id)
+
+    def test_night_followup_unknown_fact_cannot_create_public_agenda(self) -> None:
+        package = self.container.packages.get("pkg_gameplay_v2")
+        secret = package.facts["fact_lead_287"].text
+
+        class FollowupLeakGateway(FakeRoleLLMGateway):
+            def run_night_turn(self, context):
+                if context.phase == "contact_selection":
+                    contacts = {
+                        "npc_qian_wei": ("npc_zhao_jianguo",),
+                        "npc_zhao_jianguo": ("npc_sun_qiang",),
+                    }.get(context.npc_id, ())
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="malicious-followup",
+                        contact_ids=contacts,
+                        rationale="按公开工作关系选择联系人。",
+                    )
+                if (
+                    context.phase == "followup_initiation"
+                    and context.npc_id == "npc_zhao_jianguo"
+                    and context.allowed_followup_type == "cadre_meeting"
+                ):
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="malicious-followup",
+                        initiate_followup=True,
+                        followup_type="cadre_meeting",
+                        participant_ids=("npc_zhao_jianguo", "npc_sun_qiang"),
+                        agenda=secret,
+                        demands=("次日汇报",),
+                        urgency="high",
+                        rationale="需要形成会谈。",
+                    )
+                return super().run_night_turn(context)
+
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        assert session is not None
+        session.pending_decision = None
+        session.game_state = replace(session.game_state, story_day=29, days_left=62)
+        record = NightSimulationService(
+            ScriptedEffectService(ScriptedDeltaResolver()),
+            night_llm=FollowupLeakGateway(),
+        ).run_night(session, package)
+        public = json.dumps({
+            "followup_decisions": record["followup_decisions"],
+            "active": (
+                asdict(session.active_group_conversation)
+                if session.active_group_conversation is not None else None
+            ),
+            "queue": [asdict(item) for item in session.group_conversation_queue],
+        }, ensure_ascii=False)
+        self.assertNotIn(secret, public)
+        self.assertFalse(any(item["created"] for item in record["followup_decisions"]))
+        self.assertTrue(any(
+            item["error_code"] == "NIGHT_AGENT_HIDDEN_FACT_LEAKAGE"
+            for item in record["agent_failures"]
+        ))
+
+    def test_group_turn_disconnect_retry_fences_late_worker_without_ghost_reply(self) -> None:
+        delegate = self.container.group_conversations._gateway
+        first_started = Event()
+        retry_started = Event()
+        release_first = Event()
+        release_retry = Event()
+        counter_lock = Lock()
+        calls = 0
+
+        class TwoAttemptGateway:
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+            def run_night_turn(self, context):
+                nonlocal calls
+                with counter_lock:
+                    calls += 1
+                    call_number = calls
+                if call_number == 1:
+                    first_started.set()
+                    release_first.wait(5)
+                elif call_number == 2:
+                    retry_started.set()
+                    release_retry.wait(5)
+                return replace(
+                    delegate.run_night_turn(context),
+                    dialogue=f"第{call_number}次尝试的公开答复。",
+                )
+
+        self.container.group_conversations._gateway = TwoAttemptGateway()
+        session = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        assert session is not None
+        session.pending_decision = None
+        session.active_group_conversation = ForcedGroupConversation(
+            conversation_id="group_attempt_lease",
+            conversation_type="cadre_meeting",
+            initiator_npc_id="npc_zhao_jianguo",
+            participant_ids=("npc_zhao_jianguo",),
+            agenda="讨论次日公开工作安排",
+            demands=("明确责任",),
+            urgency="high",
+            story_day=session.game_state.story_day,
+            max_turns=3,
+            status="active",
+        )
+        initial_version = session.state_version
+        self.container.sessions.save(session, expected_version=initial_version)
+        client_action_id = "group-attempt-lease-0001"
+        abort_callbacks = []
+        first_events: list[dict] = []
+        retry_events: list[dict] = []
+        outcomes: dict[str, object] = {}
+
+        def emit(target: list[dict], event: dict) -> None:
+            target.append(event)
+            acknowledged = event.get("acknowledged")
+            if acknowledged is not None:
+                acknowledged.set()
+
+        def first_worker() -> None:
+            try:
+                outcomes["first"] = self.container.group_conversations.reply(
+                    account_id="acct_gameplay_v2",
+                    session_id=self.session_id,
+                    client_action_id=client_action_id,
+                    state_version=initial_version,
+                    player_text="请说明公开安排。",
+                    stream_event=lambda event: emit(first_events, event),
+                    stream_cancel_register=abort_callbacks.append,
+                )
+            except Exception as exc:
+                outcomes["first_error"] = exc
+
+        first_thread = Thread(target=first_worker)
+        first_thread.start()
+        self.assertTrue(first_started.wait(2))
+        duplicate = self.container.group_conversations.reply(
+            account_id="acct_gameplay_v2",
+            session_id=self.session_id,
+            client_action_id=client_action_id,
+            state_version=initial_version,
+            player_text="请说明公开安排。",
+        )
+        self.assertEqual("processing", duplicate["status"])
+        with self.assertRaises((SessionBusyError, StateVersionConflictError)):
+            self.container.group_conversations.reply(
+                account_id="acct_gameplay_v2",
+                session_id=self.session_id,
+                client_action_id="group-competing-key-0001",
+                state_version=initial_version,
+                player_text="另一项并发请求。",
+            )
+        self.assertEqual(1, len(abort_callbacks))
+        self.assertTrue(abort_callbacks[0]())
+
+        def retry_worker() -> None:
+            outcomes["retry"] = self.container.group_conversations.reply(
+                account_id="acct_gameplay_v2",
+                session_id=self.session_id,
+                client_action_id=client_action_id,
+                state_version=initial_version,
+                player_text="请说明公开安排。",
+                retry=True,
+                stream_event=lambda event: emit(retry_events, event),
+            )
+
+        retry_thread = Thread(target=retry_worker)
+        retry_thread.start()
+        self.assertTrue(retry_started.wait(2))
+        release_retry.set()
+        retry_thread.join(5)
+        self.assertFalse(retry_thread.is_alive())
+        release_first.set()
+        first_thread.join(5)
+        self.assertFalse(first_thread.is_alive())
+
+        self.assertIn("first_error", outcomes)
+        self.assertEqual("succeeded", outcomes["retry"]["status"])
+        self.assertFalse(any(
+            item.get("type") == "_npc_reply_ready" for item in first_events
+        ))
+        self.assertEqual(1, sum(
+            item.get("type") == "_npc_reply_ready" for item in retry_events
+        ))
+        stored = self.container.sessions.get_owned(
+            self.session_id, "acct_gameplay_v2"
+        )
+        assert stored is not None and stored.active_group_conversation is not None
+        self.assertEqual(initial_version + 1, stored.state_version)
+        self.assertIsNone(stored.processing_action_id)
+        self.assertEqual(1, stored.active_group_conversation.turn_count)
+        self.assertEqual(2, len(stored.active_group_conversation.transcript))
+        operation = self.container.operations.get(
+            "acct_gameplay_v2", self.session_id, client_action_id
+        )
+        assert operation is not None
+        self.assertEqual(OperationStatus.SUCCEEDED, operation.status)
+        self.assertEqual(2, operation.attempt_count)
+        self.assertEqual(stored.state_version, operation.response["state_version"])
+        snapshot = self.container.snapshots.current_for_session(stored)
+        assert snapshot is not None
+        self.assertEqual(stored.state_version, snapshot.state_version)
 
     def test_post75_story_progress_does_not_create_unsigned_contracts(self) -> None:
         session = self.container.sessions.get_owned(

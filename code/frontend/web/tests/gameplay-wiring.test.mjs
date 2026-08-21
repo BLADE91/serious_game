@@ -30,6 +30,13 @@ test("keeps every state-changing gameplay workflow connected to an API route", a
   }
 });
 
+test("assigns attempt keys to every streamed group and governance turn", async () => {
+  const shell = await readFile(shellPath, "utf8");
+  for (const prefix of ["group-turn", "meeting-turn", "governance-turn"]) {
+    assert.match(shell, new RegExp(`client_action_id: api\\.key\\("${prefix}"\\)`));
+  }
+});
+
 test("surfaces forced group conversations and the complete contract lifecycle without private night traces", async () => {
   const shell = await readFile(shellPath, "utf8");
   assert.match(shell, /ForcedGroupConversationScene/);

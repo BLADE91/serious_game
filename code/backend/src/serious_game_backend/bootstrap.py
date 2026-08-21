@@ -283,6 +283,8 @@ def build_container(settings: Settings) -> Container:
         story_flow,
         snapshots,
         disclosure_gate,
+        operations,
+        transactions,
     )
     npc_memories = NPCMemoryService(memory_repository)
     auth = AuthService(
@@ -375,7 +377,14 @@ def build_container(settings: Settings) -> Container:
             gameplay_governance,
         ),
         group_conversations=GroupConversationService(
-            sessions, packages, role_llm, projector, input_review
+            sessions,
+            packages,
+            role_llm,
+            projector,
+            input_review,
+            operations,
+            transactions,
+            disclosure_gate,
         ),
         gameplay_governance=gameplay_governance,
         npc_turns=npc_turns,

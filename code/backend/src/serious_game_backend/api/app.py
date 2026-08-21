@@ -1250,14 +1250,19 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         action_instance_id: str,
         body: GovernanceTurnRequest,
         x_account_id: str | None = Header(default=None),
-    ) -> dict:
-        return runtime.gameplay_governance.action_turn(
+    ):
+        result = runtime.gameplay_governance.action_turn(
             account_id=current_account_id(x_account_id),
             session_id=session_id,
             state_version=body.state_version,
             action_instance_id=action_instance_id,
             player_text=body.player_text,
+            client_action_id=body.client_action_id,
+            retry=body.retry,
         )
+        if result.get("status") == "processing":
+            return JSONResponse(status_code=202, content=result)
+        return result
 
     @app.post(
         "/api/game/session/{session_id}/governance/actions/"
@@ -1272,11 +1277,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         account_id = current_account_id(x_account_id)
         return live_npc_stream_response(
             runtime.gameplay_governance.action_turn,
+            bind_operation_abort=True,
             account_id=account_id,
             session_id=session_id,
             state_version=body.state_version,
             action_instance_id=action_instance_id,
             player_text=body.player_text,
+            client_action_id=body.client_action_id,
+            retry=body.retry,
         )
 
     @app.post(
@@ -1319,15 +1327,20 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         meeting_id: str,
         body: MeetingTurnRequest,
         x_account_id: str | None = Header(default=None),
-    ) -> dict:
-        return runtime.gameplay_governance.meeting_turn(
+    ):
+        result = runtime.gameplay_governance.meeting_turn(
             account_id=current_account_id(x_account_id),
             session_id=session_id,
             state_version=body.state_version,
             meeting_id=meeting_id,
             player_text=body.player_text,
             addressed_npc_id=body.addressed_npc_id,
+            client_action_id=body.client_action_id,
+            retry=body.retry,
         )
+        if result.get("status") == "processing":
+            return JSONResponse(status_code=202, content=result)
+        return result
 
     @app.post(
         "/api/game/session/{session_id}/governance/meetings/"
@@ -1342,12 +1355,15 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         account_id = current_account_id(x_account_id)
         return live_npc_stream_response(
             runtime.gameplay_governance.meeting_turn,
+            bind_operation_abort=True,
             account_id=account_id,
             session_id=session_id,
             state_version=body.state_version,
             meeting_id=meeting_id,
             player_text=body.player_text,
             addressed_npc_id=body.addressed_npc_id,
+            client_action_id=body.client_action_id,
+            retry=body.retry,
         )
 
     @app.post(
@@ -1817,14 +1833,19 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         session_id: str,
         body: GroupConversationTurnRequest,
         x_account_id: str | None = Header(default=None),
-    ) -> dict:
+    ):
         account_id = current_account_id(x_account_id)
-        return runtime.group_conversations.reply(
+        result = runtime.group_conversations.reply(
             account_id=account_id,
             session_id=session_id,
             state_version=body.state_version,
             player_text=body.player_text,
+            client_action_id=body.client_action_id,
+            retry=body.retry,
         )
+        if result.get("status") == "processing":
+            return JSONResponse(status_code=202, content=result)
+        return result
 
     @app.post("/api/game/session/{session_id}/group-conversation/turn/stream")
     async def stream_group_conversation_turn(
@@ -1835,10 +1856,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         account_id = current_account_id(x_account_id)
         return live_npc_stream_response(
             runtime.group_conversations.reply,
+            bind_operation_abort=True,
             account_id=account_id,
             session_id=session_id,
             state_version=body.state_version,
             player_text=body.player_text,
+            client_action_id=body.client_action_id,
+            retry=body.retry,
         )
 
     @app.get("/api/game/session/{session_id}/operations/{client_action_id}")

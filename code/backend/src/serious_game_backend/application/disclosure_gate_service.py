@@ -106,3 +106,32 @@ class DisclosureGateService:
                 package.facts, permitted
             ),
         )
+
+    def session_boundary(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+        *,
+        additional_allowed_fact_ids: tuple[str, ...] = (),
+    ) -> RoleTurnFactBoundary:
+        """Build the global known-fact boundary for turns without an opportunity."""
+        permitted = set(session.known_fact_ids) | set(additional_allowed_fact_ids)
+        allowed_ids = tuple(sorted(
+            fact_id for fact_id in permitted if fact_id in package.facts
+        ))
+        return RoleTurnFactBoundary(
+            gate=DisclosureGate(4, "已知事实", allowed_ids),
+            allowed_fact_texts={
+                fact_id: package.facts[fact_id].text for fact_id in allowed_ids
+            },
+            allowed_fact_markers=disclosure_markers_for(allowed_ids),
+            required_disclosure_ids=(),
+            forbidden_fact_markers=tuple(
+                fact.title
+                for fact_id, fact in package.facts.items()
+                if fact_id not in permitted and len(fact.title.strip()) >= 4
+            ),
+            forbidden_fact_signatures=forbidden_fact_signatures(
+                package.facts, permitted
+            ),
+        )
