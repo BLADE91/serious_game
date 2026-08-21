@@ -41,6 +41,9 @@ class GovernanceActionRecord:
     variant_id: str | None = None
     location_id: str | None = None
     opportunity_id: str | None = None
+    cost_action_points: int = 0
+    cost_status: str = "committed"
+    cost_committed_at: str | None = None
     status: str = "active"
     topic: str = ""
     archive_ids: tuple[str, ...] = ()

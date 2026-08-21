@@ -4,6 +4,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -302,7 +303,221 @@ class GameplayGovernanceTests(unittest.TestCase):
             self.session_id, "acct_gameplay_governance"
         )
         self.assertEqual(7, stored.game_state.action_points)
+        self.assertEqual("committed", stored.governance_actions[
+            started["action"]["action_instance_id"]
+        ].cost_status)
         self.assertEqual([1], stored.archive_records[archive_id].read_at_days)
+
+    def test_governance_conversation_releases_pending_cost_when_cancelled_unread(
+        self,
+    ) -> None:
+        self._resolve_opening()
+        before_points = self.state["ledger"]["action_points"]["remaining"]
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "household_visit",
+            "target_ids": ["npc_zhou_dashan"],
+            "topic": "核实搬迁诉求",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+
+        self.assertEqual(before_points, started["visible_state"]["ledger"][
+            "action_points"
+        ]["remaining"])
+        self.assertEqual(1, started["action"]["cost_action_points"])
+        self.assertEqual("pending", started["action"]["cost_status"])
+
+        cancelled = self._post(
+            f"/governance/actions/{action_id}/cancel",
+            {"state_version": started["state_version"]},
+        )
+        self.assertEqual("released", cancelled["action"]["cost_status"])
+        self.assertEqual(before_points, cancelled["visible_state"]["ledger"][
+            "action_points"
+        ]["remaining"])
+
+    def test_first_committed_governance_reply_spends_once_and_cancel_does_not_refund(
+        self,
+    ) -> None:
+        self._resolve_opening()
+        before_points = self.state["ledger"]["action_points"]["remaining"]
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "household_visit",
+            "target_ids": ["npc_zhou_dashan"],
+            "topic": "核实搬迁诉求",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+        payload = {
+            "state_version": started["state_version"],
+            "client_action_id": "problem-cost-turn-0001",
+            "player_text": "请说明目前最需要解决的搬迁问题。",
+        }
+        first = self._post(f"/governance/actions/{action_id}/turn", payload)
+        replay = self._post(f"/governance/actions/{action_id}/turn", {
+            **payload,
+            "retry": True,
+        })
+
+        self.assertEqual(first["state_version"], replay["state_version"])
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert stored is not None
+        self.assertEqual(before_points - 1, stored.game_state.action_points)
+        self.assertEqual("committed", stored.governance_actions[action_id].cost_status)
+        self.assertIsNotNone(stored.governance_actions[action_id].cost_committed_at)
+
+        cancelled = self._post(
+            f"/governance/actions/{action_id}/cancel",
+            {"state_version": first["state_version"]},
+        )
+        self.assertEqual("committed", cancelled["action"]["cost_status"])
+        self.assertEqual(before_points - 1, cancelled["visible_state"]["ledger"][
+            "action_points"
+        ]["remaining"])
+
+    def test_finish_without_a_committed_reply_releases_cost_as_incomplete(self) -> None:
+        self._resolve_opening()
+        before_points = self.state["ledger"]["action_points"]["remaining"]
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "household_visit",
+            "target_ids": ["npc_zhou_dashan"],
+            "topic": "核实搬迁诉求",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+
+        finished = self._post(
+            f"/governance/actions/{action_id}/finish",
+            {"state_version": started["state_version"]},
+        )
+        self.assertEqual("completed", finished["action"]["status"])
+        self.assertEqual("released", finished["action"]["cost_status"])
+        self.assertEqual(before_points, finished["visible_state"]["ledger"][
+            "action_points"
+        ]["remaining"])
+
+    def test_failed_or_disconnected_first_turn_keeps_cost_pending(self) -> None:
+        self._resolve_opening()
+        before_points = self.state["ledger"]["action_points"]["remaining"]
+
+        for failure_kind in ("provider", "disconnect"):
+            with self.subTest(failure_kind=failure_kind):
+                current = self.runtime.sessions.get_owned(
+                    self.session_id, "acct_gameplay_governance"
+                )
+                assert current is not None
+                started = self._post("/governance/actions", {
+                    "state_version": current.state_version,
+                    "action_kind": "household_visit",
+                    "target_ids": ["npc_zhou_dashan"],
+                    "topic": "核实搬迁诉求",
+                }, expected=201)
+                action_id = started["action"]["action_instance_id"]
+                kwargs = {
+                    "account_id": "acct_gameplay_governance",
+                    "session_id": self.session_id,
+                    "state_version": started["state_version"],
+                    "action_instance_id": action_id,
+                    "player_text": "请说明当前困难。",
+                    "client_action_id": f"problem-{failure_kind}-turn-0001",
+                }
+                if failure_kind == "provider":
+                    with patch.object(
+                        self.runtime.gameplay_governance._npc_turns,
+                        "run",
+                        side_effect=RuntimeError("provider unavailable"),
+                    ):
+                        with self.assertRaises(RuntimeError):
+                            self.runtime.gameplay_governance.action_turn(**kwargs)
+                else:
+                    with self.assertRaises(ConnectionAbortedError):
+                        self.runtime.gameplay_governance.action_turn(
+                            **kwargs,
+                            stream_cancelled=lambda: True,
+                        )
+                stored = self.runtime.sessions.get_owned(
+                    self.session_id, "acct_gameplay_governance"
+                )
+                assert stored is not None
+                self.assertEqual(before_points, stored.game_state.action_points)
+                self.assertEqual(
+                    "pending", stored.governance_actions[action_id].cost_status
+                )
+                self.assertEqual([], stored.governance_actions[action_id].transcript)
+                cancelled = self._post(
+                    f"/governance/actions/{action_id}/cancel",
+                    {"state_version": stored.state_version},
+                )
+                self.assertEqual("released", cancelled["action"]["cost_status"])
+
+    def test_legacy_governance_action_without_cost_fields_is_already_committed(
+        self,
+    ) -> None:
+        self._resolve_opening()
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "household_visit",
+            "target_ids": ["npc_zhou_dashan"],
+            "topic": "核实搬迁诉求",
+        }, expected=201)
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert stored is not None
+        payload = encode_session(stored)
+        action_payload = payload["governance_actions"][
+            started["action"]["action_instance_id"]
+        ]
+        action_payload.pop("cost_action_points")
+        action_payload.pop("cost_status")
+        action_payload.pop("cost_committed_at")
+
+        restored = decode_session(payload)
+        legacy_action = restored.governance_actions[
+            started["action"]["action_instance_id"]
+        ]
+        self.assertEqual(0, legacy_action.cost_action_points)
+        self.assertEqual("committed", legacy_action.cost_status)
+        self.assertIsNone(legacy_action.cost_committed_at)
+
+    def test_leadership_meeting_commits_cost_with_first_authoritative_round(
+        self,
+    ) -> None:
+        self._resolve_opening()
+        before_points = self.state["ledger"]["action_points"]["remaining"]
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "leadership_meeting",
+            "target_ids": ["npc_feng_jingzhi", "npc_zhao_jianguo"],
+            "lead_npc_id": "npc_feng_jingzhi",
+            "topic": "明确搬迁推进安排",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+        self.assertEqual(before_points, started["visible_state"]["ledger"][
+            "action_points"
+        ]["remaining"])
+        self.assertEqual("pending", started["action"]["cost_status"])
+
+        turn = self._post(
+            f"/governance/meetings/{started['meeting']['meeting_id']}/turn",
+            {
+                "state_version": started["state_version"],
+                "client_action_id": "problem-meeting-cost-0001",
+                "player_text": "请分别说明事实、风险和下一步安排。",
+            },
+        )
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        assert stored is not None
+        self.assertEqual(
+            before_points - started["cost_action_points"],
+            stored.game_state.action_points,
+        )
+        self.assertEqual("committed", stored.governance_actions[action_id].cost_status)
+        self.assertEqual(turn["state_version"], stored.state_version)
 
     def test_governance_npcs_unlock_with_story_progress(self) -> None:
         def visible_ids(catalog: str) -> set[str]:
@@ -1021,7 +1236,8 @@ class GameplayGovernanceTests(unittest.TestCase):
         )
         assert after_turn is not None
         self.assertEqual(
-            action_points_before_turn, after_turn.game_state.action_points
+            action_points_before_turn - started["cost_action_points"],
+            after_turn.game_state.action_points,
         )
         self.assertEqual(flags_before_turn, after_turn.flags)
 

@@ -25,6 +25,18 @@ test("sanitizes player copy", async () => {
   assert.equal(toPlayerText("[BEAT_C01] NPC与玩家对应剧情节点"), "人物与你后续事态");
 });
 
+test("explains whether cancelling an active governance action spends energy", () => {
+  assert.equal(typeof playerUi.governanceCancelMessage, "function");
+  assert.equal(
+    playerUi.governanceCancelMessage({ cost_status: "pending" }),
+    "确认中止当前行动？尚未形成有效交流，不会消耗精力。",
+  );
+  assert.equal(
+    playerUi.governanceCancelMessage({ cost_status: "committed" }),
+    "确认中止当前行动？已经消耗的精力不会返还。",
+  );
+});
+
 test("projects exactly the four canonical action families and keeps backend variants", () => {
   assert.equal(typeof playerUi.canonicalActionFamilies, "function");
   const projected = playerUi.canonicalActionFamilies([

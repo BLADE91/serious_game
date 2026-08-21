@@ -82,6 +82,12 @@ export function actionPointLabel(item: PlayerRecord | null | undefined): string 
   return cost === null ? "消耗待确认" : cost === 0 ? "不消耗精力" : `消耗 ${cost} 点精力`;
 }
 
+export function governanceCancelMessage(action: PlayerRecord | null | undefined): string {
+  return action?.cost_status === "pending"
+    ? "确认中止当前行动？尚未形成有效交流，不会消耗精力。"
+    : "确认中止当前行动？已经消耗的精力不会返还。";
+}
+
 const CANONICAL_ACTION_IDS = [
   "household_visit",
   "cadre_interview",

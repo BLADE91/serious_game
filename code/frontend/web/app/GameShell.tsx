@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceCancelMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -729,7 +729,7 @@ export default function GameShell() {
     if (!activeGovernanceAction) return;
     setConfirmRequest({
       title: "中止当前行动",
-      message: "确认中止当前行动？已经消耗的精力不会返还。",
+      message: governanceCancelMessage(activeGovernanceAction),
       confirmLabel: "确认中止",
       danger: true,
       action: cancelGovernanceAction,

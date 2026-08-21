@@ -536,6 +536,7 @@ class GameplayGovernanceService:
             variant=variant,
         )
         action_instance_id = f"govact_{secrets.token_hex(10)}"
+        cost_is_immediate = action_kind == "inspect_archives" or cost == 0
         action = GovernanceActionRecord(
             action_instance_id=action_instance_id,
             action_kind=action_kind,
@@ -547,12 +548,16 @@ class GameplayGovernanceService:
             opportunity_id=(
                 opportunity.opportunity_id if opportunity is not None else None
             ),
+            cost_action_points=cost,
+            cost_status="committed" if cost_is_immediate else "pending",
+            cost_committed_at=(governance_now_iso() if cost_is_immediate else None),
             topic=topic.strip(),
             archive_ids=archive_ids,
         )
-        session.game_state = session.game_state.spend_action_points(
-            f"governance:{action_kind}", cost
-        )
+        if cost_is_immediate:
+            session.game_state = session.game_state.spend_action_points(
+                f"governance:{action_kind}", cost
+            )
         session.governance_actions[action_instance_id] = action
         result: dict = {
             "action": asdict(action),
@@ -910,6 +915,7 @@ class GameplayGovernanceService:
             proposal = self._detect_and_create_contract_batch(
                 session, package, action.target_ids[0], text
             )
+        self._commit_action_cost(session, action)
         response = self._complete_leased_turn(lease, package, {
             "input_rejected": False,
             "replies": replies,
@@ -1004,6 +1010,8 @@ class GameplayGovernanceService:
                     } for item in action.transcript),
                     started_at=action.created_at,
                 ))
+        if action.cost_status == "pending":
+            action.cost_status = "released"
         action.status = "completed"
         action.completed_at = governance_now_iso()
         self._commit(session, state_version)
@@ -1043,6 +1051,8 @@ class GameplayGovernanceService:
                 "failure_reason": "玩家中止会议",
             }
             meeting.resolved_at = governance_now_iso()
+        if action.cost_status == "pending":
+            action.cost_status = "released"
         action.status = "cancelled"
         action.completed_at = governance_now_iso()
         session.logs.append({
@@ -1251,6 +1261,8 @@ class GameplayGovernanceService:
                 meeting.transcript.append(reply)
                 replies.append(reply)
         ensure_stream_open(stream_cancelled)
+        action = session.governance_actions[meeting.action_instance_id]
+        self._commit_action_cost(session, action)
         response = self._complete_leased_turn(lease, package, {
             "meeting_id": meeting_id,
             "input_rejected": False,
@@ -1259,6 +1271,19 @@ class GameplayGovernanceService:
         })
         self._emit_committed_replies(replies, stream_event, stream_cancelled)
         return response
+
+    @staticmethod
+    def _commit_action_cost(
+        session: GameSession,
+        action: GovernanceActionRecord,
+    ) -> None:
+        if action.cost_status != "pending":
+            return
+        session.game_state = session.game_state.spend_action_points(
+            f"governance:{action.action_kind}", action.cost_action_points
+        )
+        action.cost_status = "committed"
+        action.cost_committed_at = governance_now_iso()
 
     def _complete_leased_turn(
         self,
