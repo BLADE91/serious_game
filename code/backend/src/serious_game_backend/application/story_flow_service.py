@@ -122,6 +122,18 @@ class StoryFlowService:
             beat_id=session.story_beat_id,
         )
 
+    @classmethod
+    def _visible_option_text(
+        cls, decision, option, session: GameSession, context: dict
+    ) -> str:
+        text = decision.visible_option_text(option, session.flags)
+        if decision.decision_id == "dp4_04" and option.option_id == "b":
+            text = {
+                1: "见他没有还价，你把补偿数又往上提了一次。",
+                2: "你把补偿数提到第三次，要求他当场给个答复。",
+            }.get(int(context.get("talk_money_count", 0)), text)
+        return cls.session_public_text(text, session)
+
     @staticmethod
     def feed_since(session: GameSession, after: int) -> dict:
         items = []
@@ -326,8 +338,8 @@ class StoryFlowService:
             options=tuple(
                 VisibleDecisionOption(
                     item.option_id,
-                    StoryFlowService.session_public_text(
-                        decision.visible_option_text(item, session.flags), session
+                    StoryFlowService._visible_option_text(
+                        decision, item, session, self_context
                     ),
                     available=availability[item.option_id],
                     unavailable_reason=(

@@ -276,6 +276,49 @@ class StoryReviewRound1Tests(unittest.TestCase):
         self.assertTrue(all(item["prompt"] == first["text"] for item in recorded))
         self.assertTrue(all(item["scene_id"] == first["scene_id"] for item in recorded))
 
+    def test_d51_repeated_money_offer_has_distinct_round_copy_in_ui_and_review(self) -> None:
+        container, client, session_id, headers = self.build_api("d51-money-round-copy")
+        session = self.reset_to_day(container, session_id, headers, 51)
+        visible_labels = []
+        for round_index in range(3):
+            pending = client.get(
+                f"/api/game/session/{session_id}/view", headers=headers
+            ).json()["state"]["pending_decision"]
+            visible_labels.append(next(
+                item["text"] for item in pending["options"]
+                if item["option_id"] == "b"
+            ))
+            response = client.post(
+                f"/api/game/session/{session_id}/action",
+                headers=headers,
+                json={
+                    "input_mode": "decision",
+                    "client_action_id": f"d51-money-round-{round_index}",
+                    "state_version": session.state_version,
+                    "decision_id": "dp4_04",
+                    "option_id": "b",
+                    "parameters": {},
+                },
+            )
+            self.assertEqual(200, response.status_code, response.text)
+            session = container.sessions.get_owned(
+                session_id, headers["X-Account-ID"]
+            )
+
+        self.assertEqual([
+            "当场给他许一个更高的补偿数。",
+            "见他没有还价，你把补偿数又往上提了一次。",
+            "你把补偿数提到第三次，要求他当场给个答复。",
+        ], visible_labels)
+        review = client.get(
+            f"/api/game/session/{session_id}/review", headers=headers
+        ).json()
+        recorded = [
+            item["choice"] for item in review["decision_timeline"]
+            if item["decision_id"] == "dp4_04"
+        ]
+        self.assertEqual(visible_labels, recorded)
+
     def test_legacy_decision_log_uses_safe_base_copy_fallback(self) -> None:
         container, client, session_id, headers = self.build_api("legacy-journal")
         session = container.sessions.get_owned(session_id, headers["X-Account-ID"])
