@@ -54,6 +54,15 @@ test("surfaces forced group conversations and the complete contract lifecycle wi
   assert.doesNotMatch(shell, /agent_exchanges/);
 });
 
+test("renders the authoritative final ending in the review panel", async () => {
+  const shell = await readFile(shellPath, "utf8");
+  assert.match(shell, /reviewEndingView\(data\)/);
+  assert.match(shell, /aria-label="最终结局"/);
+  assert.match(shell, /ending\.mainText/);
+  assert.match(shell, /ending\.subText/);
+  assert.match(shell, /ending\.appendices/);
+});
+
 test("surfaces the backend overtime mechanism when daily energy reaches zero", async () => {
   const shell = await readFile(shellPath, "utf8");
   assert.match(shell, /ledger\.action_points\.overtime_available/);

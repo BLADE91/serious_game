@@ -106,6 +106,38 @@ export function publicWindowRewardAvailable(storyDay: unknown): boolean {
   return Number.isFinite(day) && day <= 75;
 }
 
+export function reviewEndingView(value: PlayerRecord | null | undefined): {
+  mainId: string;
+  mainName: string;
+  subId: string;
+  subTitle: string;
+  mainText: string;
+  subText: string;
+  axes: Array<{ key: string; value: string }>;
+  appendices: PlayerRecord[];
+} | null {
+  const raw = value?.ending;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const ending = raw as PlayerRecord;
+  const mainId = String(ending.main_ending_id || "");
+  if (!mainId) return null;
+  const rawAxes = ending.axes && typeof ending.axes === "object" && !Array.isArray(ending.axes)
+    ? ending.axes as PlayerRecord
+    : {};
+  return {
+    mainId,
+    mainName: String(ending.main_ending_name || "治理周期结局"),
+    subId: String(ending.sub_ending_id || ""),
+    subTitle: String(ending.sub_ending_title || ""),
+    mainText: String(ending.main_text || ""),
+    subText: String(ending.sub_text || ""),
+    axes: Object.entries(rawAxes).map(([key, axisValue]) => ({ key, value: String(axisValue ?? "") })),
+    appendices: Array.isArray(ending.appendices)
+      ? ending.appendices.filter(item => item && typeof item === "object" && !Array.isArray(item)) as PlayerRecord[]
+      : [],
+  };
+}
+
 const INTERNAL_PREFIX = /^\s*(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+\s*[·:：\u2014-]\s*)/i;
 const INTERNAL_BRACKET = /[【\[](?:突发[·:：-])?(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+)[】\]]\s*/gi;
 

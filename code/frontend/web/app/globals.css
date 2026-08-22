@@ -738,6 +738,7 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .mission-card,
 .resource-card,
 .review-summary,
+.ending-review-card,
 .save-create,
 .card-list article,
 .governance-grid div,
@@ -753,6 +754,7 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .mission-card h3,
 .resource-card h3,
 .review-summary h3,
+.ending-review-card h3,
 .save-create h3,
 .card-list h3,
 .panel-section h4,
@@ -766,6 +768,7 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .mission-card p,
 .resource-card p,
 .review-summary p,
+.ending-review-card p,
 .save-create p,
 .card-list p,
 .panel-section p,
@@ -789,6 +792,7 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .mission-card small,
 .resource-card small,
 .review-summary small,
+.ending-review-card small,
 .save-create > small,
 .governance-grid strong,
 .constraint-grid strong,
@@ -823,6 +827,20 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .evidence-head span { border-color: #8e7854; }
 .map-intro { color: #5f4b31; }
 .policy-funding div { border-left-color: #8b7048; background: rgba(255,255,255,.2); }
+
+.ending-review-card { border: 1px solid rgba(91,68,39,.38); background: rgba(248,239,216,.97); padding: 18px; }
+.ending-review-card > header { border-bottom: 1px solid rgba(91,68,39,.24); padding-bottom: 12px; }
+.ending-review-card > header h3 { margin: 5px 0; font: 28px/1.3 "STKaiti", "KaiTi", serif; }
+.ending-review-card > header p { margin: 0; color: #765225; }
+.ending-axis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; margin: 14px 0; }
+.ending-axis-grid div { border: 1px solid rgba(91,68,39,.22); background: rgba(255,255,255,.24); padding: 9px; }
+.ending-axis-grid small, .ending-axis-grid b { display: block; }
+.ending-axis-grid b { margin-top: 4px; color: #3f3020; }
+.ending-review-text { color: #4b3d2b; font: 15px/1.85 "STSong", "SimSun", serif; white-space: pre-line; }
+.ending-substory, .ending-appendices { border-top: 1px solid rgba(91,68,39,.24); margin-top: 16px; padding-top: 14px; }
+.ending-substory h4, .ending-appendices h4 { margin: 0 0 8px; color: #3f3020; }
+.ending-substory p, .ending-appendices p { white-space: pre-line; }
+.ending-appendices article { border-left: 3px solid #8b7048; padding: 7px 10px; }
 .policy-funding small { color: #75664f; }
 .policy-funding strong { color: #594123; }
 .timeline article::before { background: rgba(111,83,46,.28); }

@@ -32,6 +32,34 @@ test("closes the public signing reward after day 75", () => {
   assert.equal(playerUi.publicWindowRewardAvailable("77"), false);
 });
 
+test("projects the completed ending for the review panel", () => {
+  assert.equal(typeof playerUi.reviewEndingView, "function");
+  const ending = playerUi.reviewEndingView({
+    status: "ended",
+    ending: {
+      main_ending_id: "ending_21",
+      main_ending_name: "揭而未治",
+      sub_ending_id: "ending_21a",
+      sub_ending_title: "背书",
+      main_text: "你把它说出来了。",
+      sub_text: "决议下面没有钱，也没有人。",
+      axes: { A: "宽裕", T: "揭而未治" },
+      appendices: [{ appendix_id: "a1", title: "血铅名册的去向", text: "最终见了报。" }],
+    },
+  });
+  assert.deepEqual(ending, {
+    mainId: "ending_21",
+    mainName: "揭而未治",
+    subId: "ending_21a",
+    subTitle: "背书",
+    mainText: "你把它说出来了。",
+    subText: "决议下面没有钱，也没有人。",
+    axes: [{ key: "A", value: "宽裕" }, { key: "T", value: "揭而未治" }],
+    appendices: [{ appendix_id: "a1", title: "血铅名册的去向", text: "最终见了报。" }],
+  });
+  assert.equal(playerUi.reviewEndingView({ status: "active" }), null);
+});
+
 test("explains whether cancelling an active governance action spends energy", () => {
   assert.equal(typeof playerUi.governanceCancelMessage, "function");
   assert.equal(
