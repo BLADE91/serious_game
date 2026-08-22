@@ -94,8 +94,9 @@ test("routes retired saves to review and disables unavailable locked content", a
   assert.match(shell, /sessionEntry\(saved\)/);
   assert.match(shell, /entry\.mode === "review"/);
   assert.match(shell, /仅可复盘/);
-  assert.match(shell, /disabled=\{entry\.openKind === null\}/);
-  assert.match(shell, /if \(entry\.openKind\) openSession\(entry\.openKind/);
+  assert.match(shell, /disabled=\{entry\.openKind === null \|\| needsAI\}/);
+  assert.match(shell, /if \(entry\.openKind && !needsAI\) openSession\(entry\.openKind/);
+  assert.match(shell, /if \(kind !== "review" && modelConsentRequired && !consentGranted\)/);
   assert.match(shell, /entry\.unavailableReason/);
 });
 

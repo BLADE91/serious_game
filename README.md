@@ -49,17 +49,22 @@ serious_game\
     └── frontend\web\
 ```
 
-### 3. 配置真实 NPC API
+### 3. 配置 AI 接口
 
-GitHub 不会保存任何真实 API Key，因此每台电脑第一次运行前都必须单独配置。
+普通玩家不需要编辑 `.env`。启动网页后先登录或注册，再在同一个弹窗中选择：
 
-可以在仓库根目录执行：
+- **使用个人 API**：填写公共 HTTPS 的 OpenAI Chat Completions 兼容 Base URL、API Key 和模型名，测试通过后进入游戏；
+- **使用服务器默认接口**：仅在管理员已经配置真实接口时可选。
+
+个人 API Key 只保存在当前后端进程内存中，并与这次登录会话绑定；不会写入浏览器存储、账号、存档、快照或日志。退出登录、登录过期或后端重启后需要重新填写。只读复盘不要求配置 AI。
+
+管理员如需提供服务器默认接口，可以在仓库根目录执行：
 
 ```powershell
 Copy-Item code\backend\.env.example code\backend\.env
 ```
 
-然后打开 `code\backend\.env`，至少确认以下配置：
+然后打开 `code\backend\.env`，配置可选的服务器默认接口：
 
 ```dotenv
 GAME_ENVIRONMENT=sandbox
@@ -81,11 +86,11 @@ DASHSCOPE_API_KEY=在这里填写你有权限使用的真实密钥
 ROLE_LLM_FALLBACK_TO_FAKE=false
 ```
 
-注意：
+不提供服务器默认接口时，可使用 `ROLE_LLM_PROVIDER=none`；玩家仍可在登录界面配置个人 API。注意：
 
 - 本地使用 HTTP，因此 `AUTH_COOKIE_SECURE` 必须是 `false`，否则可能出现登录后仍显示未登录；
 - `ROLE_LLM_FALLBACK_TO_FAKE=false` 可以避免 API 调用失败时悄悄退回模板回答；
-- API Key 只能保存在本机 `.env` 中，不得写进 README、源码或提交到 GitHub；
+- 服务器默认 API Key 只能保存在本机 `.env` 中，不得写进 README、源码或提交到 GitHub；
 - 如果使用其他 OpenAI 兼容服务，请同时修改 `ROLE_LLM_BASE_URL`、模型名、Key 环境变量名和值；
 - 项目曾在沟通中出现过明文密钥，正式共享前应撤销旧密钥并创建新密钥。
 
@@ -148,7 +153,7 @@ Web address: http://127.0.0.1:3001
 }
 ```
 
-如果 `llm_provider` 显示 `fake`，说明 `.env` 没有加载成功，或 `ROLE_LLM_PROVIDER` 配置错误。
+`llm_provider` 只表示管理员提供的服务器默认接口：`none` 表示玩家必须配置个人 API；`openai_compatible` 表示可以选择服务器默认接口；`fake` 仅用于开发和自动测试。
 
 ## 四、常见问题排查
 
@@ -172,17 +177,9 @@ ALLOW_SELF_REGISTRATION=true
 
 修改后关闭后端窗口，重新双击 `BEGIN.BAT`。
 
-### NPC 回答很机械或所有人说话相似
+### AI 接口测试失败或 NPC 无法回应
 
-通常是没有配置真实 API，或者 API 失败后退回 Fake LLM。检查：
-
-```dotenv
-ROLE_LLM_PROVIDER=openai_compatible
-DASHSCOPE_API_KEY=真实有效的密钥
-ROLE_LLM_FALLBACK_TO_FAKE=false
-```
-
-然后查看后端窗口里的具体错误。常见原因包括余额不足、模型名错误、Base URL 错误、网络受限或密钥失效。
+从右上角账号中心重新打开“AI 接口设置”，检查 Base URL、API Key、模型名、余额与模型权限。个人接口不会静默退回 `.env` 或 Fake；测试失败时，上一份已启用配置仍然保留。个人 Base URL 必须是公共 HTTPS 地址，不能指向本机、内网或带查询参数的地址。
 
 ### 提示 Node.js 版本过低
 

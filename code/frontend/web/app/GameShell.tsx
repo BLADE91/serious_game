@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, aiConfigurationErrorMessage, aiConfigurationView, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -198,6 +198,12 @@ export default function GameShell() {
   const [csrfCookieName, setCsrfCookieName] = useState("serious_game_session_csrf");
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState("");
+  const [authStep, setAuthStep] = useState<"account" | "ai">("account");
+  const [aiConfiguration, setAiConfiguration] = useState<Dict | null>(null);
+  const [aiMode, setAiMode] = useState<"personal" | "server_default">("personal");
+  const [aiError, setAiError] = useState("");
+  const [aiSuccess, setAiSuccess] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [state, setState] = useState<Dict>({});
   const [commands, setCommands] = useState<Dict>({});
@@ -233,6 +239,7 @@ export default function GameShell() {
   const progressBroadcast = state.progress_broadcast as Dict | null;
   const progressBroadcastId = String(progressBroadcast?.broadcast_id || "");
   const progressBroadcastTone = String(progressBroadcast?.tone || "wry");
+  const aiView = aiConfigurationView(aiConfiguration || {});
 
   useEffect(() => {
     const current = narrative.items[narrative.currentIndex];
@@ -264,7 +271,16 @@ export default function GameShell() {
     if (savedToken) api.setCsrfToken(savedToken);
   }, [api]);
 
-  const fail = (error: unknown) => setNotice(playerErrorMessage(error));
+  const fail = (error: unknown) => {
+    if (requiresAIConfiguration(error)) {
+      setAiConfiguration(null);
+      setAiError("请先测试并启用一个可用的 AI 接口。");
+      setAuthStep("ai");
+      setAuthOpen(true);
+      setSessionOpen(false);
+    }
+    setNotice(playerErrorMessage(error));
+  };
 
   function clearAuthenticatedClientState() {
     api.clearCsrf(csrfCookieName);
@@ -280,6 +296,32 @@ export default function GameShell() {
     setConfirmRequest(null);
     setConsentOpen(false); setConsentInfo(null); setConsentGranted(!modelConsentRequired); setConsentError("");
     setConversationInput(""); setNpcStream(initialNpcStreamState()); setNotice(""); setAuthMode("login");
+    setAuthStep("account"); setAiConfiguration(null); setAiMode("personal");
+    setAiError(""); setAiSuccess(""); setShowApiKey(false);
+  }
+
+  async function loadAIConfiguration(openWhenMissing = true) {
+    try {
+      const value = await api.aiConfiguration() as Dict;
+      setAiConfiguration(value);
+      setAiError("");
+      const view = aiConfigurationView(value);
+      if (!view.configured && openWhenMissing) {
+        setAuthStep("ai");
+        setAuthOpen(true);
+        setSessionOpen(false);
+      }
+      return view.configured;
+    } catch (error) {
+      setAiConfiguration(null);
+      setAiError(playerErrorMessage(error));
+      if (openWhenMissing) {
+        setAuthStep("ai");
+        setAuthOpen(true);
+        setSessionOpen(false);
+      }
+      return false;
+    }
   }
 
   async function connect() {
@@ -306,8 +348,11 @@ export default function GameShell() {
             const me = await api.me();
             api.setAccountId(me.account_id);
             setAccount(me.username || "已登录");
-            setAuthOpen(false);
-            await loadConsent(requiresModelConsent);
+            const configured = await loadAIConfiguration(true);
+            if (configured) {
+              await loadConsent(requiresModelConsent);
+              setAuthOpen(false);
+            }
           } catch (error) {
             clearAuthenticatedClientState();
             setAuthError(playerErrorMessage(error));
@@ -317,7 +362,8 @@ export default function GameShell() {
       } else {
         api.enableSandboxAccount();
         setAccount("本地试玩");
-        await loadConsent(requiresModelConsent);
+        const configured = await loadAIConfiguration(true);
+        if (configured) await loadConsent(requiresModelConsent);
       }
     } catch (error) { setConnected(false); fail(error); }
     finally { setBusy(false); }
@@ -328,16 +374,16 @@ export default function GameShell() {
     return () => window.clearTimeout(timer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadConsent(required = modelConsentRequired) {
+  async function loadConsent(required = modelConsentRequired, openWhenMissing = true) {
     if (!required) { setConsentGranted(true); setConsentOpen(false); return true; }
     try {
       const info = await api.consent() as Dict;
       const record = info.record as Dict | null;
       const granted = Boolean(record && !record.withdrawn_at && record.consent_version === info.required_version && values(record.scopes).includes("third_party_model"));
-      setConsentInfo(info); setConsentGranted(granted); setConsentError(""); setConsentOpen(!granted);
+      setConsentInfo(info); setConsentGranted(granted); setConsentError(""); setConsentOpen(openWhenMissing && !granted);
       return granted;
     } catch (error) {
-      setConsentGranted(false); setConsentError(playerErrorMessage(error)); setConsentOpen(true);
+      setConsentGranted(false); setConsentError(playerErrorMessage(error)); setConsentOpen(openWhenMissing);
       return false;
     }
   }
@@ -375,9 +421,10 @@ export default function GameShell() {
       const result = await api.auth(authMode, String(data.get("username")), String(data.get("password")));
       api.setCsrfToken(result.csrf_token);
       api.setAccountId(result.account_id);
-      setAccount(result.username || "已登录"); setAuthOpen(false);
-      const granted = await loadConsent(modelConsentRequired);
-      setSessionOpen(granted);
+      setAccount(result.username || "已登录");
+      setAuthStep("ai"); setAuthOpen(true); setSessionOpen(false);
+      await loadAIConfiguration(false);
+      await loadConsent(modelConsentRequired, false);
     } catch (error) { setAuthError(playerErrorMessage(error)); }
     finally { setBusy(false); }
   }
@@ -399,6 +446,60 @@ export default function GameShell() {
       setAuthOpen(true);
       setBusy(false);
     }
+  }
+
+  async function configureAI(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setAiError(""); setAiSuccess("");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      const value = await api.configureAI(aiMode === "server_default"
+        ? { mode: "server_default" }
+        : {
+            mode: "personal",
+            base_url: String(data.get("base_url") || ""),
+            api_key: String(data.get("api_key") || ""),
+            model: String(data.get("model") || ""),
+          }) as Dict;
+      setAiConfiguration(value);
+      setAiSuccess(aiMode === "personal" ? "个人 AI 接口测试通过并已启用。" : "服务器默认 AI 接口已启用。");
+      form.reset();
+      setShowApiKey(false);
+      const granted = await loadConsent(modelConsentRequired);
+      if (granted) {
+        setAuthOpen(false);
+        if (!sessionId) setSessionOpen(true);
+      }
+    } catch (error) {
+      setAiError(aiConfigurationErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearAIConfiguration() {
+    setBusy(true); setAiError(""); setAiSuccess("");
+    try {
+      const value = await api.clearAIConfiguration() as Dict;
+      setAiConfiguration(value);
+      setAiSuccess("当前登录的个人接口已清除。");
+      setAiMode("personal");
+    } catch (error) {
+      setAiError(playerErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openGameEntry() {
+    if (authRequired && !account) {
+      setAuthStep("account"); setAuthOpen(true); return;
+    }
+    if (!aiView.configured) {
+      setAuthStep("ai"); setAuthOpen(true); setSessionOpen(false); return;
+    }
+    setSessionOpen(true);
   }
 
   async function refresh(after = narrative.feedCursor, targetSession = sessionId, clearNotice = true, rebuild = false, rebuildPosition: "start" | "latest" = "start") {
@@ -436,7 +537,12 @@ export default function GameShell() {
   }
 
   async function openSession(kind: "new" | "load" | "review", value?: string) {
-    if (modelConsentRequired && !consentGranted) { setConsentOpen(true); setSessionOpen(false); return; }
+    if (kind !== "review" && !aiView.configured) {
+      setAuthStep("ai"); setAuthOpen(true); setSessionOpen(false);
+      setAiError("开始或继续游戏前，请先测试并启用 AI 接口。");
+      return;
+    }
+    if (kind !== "review" && modelConsentRequired && !consentGranted) { setConsentOpen(true); setSessionOpen(false); return; }
     setBusy(true); setNotice("");
     try {
       const result = kind === "new" ? await api.newSession(value) : await api.session(value || "");
@@ -794,8 +900,8 @@ export default function GameShell() {
       <div className="top-status">
         <span className={connected ? "online" : "offline"}><i />{connected ? "游戏已就绪" : "正在连接"}</span>
         {progressBroadcast && <button className="broadcast-reopen" onClick={() => { setProgressBroadcastOpen(true); void playProgressCue(progressBroadcastTone); }}>第 {progressBroadcast.story_day} 日督办</button>}
-        <button onClick={() => authRequired && !account ? setAuthOpen(true) : setSessionOpen(true)}>{sessionId ? `第 ${story.day || 1} 日 · 游戏进度` : authRequired && !account ? "登录" : "进入游戏"}</button>
-        <button className="avatar" onClick={() => setAuthOpen(true)} aria-label="账号与身份">{account ? account.slice(0, 1).toUpperCase() : "?"}</button>
+        <button onClick={openGameEntry}>{sessionId ? `第 ${story.day || 1} 日 · 游戏进度` : authRequired && !account ? "登录" : "进入游戏"}</button>
+        <button className="avatar" onClick={() => { setAuthStep("account"); setAuthOpen(true); }} aria-label="账号与身份">{account ? account.slice(0, 1).toUpperCase() : "?"}</button>
       </div>
     </header>
 
@@ -823,7 +929,7 @@ export default function GameShell() {
           <div className="story-head"><div><small>县长手记 · 第 {displayValue(story.day, "待定")} 日</small><h2>{sessionId ? currentScene.title : "一纸调令，九十天限期"}</h2></div></div>
           <div className="story-scroll" aria-live="polite" data-scene-match={currentScene.matchedBy}>
             {notice && panel !== "manual-saves" && !(activeConversation || (activeGovernanceAction && !activeMeeting)) && <div className="notice" role="status"><b>案头提醒</b><span>{notice}</span></div>}
-            {!sessionId && <div className="welcome-block"><span className="eyebrow">云溪县 · 柳林村搬迁专班</span><h2>你有九十天，处理一场正在失控的搬迁。</h2><p>三十六户人家、八千万元预算，还有一条没人愿意说透的旧账。你的每次会谈、批示、承诺和沉默，都会留下痕迹。</p><p className="currency-notice" role="note">通晓币不用于人物会谈或本局行动消耗。它将用于后续“百晓生”网站兑换；开放时间、兑换范围和具体规则以百晓生网站公告为准。</p><small>开发：杨钞越　剧情：吉瑞新　美术：章钊林　指导：蒋俊彦、高翔</small><button onClick={() => authRequired && !account ? setAuthOpen(true) : setSessionOpen(true)}>{authRequired && !account ? "登录后赴任" : "接下调令，前往云溪"}</button></div>}
+            {!sessionId && <div className="welcome-block"><span className="eyebrow">云溪县 · 柳林村搬迁专班</span><h2>你有九十天，处理一场正在失控的搬迁。</h2><p>三十六户人家、八千万元预算，还有一条没人愿意说透的旧账。你的每次会谈、批示、承诺和沉默，都会留下痕迹。</p><p className="currency-notice" role="note">通晓币不用于人物会谈或本局行动消耗。它将用于后续“百晓生”网站兑换；开放时间、兑换范围和具体规则以百晓生网站公告为准。</p><small>开发：杨钞越　剧情：吉瑞新　美术：章钊林　指导：蒋俊彦、高翔</small><button onClick={openGameEntry}>{authRequired && !account ? "登录后赴任" : "接下调令，前往云溪"}</button></div>}
             {thinkingNpcs.length > 0 && <NpcThinkingStatus people={thinkingNpcs} />}
             {(primaryScene === "narrative" || primaryScene === "conversation") && <section className={activeConversation ? "gal-stage conversation-mode" : "gal-stage"} data-primary-scene={primaryScene} data-testid={state.active_conversation ? "active-conversation-character" : undefined}>
               {stageSpeaker && <div className="gal-portrait" aria-label={`${stageSpeaker}立绘`}><CharacterPortrait character={stageCharacter} fallbackName={stageSpeaker} priority /></div>}
@@ -865,8 +971,23 @@ export default function GameShell() {
 
     <footer><span>{sessionId ? "每次行动与决定都会自动保存" : "准备好后，从右上角进入游戏"}</span><span>{activeGovernanceAction ? activeGovernanceLabels.footer : activeConversation ? "会谈进行中" : pending ? decisionReady ? "等待你的决定" : "请继续阅读当前剧情" : sessionId ? "请合理分配今日精力" : "清江水急，民心难测"}</span></footer>
 
-    {authOpen && <Modal title={authRequired ? account ? "账号中心" : "登录治理档案" : "本地试玩"} onClose={() => setAuthOpen(false)}>{authRequired ? account ? <div className="account-card"><small>当前账号</small><strong>{account}</strong><p>你的游戏进度已绑定当前账号，重新登录后仍可继续。</p>{authError && <div className="notice">{authError}</div>}{modelConsentRequired && <button className="secondary" onClick={() => setConsentOpen(true)} disabled={busy}>模型与数据授权</button>}<button onClick={logoutAccount} disabled={busy}>退出登录</button></div> : <form className="stack-form" onSubmit={authenticate}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>登录</button>{selfRegistration && <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>注册</button>}</div><p>{authMode === "login" ? "登录后可继续这个账号的历史进度。" : "创建账号后即可保留多条游戏进度。"}</p>{authError && <div className="notice">{authError}</div>}<label>用户名<input name="username" minLength={authMode === "register" ? 3 : 1} maxLength={32} autoComplete="username" required autoFocus /></label><label>密码<input name="password" type="password" minLength={authMode === "register" ? 8 : 1} maxLength={256} autoComplete={authMode === "register" ? "new-password" : "current-password"} required /></label><button disabled={busy}>{busy ? "正在处理…" : authMode === "login" ? "登录并继续" : "注册并开始"}</button></form> : <div className="account-card"><small>当前身份</small><strong>本地试玩</strong><p>无需注册。游戏进度会保存在这台电脑上。</p></div>}</Modal>}
-    {sessionOpen && <Modal title="进入清江县" onClose={() => { setSessionOpen(false); setSavedSessionsOpen(false); }}><div className="session-actions"><button onClick={() => openSession("new")}>开始新游戏<span>从上任第一天开始一条新的九十天时间线</span></button><button onClick={showSavedSessions} className={savedSessionsOpen ? "selected" : ""}>查看已有进度<span>可继续当前版本，或复盘已退役剧本</span></button></div>{savedSessionsOpen && <div className="saved-session-list" aria-live="polite">{busy && !savedSessions.length && <div className="form-loading">正在整理存档…</div>}{savedSessionsError && <div className="notice">{savedSessionsError}</div>}{!busy && !savedSessionsError && !savedSessions.length && <div className="empty-state"><p>还没有保存过的游戏，可以从新游戏开始。</p></div>}{savedSessions.map((saved, index) => { const entry = sessionEntry(saved); return <button key={saved.session_id} className={entry.mode === "review" ? "review-only" : entry.mode === "unavailable" ? "unavailable" : ""} disabled={entry.openKind === null} onClick={() => { if (entry.openKind) openSession(entry.openKind, String(saved.session_id)); }}><span><b>进度{chineseIndex(index)} · {entry.label}</b><small>第 {saved.story_day || 1} 日 · {entry.mode === "review" ? "仅可复盘" : entry.mode === "unavailable" ? entry.unavailableReason : friendlyStatus(saved.status)}</small></span><time>{saved.updated_at ? new Date(saved.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</time></button>; })}</div>}</Modal>}
+    {authOpen && <Modal title={authStep === "ai" ? "配置 AI 接口" : authRequired ? account ? "账号中心" : "登录治理档案" : "本地试玩"} onClose={aiView.configured || authStep === "account" ? () => setAuthOpen(false) : undefined}>
+      {authStep === "ai" ? <AIConfigurationPanel
+        view={aiView}
+        mode={aiMode}
+        busy={busy}
+        error={aiError}
+        success={aiSuccess}
+        showApiKey={showApiKey}
+        onMode={value => { setAiMode(value); setAiError(""); setAiSuccess(""); }}
+        onToggleKey={() => setShowApiKey(value => !value)}
+        onSubmit={configureAI}
+        onClear={clearAIConfiguration}
+        onBack={authRequired ? () => setAuthStep("account") : undefined}
+        onReview={() => { setAuthOpen(false); setSessionOpen(true); void showSavedSessions(); }}
+      /> : authRequired ? account ? <div className="account-card"><small>当前账号</small><strong>{account}</strong><p>你的游戏进度已绑定当前账号，重新登录后仍可继续。</p><div className={`ai-config-summary ${aiView.configured ? "active" : ""}`}><small>当前 AI 接口</small><b>{aiView.summary}</b></div>{authError && <div className="notice">{authError}</div>}<button className="secondary" onClick={() => { setAuthStep("ai"); setAiError(""); setAiSuccess(""); void loadAIConfiguration(false); }} disabled={busy}>AI 接口设置</button>{modelConsentRequired && <button className="secondary" onClick={() => setConsentOpen(true)} disabled={busy}>模型与数据授权</button>}<button onClick={logoutAccount} disabled={busy}>退出登录</button></div> : <form className="stack-form" onSubmit={authenticate}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>登录</button>{selfRegistration && <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>注册</button>}</div><p>{authMode === "login" ? "登录后可继续这个账号的历史进度。" : "创建账号后即可保留多条游戏进度。"}</p>{authError && <div className="notice">{authError}</div>}<label>用户名<input name="username" minLength={authMode === "register" ? 3 : 1} maxLength={32} autoComplete="username" required autoFocus /></label><label>密码<input name="password" type="password" minLength={authMode === "register" ? 8 : 1} maxLength={256} autoComplete={authMode === "register" ? "new-password" : "current-password"} required /></label><button disabled={busy}>{busy ? "正在处理…" : authMode === "login" ? "登录并继续" : "注册并开始"}</button></form> : <div className="account-card"><small>当前身份</small><strong>本地试玩</strong><p>无需注册。游戏进度会保存在这台电脑上。</p><button onClick={() => setAuthStep("ai")}>配置 AI 接口</button></div>}
+    </Modal>}
+    {sessionOpen && <Modal title="进入清江县" onClose={() => { setSessionOpen(false); setSavedSessionsOpen(false); }}><div className="session-actions"><button onClick={() => openSession("new")} disabled={!aiView.configured}>开始新游戏<span>{aiView.configured ? "从上任第一天开始一条新的九十天时间线" : "请先测试并启用 AI 接口"}</span></button><button onClick={showSavedSessions} className={savedSessionsOpen ? "selected" : ""}>查看已有进度<span>可继续当前版本，或复盘已退役剧本</span></button></div>{savedSessionsOpen && <div className="saved-session-list" aria-live="polite">{busy && !savedSessions.length && <div className="form-loading">正在整理存档…</div>}{savedSessionsError && <div className="notice">{savedSessionsError}</div>}{!busy && !savedSessionsError && !savedSessions.length && <div className="empty-state"><p>还没有保存过的游戏，可以从新游戏开始。</p></div>}{savedSessions.map((saved, index) => { const entry = sessionEntry(saved); const needsAI = entry.openKind === "load" && !aiView.configured; return <button key={saved.session_id} className={entry.mode === "review" ? "review-only" : entry.mode === "unavailable" ? "unavailable" : ""} disabled={entry.openKind === null || needsAI} onClick={() => { if (entry.openKind && !needsAI) openSession(entry.openKind, String(saved.session_id)); }}><span><b>进度{chineseIndex(index)} · {entry.label}</b><small>第 {saved.story_day || 1} 日 · {needsAI ? "配置 AI 接口后可继续" : entry.mode === "review" ? "仅可复盘" : entry.mode === "unavailable" ? entry.unavailableReason : friendlyStatus(saved.status)}</small></span><time>{saved.updated_at ? new Date(saved.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</time></button>; })}</div>}</Modal>}
     {formOpen && <Modal title={formOpen.title} onClose={() => setFormOpen(null)}><ContextForm config={formOpen} state={state} api={api} sessionId={sessionId} notice={notice} onPerform={perform} onArchivesRead={setArchiveReadingOpen} onOpenProfile={setCharacterProfileOpen} /></Modal>}
     {meetingResolutionOpen && activeMeeting && <Modal title="确认会议决议" onClose={() => { if (!busy) setMeetingResolutionOpen(false); }}><MeetingResolutionForm meeting={activeMeeting} governance={governance || {}} state={state} busy={busy} notice={notice} onOpenProfile={setCharacterProfileOpen} onCancel={() => setMeetingResolutionOpen(false)} onSubmit={submitMeetingResolution} /></Modal>}
     {characterProfileOpen && <Modal title="人物介绍" className="character-profile-modal" onClose={() => setCharacterProfileOpen(null)}><CharacterProfileView character={characterProfileOpen} /></Modal>}
@@ -876,7 +997,7 @@ export default function GameShell() {
     {contractOpen && <Modal title={`逐户合同 · ${playerText(contractOpen.signatory_name, contractOpen.household_id || "待确认")}`} className="contract-modal" onClose={() => { if (!busy) setContractOpen(null); }}><ContractWorkspace key={`${contractOpen.contract_id}:${contractOpen.current_version}:${contractOpen.status}`} contract={contractOpen} governance={governance || panelData || {}} state={state} busy={busy} api={api} sessionId={sessionId} onPerform={performContractAction} onOpenContract={openContractDetail} /></Modal>}
     {overtimeOpen && <Modal title="申请加班" onClose={() => { if (!busy) setOvertimeOpen(false); }}><OvertimeChoice state={state} busy={busy} onChoose={requestOvertime} /></Modal>}
     {progressBroadcastOpen && progressBroadcast && <Modal title={playerText(progressBroadcast.title, "云溪县十日督办播报")} className="progress-broadcast-modal" onClose={() => setProgressBroadcastOpen(false)}><ProgressBroadcast broadcast={progressBroadcast} onReplay={() => void playProgressCue(progressBroadcastTone)} /></Modal>}
-    {consentOpen && <Modal title="角色模型与数据授权" onClose={consentGranted ? () => setConsentOpen(false) : undefined}><ConsentPanel info={consentInfo} granted={consentGranted} busy={busy} error={consentError} onSign={signModelConsent} onWithdraw={confirmWithdrawModelConsent} /></Modal>}
+    {consentOpen && <Modal title="角色模型与数据授权" onClose={consentGranted ? () => setConsentOpen(false) : undefined}><ConsentPanel info={consentInfo} aiSummary={aiView.summary} granted={consentGranted} busy={busy} error={consentError} onSign={signModelConsent} onWithdraw={confirmWithdrawModelConsent} /></Modal>}
     {confirmRequest && <Modal title={confirmRequest.title} onClose={() => { if (!busy) setConfirmRequest(null); }}><div className="confirm-panel"><p>{confirmRequest.message}</p><div><button disabled={busy} onClick={() => setConfirmRequest(null)}>返回</button><button className={confirmRequest.danger ? "danger" : "primary"} disabled={busy} onClick={() => { const action = confirmRequest.action; setConfirmRequest(null); void action(); }}>{confirmRequest.confirmLabel}</button></div></div></Modal>}
   </main>;
 }
@@ -1092,11 +1213,50 @@ function OvertimeChoice({ state, busy, onChoose }: { state: Dict; busy: boolean;
   return <div className="overtime-choice"><p>本章还可申请加班 {remaining} 次。加班点数越多，日终增加的疲惫越高；每个自然日只能申请一次。</p><div className="overtime-options">{[1, 2, 3].map(points => <button key={points} disabled={busy} onClick={() => void onChoose(points)}><strong>增加 {points} 点精力</strong><span>预计额外疲惫 +{5 + 8 * points}</span></button>)}</div></div>;
 }
 
-function ConsentPanel({ info, granted, busy, error, onSign, onWithdraw }: { info: Dict | null; granted: boolean; busy: boolean; error: string; onSign: () => Promise<void>; onWithdraw: () => Promise<void> }) {
+function AIConfigurationPanel({
+  view, mode, busy, error, success, showApiKey,
+  onMode, onToggleKey, onSubmit, onClear, onBack, onReview,
+}: {
+  view: ReturnType<typeof aiConfigurationView>;
+  mode: "personal" | "server_default";
+  busy: boolean;
+  error: string;
+  success: string;
+  showApiKey: boolean;
+  onMode: (value: "personal" | "server_default") => void;
+  onToggleKey: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onClear: () => void;
+  onBack?: () => void;
+  onReview: () => void;
+}) {
+  return <form className="stack-form ai-config-form" onSubmit={onSubmit} autoComplete="off">
+    <div className="auth-progress" aria-label="登录步骤"><span>一　账号身份</span><strong>二　AI 接口</strong></div>
+    <p>接口只在本次登录期间保存在游戏后端内存中；退出登录或重启服务后需要重新填写。</p>
+    <fieldset className="ai-source-options">
+      <legend>选择接口来源</legend>
+      <label className={mode === "personal" ? "selected" : ""}><input type="radio" name="ai_mode" value="personal" checked={mode === "personal"} onChange={() => onMode("personal")} />使用个人 API<span>适用于 OpenAI Chat Completions 兼容服务</span></label>
+      <label className={mode === "server_default" ? "selected" : ""}><input type="radio" name="ai_mode" value="server_default" checked={mode === "server_default"} disabled={!view.serverDefaultAvailable} onChange={() => onMode("server_default")} />使用服务器默认接口<span>{view.serverDefaultAvailable ? view.serverDefaultSummary || "管理员已配置" : "当前服务器没有可用的默认接口"}</span></label>
+    </fieldset>
+    {mode === "personal" && <div className="ai-personal-fields">
+      <label>API Base URL<input name="base_url" type="url" defaultValue="https://api.qianzhang-ai.cn/v1" maxLength={2048} inputMode="url" spellCheck={false} required /></label>
+      <label>模型名<input name="model" defaultValue="qwen3.6-plus" maxLength={256} spellCheck={false} required /></label>
+      <label>API Key<span className="secret-field"><input name="api_key" type={showApiKey ? "text" : "password"} maxLength={1024} autoComplete="off" data-1p-ignore="true" required /><button type="button" className="secondary" onClick={onToggleKey} aria-label={showApiKey ? "隐藏 API Key" : "显示 API Key"}>{showApiKey ? "隐藏" : "显示"}</button></span></label>
+      <small className="cost-hint">“测试并启用”会发起一次最小结构化请求，供应商可能收取少量 Token 费用。</small>
+    </div>}
+    {view.configured && <div className="ai-config-summary active"><small>当前已启用</small><b>{view.summary}</b></div>}
+    {error && <div className="notice" role="alert">{error}</div>}
+    {success && <div className="success-note" role="status">{success}</div>}
+    <button disabled={busy || (mode === "server_default" && !view.serverDefaultAvailable)}>{busy ? "正在测试接口…" : mode === "personal" ? "测试并启用" : "启用服务器默认接口"}</button>
+    <div className="ai-config-actions">{onBack && <button type="button" className="secondary" onClick={onBack} disabled={busy}>返回账号</button>}<button type="button" className="secondary" onClick={onReview} disabled={busy}>查看只读复盘</button>{view.mode === "personal" && <button type="button" className="danger-quiet" onClick={onClear} disabled={busy}>清除个人接口</button>}</div>
+  </form>;
+}
+
+function ConsentPanel({ info, aiSummary, granted, busy, error, onSign, onWithdraw }: { info: Dict | null; aiSummary: string; granted: boolean; busy: boolean; error: string; onSign: () => Promise<void>; onWithdraw: () => Promise<void> }) {
   if (!info) return <div className="consent-panel"><p>正在读取当前授权说明…</p>{error && <div className="notice">{error}</div>}</div>;
   return <div className="consent-panel">
     <p>NPC 会谈会把你输入的文字发送给已配置的角色模型，以生成符合人物设定的回应。不同意时仍可查看已有卷宗，但无法继续需要模型的会谈。</p>
-    <dl><div><dt>模型服务</dt><dd>{playerText(info.model_provider, "未说明")}</dd></div><div><dt>处理区域</dt><dd>{playerText(info.processing_region, "未说明")}</dd></div><div><dt>原始文本最长保留</dt><dd>{displayValue(info.retention_days_raw_text, "未说明")} 天</dd></div><div><dt>授权版本</dt><dd>{playerText(info.required_version, "未说明")}</dd></div></dl>
+    <dl><div><dt>当前 AI 接口</dt><dd>{playerText(aiSummary, "尚未配置")}</dd></div><div><dt>处理区域</dt><dd>{playerText(info.processing_region, "由所选接口决定")}</dd></div><div><dt>原始文本最长保留</dt><dd>{displayValue(info.retention_days_raw_text, "未说明")} 天</dd></div><div><dt>授权版本</dt><dd>{playerText(info.required_version, "未说明")}</dd></div></dl>
     <ul><li>保存游戏进度与会谈记录，用于继续当前游戏。</li><li>把会谈输入交给上述模型服务生成 NPC 回应。</li><li>不会自动授予研究用途或原文研究用途。</li></ul>
     {error && <div className="notice">{error}</div>}
     {granted ? <div className="consent-actions"><span>当前授权有效</span><button className="danger-quiet" disabled={busy} onClick={() => void onWithdraw()}>撤回授权</button></div> : <button disabled={busy} onClick={() => void onSign()}>{busy ? "正在记录授权…" : "同意必要授权并继续"}</button>}

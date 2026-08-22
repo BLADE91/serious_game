@@ -112,6 +112,18 @@ class RoleLLMConfigurationError(DomainError):
     retryable = False
 
 
+class PlayerLLMConfigurationRequiredError(DomainError):
+    code = "ROLE_LLM_CONFIGURATION_REQUIRED"
+    http_status = 409
+    retryable = False
+
+
+class PlayerLLMConfigurationInvalidError(DomainError):
+    code = "ROLE_LLM_CONFIGURATION_INVALID"
+    http_status = 422
+    retryable = False
+
+
 class AuthenticationRequiredError(DomainError):
     code = "AUTHENTICATION_REQUIRED"
     http_status = 401

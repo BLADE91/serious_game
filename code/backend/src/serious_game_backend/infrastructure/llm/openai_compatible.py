@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from typing import Callable, Literal
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -31,6 +31,11 @@ from serious_game_backend.domain.llm_runtime import LLMCallAudit
 
 
 Transport = Callable[[str, str, dict, float], dict]
+
+
+class _RejectRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class RoleTurnPayload(BaseModel):
@@ -1209,8 +1214,18 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             method="POST",
         )
         try:
-            with urlopen(request, timeout=timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+            with build_opener(_RejectRedirectHandler()).open(
+                request, timeout=timeout
+            ) as response:
+                try:
+                    value = json.loads(response.read().decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    raise RoleLLMResponseError(
+                        "模型未返回可解析的结构化响应"
+                    ) from exc
+                if not isinstance(value, dict):
+                    raise RoleLLMResponseError("模型结构化响应必须是 JSON 对象")
+                return value
         except HTTPError as exc:
             if exc.code in {401, 403}:
                 raise RoleLLMConfigurationError(

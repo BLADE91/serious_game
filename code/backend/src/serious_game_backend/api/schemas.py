@@ -333,6 +333,24 @@ class RegisterRequest(BaseModel):
         return value
 
 
+class PlayerLLMConfigurationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    mode: Literal["personal", "server_default"]
+    base_url: str | None = Field(default=None, max_length=2048)
+    api_key: str | None = Field(default=None, max_length=1024)
+    model: str | None = Field(default=None, max_length=256)
+
+    @model_validator(mode="after")
+    def validate_mode_fields(self) -> "PlayerLLMConfigurationRequest":
+        if self.mode == "personal":
+            if not self.base_url or not self.api_key or not self.model:
+                raise ValueError("个人 API 必须填写 Base URL、API Key 和模型名")
+        elif any((self.base_url, self.api_key, self.model)):
+            raise ValueError("服务器默认模式不能携带个人 API 字段")
+        return self
+
+
 class ConsentSignRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

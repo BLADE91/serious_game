@@ -1,5 +1,63 @@
 export type PlayerRecord = Record<string, unknown>;
 
+export function aiConfigurationView(value: PlayerRecord | null | undefined): {
+  configured: boolean;
+  mode: string;
+  summary: string;
+  serverDefaultAvailable: boolean;
+  serverDefaultSummary: string;
+} {
+  const active = value?.active === true;
+  const mode = active ? String(value?.mode || "unconfigured") : "unconfigured";
+  const endpoint = String(value?.endpoint || "");
+  const model = String(value?.model || "");
+  const serverDefault = value?.server_default && typeof value.server_default === "object" && !Array.isArray(value.server_default)
+    ? value.server_default as PlayerRecord
+    : {};
+  const defaultEndpoint = String(serverDefault.endpoint || "");
+  const defaultModel = String(serverDefault.model || "");
+  return {
+    configured: active,
+    mode,
+    summary: active
+      ? `${mode === "personal" ? "个人 API" : "服务器默认"} · ${endpoint || "已启用"}${model ? ` · ${model}` : ""}`
+      : "尚未配置 AI 接口",
+    serverDefaultAvailable: value?.server_default_available === true,
+    serverDefaultSummary: [defaultEndpoint, defaultModel].filter(Boolean).join(" · "),
+  };
+}
+
+export function requiresAIConfiguration(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  return String((value as PlayerRecord).code || "") === "ROLE_LLM_CONFIGURATION_REQUIRED";
+}
+
+const SAFE_AI_CONFIGURATION_MESSAGES = new Set([
+  "API Key 无效，或该账号没有模型权限",
+  "AI 接口连接超时或暂时不可用",
+  "该接口不兼容游戏所需的结构化输出",
+  "服务器未配置可用的默认 AI 接口",
+  "Base URL 必须是公共 HTTPS 地址，且不能包含账号、查询参数或片段",
+  "Base URL 域名无法安全解析",
+  "Base URL 不能指向内网、回环、链路本地或保留地址",
+  "API Key 和模型名不能为空",
+]);
+
+export function aiConfigurationErrorMessage(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return "AI 接口测试失败，请检查地址、Key 和模型名后重试。";
+  }
+  const error = value as PlayerRecord;
+  const message = String(error.message || "");
+  if (
+    String(error.code || "") === "ROLE_LLM_CONFIGURATION_INVALID"
+    && SAFE_AI_CONFIGURATION_MESSAGES.has(message)
+  ) {
+    return message;
+  }
+  return "AI 接口测试失败，请检查地址、Key 和模型名后重试。";
+}
+
 const RELATIONSHIP_LABELS: Record<string, string> = {
   closed: "封闭", guarded: "谨慎", working: "可协作", trusted: "信任",
   hostile: "对立", resistant: "抵触", neutral: "中立", cooperative: "合作", supportive: "支持",

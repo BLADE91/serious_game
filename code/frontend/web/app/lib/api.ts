@@ -182,6 +182,11 @@ export class GameApi {
   me() { return this.request<{ account_id: string; username: string; roles: string[] }>("GET", "/api/auth/me"); }
   health() { return this.request<{ terminal_protocol_version?: string }>("GET", "/health/live"); }
   ready() { return this.request<{ authentication_required?: boolean; self_registration?: boolean; csrf_cookie_name?: string; model_consent_required?: boolean }>("GET", "/health/ready"); }
+  aiConfiguration() { return this.request<Record<string, unknown>>("GET", "/api/ai/config"); }
+  configureAI(value: { mode: "personal" | "server_default"; base_url?: string; api_key?: string; model?: string }) {
+    return this.request<Record<string, unknown>>("PUT", "/api/ai/config", value);
+  }
+  clearAIConfiguration() { return this.request<Record<string, unknown>>("DELETE", "/api/ai/config"); }
   consent() { return this.request<Record<string, unknown>>("GET", "/api/consent/current"); }
   signConsent(consentVersion: string) {
     return this.request<Record<string, unknown>>("POST", "/api/consent", {

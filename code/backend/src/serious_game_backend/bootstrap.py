@@ -57,7 +57,12 @@ from serious_game_backend.application.research_projection_service import (
 from serious_game_backend.application.research_outbox_service import ResearchOutboxService
 from serious_game_backend.config import Settings
 from serious_game_backend.infrastructure.llm.fake import FakeRoleLLMGateway
-from serious_game_backend.infrastructure.llm.openai_compatible import OpenAICompatibleRoleLLMGateway
+from serious_game_backend.infrastructure.llm.openai_compatible import OpenAICompatibleRoleLLMGateway, Transport
+from serious_game_backend.infrastructure.llm.player_configuration import (
+    PlayerLLMConfigurationRegistry,
+    ScopedRoleLLMGateway,
+    Resolver,
+)
 from serious_game_backend.infrastructure.repositories.memory import (
     InMemoryGameSessionRepository,
     InMemoryOperationRepository,
@@ -156,9 +161,16 @@ class Container:
     research_events: object
     governance: GovernanceService
     research_outbox: ResearchOutboxService
+    player_llm_configs: PlayerLLMConfigurationRegistry
+    role_llm: ScopedRoleLLMGateway
 
 
-def build_container(settings: Settings) -> Container:
+def build_container(
+    settings: Settings,
+    *,
+    player_llm_transport: Transport | None = None,
+    player_llm_resolver: Resolver | None = None,
+) -> Container:
     loader = FileScriptPackageLoader()
     package_values = loader.load_all(settings.content_root)
     if settings.default_package_id == "pkg_gameplay_v3":
@@ -252,14 +264,23 @@ def build_container(settings: Settings) -> Container:
     story_clock = StoryClockService(event_service)
     fake_llm = FakeRoleLLMGateway()
     if settings.role_llm_provider == "openai_compatible":
-        role_llm = OpenAICompatibleRoleLLMGateway(
+        server_role_llm = OpenAICompatibleRoleLLMGateway(
             settings,
             os.getenv(settings.role_llm_api_key_env, ""),
             llm_audits,
             fallback=fake_llm,
         )
+    elif settings.role_llm_provider == "fake":
+        server_role_llm = fake_llm
     else:
-        role_llm = fake_llm
+        server_role_llm = None
+    registry_kwargs = {"transport": player_llm_transport}
+    if player_llm_resolver is not None:
+        registry_kwargs["resolver"] = player_llm_resolver
+    player_llm_configs = PlayerLLMConfigurationRegistry(
+        settings, llm_audits, server_role_llm, **registry_kwargs
+    )
+    role_llm = ScopedRoleLLMGateway(player_llm_configs)
     delta_resolver = ScriptedDeltaResolver()
     validator = StateDeltaValidator(delta_resolver)
     scripted_effects = ScriptedEffectService(delta_resolver)
@@ -409,4 +430,6 @@ def build_container(settings: Settings) -> Container:
             governance_repository, audit_salt=settings.governance_audit_salt
         ),
         research_outbox=ResearchOutboxService(outbox_repository),
+        player_llm_configs=player_llm_configs,
+        role_llm=role_llm,
     )

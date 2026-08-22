@@ -219,6 +219,12 @@ class M4FoundationTests(unittest.TestCase):
             json={"client_request_id": "m4-session-001", "origin_id": "technical"},
         )
         self.assertEqual(403, denied.status_code)
+        configured = client.put(
+            "/api/ai/config",
+            headers={"X-CSRF-Token": login.json()["csrf_token"]},
+            json={"mode": "server_default"},
+        )
+        self.assertEqual(200, configured.status_code, configured.text)
         allowed = client.post(
             "/api/game/session",
             headers={"X-CSRF-Token": login.json()["csrf_token"]},

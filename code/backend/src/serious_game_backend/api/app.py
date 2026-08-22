@@ -4,6 +4,8 @@ import asyncio
 import base64
 import binascii
 from contextvars import ContextVar
+from datetime import datetime
+import hashlib
 import json
 import re
 import secrets
@@ -22,6 +24,7 @@ from serious_game_backend.api.schemas import (
     LoadSnapshotRequest,
     ManualSaveRequest,
     RegisterRequest,
+    PlayerLLMConfigurationRequest,
     ExportRequestBody,
     GovernancePurposeBody,
     GroupConversationTurnRequest,
@@ -68,6 +71,7 @@ from serious_game_backend.domain.errors import (
 )
 from serious_game_backend.domain.errors import (
     AuthenticationRequiredError,
+    PlayerLLMConfigurationRequiredError,
     RegistrationDisabledError,
 )
 from serious_game_backend.domain.identity import PERMISSION_PLAY, PLAYER, Principal
@@ -163,15 +167,40 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             return PackageRetiredError("退役剧本包仅供复盘，不能继续写入")
         return None
 
+    def ai_configuration_error_for_gameplay(
+        request: Request, scope_id: str
+    ) -> DomainError | None:
+        if effective_settings.environment == "test":
+            return None
+        if request.method.upper() in {"GET", "HEAD", "OPTIONS"}:
+            return None
+        if not request.url.path.startswith("/api/game/session"):
+            return None
+        if runtime.player_llm_configs.status(scope_id).active:
+            return None
+        return PlayerLLMConfigurationRequiredError(
+            "请先配置并启用 AI 接口，再开始或继续活动存档"
+        )
+
     @app.middleware("http")
     async def production_authentication(request: Request, call_next):
         if not authentication_enabled:
+            account_id = request.headers.get("X-Account-ID", "").strip()
             if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
-                account_id = request.headers.get("X-Account-ID", "").strip()
                 retired_error = retired_session_error(request.url.path, account_id)
                 if retired_error is not None:
                     return error_response(retired_error)
-            return await call_next(request)
+            if not account_id or not request.url.path.startswith("/api/"):
+                return await call_next(request)
+            with runtime.player_llm_configs.bind(
+                account_id, require_selection=effective_settings.environment != "test"
+            ):
+                configuration_error = ai_configuration_error_for_gameplay(
+                    request, account_id
+                )
+                if configuration_error is not None:
+                    return error_response(configuration_error)
+                return await call_next(request)
         public_paths = {
             "/health/live", "/health/ready", "/api/auth/login", "/api/auth/register",
             # Logout must remain idempotent when the authentication cookie has
@@ -201,7 +230,16 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             return error_response(exc)
         context_token = _principal_context.set(principal)
         try:
-            return await call_next(request)
+            with runtime.player_llm_configs.bind(
+                principal.auth_session_hash,
+                require_selection=effective_settings.environment != "test",
+            ):
+                configuration_error = ai_configuration_error_for_gameplay(
+                    request, principal.auth_session_hash
+                )
+                if configuration_error is not None:
+                    return error_response(configuration_error)
+                return await call_next(request)
         finally:
             _principal_context.reset(context_token)
 
@@ -215,6 +253,25 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         if not value:
             raise DomainError("沙盒请求必须提供 X-Account-ID")
         return value
+
+    def current_llm_scope_id(x_account_id: str | None = Header(default=None)) -> str:
+        if authentication_enabled:
+            principal = _principal_context.get()
+            if principal is None:
+                raise AuthenticationRequiredError("缺少可信登录身份")
+            return principal.auth_session_hash
+        return current_account_id(x_account_id)
+
+    def current_llm_expiry() -> datetime | None:
+        if not authentication_enabled:
+            return None
+        principal = _principal_context.get()
+        if principal is None:
+            raise AuthenticationRequiredError("缺少可信登录身份")
+        auth_session = runtime.auth_sessions.get(principal.auth_session_hash)
+        if auth_session is None:
+            raise AuthenticationRequiredError("登录会话无效或已过期")
+        return datetime.fromisoformat(auth_session.expires_at)
 
     def npc_reply_items(result: dict) -> list[dict]:
         reply = result.get("npc_reply")
@@ -289,7 +346,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         bind_operation_abort: bool = False,
         **kwargs,
     ) -> StreamingResponse:
+        frozen_gateway = runtime.player_llm_configs.freeze_current()
+
         async def generate():
+            with runtime.player_llm_configs.bind_frozen(frozen_gateway):
+                async for chunk in generate_bound():
+                    yield chunk
+
+        async def generate_bound():
             queue: asyncio.Queue[dict] = asyncio.Queue()
             loop = asyncio.get_running_loop()
             cancelled = StreamCancellation()
@@ -330,6 +394,20 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     yield json.dumps(event, ensure_ascii=False) + "\n"
                 try:
                     result = await task
+                except DomainError as exc:
+                    if exc.code == "ROLE_LLM_CONFIGURATION_REQUIRED":
+                        yield json.dumps({
+                            "type": "error",
+                            "code": exc.code,
+                            "message": "请先配置并启用 AI 接口。",
+                        }, ensure_ascii=False) + "\n"
+                        return
+                    yield json.dumps({
+                        "type": "error",
+                        "code": "NPC_RESPONSE_UNAVAILABLE",
+                        "message": "对方暂时无法回应，请稍后重试。",
+                    }, ensure_ascii=False) + "\n"
+                    return
                 except Exception:
                     yield json.dumps({
                         "type": "error",
@@ -680,6 +758,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "authentication_required": authentication_enabled,
             "self_registration": effective_settings.allow_self_registration,
             "model_consent_required": effective_settings.require_model_consent,
+            "csrf_cookie_name": f"{effective_settings.auth_cookie_name}_csrf",
+            "player_ai_configuration": True,
+            "server_default_ai_available": runtime.player_llm_configs.server_default_available,
         }
 
     @app.post("/api/auth/login")
@@ -695,6 +776,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         response: Response, raw_token: str, csrf_token: str,
         principal: Principal, expires_at: str,
     ) -> dict:
+        account = runtime.accounts.get_by_id(principal.account_id)
         response.set_cookie(
             key=effective_settings.auth_cookie_name,
             value=raw_token,
@@ -706,6 +788,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         )
         return {
             "account_id": principal.account_id,
+            "username": account.username if account is not None else "",
             "roles": sorted(principal.roles),
             "csrf_token": csrf_token,
             "expires_at": expires_at,
@@ -730,7 +813,12 @@ def create_app(settings: Settings | None = None, container: Container | None = N
 
     @app.post("/api/auth/logout", status_code=204)
     async def logout(request: Request, response: Response) -> Response:
-        runtime.auth.logout(request.cookies.get(effective_settings.auth_cookie_name))
+        raw_token = request.cookies.get(effective_settings.auth_cookie_name)
+        if raw_token:
+            runtime.player_llm_configs.clear(
+                hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+            )
+        runtime.auth.logout(raw_token)
         response.delete_cookie(
             effective_settings.auth_cookie_name,
             path="/",
@@ -745,8 +833,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def auth_me(x_account_id: str | None = Header(default=None)) -> dict:
         account_id = current_account_id(x_account_id)
         principal = _principal_context.get()
+        account = runtime.accounts.get_by_id(account_id)
         return {
             "account_id": account_id,
+            "username": account.username if account is not None else "",
             "roles": sorted(principal.roles) if principal else ["sandbox"],
         }
 
@@ -930,6 +1020,45 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         return {
             "sessions": [summary(session) for session in runtime.sessions.list_for_account(account_id)]
         }
+
+    def player_llm_status(scope_id: str) -> dict:
+        value = runtime.player_llm_configs.status(scope_id).public_dict()
+        value["server_default"] = runtime.player_llm_configs.server_default_summary()
+        return value
+
+    @app.get("/api/ai/config")
+    async def get_player_llm_configuration(
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return player_llm_status(current_llm_scope_id(x_account_id))
+
+    @app.put("/api/ai/config")
+    async def put_player_llm_configuration(
+        body: PlayerLLMConfigurationRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        scope_id = current_llm_scope_id(x_account_id)
+        if body.mode == "server_default":
+            runtime.player_llm_configs.use_server_default(
+                scope_id, expires_at=current_llm_expiry()
+            )
+        else:
+            runtime.player_llm_configs.use_personal(
+                scope_id,
+                base_url=body.base_url or "",
+                api_key=body.api_key or "",
+                model=body.model or "",
+                expires_at=current_llm_expiry(),
+            )
+        return player_llm_status(scope_id)
+
+    @app.delete("/api/ai/config")
+    async def delete_player_llm_configuration(
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        scope_id = current_llm_scope_id(x_account_id)
+        runtime.player_llm_configs.clear(scope_id)
+        return player_llm_status(scope_id)
 
     @app.get("/api/game/session/{session_id}")
     async def get_session(session_id: str, x_account_id: str | None = Header(default=None)) -> dict:

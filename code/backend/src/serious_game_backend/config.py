@@ -239,8 +239,8 @@ class Settings:
             or not self.experiment_assignment_salt
         ):
             raise ValueError("research mode requires experiment id, groups, and assignment salt")
-        if self.role_llm_provider not in {"fake", "openai_compatible"}:
-            raise ValueError("ROLE_LLM_PROVIDER must be fake or openai_compatible")
+        if self.role_llm_provider not in {"none", "fake", "openai_compatible"}:
+            raise ValueError("ROLE_LLM_PROVIDER must be none, fake or openai_compatible")
         if self.role_llm_provider == "openai_compatible":
             if not self.role_llm_base_url.startswith("https://"):
                 raise ValueError("ROLE_LLM_BASE_URL must use https")
