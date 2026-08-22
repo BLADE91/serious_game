@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, aiConfigurationErrorMessage, aiConfigurationView, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, aiConfigurationErrorMessage, aiConfigurationView, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -1356,6 +1356,7 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
   const auditIssues = arr(get(contract, "audit_result.issues"));
   const [text, setText] = useState(playerText(contract.contract_text));
   const [signConfirming, setSignConfirming] = useState(false);
+  const rewardAvailable = publicWindowRewardAvailable(get(state, "story.day", 1));
 
   function submitTerms(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1376,7 +1377,7 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
       move_out_day: Number(data.get("move_out_day")),
       housing_delivery_day: Number(data.get("housing_delivery_day")),
       transition_months: Number(data.get("transition_months")),
-      public_window_reward: data.has("public_window_reward"),
+      public_window_reward: rewardAvailable && data.has("public_window_reward"),
       approval_document_ids: data.getAll("approval_document_ids").map(String),
       authorization_confirmed: data.has("authorization_confirmed"),
       real_unit_viewed: data.has("real_unit_viewed"),
@@ -1407,7 +1408,7 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
       </div>
       <fieldset><legend>配套服务资源</legend><div className="service-allocation-grid">{services.map(item => <label key={item.resource_id}>{item.name}<input name={`service:${item.resource_id}`} type="number" min="0" max={Number(item.available ?? item.capacity ?? 99)} defaultValue={get(terms, `service_allocations.${item.resource_id}`, 0)} /></label>)}</div></fieldset>
       {approvalDocuments.length > 0 && <fieldset><legend>引用已签发批准文件</legend><div className="contract-check-grid">{approvalDocuments.map(item => <label key={item.document_id}><input name="approval_document_ids" type="checkbox" value={item.document_id} defaultChecked={values(terms.approval_document_ids).includes(item.document_id)} />{item.title}</label>)}</div></fieldset>}
-      <fieldset><legend>事实与程序确认</legend><div className="contract-check-grid"><label><input name="public_window_reward" type="checkbox" defaultChecked={Boolean(terms.public_window_reward)} />适用公开签约奖励</label><label><input name="authorization_confirmed" type="checkbox" defaultChecked={Boolean(terms.authorization_confirmed)} />授权文件已核验</label><label><input name="real_unit_viewed" type="checkbox" defaultChecked={Boolean(terms.real_unit_viewed)} />本户已查看实际房源</label><label><input name="ledger_disclosed" type="checkbox" defaultChecked={Boolean(terms.ledger_disclosed)} />测量底账已向本户公开</label><label><input name="old_case_resolved" type="checkbox" defaultChecked={Boolean(terms.old_case_resolved)} />历史争议已处理</label><label><input name="prior_payment_verified" type="checkbox" defaultChecked={Boolean(terms.prior_payment_verified)} />前期款项已核验</label></div></fieldset>
+      <fieldset><legend>事实与程序确认</legend><div className="contract-check-grid"><label><input name="public_window_reward" type="checkbox" disabled={!rewardAvailable} defaultChecked={rewardAvailable && Boolean(terms.public_window_reward)} />{rewardAvailable ? "适用公开签约奖励" : "公开签约奖励已于D75截止"}</label><label><input name="authorization_confirmed" type="checkbox" defaultChecked={Boolean(terms.authorization_confirmed)} />授权文件已核验</label><label><input name="real_unit_viewed" type="checkbox" defaultChecked={Boolean(terms.real_unit_viewed)} />本户已查看实际房源</label><label><input name="ledger_disclosed" type="checkbox" defaultChecked={Boolean(terms.ledger_disclosed)} />测量底账已向本户公开</label><label><input name="old_case_resolved" type="checkbox" defaultChecked={Boolean(terms.old_case_resolved)} />历史争议已处理</label><label><input name="prior_payment_verified" type="checkbox" defaultChecked={Boolean(terms.prior_payment_verified)} />前期款项已核验</label></div></fieldset>
       <button disabled={busy}>核验条款并生成合同</button>
     </form>}
     {contract.contract_text && <section className="contract-text-section"><header><div><small>当前版本 V{contract.current_version}</small><h3>合同正文</h3></div><span>{friendlyStatus(contract.audit_status)}</span></header><textarea value={text} onChange={event => setText(event.target.value)} readOnly={!editable} rows={14} />{auditIssues.length > 0 && <div className="audit-issues"><b>专业审校意见</b>{auditIssues.map((issue, index) => <article key={index}><p>{playerText(issue.message, "存在需要修订的条款")}</p>{issue.text_quote && <q>{playerText(issue.text_quote)}</q>}{issue.suggestion && <small>{playerText(issue.suggestion)}</small>}</article>)}</div>}{editable && <button className="secondary" disabled={busy || !text.trim() || text === contract.contract_text} onClick={() => void onPerform(() => api.write(sessionId, `/governance/contracts/${encodeURIComponent(String(contract.contract_id))}/text`, "PUT", { state_version: state.state_version, text }), "合同正文已更新并重新完成专业审校")}>保存正文并重新审校</button>}</section>}

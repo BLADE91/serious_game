@@ -22,6 +22,7 @@ from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.errors import ActionUnavailableError
 from serious_game_backend.domain.llm import GovernanceLLMResult
+from serious_game_backend.domain.gameplay_governance import HouseholdContract
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.infrastructure.repositories.codec import (
     decode_session,
@@ -1876,6 +1877,89 @@ class GameplayGovernanceTests(unittest.TestCase):
                 and item.status == "committed"
             ),
         )
+
+    def test_post75_contract_reward_is_rejected_before_review_or_signing(self) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        session.pending_decision = None
+        session.game_state = replace(
+            session.game_state,
+            story_day=77,
+            days_left=14,
+            action_points=8,
+        )
+        contract = HouseholdContract(
+            contract_id="contract_post75_reward",
+            batch_id="batch_post75_reward",
+            household_id="MA-03",
+            signatory_name="马秋生",
+            signatory_npc_id="npc_ma_qiusheng",
+            created_day=77,
+        )
+        session.household_contracts[contract.contract_id] = contract
+        self.runtime.sessions.save(
+            session, expected_version=session.state_version
+        )
+        original_version = session.state_version
+        term_sheet = {
+            "policy_document_id": "doc_compensation_policy_v1",
+            "cash_amount": 51,
+            "budget_envelope": "property_land",
+            "housing_resource_id": "housing_d30_120",
+            "service_allocations": {},
+            "payment_day": 77,
+            "move_out_day": 81,
+            "housing_delivery_day": 77,
+            "transition_months": 12,
+            "public_window_reward": True,
+            "approval_document_ids": [],
+            "authorization_confirmed": True,
+            "real_unit_viewed": True,
+            "ledger_disclosed": True,
+            "old_case_resolved": True,
+            "prior_payment_verified": True,
+        }
+
+        terms_response = self.client.put(
+            (
+                f"/api/game/session/{self.session_id}/governance/contracts/"
+                f"{contract.contract_id}/terms"
+            ),
+            headers=self.headers,
+            json={"state_version": original_version, **term_sheet},
+        )
+        self.assertEqual(409, terms_response.status_code, terms_response.text)
+        self.assertIn("公开签约奖励", terms_response.text)
+        unchanged = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        self.assertEqual(original_version, unchanged.state_version)
+        self.assertIsNone(
+            unchanged.household_contracts[contract.contract_id].term_sheet
+        )
+
+        legacy = unchanged.household_contracts[contract.contract_id]
+        legacy.status = "accepted"
+        legacy.term_sheet = dict(term_sheet)
+        self.runtime.sessions.save(
+            unchanged, expected_version=unchanged.state_version
+        )
+        sign_response = self.client.post(
+            (
+                f"/api/game/session/{self.session_id}/governance/contracts/"
+                f"{contract.contract_id}/sign"
+            ),
+            headers=self.headers,
+            json={"state_version": original_version, "confirmed": True},
+        )
+        self.assertEqual(409, sign_response.status_code, sign_response.text)
+        self.assertIn("公开签约奖励", sign_response.text)
+        still_unchanged = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        self.assertEqual(original_version, still_unchanged.state_version)
+        self.assertEqual(0, still_unchanged.game_state.signed_households)
 
 
 if __name__ == "__main__":

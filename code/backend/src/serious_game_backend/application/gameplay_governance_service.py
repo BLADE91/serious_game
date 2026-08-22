@@ -2035,6 +2035,13 @@ class GameplayGovernanceService:
         if contract.status != "accepted" or contract.term_sheet is None:
             raise ActionUnavailableError("合同尚未被本户签约人接受")
         if (
+            session.game_state.story_day > 75
+            and bool(contract.term_sheet.get("public_window_reward", False))
+        ):
+            raise ActionUnavailableError(
+                "D75后不再适用公开签约奖励，请取消该奖励并重新送审"
+            )
+        if (
             contract.reserved_until_day is not None
             and session.game_state.story_day > contract.reserved_until_day
         ):
@@ -3141,6 +3148,13 @@ class GameplayGovernanceService:
         months = int(value["transition_months"])
         if cash < 0 or not 0 <= months <= 12:
             raise ActionUnavailableError("合同现金或过渡月数无效")
+        if (
+            session.game_state.story_day > 75
+            and bool(value["public_window_reward"])
+        ):
+            raise ActionUnavailableError(
+                "D75后不再适用公开签约奖励，请取消该奖励"
+            )
         minimum = self._standard_cash(
             package, household, months=months,
             reward=bool(value["public_window_reward"]),

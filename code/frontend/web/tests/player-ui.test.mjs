@@ -25,6 +25,13 @@ test("sanitizes player copy", async () => {
   assert.equal(toPlayerText("[BEAT_C01] NPC与玩家对应剧情节点"), "人物与你后续事态");
 });
 
+test("closes the public signing reward after day 75", () => {
+  assert.equal(typeof playerUi.publicWindowRewardAvailable, "function");
+  assert.equal(playerUi.publicWindowRewardAvailable(75), true);
+  assert.equal(playerUi.publicWindowRewardAvailable(76), false);
+  assert.equal(playerUi.publicWindowRewardAvailable("77"), false);
+});
+
 test("explains whether cancelling an active governance action spends energy", () => {
   assert.equal(typeof playerUi.governanceCancelMessage, "function");
   assert.equal(

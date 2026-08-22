@@ -101,6 +101,11 @@ export function budgetEnvelopeChoices(value: unknown): Array<PlayerRecord & { en
   });
 }
 
+export function publicWindowRewardAvailable(storyDay: unknown): boolean {
+  const day = Number(storyDay);
+  return Number.isFinite(day) && day <= 75;
+}
+
 const INTERNAL_PREFIX = /^\s*(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+\s*[·:：\u2014-]\s*)/i;
 const INTERNAL_BRACKET = /[【\[](?:突发[·:：-])?(?:(?:DP|BEAT|EV|CH|NPC)[A-Z0-9_-]+)[】\]]\s*/gi;
 
