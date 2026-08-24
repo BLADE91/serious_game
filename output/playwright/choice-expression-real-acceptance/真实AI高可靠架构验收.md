@@ -4,7 +4,7 @@
 
 - 任务起点：`cd4b0c83a0a389c26471549773b49078d50861b7`
 - 分支：`codex/serious-game-v3-implementation`
-- 最终提交：待提交后回填
+- 实现提交：`43aface792eb81299dee63ffb79b64a508c26a12`
 - 目标模型：`openai_compatible / qwen3.6-plus`
 - 玩家运行约束：禁止 Fake、模板回复与静默降级；无效响应最多由同一真实模型定向纠错两次，仍失败则不提交游戏状态。
 
