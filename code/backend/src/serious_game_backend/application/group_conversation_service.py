@@ -156,6 +156,11 @@ class GroupConversationService:
                     round_index=conversation.turn_count + 1,
                     scene_goal=conversation.agenda,
                     player_text=text,
+                    forbidden_disclosure_markers=tuple(
+                        signature
+                        for signatures in boundary.forbidden_fact_signatures.values()
+                        for signature in signatures
+                    ),
                     model_id="",
                 ))
                 ensure_stream_open(stream_cancelled)

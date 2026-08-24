@@ -6,6 +6,9 @@ export function aiConfigurationView(value: PlayerRecord | null | undefined): {
   summary: string;
   serverDefaultAvailable: boolean;
   serverDefaultSummary: string;
+  compatibilityStatus: string;
+  capabilities: string[];
+  testedAt: string;
 } {
   const active = value?.active === true;
   const mode = active ? String(value?.mode || "unconfigured") : "unconfigured";
@@ -16,6 +19,19 @@ export function aiConfigurationView(value: PlayerRecord | null | undefined): {
     : {};
   const defaultEndpoint = String(serverDefault.endpoint || "");
   const defaultModel = String(serverDefault.model || "");
+  const capabilityLabels: Record<string, string> = {
+    single_choice: "单选",
+    multiple_choice: "多选",
+    expression: "人物表达",
+    night_followup: "夜间与后续会谈",
+    contract_rendering: "合同转写",
+    document_rendering: "行政文书转写",
+  };
+  const capabilities = value?.capabilities && typeof value.capabilities === "object" && !Array.isArray(value.capabilities)
+    ? Object.entries(value.capabilities as PlayerRecord)
+      .filter(([, status]) => status === "passed")
+      .map(([id]) => capabilityLabels[id] || id)
+    : [];
   return {
     configured: active,
     mode,
@@ -24,6 +40,9 @@ export function aiConfigurationView(value: PlayerRecord | null | undefined): {
       : "尚未配置 AI 接口",
     serverDefaultAvailable: value?.server_default_available === true,
     serverDefaultSummary: [defaultEndpoint, defaultModel].filter(Boolean).join(" · "),
+    compatibilityStatus: String(value?.compatibility_status || "untested"),
+    capabilities,
+    testedAt: String(value?.tested_at || ""),
   };
 }
 
@@ -41,6 +60,7 @@ const SAFE_AI_CONFIGURATION_MESSAGES = new Set([
   "Base URL 域名无法安全解析",
   "Base URL 不能指向内网、回环、链路本地或保留地址",
   "API Key 和模型名不能为空",
+  "该接口未通过游戏所需的选择与表达能力测试",
 ]);
 
 export function aiConfigurationErrorMessage(value: unknown): string {
@@ -50,7 +70,7 @@ export function aiConfigurationErrorMessage(value: unknown): string {
   const error = value as PlayerRecord;
   const message = String(error.message || "");
   if (
-    String(error.code || "") === "ROLE_LLM_CONFIGURATION_INVALID"
+    ["ROLE_LLM_CONFIGURATION_INVALID", "ROLE_LLM_CAPABILITY_UNSUPPORTED"].includes(String(error.code || ""))
     && SAFE_AI_CONFIGURATION_MESSAGES.has(message)
   ) {
     return message;

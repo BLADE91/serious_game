@@ -4,6 +4,100 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True, slots=True)
+class SelectionOption:
+    choice_id: str
+    label: str
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.choice_id.strip() or not self.label.strip():
+            raise ValueError("selection option requires a choice_id and label")
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionTask:
+    task_id: str
+    role_id: str
+    role_name: str
+    instruction: str
+    options: tuple[SelectionOption, ...]
+    context: str = ""
+    selection_mode: str = "single"
+    minimum_choices: int = 1
+    maximum_choices: int = 1
+    session_id: str = ""
+    account_id: str = ""
+    operation_id: str = ""
+    story_day: int = 0
+    prompt_version: str = "selection-v1"
+
+    def __post_init__(self) -> None:
+        choice_ids = tuple(option.choice_id for option in self.options)
+        if not self.task_id.strip() or not self.role_id.strip() or not self.options:
+            raise ValueError("selection task requires task, role, and options")
+        if len(choice_ids) != len(set(choice_ids)):
+            raise ValueError("selection choice IDs must be unique")
+        if self.selection_mode not in {"single", "multiple"}:
+            raise ValueError("selection mode must be single or multiple")
+        if not 0 <= self.minimum_choices <= self.maximum_choices <= len(self.options):
+            raise ValueError("selection cardinality is outside the available options")
+        if self.selection_mode == "single" and (
+            self.minimum_choices != 1 or self.maximum_choices != 1
+        ):
+            raise ValueError("single selection requires exactly one choice")
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionResult:
+    choice_id: str | None = None
+    choice_ids: tuple[str, ...] = ()
+
+    @property
+    def selected_ids(self) -> tuple[str, ...]:
+        return (self.choice_id,) if self.choice_id is not None else self.choice_ids
+
+
+@dataclass(frozen=True, slots=True)
+class ExpressionTask:
+    task_id: str
+    role_id: str
+    role_name: str
+    confirmed_choice_ids: tuple[str, ...]
+    choice_summaries: dict[str, str]
+    allowed_facts: tuple[str, ...]
+    persona: str
+    context: str
+    forbidden_text_signatures: tuple[str, ...] = ()
+    session_id: str = ""
+    account_id: str = ""
+    operation_id: str = ""
+    story_day: int = 0
+    maximum_characters: int = 500
+    style_constraints: tuple[str, ...] = (
+        "使用自然、简短、口语化的中文",
+        "控制在2至4句，每句只表达一个明确意思",
+        "不要堆叠括号舞台动作",
+        "不要推断未提供的职责、事实、数字或承诺",
+    )
+    prompt_version: str = "expression-v1"
+
+    def __post_init__(self) -> None:
+        if not self.task_id.strip() or not self.role_id.strip():
+            raise ValueError("expression task requires task and role")
+        if not self.confirmed_choice_ids:
+            raise ValueError("expression task requires confirmed choices")
+        if any(choice_id not in self.choice_summaries for choice_id in self.confirmed_choice_ids):
+            raise ValueError("expression choice summary is missing")
+        if self.maximum_characters < 1:
+            raise ValueError("expression maximum length must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class ExpressionResult:
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class RoleTurnContext:
     session_id: str
     npc_id: str
@@ -85,6 +179,7 @@ class NightAgentContext:
     role_setting: str
     big_five: dict[str, int]
     counterpart_ids: tuple[str, ...]
+    counterpart_names: dict[str, str] = field(default_factory=dict)
     transcript: tuple[dict[str, str], ...] = ()
     round_index: int = 0
     scene_goal: str = ""
@@ -93,8 +188,11 @@ class NightAgentContext:
     allowed_topics: tuple[str, ...] = ()
     forbidden_disclosure_markers: tuple[str, ...] = ()
     max_contacts: int = 0
+    minimum_contacts: int = 0
     player_text: str = ""
     allowed_followup_type: str = ""
+    allowed_followup_plans: tuple[dict, ...] = ()
+    followup_required: bool = False
     model_id: str = ""
     prompt_version: str = "night-agent-v1"
 
@@ -108,6 +206,7 @@ class NightAgentResult:
     contact_ids: tuple[str, ...] = ()
     contact_response: str | None = None
     initiate_followup: bool = False
+    followup_plan_id: str | None = None
     followup_type: str | None = None
     participant_ids: tuple[str, ...] = ()
     agenda: str = ""

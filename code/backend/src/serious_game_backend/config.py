@@ -65,9 +65,9 @@ class Settings:
     role_llm_timeout_seconds: float = 30.0
     role_llm_max_retries: int = 2
     role_llm_max_output_tokens: int = 700
-    role_llm_max_calls_per_session: int = 120
-    role_llm_max_tokens_per_session: int = 240_000
-    role_llm_fallback_to_fake: bool = True
+    role_llm_max_calls_per_session: int = 1_500
+    role_llm_max_tokens_per_session: int = 3_000_000
+    role_llm_fallback_to_fake: bool = False
     operation_lease_seconds: int = 300
 
     @classmethod
@@ -177,13 +177,13 @@ class Settings:
                 os.getenv("ROLE_LLM_MAX_OUTPUT_TOKENS", "700")
             ),
             role_llm_max_calls_per_session=int(
-                os.getenv("ROLE_LLM_MAX_CALLS_PER_SESSION", "120")
+                os.getenv("ROLE_LLM_MAX_CALLS_PER_SESSION", "1500")
             ),
             role_llm_max_tokens_per_session=int(
-                os.getenv("ROLE_LLM_MAX_TOKENS_PER_SESSION", "240000")
+                os.getenv("ROLE_LLM_MAX_TOKENS_PER_SESSION", "3000000")
             ),
             role_llm_fallback_to_fake=os.getenv(
-                "ROLE_LLM_FALLBACK_TO_FAKE", "true"
+                "ROLE_LLM_FALLBACK_TO_FAKE", "false"
             ).strip().lower() in {"1", "true", "yes", "on"},
             operation_lease_seconds=int(
                 os.getenv("OPERATION_LEASE_SECONDS", "300")
@@ -209,6 +209,8 @@ class Settings:
             raise ValueError("production must not use the fake role LLM")
         if self.environment == "production" and self.role_llm_fallback_to_fake:
             raise ValueError("production must not silently fall back to the fake role LLM")
+        if self.role_llm_provider == "openai_compatible" and self.role_llm_fallback_to_fake:
+            raise ValueError("real role LLM runtime must not fall back to fake responses")
         if self.environment == "production" and not self.auth_cookie_secure:
             raise ValueError("production auth cookie must be Secure")
         if self.environment == "production" and not self.auth_required:

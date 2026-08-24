@@ -15,12 +15,14 @@ from serious_game_backend.domain.errors import (
     IdempotencyKeyReusedError,
     NotFoundError,
     SessionBusyError,
+    SnapshotStateMismatchError,
     StateVersionConflictError,
 )
 from serious_game_backend.domain.operation import OperationRecord, utc_now_iso
 from serious_game_backend.infrastructure.repositories.codec import decode_session
 from serious_game_backend.infrastructure.repositories.snapshot_codec import (
     build_snapshot,
+    snapshot_semantic_differences,
     verify_snapshot,
 )
 
@@ -100,18 +102,41 @@ class SaveService:
         current_snapshot = self._snapshots.current_for_session(session)
         if current_snapshot is None:
             raise StateVersionConflictError("当前稳定状态缺少历史快照")
+        differing_fields = snapshot_semantic_differences(session, current_snapshot)
+        if differing_fields:
+            raise SnapshotStateMismatchError(
+                "当前游戏状态与同版本自动快照不一致，未创建手动存档",
+                details={
+                    "state_version": session.state_version,
+                    "differing_fields": list(differing_fields),
+                },
+            )
         now = utc_now_iso()
         operation_id = f"save_{secrets.token_hex(12)}"
+        manual_snapshot = replace(
+            build_snapshot(
+                session,
+                snapshot_type="manual",
+                reason="manual_save",
+                parent_snapshot_id=current_snapshot.snapshot_id,
+            ),
+            # Automatic snapshots are unique per active timeline/version.
+            # A manual snapshot owns the same full payload on an isolated,
+            # immutable branch rather than pointing at the automatic row.
+            timeline_id=(
+                f"manual_{session.timeline_id}_{slot_number}_{secrets.token_hex(6)}"
+            ),
+        )
         response = {
             "operation_id": operation_id,
             "status": OperationStatus.SUCCEEDED.value,
             "state_version": session.state_version,
             "slot_number": slot_number,
             "display_name": display_name,
-            "snapshot_id": current_snapshot.snapshot_id,
-            "timeline_id": current_snapshot.timeline_id,
-            "story_day": current_snapshot.story_day,
-            "created_at": current_snapshot.created_at,
+            "snapshot_id": manual_snapshot.snapshot_id,
+            "timeline_id": manual_snapshot.timeline_id,
+            "story_day": manual_snapshot.story_day,
+            "created_at": manual_snapshot.created_at,
             "slot_updated_at": now,
         }
         operation = OperationRecord(
@@ -126,6 +151,7 @@ class SaveService:
         )
         self._snapshots.create_manual_save(
             session,
+            snapshot=manual_snapshot,
             slot_number=slot_number,
             display_name=display_name,
             overwrite=overwrite,

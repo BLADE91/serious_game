@@ -257,7 +257,11 @@ class EndDayService:
                 current.touch()
                 failed_operation = replace(
                     operation,
-                    status=OperationStatus.FAILED_FINAL,
+                    status=(
+                        OperationStatus.FAILED_RETRYABLE
+                        if getattr(exc, "retryable", False)
+                        else OperationStatus.FAILED_FINAL
+                    ),
                     error=serialize_operation_error(exc),
                     updated_at=utc_now_iso(),
                 )

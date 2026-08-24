@@ -1,13 +1,13 @@
 {
   "package_id": "pkg_gameplay_v3",
   "title": "浊流之上",
-  "package_version": "3.2.2-d1-consistency",
+  "package_version": "3.3.0-choice-expression",
   "source_version": "最终剧本_20260723",
-  "content_hash": "sha256:8e203725ed4ec428c2a850e4a8e4f070faa3b50133be5895541a7ca7d907ca9e",
+  "content_hash": "sha256:9b12d65cc8d6704116d8148a189a60215b46527bd820c3d192a62e8938ae5b98",
   "status": "published",
   "gameplay_schema_version": 4,
   "script_schema_version": 2,
   "rules_schema_version": 3,
-  "notes": "D1-D90 验收矩阵与 D13-D30 独立母稿哈希锁定；D18 钱伟登门/赵建国电话分支、D30 动态晨间卡及三路线回放通过。",
+  "notes": "真实 AI 选择—表达协议；D10/D29/D40/D55/D70/D84 follow-up 候选与强制触发条件；D1-D90 验收矩阵及 D13-D30 母稿锁保持。",
   "source_sha256": "sha256:07bdb97ce1fec9a109bc1346ce2179300fc5c2fa58efeb28863b44b5f7c337f3"
 }

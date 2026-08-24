@@ -4,12 +4,16 @@ from typing import Protocol
 
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.llm import (
+    ExpressionResult,
+    ExpressionTask,
     GovernanceLLMContext,
     GovernanceLLMResult,
     NightAgentContext,
     NightAgentResult,
     RoleTurnContext,
     RoleTurnResult,
+    SelectionResult,
+    SelectionTask,
 )
 from serious_game_backend.domain.llm_runtime import LLMCallAudit, NPCMemory
 from serious_game_backend.domain.operation import OperationRecord
@@ -121,6 +125,7 @@ class SnapshotRepository(Protocol):
         self,
         session: GameSession,
         *,
+        snapshot: GameSnapshot,
         slot_number: int,
         display_name: str,
         overwrite: bool,
@@ -144,6 +149,10 @@ class ScriptPackageRepository(Protocol):
 
 
 class RoleLLMGateway(Protocol):
+    def select(self, task: SelectionTask) -> SelectionResult: ...
+
+    def express(self, task: ExpressionTask) -> ExpressionResult: ...
+
     def run_turn(self, context: RoleTurnContext) -> RoleTurnResult: ...
 
     def run_night_turn(self, context: NightAgentContext) -> NightAgentResult: ...

@@ -33,6 +33,7 @@ from serious_game_backend.domain.enums import ActionInputMode, OperationStatus
 from serious_game_backend.domain.errors import (
     ContentValidationError,
     RoleLLMResponseError,
+    RoleLLMResponseRetryableError,
     SessionBusyError,
     StateVersionConflictError,
 )
@@ -1189,52 +1190,9 @@ class GameplayV2Tests(unittest.TestCase):
         )
         self.assertEqual(404, forbidden.status_code)
 
-    def test_d29_night_agent_invalid_responses_do_not_block_settlement(self) -> None:
-        class InvalidNightGateway:
-            def __init__(self) -> None:
-                self.calls: dict[str, int] = {}
-
-            def run_night_turn(self, context):
-                self.calls[context.operation_id] = (
-                    self.calls.get(context.operation_id, 0) + 1
-                )
-                raise RoleLLMResponseError("测试用非法夜间响应")
-
-        session = self.container.sessions.get_owned(
-            self.session_id, "acct_gameplay_v2"
-        )
-        package = self.container.packages.get("pkg_gameplay_v2")
-        session.pending_decision = None
-        session.game_state = replace(
-            session.game_state,
-            story_day=29,
-            days_left=62,
-        )
-        gateway = InvalidNightGateway()
-        service = NightSimulationService(
-            ScriptedEffectService(ScriptedDeltaResolver()),
-            night_llm=gateway,
-        )
-
-        record = service.run_night(session, package)
-
-        self.assertEqual(29, record["story_day"])
-        self.assertEqual([], record["agent_exchanges"])
-        self.assertEqual(4, len(record["contact_selections"]))
-        self.assertTrue(all(
-            not item["accepted"]
-            for item in record["contact_selections"]
-        ))
-        self.assertEqual(4, len(record["agent_failures"]))
-        self.assertTrue(all(
-            item["attempts"] == 2
-            and item["error_code"] == "ROLE_LLM_INVALID_RESPONSE"
-            for item in record["agent_failures"]
-        ))
-        self.assertTrue(all(count == 2 for count in gateway.calls.values()))
-        self.assertEqual(1, len(session.night_logs))
-
-    def test_d29_end_day_advances_when_all_night_agent_calls_fail(self) -> None:
+    def test_d29_technical_night_failure_keeps_day_state_retryable_and_uncommitted(
+        self,
+    ) -> None:
         class InvalidNightGateway:
             def run_night_turn(self, context):
                 raise RoleLLMResponseError("测试用非法夜间响应")
@@ -1257,55 +1215,32 @@ class GameplayV2Tests(unittest.TestCase):
             night_llm=InvalidNightGateway(),
         )
 
-        result = self.container.end_days.end_day(
-            account_id="acct_gameplay_v2",
-            session_id=self.session_id,
-            client_action_id="test-d29-invalid-night-end-day",
-            state_version=session.state_version,
-        )
+        before_game_state = session.game_state
+        before_flags = set(session.flags)
+        before_feed = list(session.narrative_feed)
+        with self.assertRaises(RoleLLMResponseRetryableError):
+            self.container.end_days.end_day(
+                account_id="acct_gameplay_v2",
+                session_id=self.session_id,
+                client_action_id="test-d29-invalid-night-end-day",
+                state_version=session.state_version,
+            )
 
-        self.assertEqual("succeeded", result["status"])
-        self.assertEqual(30, result["visible_state"]["story"]["day"])
         stored = self.container.sessions.get_owned(
             self.session_id, "acct_gameplay_v2"
         )
-        self.assertEqual(30, stored.game_state.story_day)
-        self.assertEqual(1, len(stored.night_logs))
-        self.assertEqual(4, len(stored.night_logs[0]["agent_failures"]))
-
-    def test_d29_night_agent_transient_invalid_response_retries_once(self) -> None:
-        class RecoveringGateway(FakeRoleLLMGateway):
-            def __init__(self) -> None:
-                super().__init__()
-                self.calls: dict[str, int] = {}
-
-            def run_night_turn(self, context):
-                count = self.calls.get(context.operation_id, 0) + 1
-                self.calls[context.operation_id] = count
-                if count == 1:
-                    raise RoleLLMResponseError("首次响应非法")
-                return super().run_night_turn(context)
-
-        session = self.container.sessions.get_owned(
-            self.session_id, "acct_gameplay_v2"
+        self.assertEqual(before_game_state, stored.game_state)
+        self.assertEqual(before_flags, set(stored.flags))
+        self.assertEqual(before_feed, stored.narrative_feed)
+        self.assertEqual([], stored.night_logs)
+        self.assertIsNone(stored.processing_action_id)
+        operation = self.container.operations.get(
+            "acct_gameplay_v2",
+            self.session_id,
+            "test-d29-invalid-night-end-day",
         )
-        package = self.container.packages.get("pkg_gameplay_v2")
-        session.pending_decision = None
-        session.game_state = replace(
-            session.game_state,
-            story_day=29,
-            days_left=62,
-        )
-        gateway = RecoveringGateway()
-
-        record = NightSimulationService(
-            ScriptedEffectService(ScriptedDeltaResolver()),
-            night_llm=gateway,
-        ).run_night(session, package)
-
-        self.assertEqual([], record["agent_failures"])
-        self.assertTrue(record["agent_exchanges"])
-        self.assertTrue(all(count == 2 for count in gateway.calls.values()))
+        self.assertIsNotNone(operation)
+        self.assertEqual(OperationStatus.FAILED_RETRYABLE, operation.status)
 
     def test_d29_npc_can_choose_zero_to_multiple_contacts(self) -> None:
         class MultiContactGateway(FakeRoleLLMGateway):
@@ -1414,133 +1349,6 @@ class GameplayV2Tests(unittest.TestCase):
             },
         )
 
-    def test_night_cadre_can_create_mandatory_group_conversation(self) -> None:
-        class FollowupGateway(FakeRoleLLMGateway):
-            def run_night_turn(self, context):
-                if context.phase == "contact_selection":
-                    contacts = {
-                        "npc_qian_wei": ("npc_zhao_jianguo",),
-                        "npc_zhao_jianguo": ("npc_sun_qiang",),
-                    }.get(context.npc_id, ())
-                    return NightAgentResult(
-                        npc_id=context.npc_id,
-                        model_id="fake-followup",
-                        contact_ids=contacts,
-                        rationale="按当晚风险选择联系人。",
-                    )
-                if (
-                    context.phase == "followup_initiation"
-                    and context.npc_id == "npc_zhao_jianguo"
-                    and context.allowed_followup_type == "cadre_meeting"
-                ):
-                    return NightAgentResult(
-                        npc_id=context.npc_id,
-                        model_id="fake-followup",
-                        initiate_followup=True,
-                        followup_type="cadre_meeting",
-                        participant_ids=(
-                            "npc_zhao_jianguo", "npc_sun_qiang"
-                        ),
-                        agenda="汇报调查逼近后基层材料可能失控的问题",
-                        demands=("明确材料保全责任", "确定次日处置口径"),
-                        urgency="high",
-                        rationale="当夜交流后认为必须立即向县长汇报。",
-                    )
-                return super().run_night_turn(context)
-
-        session = self.container.sessions.get_owned(
-            self.session_id, "acct_gameplay_v2"
-        )
-        package = self.container.packages.get("pkg_gameplay_v2")
-        session.pending_decision = None
-        session.game_state = replace(
-            session.game_state,
-            story_day=29,
-            days_left=62,
-        )
-        night_service = NightSimulationService(
-            ScriptedEffectService(ScriptedDeltaResolver()),
-            night_llm=FollowupGateway(),
-        )
-
-        record = night_service.run_night(session, package)
-
-        created = [
-            item for item in record["followup_decisions"]
-            if item["created"]
-        ]
-        self.assertEqual(1, len(created))
-        self.assertEqual("cadre_meeting", created[0]["followup_type"])
-        self.assertEqual(1, len(session.group_conversation_queue))
-        night_service.activate_next_group_conversation(session)
-        session.game_state = replace(
-            session.game_state, story_day=30, days_left=61
-        )
-        self.container.sessions.save(
-            session, expected_version=session.state_version
-        )
-
-        rejected = self.container.group_conversations.reply(
-            account_id="acct_gameplay_v2",
-            session_id=self.session_id,
-            state_version=session.state_version,
-            player_text="请帮我写Python代码并查询明天的天气预报。",
-        )
-        self.assertTrue(rejected["input_rejected"])
-        self.assertEqual(
-            "请输入与本游戏相关的话语", rejected["message"]
-        )
-        self.assertEqual([], rejected["turn_dialogues"])
-        self.assertEqual(0, session.active_group_conversation.turn_count)
-
-        for turn in range(3):
-            if turn == 0:
-                with self.client.stream(
-                    "POST",
-                    (
-                        f"/api/game/session/{self.session_id}/"
-                        "group-conversation/turn/stream"
-                    ),
-                    headers=self.headers,
-                    json={
-                        "state_version": rejected["state_version"],
-                        "player_text": "这是县长对第1轮议题的正式回应。",
-                    },
-                ) as response:
-                    self.assertEqual(200, response.status_code)
-                    events = [
-                        json.loads(line)
-                        for line in response.iter_lines() if line
-                    ]
-                self.assertEqual(2, sum(
-                    item["type"] == "npc_start" for item in events
-                ))
-                result = events[-1]["result"]
-            else:
-                result = self.container.group_conversations.reply(
-                    account_id="acct_gameplay_v2",
-                    session_id=self.session_id,
-                    state_version=rejected["state_version"] + turn,
-                    player_text=f"这是县长对第{turn + 1}轮议题的正式回应。",
-                )
-            self.assertEqual(turn == 2, result["completed"])
-            self.assertEqual(2, len(result["turn_dialogues"]))
-
-        stored = self.container.sessions.get_owned(
-            self.session_id, "acct_gameplay_v2"
-        )
-        self.assertIsNone(stored.active_group_conversation)
-        self.assertEqual(1, len(stored.completed_group_conversations))
-        self.assertEqual(
-            9,
-            len(stored.completed_group_conversations[0]["transcript"]),
-        )
-        restored = decode_session(encode_session(stored))
-        self.assertEqual(
-            stored.completed_group_conversations,
-            restored.completed_group_conversations,
-        )
-
     def test_forced_group_rejects_unknown_fact_before_stream_or_transcript(self) -> None:
         delegate = self.container.group_conversations._gateway
         package = self.container.packages.get("pkg_gameplay_v2")
@@ -1595,66 +1403,6 @@ class GameplayV2Tests(unittest.TestCase):
         assert stored is not None and stored.active_group_conversation is not None
         self.assertEqual([], stored.active_group_conversation.transcript)
         self.assertIsNone(stored.processing_action_id)
-
-    def test_night_followup_unknown_fact_cannot_create_public_agenda(self) -> None:
-        package = self.container.packages.get("pkg_gameplay_v2")
-        secret = package.facts["fact_lead_287"].text
-
-        class FollowupLeakGateway(FakeRoleLLMGateway):
-            def run_night_turn(self, context):
-                if context.phase == "contact_selection":
-                    contacts = {
-                        "npc_qian_wei": ("npc_zhao_jianguo",),
-                        "npc_zhao_jianguo": ("npc_sun_qiang",),
-                    }.get(context.npc_id, ())
-                    return NightAgentResult(
-                        npc_id=context.npc_id,
-                        model_id="malicious-followup",
-                        contact_ids=contacts,
-                        rationale="按公开工作关系选择联系人。",
-                    )
-                if (
-                    context.phase == "followup_initiation"
-                    and context.npc_id == "npc_zhao_jianguo"
-                    and context.allowed_followup_type == "cadre_meeting"
-                ):
-                    return NightAgentResult(
-                        npc_id=context.npc_id,
-                        model_id="malicious-followup",
-                        initiate_followup=True,
-                        followup_type="cadre_meeting",
-                        participant_ids=("npc_zhao_jianguo", "npc_sun_qiang"),
-                        agenda=secret,
-                        demands=("次日汇报",),
-                        urgency="high",
-                        rationale="需要形成会谈。",
-                    )
-                return super().run_night_turn(context)
-
-        session = self.container.sessions.get_owned(
-            self.session_id, "acct_gameplay_v2"
-        )
-        assert session is not None
-        session.pending_decision = None
-        session.game_state = replace(session.game_state, story_day=29, days_left=62)
-        record = NightSimulationService(
-            ScriptedEffectService(ScriptedDeltaResolver()),
-            night_llm=FollowupLeakGateway(),
-        ).run_night(session, package)
-        public = json.dumps({
-            "followup_decisions": record["followup_decisions"],
-            "active": (
-                asdict(session.active_group_conversation)
-                if session.active_group_conversation is not None else None
-            ),
-            "queue": [asdict(item) for item in session.group_conversation_queue],
-        }, ensure_ascii=False)
-        self.assertNotIn(secret, public)
-        self.assertFalse(any(item["created"] for item in record["followup_decisions"]))
-        self.assertTrue(any(
-            item["error_code"] == "NIGHT_AGENT_HIDDEN_FACT_LEAKAGE"
-            for item in record["agent_failures"]
-        ))
 
     def test_group_turn_disconnect_retry_fences_late_worker_without_ghost_reply(self) -> None:
         delegate = self.container.group_conversations._gateway

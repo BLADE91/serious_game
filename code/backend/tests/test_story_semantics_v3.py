@@ -27,6 +27,19 @@ PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
 
 
 class StorySemanticsV3Tests(unittest.TestCase):
+    def test_night_followup_plans_are_complete_package_owned_candidates(self) -> None:
+        def mutate(document: dict) -> None:
+            scene = next(
+                item for item in document["night_agent_scenes"]
+                if item["scene_id"] == "night_d84_inspection_followup"
+            )
+            scene["followup_plans"][0]["participant_ids"] = ["npc_missing"]
+
+        package_dir = self.mutate_package("social_rules.json", mutate)
+        with self.assertRaises(ContentValidationError) as raised:
+            FileScriptPackageLoader().load(package_dir)
+        self.assertIn("follow-up", raised.exception.message)
+
     def test_player_visible_text_rejects_ascii_comma_in_chinese_context_only(self) -> None:
         with self.assertRaises(ContentValidationError):
             validate_player_visible_text("他点了头,转身离开。")

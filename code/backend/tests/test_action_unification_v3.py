@@ -260,11 +260,8 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertNotIn("resource_action", json.dumps(actions, ensure_ascii=False))
 
     def test_map_uses_non_executable_governance_descriptors(self) -> None:
-        cards = [
-            card
-            for location in self._map()["locations"]
-            for card in location["entry_cards"]
-        ]
+        locations = self._map()["locations"]
+        cards = [card for location in locations for card in location["entry_cards"]]
         self.assertTrue(cards)
         self.assertTrue(all(card["action_id"] in ACTION_FAMILIES for card in cards))
         self.assertTrue(all("preselected_location_id" in card for card in cards))
@@ -276,6 +273,15 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertEqual(len(cards), len({card["map_entry_id"] for card in cards}))
         self.assertTrue(all("submit" not in card for card in cards))
         self.assertTrue(all(card["entry_type"] != "resource_action" for card in cards))
+        for location in locations:
+            for card in location["entry_cards"]:
+                self.assertEqual(
+                    [{
+                        "location_id": location["location_id"],
+                        "label": location["name"],
+                    }],
+                    card["location_choices"],
+                )
 
     def test_late_game_map_preselection_never_exceeds_participant_limit(self) -> None:
         self._set_story_state(day=46)
@@ -830,6 +836,131 @@ class GameplayV3PlayerRegressionTests(unittest.TestCase):
         )
         self.assertEqual(200, loaded.status_code, loaded.text)
         self.assertEqual(2, loaded.json()["story_day"])
+
+    def test_d2_required_opportunity_manual_save_restores_complete_business_state(
+        self,
+    ) -> None:
+        completed = self._complete_wu_governance_visit()
+        completed_view = self.client.get(
+            f"/api/game/session/{self.session_id}/view", headers=self.headers
+        ).json()
+        completed_session = self.runtime.sessions.get_owned(
+            self.session_id, self.account_id
+        )
+        assert completed_session is not None
+        completed_points = completed_session.game_state.action_points
+        completed_flags = set(completed_session.flags)
+        self.assertTrue(completed_view["commands"]["can_end_day"])
+        self.assertIn("flag_wu_first_talk_completed", completed_flags)
+
+        saved = self.client.post(
+            f"/api/game/session/{self.session_id}/manual-saves",
+            headers=self.headers,
+            json={
+                "client_action_id": "d2-required-opportunity-save-0001",
+                "state_version": completed["state_version"],
+                "slot_number": 2,
+                "display_name": "吴秀英会谈完成后",
+                "overwrite": False,
+            },
+        )
+        self.assertEqual(200, saved.status_code, saved.text)
+
+        actions = self.client.get(
+            f"/api/game/session/{self.session_id}/actions", headers=self.headers
+        ).json()["actions"]
+        archive = next(
+            variant
+            for action in actions
+            for variant in action["variants"]
+            if variant["variant_id"] == "consult_county_archives"
+        )
+        mutated = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": saved.json()["state_version"],
+                "action_kind": archive["action_id"],
+                "variant_id": archive["variant_id"],
+                "location_id": archive["location_choices"][0]["location_id"],
+                "archive_ids": [archive["target_choices"][0]["target_id"]],
+            },
+        )
+        self.assertEqual(201, mutated.status_code, mutated.text)
+        self.assertNotEqual(
+            completed_points,
+            self.runtime.sessions.get_owned(
+                self.session_id, self.account_id
+            ).game_state.action_points,
+        )
+
+        loaded = self.client.post(
+            f"/api/game/session/{self.session_id}/load-snapshot",
+            headers=self.headers,
+            json={
+                "client_action_id": "d2-required-opportunity-load-0001",
+                "state_version": mutated.json()["state_version"],
+                "snapshot_id": saved.json()["snapshot_id"],
+                "confirmed": True,
+            },
+        )
+        self.assertEqual(200, loaded.status_code, loaded.text)
+        restored = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert restored is not None
+        self.assertEqual(completed_points, restored.game_state.action_points)
+        self.assertEqual(completed_flags, set(restored.flags))
+        self.assertEqual(2, restored.game_state.story_day)
+        self.assertTrue(
+            self.client.get(
+                f"/api/game/session/{self.session_id}/view", headers=self.headers
+            ).json()["commands"]["can_end_day"]
+        )
+        opportunities = self.client.get(
+            f"/api/game/session/{self.session_id}/opportunities",
+            headers=self.headers,
+        ).json()["opportunities"]
+        self.assertNotIn(
+            "opp_d02_wu_xiuying_first_talk",
+            {item["opportunity_id"] for item in opportunities},
+        )
+
+    def test_household_archive_localizes_ownership_enums(self) -> None:
+        view = self.client.get(
+            f"/api/game/session/{self.session_id}/view", headers=self.headers
+        ).json()
+        actions = self.client.get(
+            f"/api/game/session/{self.session_id}/actions", headers=self.headers
+        ).json()["actions"]
+        archive = next(
+            variant
+            for action in actions
+            for variant in action["variants"]
+            if variant["variant_id"] == "consult_county_archives"
+        )
+        households = next(
+            item for item in archive["target_choices"]
+            if "36户" in item["label"]
+        )
+        result = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": view["state"]["state_version"],
+                "action_kind": archive["action_id"],
+                "variant_id": archive["variant_id"],
+                "location_id": archive["location_choices"][0]["location_id"],
+                "archive_ids": [households["target_id"]],
+            },
+        )
+        self.assertEqual(201, result.status_code, result.text)
+        prose = json.dumps(result.json()["archives"][0]["player_sections"], ensure_ascii=False)
+        for raw in (
+            "overbuild_partly_recognized", "ledger_sensitive",
+            "old_contract_sensitive", "clear",
+        ):
+            self.assertNotIn(raw, prose)
+        self.assertIn("权属清晰", prose)
+        self.assertIn("超建部分待认定", prose)
 
     def test_finished_people_governance_visit_is_in_conversation_history_once(
         self,

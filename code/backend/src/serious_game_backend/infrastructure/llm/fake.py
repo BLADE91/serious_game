@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from serious_game_backend.domain.llm import (
+    ExpressionResult,
+    ExpressionTask,
     GovernanceLLMContext,
     GovernanceLLMResult,
     NightAgentContext,
     NightAgentResult,
     RoleTurnContext,
     RoleTurnResult,
+    SelectionResult,
+    SelectionTask,
 )
 
 
@@ -15,6 +19,18 @@ class FakeRoleLLMGateway:
 
     def __init__(self, *, night_fixture: str = "legal") -> None:
         self._night_fixture = night_fixture
+
+    def select(self, task: SelectionTask) -> SelectionResult:
+        selected = tuple(option.choice_id for option in task.options)[
+            : task.maximum_choices
+        ]
+        if task.selection_mode == "single":
+            return SelectionResult(choice_id=selected[0])
+        return SelectionResult(choice_ids=selected)
+
+    def express(self, task: ExpressionTask) -> ExpressionResult:
+        meanings = [task.choice_summaries[item] for item in task.confirmed_choice_ids]
+        return ExpressionResult(text="；".join(meanings))
 
     def run_turn(self, context: RoleTurnContext) -> RoleTurnResult:
         if any(
@@ -101,6 +117,8 @@ class FakeRoleLLMGateway:
                 if preferred in context.counterpart_ids and context.max_contacts > 0
                 else ()
             )
+            if not contacts and context.minimum_contacts > 0 and context.counterpart_ids:
+                contacts = context.counterpart_ids[: context.minimum_contacts]
             if self._night_fixture == "illegal_contact":
                 contacts = ("npc_not_one_hop",)
             return NightAgentResult(
@@ -120,6 +138,20 @@ class FakeRoleLLMGateway:
                 rationale="对方提出的会面与当前风险直接相关，我决定回应。",
             )
         if context.phase == "followup_initiation":
+            if context.allowed_followup_plans and context.followup_required:
+                plan = dict(context.allowed_followup_plans[0])
+                return NightAgentResult(
+                    npc_id=context.npc_id,
+                    model_id=model_id,
+                    initiate_followup=True,
+                    followup_plan_id=str(plan["plan_id"]),
+                    followup_type=str(plan["followup_type"]),
+                    participant_ids=tuple(plan["participant_ids"]),
+                    agenda=str(plan["agenda"]),
+                    demands=tuple(plan.get("demands", ())),
+                    urgency=str(plan.get("urgency", "normal")),
+                    rationale=str(plan["plan_id"]),
+                )
             return NightAgentResult(
                 npc_id=context.npc_id,
                 model_id=model_id,

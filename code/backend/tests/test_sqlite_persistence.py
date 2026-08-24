@@ -541,7 +541,7 @@ class SqlitePersistenceTests(unittest.TestCase):
             connection = sqlite3.connect(database)
             try:
                 self.assertEqual(
-                    2,
+                    4,
                     connection.execute(
                         "select count(*) from runtime_game_snapshots"
                     ).fetchone()[0],
@@ -584,7 +584,7 @@ class SqlitePersistenceTests(unittest.TestCase):
             connection = sqlite3.connect(database)
             try:
                 self.assertEqual(
-                    3,
+                    5,
                     connection.execute(
                         "select count(*) from runtime_game_snapshots"
                     ).fetchone()[0],

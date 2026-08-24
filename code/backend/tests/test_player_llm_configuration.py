@@ -4,8 +4,10 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import re
 import socket
 from threading import Thread
+import time
 import unittest
 from unittest.mock import patch
 
@@ -19,7 +21,10 @@ from serious_game_backend.domain.llm import (
     NightAgentContext,
     RoleTurnContext,
 )
-from serious_game_backend.domain.errors import RoleLLMResponseError
+from serious_game_backend.domain.errors import (
+    RoleLLMResponseError,
+    RoleLLMUnavailableError,
+)
 from serious_game_backend.infrastructure.llm.openai_compatible import (
     OpenAICompatibleRoleLLMGateway,
 )
@@ -29,6 +34,20 @@ from serious_game_backend.infrastructure.llm.player_configuration import (
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+def tiny_protocol_response(prompt: str) -> dict:
+    if "你只负责把已经确认的业务选择写成自然语言" in prompt:
+        return {"text": "已按确认事项形成简短、明确的公开表述。"}
+    matched = re.search(r"合法候选：(\[.*?\])\n选择数量：最少(\d+)，最多", prompt, re.S)
+    if not matched:
+        raise AssertionError(f"unexpected protocol prompt: {prompt[:160]}")
+    options = json.loads(matched.group(1))
+    minimum = int(matched.group(2))
+    ids = [str(item["choice_id"]) for item in options]
+    if '只返回 JSON：{"choice_ids"' in prompt:
+        return {"choice_ids": ids[:minimum]}
+    return {"choice_id": ids[0]}
 
 
 class PlayerLLMConfigurationApiTests(unittest.TestCase):
@@ -54,23 +73,12 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
             })
             if self.transport_mode == "invalid":
                 return {"choices": [{"message": {"content": "not-json"}}]}
+            system = "\n".join(
+                str(item.get("content", "")) for item in body.get("messages", [])
+            )
+            content = tiny_protocol_response(system)
             return {
-                "choices": [{"message": {"content": json.dumps({
-                    "npc_id": "connection_test_npc",
-                    "dialogue": "连接正常。",
-                    "input_relevance": "relevant",
-                    "portrait_state": "neutral",
-                    "attitude_direction": "none",
-                    "attitude_band": "none",
-                    "anxiety_direction": "none",
-                    "anxiety_band": "none",
-                    "disclosure_id": None,
-                    "will_share_with": [],
-                    "memory_candidate": None,
-                    "risk_notes": [],
-                    "conversation_state": "continue",
-                    "exit_narrative": None,
-                }, ensure_ascii=False)}}],
+                "choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}],
                 "usage": {"prompt_tokens": 12, "completion_tokens": 8},
             }
 
@@ -229,6 +237,45 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_http_transport_enforces_an_absolute_response_deadline(self) -> None:
+        class DripHandler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+                self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                body = b'{"choices":[{"message":{"content":"{}"}}]}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                try:
+                    for byte in body:
+                        self.wfile.write(bytes((byte,)))
+                        self.wfile.flush()
+                        time.sleep(0.03)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, _format: str, *_args) -> None:
+                return None
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), DripHandler)
+        server.daemon_threads = True
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        started = time.perf_counter()
+        try:
+            with self.assertRaises(RoleLLMUnavailableError):
+                OpenAICompatibleRoleLLMGateway._http_transport(
+                    f"http://127.0.0.1:{server.server_port}/v1",
+                    "deadline-secret",
+                    {"model": "test"},
+                    0.12,
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        self.assertLess(time.perf_counter() - started, 0.8)
+
     def test_personal_https_connection_uses_only_the_prevalidated_ip(self) -> None:
         raw_socket = object()
 
@@ -279,9 +326,26 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
             "mode", "active", "endpoint", "model",
         )})
         self.assertNotIn("player-key-a", configured.text)
+        self.assertEqual("compatible", configured.json()["compatibility_status"])
+        self.assertIsNotNone(configured.json()["tested_at"])
+        self.assertEqual(
+            {
+                "single_choice",
+                "multiple_choice",
+                "expression",
+                "night_followup",
+                "contract_rendering",
+                "document_rendering",
+            },
+            {
+                capability
+                for capability, result in configured.json()["capabilities"].items()
+                if result == "passed"
+            },
+        )
         self.assertEqual("player-key-a", self.transport_calls[-1]["api_key"])
         self.assertEqual("player-model-a", self.transport_calls[-1]["model"])
-        self.assertEqual(calls_before + 1, len(self.transport_calls))
+        self.assertEqual(calls_before + 6, len(self.transport_calls))
 
         self.transport_mode = "invalid"
         failed_calls_before = len(self.transport_calls)
@@ -300,7 +364,9 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
         current = self.client.get("/api/ai/config").json()
         self.assertEqual("personal", current["mode"])
         self.assertEqual("player-model-a", current["model"])
-        self.assertEqual(failed_calls_before + 1, len(self.transport_calls))
+        self.assertEqual(configured.json()["tested_at"], current["tested_at"])
+        self.assertNotIn("player-key-a", json.dumps(current))
+        self.assertEqual(failed_calls_before + 3, len(self.transport_calls))
 
     def test_configuration_is_isolated_per_login_and_logout_clears_only_that_login(self) -> None:
         first = self.client.put(
@@ -349,28 +415,7 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
                 str(item.get("content", "")) for item in body.get("messages", [])
             )
             calls.append((api_key, str(body.get("model"))))
-            if "任务：review_input" in system:
-                content = {"relevant": True, "reason": "属于当前治理议题"}
-            elif "npc_night" in system:
-                content = {"npc_id": "npc_night", "dialogue": "夜间回应。"}
-            else:
-                npc_id = "npc_role" if "npc_role" in system else "connection_test_npc"
-                content = {
-                    "npc_id": npc_id,
-                    "dialogue": "连接正常。",
-                    "input_relevance": "relevant",
-                    "portrait_state": "neutral",
-                    "attitude_direction": "none",
-                    "attitude_band": "none",
-                    "anxiety_direction": "none",
-                    "anxiety_band": "none",
-                    "disclosure_id": None,
-                    "will_share_with": [],
-                    "memory_candidate": None,
-                    "risk_notes": [],
-                    "conversation_state": "continue",
-                    "exit_narrative": None,
-                }
+            content = tiny_protocol_response(system)
             return {
                 "choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}],
                 "usage": {"prompt_tokens": 10, "completion_tokens": 5},
@@ -419,7 +464,7 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
         self.assertEqual("npc_night", night.npc_id)
         self.assertEqual("review_input", governance.task)
         self.assertEqual(
-            [("personal-key", "personal-model")] * 4,
+            [("personal-key", "personal-model")] * 10,
             calls,
         )
 
@@ -459,8 +504,8 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
                 role_setting="公开测试", prompt_template="返回严格 JSON",
             ))
         self.assertEqual(
-            ["first-key", "second-key"],
-            [item["api_key"] for item in self.transport_calls[-2:]],
+            ["first-key", "first-key", "second-key", "second-key"],
+            [item["api_key"] for item in self.transport_calls[-4:]],
         )
 
     def test_server_can_run_without_default_gateway_until_player_configures_one(self) -> None:

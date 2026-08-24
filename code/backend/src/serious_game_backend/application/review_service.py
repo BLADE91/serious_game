@@ -91,6 +91,7 @@ class ReviewService:
                 {
                     "conversation_id": item.get("conversation_id"),
                     "conversation_type": item.get("conversation_type"),
+                    "story_day": item.get("story_day"),
                     "initiator_npc_id": item.get("initiator_npc_id"),
                     "participant_ids": list(item.get("participant_ids", ())),
                     "agenda": item.get("agenda"),

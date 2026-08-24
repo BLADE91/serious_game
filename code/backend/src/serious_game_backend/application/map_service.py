@@ -186,7 +186,10 @@ class MapService:
                     "participant_rules": descriptor["participant_rules"],
                     "target_kind": descriptor["target_kind"],
                     "target_choices": descriptor["target_choices"],
-                    "location_choices": descriptor["location_choices"],
+                    "location_choices": [{
+                        "location_id": location.location_id,
+                        "label": location.name,
+                    }],
                     "available": available,
                     "unavailable_reason": reason,
                 })

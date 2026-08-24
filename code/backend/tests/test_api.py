@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import replace
 from pathlib import Path
 import unittest
 
@@ -238,7 +239,7 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(first_save.json(), replay.json())
         self.assertEqual(
-            1,
+            2,
             len(self.runtime.snapshots.list_history("acct_api", session_id)),
         )
 
@@ -255,7 +256,7 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(200, action.status_code, action.text)
         self.assertEqual(
-            2,
+            3,
             len(self.runtime.snapshots.list_history("acct_api", session_id)),
         )
 
@@ -318,7 +319,7 @@ class ApiTests(unittest.TestCase):
         self.assertNotEqual(initial_timeline, loaded.json()["timeline_id"])
         self.assertEqual(initial_snapshot_id, loaded.json()["loaded_from_snapshot_id"])
         self.assertEqual(
-            3,
+            5,
             len(self.runtime.snapshots.list_history("acct_api", session_id)),
         )
 
@@ -335,7 +336,7 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(409, stale.status_code, stale.text)
         self.assertEqual(
-            3,
+            5,
             len(self.runtime.snapshots.list_history("acct_api", session_id)),
         )
 
@@ -356,6 +357,64 @@ class ApiTests(unittest.TestCase):
             headers={"X-Account-ID": "acct_other"},
         )
         self.assertEqual(404, other.status_code)
+
+    def test_manual_save_owns_payload_and_rejects_same_version_semantic_drift(
+        self,
+    ) -> None:
+        first = self._new_session()
+        session_id = first["session_id"]
+        automatic = self.runtime.snapshots.current_for_session(
+            self.runtime.sessions.get_owned(session_id, "acct_api")
+        )
+        self.assertIsNotNone(automatic)
+
+        saved = self.client.post(
+            f"/api/game/session/{session_id}/manual-saves",
+            headers=self.headers,
+            json={
+                "client_action_id": "manual-owned-payload-0001",
+                "state_version": 1,
+                "slot_number": 1,
+                "display_name": "独立手动存档",
+                "overwrite": False,
+            },
+        )
+        self.assertEqual(200, saved.status_code, saved.text)
+        self.assertNotEqual(automatic.snapshot_id, saved.json()["snapshot_id"])
+        manual = self.runtime.snapshots.get_owned(
+            "acct_api", session_id, saved.json()["snapshot_id"]
+        )
+        self.assertEqual("manual", manual.snapshot_type)
+        self.assertEqual(automatic.snapshot_id, manual.parent_snapshot_id)
+
+        drifted = self.runtime.sessions.get_owned(session_id, "acct_api")
+        drifted.game_state = replace(
+            drifted.game_state,
+            action_points=drifted.game_state.action_points - 1,
+        )
+        self.runtime.sessions.save(drifted, expected_version=drifted.state_version)
+        rejected = self.client.post(
+            f"/api/game/session/{session_id}/manual-saves",
+            headers=self.headers,
+            json={
+                "client_action_id": "manual-drift-rejected-0001",
+                "state_version": 1,
+                "slot_number": 2,
+                "display_name": "不得保存混合状态",
+                "overwrite": False,
+            },
+        )
+        self.assertEqual(409, rejected.status_code, rejected.text)
+        self.assertEqual("SNAPSHOT_STATE_MISMATCH", rejected.json()["error"]["code"])
+        self.assertEqual(
+            [1],
+            [
+                item[0].slot_number
+                for item in self.runtime.snapshots.list_manual_slots(
+                    "acct_api", session_id
+                )
+            ],
+        )
 
     def test_free_text_stays_closed_until_opportunity_package_is_ready(self) -> None:
         session = self._new_session()

@@ -267,6 +267,7 @@ class SqliteSnapshotRepository:
         self,
         session: GameSession,
         *,
+        snapshot: GameSnapshot,
         slot_number: int,
         display_name: str,
         overwrite: bool,
@@ -311,7 +312,10 @@ class SqliteSnapshotRepository:
             ).fetchone()
             if existing is not None and not overwrite:
                 raise ActionUnavailableError("手动存档槽位已存在，覆盖前必须确认")
-            snapshot = _snapshot_from_row(snapshot_row)
+            automatic = _snapshot_from_row(snapshot_row)
+            if snapshot.parent_snapshot_id != automatic.snapshot_id:
+                raise StateVersionConflictError("自动快照已变化，请刷新后重试")
+            _insert_snapshot(connection, snapshot)
             if existing is None:
                 connection.execute(
                     """

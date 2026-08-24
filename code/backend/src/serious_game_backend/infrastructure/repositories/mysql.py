@@ -622,6 +622,7 @@ class MySQLSnapshotRepository:
         self,
         session: GameSession,
         *,
+        snapshot: GameSnapshot,
         slot_number: int,
         display_name: str,
         overwrite: bool,
@@ -669,7 +670,10 @@ class MySQLSnapshotRepository:
             existing = cursor.fetchone()
             if existing and not overwrite:
                 raise ActionUnavailableError("手动存档槽位已存在，覆盖前必须确认")
-            snapshot = _mysql_snapshot_from_row(self._store, snapshot_row)
+            automatic = _mysql_snapshot_from_row(self._store, snapshot_row)
+            if snapshot.parent_snapshot_id != automatic.snapshot_id:
+                raise StateVersionConflictError("自动快照已变化，请刷新后重试")
+            _mysql_insert_snapshot(self._store, cursor, snapshot)
             if existing:
                 cursor.execute(
                     """

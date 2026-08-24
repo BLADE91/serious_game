@@ -18,6 +18,9 @@ test("projects the login AI step without ever requiring a stored key", () => {
     summary: "尚未配置 AI 接口",
     serverDefaultAvailable: true,
     serverDefaultSummary: "api.example · default-model",
+    compatibilityStatus: "untested",
+    capabilities: [],
+    testedAt: "",
   });
   assert.deepEqual(playerUi.aiConfigurationView({
     mode: "personal",
@@ -25,12 +28,23 @@ test("projects the login AI step without ever requiring a stored key", () => {
     endpoint: "personal.example",
     model: "player-model",
     api_key: "must-not-project",
+    compatibility_status: "compatible",
+    capabilities: {
+      single_choice: "passed", multiple_choice: "passed", expression: "passed",
+      night_followup: "passed", contract_rendering: "passed", document_rendering: "passed",
+    },
+    tested_at: "2026-08-24T10:00:00+00:00",
   }), {
     configured: true,
     mode: "personal",
     summary: "个人 API · personal.example · player-model",
     serverDefaultAvailable: false,
     serverDefaultSummary: "",
+    compatibilityStatus: "compatible",
+    capabilities: [
+      "单选", "多选", "人物表达", "夜间与后续会谈", "合同转写", "行政文书转写",
+    ],
+    testedAt: "2026-08-24T10:00:00+00:00",
   });
 });
 

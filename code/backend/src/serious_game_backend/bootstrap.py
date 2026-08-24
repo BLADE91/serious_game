@@ -268,7 +268,6 @@ def build_container(
             settings,
             os.getenv(settings.role_llm_api_key_env, ""),
             llm_audits,
-            fallback=fake_llm,
         )
     elif settings.role_llm_provider == "fake":
         server_role_llm = fake_llm

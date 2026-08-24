@@ -1247,9 +1247,9 @@ function AIConfigurationPanel({
       <label>API Base URL<input name="base_url" type="url" defaultValue="https://api.qianzhang-ai.cn/v1" maxLength={2048} inputMode="url" spellCheck={false} required /></label>
       <label>模型名<input name="model" defaultValue="qwen3.6-plus" maxLength={256} spellCheck={false} required /></label>
       <label>API Key<span className="secret-field"><input name="api_key" type={showApiKey ? "text" : "password"} maxLength={1024} autoComplete="off" data-1p-ignore="true" required /><button type="button" className="secondary" onClick={onToggleKey} aria-label={showApiKey ? "隐藏 API Key" : "显示 API Key"}>{showApiKey ? "隐藏" : "显示"}</button></span></label>
-      <small className="cost-hint">“测试并启用”会发起一次最小结构化请求，供应商可能收取少量 Token 费用。</small>
+      <small className="cost-hint">“测试并启用”会依次验证单选、多选、人物表达、夜间会谈、合同和行政文书六项能力，供应商可能收取少量 Token 费用。</small>
     </div>}
-    {view.configured && <div className="ai-config-summary active"><small>当前已启用</small><b>{view.summary}</b></div>}
+    {view.configured && <div className="ai-config-summary active"><small>当前已启用</small><b>{view.summary}</b>{view.compatibilityStatus === "compatible" && <><span>六项游戏能力已验证</span><span>{view.capabilities.join("、")}</span>{view.testedAt && <time>最近测试：{new Date(view.testedAt).toLocaleString("zh-CN")}</time>}</>}</div>}
     {error && <div className="notice" role="alert">{error}</div>}
     {success && <div className="success-note" role="status">{success}</div>}
     <button disabled={busy || (mode === "server_default" && !view.serverDefaultAvailable)}>{busy ? "正在测试接口…" : mode === "personal" ? "测试并启用" : "启用服务器默认接口"}</button>

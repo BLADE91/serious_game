@@ -290,25 +290,33 @@ class InMemorySnapshotRepository:
         self,
         session: GameSession,
         *,
+        snapshot: GameSnapshot,
         slot_number: int,
         display_name: str,
         overwrite: bool,
         operation: OperationRecord,
     ) -> tuple[ManualSaveSlot, GameSnapshot]:
-        current = self._sessions.get_owned(session.session_id, session.account_id)
-        if (
-            current is None
-            or current.state_version != session.state_version
-            or current.processing_action_id is not None
-        ):
-            raise StateVersionConflictError("状态版本已变化或游戏正在处理操作")
-        snapshot = self.current_for_session(session)
-        if snapshot is None:
-            raise StateVersionConflictError("当前稳定状态缺少历史快照")
         key = (session.account_id, session.session_id, slot_number)
-        with self._lock:
+        operation_key = (
+            operation.account_id,
+            operation.session_id,
+            operation.client_action_id,
+        )
+        with self._sessions._lock, self._operations._lock, self._lock:
+            current = self._sessions._items.get(session.session_id)
+            if (
+                current is None
+                or current.account_id != session.account_id
+                or current.state_version != session.state_version
+                or current.processing_action_id is not None
+            ):
+                raise StateVersionConflictError("状态版本已变化或游戏正在处理操作")
             if key in self._slots and not overwrite:
                 raise ActionUnavailableError("手动存档槽位已存在，覆盖前必须确认")
+            if snapshot.snapshot_id in self._snapshots:
+                raise ValueError("duplicate snapshot_id")
+            if operation_key in self._operations._items:
+                raise ValueError("duplicate idempotency key")
             slot = ManualSaveSlot(
                 account_id=session.account_id,
                 session_id=session.session_id,
@@ -317,7 +325,8 @@ class InMemorySnapshotRepository:
                 display_name=display_name,
                 updated_at=operation.updated_at,
             )
-            self._operations.create(operation)
+            self._snapshots[snapshot.snapshot_id] = deepcopy(snapshot)
+            self._operations._items[operation_key] = deepcopy(operation)
             self._slots[key] = slot
             return deepcopy(slot), deepcopy(snapshot)
 

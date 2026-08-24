@@ -4469,6 +4469,18 @@ class GameplayGovernanceService:
             "contracted_land_mu": "承包地面积",
             "ownership_status": "权属情况",
         }
+        ownership_labels = {
+            "clear": "权属清晰",
+            "overbuild_partly_recognized": "超建部分待认定",
+            "ledger_sensitive": "台账口径需复核",
+            "old_contract_sensitive": "旧合同材料需复核",
+            "old_road_case_pending": "旧道路事项待核验",
+            "old_materials_sensitive": "历史材料需复核",
+            "business_verified": "经营用途已核验",
+            "procedure_sensitive": "办理程序需复核",
+            "migrant_authorization_needed": "异地授权材料待补",
+            "prior_extra_payment_risk": "既往补偿差异待核验",
+        }
         sections: list[dict[str, str]] = []
 
         def add(heading: str, body_parts: list[str]) -> None:
@@ -4513,11 +4525,13 @@ class GameplayGovernanceService:
             for index, item in enumerate(source, start=1):
                 if not isinstance(item, dict):
                     continue
-                parts = [
-                    f"{label}：{scalar(item.get(key))}"
-                    for key, label in field_labels.items()
-                    if scalar(item.get(key))
-                ]
+                parts = []
+                for key, label in field_labels.items():
+                    rendered = scalar(item.get(key))
+                    if key == "ownership_status" and rendered:
+                        rendered = ownership_labels.get(rendered, "权属事项待进一步核验")
+                    if rendered:
+                        parts.append(f"{label}：{rendered}")
                 add(f"第{index}户底账", parts)
         elif value.source_id == "governance_config" and isinstance(source, dict):
             envelopes = source.get("budget_envelopes")

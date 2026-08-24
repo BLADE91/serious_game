@@ -534,6 +534,7 @@ class FileScriptPackageLoader:
             if "budget_remaining" in effects.get("ledger_deltas", {}):
                 raise ContentValidationError("NPC夜间硬结算不得修改预算")
         scene_ids: set[str] = set()
+        followup_plan_ids: set[str] = set()
         for scene in document.get("night_agent_scenes", []):
             scene_id = str(scene.get("scene_id", ""))
             participants = set(
@@ -573,6 +574,32 @@ class FileScriptPackageLoader:
                     "夜间 Agent 场景子网边界无效",
                     details={"scene_id": scene_id},
                 )
+            for plan in scene.get("followup_plans", ()):
+                plan_id = str(plan.get("plan_id", ""))
+                participant_ids = tuple(
+                    str(item) for item in plan.get("participant_ids", ())
+                )
+                initiator_ids = tuple(
+                    str(item) for item in plan.get("initiator_ids", ())
+                )
+                if (
+                    not plan_id
+                    or plan_id in followup_plan_ids
+                    or plan.get("followup_type") not in {"cadre_meeting", "petition"}
+                    or len(participant_ids) < 2
+                    or not set(participant_ids).issubset(npc_ids)
+                    or not initiator_ids
+                    or not set(initiator_ids).issubset(participant_ids)
+                    or not str(plan.get("agenda", "")).strip()
+                    or not all(str(item).strip() for item in plan.get("demands", ()))
+                    or plan.get("urgency") not in {"low", "medium", "high", "critical"}
+                    or not isinstance(plan.get("required_when"), dict)
+                ):
+                    raise ContentValidationError(
+                        "夜间 follow-up 候选配置无效",
+                        details={"scene_id": scene_id, "plan_id": plan_id},
+                    )
+                followup_plan_ids.add(plan_id)
         for action in actions:
             action_id = str(action["action_id"])
             hard_outcome_ids = set(action.get("hard_outcome_ids", ()))

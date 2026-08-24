@@ -19,16 +19,23 @@ from serious_game_backend.domain.errors import (
     PlayerLLMConfigurationInvalidError,
     PlayerLLMConfigurationRequiredError,
     RoleLLMConfigurationError,
+    RoleLLMCapabilityUnsupportedError,
     RoleLLMResponseError,
+    RoleLLMResponseRetryableError,
     RoleLLMUnavailableError,
 )
 from serious_game_backend.domain.llm import (
+    ExpressionResult,
+    ExpressionTask,
     GovernanceLLMContext,
     GovernanceLLMResult,
     NightAgentContext,
     NightAgentResult,
     RoleTurnContext,
     RoleTurnResult,
+    SelectionOption,
+    SelectionResult,
+    SelectionTask,
 )
 from serious_game_backend.infrastructure.llm.openai_compatible import (
     OpenAICompatibleRoleLLMGateway,
@@ -154,6 +161,9 @@ class PlayerLLMStatus:
     endpoint: str | None
     model: str | None
     server_default_available: bool
+    capabilities: dict[str, str]
+    compatibility_status: str
+    tested_at: str | None
     expires_with_login: bool = True
 
     def public_dict(self) -> dict:
@@ -163,6 +173,9 @@ class PlayerLLMStatus:
             "endpoint": self.endpoint,
             "model": self.model,
             "server_default_available": self.server_default_available,
+            "capabilities": dict(self.capabilities),
+            "compatibility_status": self.compatibility_status,
+            "tested_at": self.tested_at,
             "expires_with_login": self.expires_with_login,
         }
 
@@ -174,6 +187,8 @@ class _Selection:
     endpoint: str
     model: str
     expires_at: datetime
+    capabilities: dict[str, str]
+    tested_at: str
 
 
 class _NullAuditRepository:
@@ -194,6 +209,12 @@ class _ForcedModelGateway:
 
     def run_turn(self, context: RoleTurnContext) -> RoleTurnResult:
         return self._gateway.run_turn(context)
+
+    def select(self, task: SelectionTask) -> SelectionResult:
+        return self._gateway.select(task)
+
+    def express(self, task: ExpressionTask) -> ExpressionResult:
+        return self._gateway.express(task)
 
     def run_night_turn(self, context: NightAgentContext) -> NightAgentResult:
         return self._gateway.run_night_turn(replace(context, model_id=self._model))
@@ -249,6 +270,9 @@ class PlayerLLMConfigurationRegistry:
                 endpoint=None,
                 model=None,
                 server_default_available=self.server_default_available,
+                capabilities=self._empty_capabilities(),
+                compatibility_status="unconfigured",
+                tested_at=None,
             )
         return PlayerLLMStatus(
             mode=selection.mode,
@@ -256,6 +280,9 @@ class PlayerLLMConfigurationRegistry:
             endpoint=selection.endpoint,
             model=selection.model,
             server_default_available=self.server_default_available,
+            capabilities=selection.capabilities,
+            compatibility_status="compatible",
+            tested_at=selection.tested_at,
         )
 
     def use_server_default(
@@ -263,6 +290,7 @@ class PlayerLLMConfigurationRegistry:
     ) -> PlayerLLMStatus:
         if self._server_default is None:
             raise PlayerLLMConfigurationInvalidError("服务器未配置可用的默认 AI 接口")
+        capabilities, tested_at = self._probe_capabilities(self._server_default)
         endpoint = (
             "开发模板接口"
             if self._settings.role_llm_provider == "fake"
@@ -274,6 +302,8 @@ class PlayerLLMConfigurationRegistry:
             endpoint=endpoint,
             model=self._settings.role_llm_model,
             expires_at=expires_at or self._default_expiry(),
+            capabilities=capabilities,
+            tested_at=tested_at,
         ))
         return self.status(scope_id)
 
@@ -319,28 +349,15 @@ class PlayerLLMConfigurationRegistry:
                 validated_addresses=validated_addresses,
             )
 
-        probe_settings = replace(personal_settings, role_llm_max_retries=0)
+        probe_settings = replace(personal_settings, role_llm_max_retries=2)
         probe = OpenAICompatibleRoleLLMGateway(
             probe_settings,
             normalized_key,
             _NullAuditRepository(),
-            fallback=None,
             transport=validated_transport,
         )
         try:
-            probe.run_turn(RoleTurnContext(
-                session_id="connection_test",
-                account_id="connection_test",
-                operation_id="connection_test",
-                story_day=1,
-                npc_id="connection_test_npc",
-                npc_name="接口测试角色",
-                player_text="请用一句简短中文确认连接正常。",
-                opportunity_id="connection_test",
-                npc_state_tier="deep",
-                role_setting="只进行接口兼容性测试，不包含任何游戏剧情。",
-                prompt_template="严格按字段契约返回 JSON。",
-            ))
+            capabilities, tested_at = self._probe_capabilities(probe)
         except RoleLLMConfigurationError as exc:
             raise PlayerLLMConfigurationInvalidError(
                 "API Key 无效，或该账号没有模型权限"
@@ -349,15 +366,14 @@ class PlayerLLMConfigurationRegistry:
             raise PlayerLLMConfigurationInvalidError(
                 "AI 接口连接超时或暂时不可用"
             ) from exc
-        except RoleLLMResponseError as exc:
-            raise PlayerLLMConfigurationInvalidError(
-                "该接口不兼容游戏所需的结构化输出"
+        except (RoleLLMResponseError, RoleLLMResponseRetryableError) as exc:
+            raise RoleLLMCapabilityUnsupportedError(
+                "该接口未通过游戏所需的选择与表达能力测试"
             ) from exc
         active = OpenAICompatibleRoleLLMGateway(
             personal_settings,
             normalized_key,
             self._audits,
-            fallback=None,
             transport=validated_transport,
         )
         self._set(scope_id, _Selection(
@@ -366,6 +382,8 @@ class PlayerLLMConfigurationRegistry:
             endpoint=self._public_endpoint(normalized_url),
             model=normalized_model,
             expires_at=expires_at or self._default_expiry(),
+            capabilities=capabilities,
+            tested_at=tested_at,
         ))
         return self.status(scope_id)
 
@@ -429,6 +447,80 @@ class PlayerLLMConfigurationRegistry:
     def _default_expiry(self) -> datetime:
         return _now() + timedelta(seconds=self._settings.auth_session_ttl_seconds)
 
+    @staticmethod
+    def _empty_capabilities() -> dict[str, str]:
+        return {
+            "single_choice": "untested",
+            "multiple_choice": "untested",
+            "expression": "untested",
+            "night_followup": "untested",
+            "contract_rendering": "untested",
+            "document_rendering": "untested",
+        }
+
+    def _probe_capabilities(
+        self, gateway: RoleLLMGateway
+    ) -> tuple[dict[str, str], str]:
+        common = {
+            "role_id": "capability_probe",
+            "role_name": "接口能力测试角色",
+            "session_id": "capability_probe",
+            "account_id": "capability_probe",
+            "story_day": 0,
+        }
+        single = gateway.select(SelectionTask(
+            task_id="capability_single_choice",
+            instruction="选择 option_a 以证明单选兼容。",
+            options=(
+                SelectionOption("option_a", "选项甲"),
+                SelectionOption("option_b", "选项乙"),
+            ),
+            operation_id="capability_single_choice",
+            **common,
+        ))
+        if single.choice_id != "option_a":
+            raise RoleLLMResponseError("单选能力测试没有遵守明确指令")
+        multiple = gateway.select(SelectionTask(
+            task_id="capability_multiple_choice",
+            instruction="同时选择 option_a 和 option_b 以证明多选兼容。",
+            options=(
+                SelectionOption("option_a", "选项甲"),
+                SelectionOption("option_b", "选项乙"),
+            ),
+            selection_mode="multiple",
+            minimum_choices=2,
+            maximum_choices=2,
+            operation_id="capability_multiple_choice",
+            **common,
+        ))
+        if set(multiple.choice_ids) != {"option_a", "option_b"}:
+            raise RoleLLMResponseError("多选能力测试没有遵守明确指令")
+        expression_specs = (
+            ("expression", "capability_expression", "用一句简短中文确认表达能力。"),
+            ("night_followup", "capability_night_followup", "说明已选择发起干部会谈。"),
+            ("contract_rendering", "capability_contract", "把已确认合同条款写成一句话。"),
+            ("document_rendering", "capability_document", "把已确认责任和期限写成一句公文表述。"),
+        )
+        capabilities = {
+            "single_choice": "passed",
+            "multiple_choice": "passed",
+        }
+        for capability, task_id, meaning in expression_specs:
+            result = gateway.express(ExpressionTask(
+                task_id=task_id,
+                confirmed_choice_ids=("option_a",),
+                choice_summaries={"option_a": meaning},
+                allowed_facts=(meaning,),
+                persona="仅用于接口兼容性测试，措辞克制。",
+                context="不包含游戏剧情，不得补充事实。",
+                operation_id=task_id,
+                **common,
+            ))
+            if not result.text.strip():
+                raise RoleLLMResponseError(f"{capability} 能力测试返回空文本")
+            capabilities[capability] = "passed"
+        return capabilities, _now().isoformat()
+
     def _validate_public_base_url(self, raw_value: str) -> str:
         value, _addresses = self._resolve_public_base_url(raw_value)
         return value
@@ -486,6 +578,12 @@ class ScopedRoleLLMGateway:
 
     def run_turn(self, context: RoleTurnContext) -> RoleTurnResult:
         return self._registry.current_gateway().run_turn(context)
+
+    def select(self, task: SelectionTask) -> SelectionResult:
+        return self._registry.current_gateway().select(task)
+
+    def express(self, task: ExpressionTask) -> ExpressionResult:
+        return self._registry.current_gateway().express(task)
 
     def run_night_turn(self, context: NightAgentContext) -> NightAgentResult:
         return self._registry.current_gateway().run_night_turn(context)

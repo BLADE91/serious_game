@@ -168,6 +168,10 @@ def canonical_map_entry_descriptor(
                 "map_entry_id": expected_id,
                 "location_locked": True,
                 "preselected_location_id": location.location_id,
+                "location_choices": [{
+                    "location_id": location.location_id,
+                    "label": location.name,
+                }],
             }
     return None
 

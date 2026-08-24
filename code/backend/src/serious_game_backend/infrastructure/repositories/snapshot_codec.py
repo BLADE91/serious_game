@@ -12,6 +12,27 @@ from serious_game_backend.infrastructure.repositories.codec import (
 )
 
 
+def snapshot_semantic_differences(
+    session: GameSession, snapshot: GameSnapshot
+) -> tuple[str, ...]:
+    """Return safe top-level fields whose durable values disagree.
+
+    The actual values are deliberately not returned: a snapshot can contain
+    private model/audit material.  Field names are enough to diagnose which
+    transaction failed to publish a matching automatic snapshot.
+    """
+    current = encode_session(session)
+    stored = snapshot.session_payload
+    keys = set(current) | set(stored)
+    return tuple(
+        sorted(
+            key
+            for key in keys
+            if dumps(current.get(key)) != dumps(stored.get(key))
+        )
+    )
+
+
 def build_snapshot(
     session: GameSession,
     *,

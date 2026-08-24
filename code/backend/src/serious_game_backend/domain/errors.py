@@ -100,6 +100,30 @@ class RoleLLMResponseError(DomainError):
     retryable = True
 
 
+class RoleLLMCapabilityUnsupportedError(DomainError):
+    code = "ROLE_LLM_CAPABILITY_UNSUPPORTED"
+    http_status = 422
+    retryable = False
+
+
+class RoleLLMResponseRetryableError(DomainError):
+    code = "ROLE_LLM_RESPONSE_RETRYABLE"
+    http_status = 503
+    retryable = True
+
+
+class RoleLLMExpressionUnsafeError(RoleLLMResponseError):
+    code = "ROLE_LLM_EXPRESSION_UNSAFE"
+    http_status = 502
+    retryable = True
+
+
+class SnapshotStateMismatchError(DomainError):
+    code = "SNAPSHOT_STATE_MISMATCH"
+    http_status = 409
+    retryable = False
+
+
 class RoleLLMBudgetExceededError(DomainError):
     code = "ROLE_LLM_BUDGET_EXCEEDED"
     http_status = 429

@@ -56,6 +56,25 @@ class StoryRoutesV3Tests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         return response.json()
 
+    def drain_required_group_conversation(
+        self, client, session_id, headers, result: dict, key: str
+    ) -> dict:
+        round_index = 0
+        while result["visible_state"].get("active_group_conversation"):
+            round_index += 1
+            response = client.post(
+                f"/api/game/session/{session_id}/group-conversation/turn",
+                headers=headers,
+                json={
+                    "state_version": result["state_version"],
+                    "player_text": "请各位只围绕已确认的议题逐项说明。",
+                    "client_action_id": f"{key}-group-{round_index:02d}",
+                },
+            )
+            self.assertEqual(200, response.status_code, response.text)
+            result = response.json()
+        return result
+
     def choose_option(self, pending: dict, route_index: int, decision_index: int) -> dict:
         available = [item for item in pending["options"] if item.get("available", True)]
         if route_index == 0:
@@ -172,6 +191,13 @@ class StoryRoutesV3Tests(unittest.TestCase):
             for story_day in range(3, 91):
                 if result["visible_state"]["status"] == "ended":
                     break
+                result = self.drain_required_group_conversation(
+                    client,
+                    session_id,
+                    headers,
+                    result,
+                    f"route-{route_index}-day-{story_day:02d}",
+                )
                 result, decision_index = self.drain_decisions(
                     container,
                     client,

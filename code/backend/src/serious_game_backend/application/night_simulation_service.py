@@ -19,7 +19,9 @@ from serious_game_backend.application.night_turn_safety import (
 from serious_game_backend.domain.fact_markers import forbidden_fact_signatures
 from serious_game_backend.domain.errors import (
     RoleLLMBudgetExceededError,
+    RoleLLMExpressionUnsafeError,
     RoleLLMResponseError,
+    RoleLLMResponseRetryableError,
     RoleLLMUnavailableError,
 )
 
@@ -187,6 +189,19 @@ class NightSimulationService:
             for exchange in exchanges
             for npc_id in exchange.get("participant_ids", ())
         }
+        # A package-owned required follow-up is authoritative.  Its complete
+        # participant plan must remain eligible even when an earlier private
+        # contact choice did not happen to include every invitee.
+        exchange_scene_ids = {
+            str(exchange.get("scene_id", "")) for exchange in exchanges
+        }
+        for scene in package.night_agent_scenes:
+            if str(scene.get("scene_id", "")) not in exchange_scene_ids:
+                continue
+            for plan in scene.get("followup_plans", ()):
+                condition = dict(plan.get("required_when", {}))
+                if condition and self._followup_condition_matches(condition, session):
+                    participants.update(str(item) for item in plan.get("participant_ids", ()))
         decisions: list[dict] = []
         created: list[ForcedGroupConversation] = []
         for npc_id in sorted(participants):
@@ -211,6 +226,45 @@ class NightSimulationService:
                 ))
                 if not eligible:
                     continue
+                related_scene_ids = {
+                    str(exchange.get("scene_id", ""))
+                    for exchange in exchanges
+                    if npc_id in exchange.get("participant_ids", ())
+                }
+                related_scene_ids.update(
+                    str(scene.get("scene_id", ""))
+                    for scene in package.night_agent_scenes
+                    if str(scene.get("scene_id", "")) in exchange_scene_ids
+                    and any(
+                        npc_id in plan.get("participant_ids", ())
+                        and self._followup_condition_matches(
+                            dict(plan.get("required_when", {})), session
+                        )
+                        for plan in scene.get("followup_plans", ())
+                        if plan.get("required_when")
+                    )
+                )
+                followup_plans = tuple(
+                    dict(plan)
+                    for scene in package.night_agent_scenes
+                    if str(scene.get("scene_id", "")) in related_scene_ids
+                    for plan in scene.get("followup_plans", ())
+                    if str(plan.get("followup_type", "")) == followup_type
+                    and npc_id in plan.get("initiator_ids", ())
+                    and tuple(plan.get("initiator_ids", ()))[0] == npc_id
+                    and set(plan.get("participant_ids", ())).issubset(
+                        {npc_id, *eligible}
+                    )
+                )
+                if not followup_plans:
+                    continue
+                required_followup = any(
+                    self._followup_condition_matches(
+                        dict(plan.get("required_when", {})), session
+                    )
+                    for plan in followup_plans
+                    if plan.get("required_when")
+                )
                 context = NightAgentContext(
                     session_id=session.session_id,
                     account_id=session.account_id,
@@ -236,6 +290,8 @@ class NightSimulationService:
                         else "决定是否需要在次日主动向县长汇报并会谈"
                     ),
                     allowed_followup_type=followup_type,
+                    allowed_followup_plans=followup_plans,
+                    followup_required=required_followup,
                     forbidden_disclosure_markers=forbidden_disclosure_markers,
                 )
                 result = self._safe_night_turn(
@@ -249,6 +305,7 @@ class NightSimulationService:
                     continue
                 proposal = {
                     "initiator_npc_id": npc_id,
+                    "plan_id": result.followup_plan_id,
                     "model_id": result.model_id,
                     "followup_type": followup_type,
                     "initiate": result.initiate_followup,
@@ -478,6 +535,11 @@ class NightSimulationService:
                 role_setting=profile.role_setting,
                 big_five=profile.big_five.as_dict() if profile.big_five else {},
                 counterpart_ids=candidates,
+                counterpart_names={
+                    candidate_id: profiles[candidate_id].name
+                    for candidate_id in candidates
+                    if candidate_id in profiles
+                },
                 scene_goal=str(scene.get("scene_goal", "")),
                 private_context=str(
                     scene.get("private_contexts", {}).get(npc_id, "")
@@ -488,6 +550,17 @@ class NightSimulationService:
                     scene.get("hidden_fact_markers", ())
                 ),
                 max_contacts=max_contacts,
+                minimum_contacts=(
+                    1
+                    if any(
+                        npc_id in plan.get("initiator_ids", ())
+                        and self._followup_condition_matches(
+                            dict(plan.get("required_when", {})), session
+                        )
+                        for plan in scene.get("followup_plans", ())
+                    )
+                    else 0
+                ),
                 model_id=str(scene.get("model_ids", {}).get(npc_id, "")),
             )
             result = self._safe_night_turn(
@@ -528,7 +601,11 @@ class NightSimulationService:
                 item for item in result.contact_ids
                 if item in candidates
             ))[:max_contacts]
-            accepted = result.npc_id == npc_id and tuple(result.contact_ids) == contacts
+            if result.npc_id != npc_id or tuple(result.contact_ids) != contacts:
+                raise RoleLLMResponseRetryableError(
+                    "夜间联系人选择不在服务端合法候选中，日终状态保持不变"
+                )
+            accepted = True
             private_audit.append(self._proposal_audit(
                 phase="contact_selection",
                 npc_id=npc_id,
@@ -538,23 +615,20 @@ class NightSimulationService:
                     "contact_ids": list(result.contact_ids),
                     "rationale": result.rationale,
                 },
-                verdict="accepted" if accepted else "rejected",
-                reason=None if accepted else "contact_not_one_hop_or_over_limit",
+                verdict="accepted",
+                reason=None,
                 model_id=result.model_id,
-                resolved_hard_outcome_ids=(
-                    ["outcome_hold_position"]
-                    if package.relationship_subnetworks and not accepted else []
-                ),
+                resolved_hard_outcome_ids=[],
             ))
             selections.append({
                 "scene_id": scene["scene_id"],
                 "npc_id": npc_id,
                 "model_id": result.model_id,
-                "contact_ids": list(contacts) if accepted else [],
+                "contact_ids": list(contacts),
                 "rationale": result.rationale,
                 "accepted": accepted,
             })
-            if not accepted or not contacts:
+            if not contacts:
                 continue
             accepted_contacts: list[str] = []
             for invited_id in contacts:
@@ -768,21 +842,9 @@ class NightSimulationService:
                         scene_blocked = bool(package.relationship_subnetworks)
                         break
                     if result.npc_id != npc_id or not result.dialogue:
-                        private_audit.append(self._proposal_audit(
-                            phase="dialogue",
-                            npc_id=npc_id,
-                            operation_id=context.operation_id,
-                            original_proposal=self._night_result_document(result),
-                            verdict="rejected",
-                            reason="invalid_dialogue_response",
-                            model_id=result.model_id,
-                            resolved_hard_outcome_ids=(
-                                ["outcome_hold_position"]
-                                if package.relationship_subnetworks else []
-                            ),
-                        ))
-                        scene_blocked = bool(package.relationship_subnetworks)
-                        break
+                        raise RoleLLMResponseRetryableError(
+                            "夜间表达缺少当前角色的合法对白，日终状态保持不变"
+                        )
                     transcript.append({
                         "round": round_index,
                         "speaker_npc_id": npc_id,
@@ -816,6 +878,12 @@ class NightSimulationService:
                     participants,
                     action_catalog,
                 )
+                if not actor_allowed:
+                    # An invited counterpart may have no directed outgoing
+                    # action edge in this scene. That is an authoritative
+                    # engine constraint, not a model failure and not a reason
+                    # to invent a hold proposal on the NPC's behalf.
+                    continue
                 context = NightAgentContext(
                     session_id=session.session_id,
                     account_id=session.account_id,
@@ -913,36 +981,10 @@ class NightSimulationService:
                 elif package.relationship_subnetworks and not result.topic_ids:
                     rejection_reason = "topic_required"
                 if rejection_reason is not None:
-                    private_audit.append(self._proposal_audit(
-                        phase="action",
-                        npc_id=npc_id,
-                        operation_id=context.operation_id,
-                        original_proposal={
-                            "npc_id": result.npc_id,
-                            "action_id": result.action_id,
-                            "target_ids": list(result.target_ids),
-                            "topic_ids": list(result.topic_ids),
-                            "rationale": result.rationale,
-                        },
-                        verdict="rejected",
-                        reason=rejection_reason,
-                        model_id=result.model_id,
-                        resolved_hard_outcome_ids=(
-                            ["outcome_hold_position"]
-                            if package.relationship_subnetworks else []
-                        ),
-                    ))
-                    proposals.append({
-                        "npc_id": npc_id,
-                        "model_id": result.model_id,
-                        "action_id": "night_hold_position",
-                        "target_ids": [],
-                        "topic_ids": [],
-                        "accepted": True,
-                        "fallback": True,
-                        "reason": rejection_reason,
-                    })
-                    continue
+                    raise RoleLLMResponseRetryableError(
+                        "夜间行动选择不在服务端合法候选中，日终状态保持不变",
+                        details={"reason": rejection_reason},
+                    )
                 private_audit.append(self._proposal_audit(
                     phase="action",
                     npc_id=npc_id,
@@ -1180,41 +1222,47 @@ class NightSimulationService:
         *,
         forbidden_signatures: dict[str, tuple[str, ...]],
     ):
-        """Retry transient night-agent failures without blocking day settlement."""
+        """Validate one fully corrected gateway call; never settle technical failure."""
         if self._night_llm is None:
             return None
-        last_error: Exception | None = None
-        attempts = 0
-        for attempt in range(1, 3):
-            attempts = attempt
+        try:
+            complete_forbidden = tuple(dict.fromkeys((
+                *context.forbidden_disclosure_markers,
+                *(
+                    signature
+                    for signatures in forbidden_signatures.values()
+                    for signature in signatures
+                    if signature
+                ),
+            )))
+            generation_context = replace(
+                context,
+                forbidden_disclosure_markers=complete_forbidden,
+            )
+            raw_result = self._night_llm.run_night_turn(generation_context)
             try:
-                raw_result = self._night_llm.run_night_turn(context)
-                try:
-                    return validate_night_turn_result(
-                        raw_result,
-                        expected_npc_id=context.npc_id,
-                        forbidden_fact_signatures=forbidden_signatures,
-                        forbidden_markers=context.forbidden_disclosure_markers,
-                    )
-                except NightTurnSafetyError as exc:
-                    # Never persist the rejected payload: it may itself contain
-                    # the unauthorized fact that triggered this boundary.
-                    exc.details["original_proposal"] = None
-                    raise
-            except (
-                RoleLLMBudgetExceededError,
-                RoleLLMResponseError,
-                RoleLLMUnavailableError,
-            ) as exc:
-                last_error = exc
-                if not getattr(exc, "retryable", False):
-                    break
+                return validate_night_turn_result(
+                    raw_result,
+                    expected_npc_id=context.npc_id,
+                    forbidden_fact_signatures=forbidden_signatures,
+                    forbidden_markers=context.forbidden_disclosure_markers,
+                )
+            except NightTurnSafetyError as exc:
+                exc.details["original_proposal"] = None
+                raise
+        except (
+            RoleLLMBudgetExceededError,
+            RoleLLMResponseError,
+            RoleLLMResponseRetryableError,
+            RoleLLMUnavailableError,
+        ) as exc:
+            last_error = exc
         failures.append({
             "scene_id": context.scene_id,
             "phase": context.phase,
             "npc_id": context.npc_id,
             "operation_id": context.operation_id,
-            "attempts": attempts,
+            "attempts": 1,
             "error_code": getattr(
                 last_error, "code", type(last_error).__name__
             ),
@@ -1223,7 +1271,17 @@ class NightSimulationService:
                 "original_proposal"
             ),
         })
-        return None
+        if isinstance(last_error, NightTurnSafetyError):
+            raise RoleLLMExpressionUnsafeError(
+                "夜间表达未通过事实与提示安全检查，请重试"
+            ) from last_error
+        if isinstance(last_error, RoleLLMBudgetExceededError):
+            raise last_error
+        if isinstance(last_error, RoleLLMResponseRetryableError):
+            raise last_error
+        raise RoleLLMResponseRetryableError(
+            "夜间真实模型调用未完成，日终状态保持不变，请重试"
+        ) from last_error
 
     @staticmethod
     def _night_result_document(result: NightAgentResult) -> dict:
@@ -1409,6 +1467,39 @@ class NightSimulationService:
             and (not required_any or bool(required_any & session.flags))
             and not bool(forbidden & session.flags)
         )
+
+    @staticmethod
+    def _followup_condition_matches(rule: dict, session: GameSession) -> bool:
+        if not rule:
+            return False
+        if rule.get("any_of"):
+            return any(
+                NightSimulationService._followup_condition_matches(
+                    dict(item), session
+                )
+                for item in rule["any_of"]
+            )
+        if bool(rule.get("always")):
+            return True
+        required = set(rule.get("required_flags", ()))
+        required_any = set(rule.get("required_any_flags", ()))
+        forbidden = set(rule.get("forbidden_flags", ()))
+        unless_all = set(rule.get("unless_all_flags", ()))
+        if not required.issubset(session.flags):
+            return False
+        if required_any and not bool(required_any & session.flags):
+            return False
+        if forbidden & session.flags:
+            return False
+        if unless_all and unless_all.issubset(session.flags):
+            return False
+        signed_lte = rule.get("signed_households_lte")
+        if signed_lte is not None and session.game_state.signed_households > int(signed_lte):
+            return False
+        for metric, minimum in dict(rule.get("metric_min", {})).items():
+            if int(getattr(session.game_state, str(metric), 0)) < int(minimum):
+                return False
+        return True
 
     @staticmethod
     def _effects(value: dict) -> ScriptedEffects:
