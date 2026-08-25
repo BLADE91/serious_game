@@ -88,6 +88,19 @@ class ContentCatalogEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class ArchiveInvestigationDefinition:
+    archive_id: str
+    title: str
+    category: str
+    unlock_day: int
+    content: str
+    evidence_level: str
+    confidentiality: str
+    result_fact_ids: tuple[str, ...]
+    strategic_uses: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MetricBand:
     minimum: int
     maximum: int
@@ -243,6 +256,7 @@ class ScriptPackage:
     role_turn_prompt: str = ""
     role_turn_prompt_version: str = "role-turn-v2"
     story_acceptance_matrix: tuple[dict, ...] = ()
+    archive_investigations: tuple[ArchiveInvestigationDefinition, ...] = ()
 
     def action_cost_tier(self, story_day: int) -> ActionCostTier:
         matches = [item for item in self.calendar_segments if item.contains(story_day)]

@@ -13,6 +13,7 @@ from serious_game_backend.domain.gameplay_governance import (
     VARIANT_HARD_OUTCOME_REFERENCES,
 )
 from serious_game_backend.domain.script_package import (
+    ArchiveInvestigationDefinition,
     BigFiveProfile,
     CalendarSegment,
     ContentCatalogEntry,
@@ -194,6 +195,11 @@ class FileScriptPackageLoader:
         decisions = self._load_decisions(decision_document)
         origins = self._load_origins(self._json(package_dir / "origins.json"))
         facts = self._load_facts(self._json(package_dir / "facts.json"))
+        archive_investigations = self._load_archive_investigations(
+            self._json(package_dir / "archive_investigations.json")
+            if (package_dir / "archive_investigations.json").is_file()
+            else {"archives": []}
+        )
         public_briefing = self._load_public_briefing(
             self._json(package_dir / "public_briefing.json"), actions
         )
@@ -267,6 +273,7 @@ class FileScriptPackageLoader:
             npc_demands,
             social_rules,
             story_acceptance_matrix,
+            archive_investigations,
             package_id=str(manifest["package_id"]),
             gameplay_schema_version=gameplay_schema_version,
             status=str(manifest["status"]),
@@ -353,6 +360,7 @@ class FileScriptPackageLoader:
             role_turn_prompt=role_turn_prompt,
             role_turn_prompt_version="role-turn-v2",
             story_acceptance_matrix=story_acceptance_matrix,
+            archive_investigations=archive_investigations,
         )
 
     @staticmethod
@@ -399,9 +407,15 @@ class FileScriptPackageLoader:
             day = int(row["story_day"])
             beat = beats.get(day)
             node = str(beat.get("beat_id")) if beat is not None else f"beat_d{day:02d}"
+            authority_decisions = json.loads(json.dumps(decisions_by_day.get(day, [])))
+            for decision in authority_decisions:
+                for option in decision.get("options", []):
+                    option.pop("required_fact_ids", None)
+                    option.pop("required_any_fact_ids", None)
+                    option.pop("unlock_requirements", None)
             projection = {
                 "beat": beat,
-                "decisions": decisions_by_day.get(day, []),
+                "decisions": authority_decisions,
             }
             actual = hashlib.sha256(
                 json.dumps(
@@ -1050,6 +1064,30 @@ class FileScriptPackageLoader:
         return result
 
     @staticmethod
+    def _load_archive_investigations(
+        document: dict,
+    ) -> tuple[ArchiveInvestigationDefinition, ...]:
+        result: list[ArchiveInvestigationDefinition] = []
+        seen: set[str] = set()
+        for item in document.get("archives", []):
+            archive_id = str(item["archive_id"])
+            if archive_id in seen:
+                raise ContentValidationError(f"archive_id 重复：{archive_id}")
+            seen.add(archive_id)
+            result.append(ArchiveInvestigationDefinition(
+                archive_id=archive_id,
+                title=str(item["title"]),
+                category=str(item["category"]),
+                unlock_day=int(item["unlock_day"]),
+                content=str(item["content"]),
+                evidence_level=str(item["evidence_level"]),
+                confidentiality=str(item["confidentiality"]),
+                result_fact_ids=tuple(str(value) for value in item["result_fact_ids"]),
+                strategic_uses=tuple(str(value) for value in item["strategic_uses"]),
+            ))
+        return tuple(result)
+
+    @staticmethod
     def _load_public_briefing(document: dict, actions: dict[str, ActionRule]) -> dict:
         required = {"mission", "dossiers", "compensation_policy", "authorities", "tool_guidance"}
         missing = sorted(required - document.keys())
@@ -1244,6 +1282,17 @@ class FileScriptPackageLoader:
                             },
                         )
                         for clause in option.get("availability_any", [])
+                    ),
+                    required_fact_ids=frozenset(option.get("required_fact_ids", [])),
+                    required_any_fact_ids=frozenset(
+                        option.get("required_any_fact_ids", [])
+                    ),
+                    unlock_requirements=tuple(
+                        {
+                            "archive_name": str(requirement["archive_name"]),
+                            "reason": str(requirement["reason"]),
+                        }
+                        for requirement in option.get("unlock_requirements", [])
                     ),
                     unavailable_reason=str(option.get("unavailable_reason", "条件不足")),
                     conditional_effects=tuple(
@@ -1615,11 +1664,66 @@ class FileScriptPackageLoader:
         npc_demands,
         social_rules,
         story_acceptance_matrix,
+        archive_investigations,
         *,
         package_id: str,
         gameplay_schema_version: int,
         status: str,
     ) -> None:
+        if package_id == "pkg_gameplay_v3" and gameplay_schema_version >= 4:
+            if not archive_investigations:
+                raise ContentValidationError("schema4 v3 剧本包缺少权威档案调查表")
+            archive_ids = [item.archive_id for item in archive_investigations]
+            if len(archive_ids) != len(set(archive_ids)):
+                raise ContentValidationError("权威档案调查表存在重复 archive_id")
+            invalid_archives = [
+                item.archive_id
+                for item in archive_investigations
+                if not 1 <= item.unlock_day <= 90
+                or item.evidence_level not in {"E1", "E2", "E3"}
+                or not item.content.strip()
+                or not item.strategic_uses
+            ]
+            if invalid_archives:
+                raise ContentValidationError(
+                    "权威档案调查字段无效",
+                    details={"archive_ids": invalid_archives},
+                )
+            unknown_archive_facts = sorted({
+                fact_id
+                for item in archive_investigations
+                for fact_id in item.result_fact_ids
+                if fact_id not in facts
+            })
+            unknown_decision_facts = sorted({
+                fact_id
+                for decision in decisions.values()
+                for option in decision.options
+                for fact_id in (*option.required_fact_ids, *option.required_any_fact_ids)
+                if fact_id not in facts
+            })
+            if unknown_archive_facts or unknown_decision_facts:
+                raise ContentValidationError(
+                    "档案或决策引用未知事实",
+                    details={
+                        "archive_fact_ids": unknown_archive_facts,
+                        "decision_fact_ids": unknown_decision_facts,
+                    },
+                )
+            unreachable = [
+                decision.decision_id
+                for decision in decisions.values()
+                if decision.options
+                and not any(
+                    not option.required_fact_ids and not option.required_any_fact_ids
+                    for option in decision.options
+                )
+            ]
+            if unreachable:
+                raise ContentValidationError(
+                    "存在无事实时没有可选方案的决策",
+                    details={"decision_ids": unreachable},
+                )
         if len(actions) != 31:
             raise ContentValidationError(f"行动规则必须正好 31 项，当前 {len(actions)}")
         if gameplay_schema_version >= 2:

@@ -1531,6 +1531,8 @@
         {
           "option_id": "a",
           "text": "当场批条子，责成审计局对搬迁工程支出立项专项审计，把三张发票写进立项报告。",
+          "required_fact_ids": ["fact_connected_invoices"],
+          "unlock_requirements": [{"archive_name": "发票登记与编号索引", "reason": "专项审计需要先形成连号发票的书面依据；也可通过正式接触取得同一事实。"}],
           "consequence": "审计立项文件当天下午发出，赵建国当晚打电话给蒋崇岳，查账的动静已经传到县委。",
           "effects": {
             "metric_deltas": {
@@ -1940,6 +1942,8 @@
         {
           "option_id": "a",
           "text": "以县政府名义正式行文，请市生态环境局对柳林村清江段重新做一次独立复核。",
+          "required_fact_ids": ["fact_identical_reports"],
+          "unlock_requirements": [{"archive_name": "三年度环保报告版本", "reason": "正式独立复核需要先确认三年报告高度一致；也可通过正式接触取得同一事实。"}],
           "consequence": "行文当天下午，赵建国在电话里问你，这个时候捅这个篓子是不是太急",
           "effects": {
             "metric_deltas": {
@@ -1970,6 +1974,8 @@
         {
           "option_id": "b",
           "text": "不行文。自己带人到清江取水样，送到外地的机构去测，样品封存备查。",
+          "required_fact_ids": ["fact_identical_reports"],
+          "unlock_requirements": [{"archive_name": "三年度环保报告版本", "reason": "封存取样需要先确认既有报告存在重复异常；也可通过正式接触取得同一事实。"}],
           "consequence": "水样封在县环保站的冷柜里，只有你和石文斌知道编号",
           "effects": {
             "metric_deltas": {
@@ -3579,6 +3585,8 @@
         {
           "option_id": "a",
           "text": "当场把手上那张表递过去，两版并排放。",
+          "required_fact_ids": ["fact_false_signing"],
+          "unlock_requirements": [{"archive_name": "两版签约台账比对", "reason": "并排提交前必须掌握两版台账不一致的权威事实；也可通过正式接触取得同一事实。"}],
           "consequence": "两张表并排放在桌上",
           "effects": {
             "metric_deltas": {
@@ -5553,6 +5561,8 @@
         {
           "option_id": "a",
           "text": "原样上报市卫健委，同时在县内公开检测结果。",
+          "required_fact_ids": ["fact_lead_census"],
+          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "公开检测结论必须有完整原始总表支撑；也可通过正式接触取得同一事实。"}],
           "consequence": "数据当天下午挂上县政府网站",
           "effects": {
             "metric_deltas": {
@@ -5648,6 +5658,8 @@
         {
           "option_id": "d",
           "text": "把结果附进给巡察组的材料，随反馈函一并上报。",
+          "required_fact_ids": ["fact_lead_census"],
+          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "纳入巡察材料必须有完整原始总表支撑；也可通过正式接触取得同一事实。"}],
           "consequence": "材料压在了反馈函的信封里",
           "effects": {
             "metric_deltas": {
@@ -11034,6 +11046,8 @@
         {
           "option_id": "a",
           "text": "启动医疗兜底，十一名超标儿童由县里全额收治，病例向社会公开。",
+          "required_fact_ids": ["fact_lead_census"],
+          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "十一名儿童的完整医疗处置需要以普查总表确认对象；也可通过正式接触取得同一事实。"}],
           "consequence": "何铁柱把军装照收回口袋",
           "effects": {
             "metric_deltas": {
@@ -11913,6 +11927,12 @@
         {
           "option_id": "a",
           "text": "全部照实，血铅、复检、围堰、那笔两百万，一样不留地摆上桌",
+          "required_fact_ids": ["fact_lead_census", "fact_two_million_fee", "fact_eia_original"],
+          "unlock_requirements": [
+            {"archive_name": "血铅普查原始总表", "reason": "据实汇报需要掌握完整血铅事实。"},
+            {"archive_name": "前期协调费索引", "reason": "据实汇报需要掌握两百万元协调费事实。"},
+            {"archive_name": "环评原始数据附件", "reason": "据实汇报需要掌握环评原始数据；三项事实也可分别通过正式接触取得。"}
+          ],
           "consequence": "全部照实，血铅、复检、围堰、那笔两百万，一样不留地摆上桌",
           "effects": {
             "metric_deltas": {
@@ -13077,6 +13097,8 @@
         {
           "option_id": "a",
           "text": "把那张汇总表当众作废。逐户重评，张榜公示，异议期走满七天，谁的字谁自己按手印。",
+          "required_fact_ids": ["fact_false_signing"],
+          "unlock_requirements": [{"archive_name": "两版签约台账比对", "reason": "作废汇总表前必须掌握台账失真的权威事实；也可通过正式接触取得同一事实。"}],
           "consequence": "把那张汇总表当众作废。逐户重评，张榜公示，异议期走满七天，谁的字谁自己按手印。",
           "effects": {
             "metric_deltas": {},
@@ -22547,6 +22569,11 @@
         {
           "option_id": "a",
           "text": "把风险摆到桌上，讲清楚这件事捂下去会在什么时候炸，炸的时候谁站在最近的地方",
+          "required_fact_ids": ["fact_inspection_anchors", "fact_eia_original"],
+          "unlock_requirements": [
+            {"archive_name": "上级检查工作日程", "reason": "风险论证需要明确检查时点。"},
+            {"archive_name": "环评原始数据附件", "reason": "风险论证需要掌握环评原始数据；两项事实也可分别通过正式接触取得。"}
+          ],
           "consequence": "把风险摆到桌上，讲清楚这件事捂下去会在什么时候炸，炸的时候谁站在最近的地方",
           "effects": {
             "metric_deltas": {},
@@ -22571,6 +22598,8 @@
         {
           "option_id": "b",
           "text": "讲那九个孩子，讲最小的四岁，问他一个共产党的县委书记能不能睡得着",
+          "required_fact_ids": ["fact_lead_census"],
+          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "患儿论证必须有普查总表支撑；也可通过正式接触取得同一事实。"}],
           "consequence": "讲那九个孩子，讲最小的四岁，问他一个共产党的县委书记能不能睡得着",
           "effects": {
             "metric_deltas": {},
@@ -22677,6 +22706,13 @@
         {
           "option_id": "b",
           "text": "一条一条讲，办成的怎么办成的，没办成的卡在哪里，谁做的谁的名字都念出来",
+          "required_fact_ids": ["fact_original_vouchers", "fact_lead_census", "fact_false_signing", "fact_shell_house"],
+          "unlock_requirements": [
+            {"archive_name": "四十一张原始凭证", "reason": "逐项责任汇报需要原始凭证。"},
+            {"archive_name": "血铅普查原始总表", "reason": "逐项责任汇报需要完整健康依据。"},
+            {"archive_name": "两版签约台账比对", "reason": "逐项责任汇报需要确认签约台账差异。"},
+            {"archive_name": "安置房抽样验收材料", "reason": "逐项责任汇报需要掌握安置房真实验收状态；相关事实也可分别通过正式接触取得。"}
+          ],
           "consequence": "一条一条讲，办成的怎么办成的，没办成的卡在哪里，谁做的谁的名字都念出来",
           "effects": {
             "metric_deltas": {},

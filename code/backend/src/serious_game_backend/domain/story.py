@@ -128,6 +128,9 @@ class DecisionOptionDefinition:
     minimum_ledger_values: dict[str, int] = field(default_factory=dict)
     maximum_ledger_values: dict[str, int] = field(default_factory=dict)
     availability_any: tuple[AvailabilityClause, ...] = ()
+    required_fact_ids: frozenset[str] = frozenset()
+    required_any_fact_ids: frozenset[str] = frozenset()
+    unlock_requirements: tuple[dict[str, str], ...] = ()
     unavailable_reason: str = "条件不足"
     conditional_effects: tuple[ConditionalEffectDefinition, ...] = ()
 
@@ -136,8 +139,10 @@ class DecisionOptionDefinition:
         flags: set[str],
         state_values: dict[str, str],
         ledger_values: dict[str, int] | None = None,
+        known_fact_ids: set[str] | None = None,
     ) -> bool:
         ledger_values = ledger_values or {}
+        known_fact_ids = known_fact_ids or set()
         return (
             self.required_flags.issubset(flags)
             and (not self.required_any_flags or bool(self.required_any_flags & flags))
@@ -146,6 +151,11 @@ class DecisionOptionDefinition:
             and all(state_values.get(key) not in values for key, values in self.forbidden_state_values.items())
             and all(ledger_values.get(key, 0) >= value for key, value in self.minimum_ledger_values.items())
             and all(ledger_values.get(key, 0) <= value for key, value in self.maximum_ledger_values.items())
+            and self.required_fact_ids.issubset(known_fact_ids)
+            and (
+                not self.required_any_fact_ids
+                or bool(self.required_any_fact_ids & known_fact_ids)
+            )
             and (
                 not self.availability_any
                 or any(item.matches(flags, state_values, ledger_values) for item in self.availability_any)
