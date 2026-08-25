@@ -7,13 +7,17 @@ from serious_game_backend.domain.interaction_opportunity import InteractionOppor
 from serious_game_backend.application.npc_relationship_service import (
     NPCRelationshipService,
 )
+from serious_game_backend.application.archive_investigation_service import (
+    eligible_definitions,
+    public_investigation_choice,
+)
 
 
 TARGET_SELECTION_RULES = {
     "household_visit": {"minimum": 1, "maximum": 1},
     "cadre_interview": {"minimum": 1, "maximum": 3},
     "leadership_meeting": {"minimum": 2, "maximum": 8},
-    "inspect_archives": {"minimum": 1, "maximum": 100},
+    "inspect_archives": {"minimum": 1, "maximum": 1},
 }
 
 
@@ -58,6 +62,42 @@ def variant_target_choices(
     target_kind = str(variant["target_kind"])
     legal_ids = set(str(item) for item in variant.get("legal_target_ids", ()))
     if target_kind == "available_archive":
+        if package.archive_investigations:
+            investigation_choices = [
+                public_investigation_choice(session, package, item)
+                for item in eligible_definitions(
+                    session, package, unread_only=True
+                )
+            ]
+            investigation_ids = {
+                item.archive_id for item in package.archive_investigations
+            }
+            background_choices = [
+                {
+                    "target_id": item.archive_id,
+                    "label": item.title,
+                    "archive_id": item.archive_id,
+                    "title": item.title,
+                    "category": item.category,
+                    "evidence_level": item.evidence_level,
+                    "confidentiality": item.confidentiality,
+                    "first_read_cost_action_points": (
+                        1
+                        if package.action_cost_tier(
+                            session.game_state.story_day
+                        ).value == "normal"
+                        else 2
+                    ),
+                    "read_status": "unread",
+                    "result_fact_count": 0,
+                    "strategic_uses": [],
+                }
+                for item in session.archive_records.values()
+                if item.status == "available"
+                and not item.read_at_days
+                and item.archive_id not in investigation_ids
+            ]
+            return [*investigation_choices, *background_choices]
         return [
             {"target_id": item.archive_id, "label": item.title}
             for item in session.archive_records.values()

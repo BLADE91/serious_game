@@ -121,7 +121,14 @@ def initialize_governance_state(
 def sync_known_facts_to_archives(
     session: GameSession, package: ScriptPackage
 ) -> None:
+    investigation_fact_ids = {
+        fact_id
+        for item in package.archive_investigations
+        for fact_id in item.result_fact_ids
+    }
     for fact_id in sorted(session.known_fact_ids):
+        if fact_id in investigation_fact_ids:
+            continue
         fact = package.facts.get(fact_id)
         if fact is None:
             continue

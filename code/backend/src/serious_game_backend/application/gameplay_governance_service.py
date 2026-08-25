@@ -32,6 +32,13 @@ from serious_game_backend.application.action_variants import (
     variant_target_choices,
     participant_rules,
 )
+from serious_game_backend.application.archive_investigation_service import (
+    archive_definition,
+    eligible_definitions,
+    first_read_cost,
+    materialize_for_read,
+    public_investigation_choice,
+)
 from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.application.stream_lifecycle import (
     StreamCancelCallback,
@@ -204,11 +211,7 @@ class GameplayGovernanceService:
                     meeting_npc_ids
                 )
             ],
-            "archives": [
-                self._public_archive(item)
-                for item in session.archive_records.values()
-                if item.status == "available"
-            ],
+            "archives": self._overview_archives(session, package),
             "documents": [
                 self._public_document(item, session=session)
                 for item in session.administrative_documents.values()
@@ -245,7 +248,12 @@ class GameplayGovernanceService:
             raise ActionUnavailableError("请先通过查阅档案行动阅读这份材料")
         return {
             "state_version": session.state_version,
-            "archive": self._public_archive(archive, include_content=True),
+            "archive": self._public_archive(
+                archive,
+                include_content=True,
+                session=session,
+                package=package,
+            ),
         }
 
     def contract_detail(
@@ -595,15 +603,39 @@ class GameplayGovernanceService:
         if action_kind == "inspect_archives":
             sync_known_facts_to_archives(session, package)
             records = []
+            newly_learned_fact_ids: list[str] = []
+            strategic_uses: list[str] = []
             for archive_id in archive_ids:
-                archive = session.archive_records[archive_id]
+                definition = archive_definition(package, archive_id)
+                archive = (
+                    materialize_for_read(session, definition)
+                    if definition is not None
+                    else session.archive_records[archive_id]
+                )
                 if session.game_state.story_day not in archive.read_at_days:
                     archive.read_at_days.append(session.game_state.story_day)
-                records.append(self._public_archive(archive, include_content=True))
+                if definition is not None:
+                    strategic_uses.extend(definition.strategic_uses)
+                    for fact_id in definition.result_fact_ids:
+                        if fact_id not in session.known_fact_ids:
+                            session.known_fact_ids.add(fact_id)
+                            newly_learned_fact_ids.append(fact_id)
+                records.append(self._public_archive(
+                    archive,
+                    include_content=True,
+                    session=session,
+                    package=package,
+                ))
             action.status = "completed"
             action.completed_at = governance_now_iso()
             action.result_ids.extend(archive_ids)
             result["archives"] = records
+            result["newly_learned_facts"] = [
+                self._public_fact(package.facts[fact_id])
+                for fact_id in newly_learned_fact_ids
+            ]
+            result["strategic_uses"] = list(dict.fromkeys(strategic_uses))
+            result["read_status"] = "read"
         elif action_kind == "leadership_meeting":
             meeting_id = f"meeting_{secrets.token_hex(10)}"
             decision_mode = self._meeting_decision_mode(
@@ -2395,14 +2427,33 @@ class GameplayGovernanceService:
             sync_known_facts_to_archives(session, package)
             if not archive_ids:
                 raise ActionUnavailableError("查阅档案必须选择具体档案")
-            missing = sorted(
-                archive_id for archive_id in archive_ids
-                if archive_id not in session.archive_records
-                or session.archive_records[archive_id].status != "available"
-            )
+            if package.archive_investigations:
+                eligible_ids = {
+                    item.archive_id
+                    for item in eligible_definitions(
+                        session, package, unread_only=True
+                    )
+                }
+                investigation_ids = {
+                    item.archive_id for item in package.archive_investigations
+                }
+                eligible_ids.update(
+                    item.archive_id
+                    for item in session.archive_records.values()
+                    if item.status == "available"
+                    and not item.read_at_days
+                    and item.archive_id not in investigation_ids
+                )
+                missing = sorted(set(archive_ids) - eligible_ids)
+            else:
+                missing = sorted(
+                    archive_id for archive_id in archive_ids
+                    if archive_id not in session.archive_records
+                    or session.archive_records[archive_id].status != "available"
+                )
             if missing:
                 raise ActionUnavailableError(
-                    "所选档案尚未通过剧情或行为取得",
+                    "所选档案尚未开放、已经查阅或不属于首次查阅目录",
                     details={"archive_ids": missing},
                 )
 
@@ -4427,9 +4478,61 @@ class GameplayGovernanceService:
             if item.version == contract.current_version
         )
 
+    def _overview_archives(
+        self,
+        session: GameSession,
+        package: ScriptPackage,
+    ) -> list[dict]:
+        if not package.archive_investigations:
+            return [
+                self._public_archive(item)
+                for item in session.archive_records.values()
+                if item.status == "available"
+            ]
+        definitions = eligible_definitions(session, package)
+        definition_ids = {item.archive_id for item in definitions}
+        result = []
+        for definition in definitions:
+            record = session.archive_records.get(definition.archive_id)
+            if record is None:
+                choice = public_investigation_choice(
+                    session, package, definition
+                )
+                result.append({
+                    key: value
+                    for key, value in choice.items()
+                    if key not in {"target_id", "label"}
+                })
+            else:
+                result.append(self._public_archive(
+                    record, session=session, package=package
+                ))
+        result.extend(
+            self._public_archive(item)
+            for item in session.archive_records.values()
+            if item.status == "available" and item.archive_id not in definition_ids
+        )
+        return result
+
+    @staticmethod
+    def _public_fact(value) -> dict:
+        return {
+            "fact_id": value.fact_id,
+            "title": value.title,
+            "text": value.text,
+            "category": value.category,
+            "source_label": value.source_label,
+            "related_npc_ids": list(value.related_npc_ids),
+            "use_hint": value.use_hint,
+        }
+
     @staticmethod
     def _public_archive(
-        value: ArchiveRecord, *, include_content: bool = False
+        value: ArchiveRecord,
+        *,
+        include_content: bool = False,
+        session: GameSession | None = None,
+        package: ScriptPackage | None = None,
     ) -> dict:
         result = {
             "archive_id": value.archive_id,
@@ -4444,6 +4547,24 @@ class GameplayGovernanceService:
             "read_at_days": list(value.read_at_days),
             "related_npc_ids": list(value.related_npc_ids),
         }
+        definition = (
+            archive_definition(package, value.archive_id)
+            if package is not None else None
+        )
+        if definition is not None and session is not None:
+            result.update({
+                "first_read_cost_action_points": first_read_cost(session, package),
+                "read_status": "read" if value.read_at_days else "unread",
+                "result_fact_count": len(definition.result_fact_ids),
+                "strategic_uses": list(definition.strategic_uses),
+            })
+        else:
+            result.update({
+                "first_read_cost_action_points": 0 if value.read_at_days else None,
+                "read_status": "read" if value.read_at_days else "unread",
+                "result_fact_count": 0,
+                "strategic_uses": [],
+            })
         if include_content:
             result["player_sections"] = (
                 GameplayGovernanceService._archive_player_sections(
@@ -4508,7 +4629,7 @@ class GameplayGovernanceService:
             if value.source_type in {
                 "administrative_document", "story_fact", "document",
                 "meeting_minutes", "contract", "household_contract",
-                "interaction",
+                "interaction", "archive_investigation",
             }:
                 add(value.title, [source])
         elif value.source_id == "public_briefing" and isinstance(source, dict):
