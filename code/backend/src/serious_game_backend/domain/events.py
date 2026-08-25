@@ -12,6 +12,7 @@ class VisibleDecisionOption:
     text: str
     available: bool = True
     unavailable_reason: str | None = None
+    unlock_requirements: tuple[dict[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

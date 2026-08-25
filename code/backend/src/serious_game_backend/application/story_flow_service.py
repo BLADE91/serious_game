@@ -280,7 +280,10 @@ class StoryFlowService:
         )
         availability = {
             item.option_id: item.is_available(
-                session.flags, session.state_values, ledger_values
+                session.flags,
+                session.state_values,
+                ledger_values,
+                known_fact_ids=session.known_fact_ids,
             ) and not (
                 decision_id == "dp4_04"
                 and item.option_id == "a"
@@ -343,8 +346,13 @@ class StoryFlowService:
                     ),
                     available=availability[item.option_id],
                     unavailable_reason=(
-                        None if availability[item.option_id] else item.unavailable_reason
+                        None
+                        if availability[item.option_id]
+                        else StoryFlowService._option_unavailable_reason(
+                            item, session.known_fact_ids
+                        )
                     ),
+                    unlock_requirements=item.unlock_requirements,
                 )
                 for item in decision.options
             ),
@@ -359,6 +367,23 @@ class StoryFlowService:
             "decision_id": decision.decision_id,
             "visible_to_player": True,
         })
+
+    @staticmethod
+    def _option_unavailable_reason(option, known_fact_ids: set[str]) -> str:
+        fact_locked = (
+            not option.required_fact_ids.issubset(known_fact_ids)
+            or (
+                bool(option.required_any_fact_ids)
+                and not bool(option.required_any_fact_ids & known_fact_ids)
+            )
+        )
+        if fact_locked and option.unlock_requirements:
+            names = "、".join(
+                f"《{item['archive_name']}》"
+                for item in option.unlock_requirements
+            )
+            return f"需先查阅{names}或通过正式接触取得相关事实"
+        return option.unavailable_reason
 
     @classmethod
     def _without_internal_markers(cls, text: str) -> str:

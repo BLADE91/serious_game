@@ -234,7 +234,7 @@ class StoryRoutesV3Tests(unittest.TestCase):
             self.assertGreaterEqual(len(sequence), 70)
             choice_by_decision = dict(sequence)
             if route_index == 0:
-                self.assertEqual("a", choice_by_decision["dp2_01"])
+                self.assertEqual("b", choice_by_decision["dp2_01"])
                 d30_morning = [
                     item.text
                     for item in stored.narrative_feed

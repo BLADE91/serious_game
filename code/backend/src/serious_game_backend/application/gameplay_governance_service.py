@@ -2373,6 +2373,26 @@ class GameplayGovernanceService:
                 raise ActionUnavailableError("必须从参会领导中指定一名分管或牵头领导")
             if not is_leadership_variant and proposed_document_type:
                 raise ActionUnavailableError("该会议变体不能直接拟制班子文件")
+            if package.archive_investigations and archive_ids:
+                missing_archives = [
+                    archive_id for archive_id in archive_ids
+                    if archive_id not in session.archive_records
+                    or session.archive_records[archive_id].status != "available"
+                ]
+                if missing_archives:
+                    raise ActionUnavailableError(
+                        "会议引用了尚未取得的档案",
+                        details={"archive_ids": sorted(missing_archives)},
+                    )
+                unread_archives = [
+                    archive_id for archive_id in archive_ids
+                    if not session.archive_records[archive_id].read_at_days
+                ]
+                if unread_archives:
+                    raise ActionUnavailableError(
+                        "会议材料必须先完成查阅",
+                        details={"archive_ids": sorted(unread_archives)},
+                    )
             if proposed_document_type:
                 rules = config.get("document_rules", {})
                 if proposed_document_type not in rules:
