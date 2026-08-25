@@ -152,18 +152,20 @@ def _server_default_workflow(
         for variant in action["variants"]
         if variant["variant_id"] == "consult_county_archives"
     )
-    archived = _governance_action(
-        client,
-        session_id,
-        headers,
-        {
-            "state_version": result["state_version"],
-            "action_kind": archive["action_id"],
-            "variant_id": archive["variant_id"],
-            "location_id": archive["location_choices"][0]["location_id"],
-            "archive_ids": [archive["target_choices"][0]["target_id"]],
-        },
-    )
+    archived = result
+    for archive_id in ("archive:doc_compensation_policy_v1",):
+        archived = _governance_action(
+            client,
+            session_id,
+            headers,
+            {
+                "state_version": archived["state_version"],
+                "action_kind": archive["action_id"],
+                "variant_id": archive["variant_id"],
+                "location_id": archive["location_choices"][0]["location_id"],
+                "archive_ids": [archive_id],
+            },
+        )
 
     household = _start_and_talk(
         client,
@@ -321,7 +323,8 @@ def _server_default_workflow(
     if not semantic_equal:
         raise AssertionError("manual load did not restore the saved business state")
     audit = _audit_summary(container, session_id)
-    if audit["fake_calls"] or audit["statuses"].get("failed"):
+    recovered_retries = len(runner.operation_retries_by_session.get(session_id, ()))
+    if audit["fake_calls"] or audit["statuses"].get("failed", 0) > recovered_retries:
         raise AssertionError(f"real server workflow audit failed: {audit}")
     return {
         "account": "server_default",
@@ -343,6 +346,7 @@ def _server_default_workflow(
         "document_status": issued["document"]["status"],
         "countersign_attempts": countersign_attempts,
         "manual_save_load_semantic_equal": semantic_equal,
+        "recovered_operation_retries": recovered_retries,
         "audit": audit,
     }
 
@@ -572,7 +576,8 @@ def _personal_contract_workflow(
     if stored is None:
         raise AssertionError("personal workflow session disappeared")
     audit = _audit_summary(container, session_id)
-    if audit["fake_calls"] or audit["statuses"].get("failed"):
+    recovered_retries = len(runner.operation_retries_by_session.get(session_id, ()))
+    if audit["fake_calls"] or audit["statuses"].get("failed", 0) > recovered_retries:
         raise AssertionError(f"real personal workflow audit failed: {audit}")
     return {
         "account": "personal",
@@ -584,6 +589,7 @@ def _personal_contract_workflow(
         "contract_audit_status": terms["contract"]["audit_status"],
         "contract_review_status": reviewed["contract"]["status"],
         "map_locations": map_records,
+        "recovered_operation_retries": recovered_retries,
         "audit": audit,
     }
 

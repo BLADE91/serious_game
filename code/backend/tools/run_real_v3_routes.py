@@ -31,6 +31,20 @@ def _load_story_route_test_case():
 
 StoryRoutesV3Tests = _load_story_route_test_case()
 
+EVIDENCE_ARCHIVE_IDS = {
+    "archive_household_registry",
+    "archive_coordination_fee_index",
+    "archive_village_social_excerpt",
+    "archive_invoice_number_index",
+    "archive_original_vouchers",
+    "archive_environmental_report_versions",
+    "archive_signing_ledger_comparison",
+    "archive_lead_census_master",
+    "archive_eia_raw_data",
+    "archive_inspection_schedule",
+    "archive_resettlement_acceptance_sample",
+}
+
 
 class RealRouteRunner(StoryRoutesV3Tests):
     def __init__(self, base_settings: Settings, root: Path, *, stop_day: int = 90) -> None:
@@ -38,6 +52,8 @@ class RealRouteRunner(StoryRoutesV3Tests):
         self.base_settings = base_settings
         self.root = root
         self.stop_day = stop_day
+        self.archive_reads_by_session: dict[str, list[dict]] = {}
+        self.operation_retries_by_session: dict[str, list[dict]] = {}
 
     def build_real_runner(
         self, route_index: int
@@ -86,17 +102,92 @@ class RealRouteRunner(StoryRoutesV3Tests):
         return container, client, response.json()["session_id"], headers
 
     def end_day(self, client, session_id, headers, result: dict, key: str) -> dict:
-        print(f"{key}: submitting", file=sys.stderr, flush=True)
-        response = client.post(
-            f"/api/game/session/{session_id}/end-day",
-            headers=headers,
-            json={"client_action_id": key, "state_version": result["state_version"]},
-        )
-        if response.status_code != 200:
+        for attempt in range(1, 4):
+            print(f"{key}: submitting", file=sys.stderr, flush=True)
+            response = client.post(
+                f"/api/game/session/{session_id}/end-day",
+                headers=headers,
+                json={
+                    "client_action_id": key,
+                    "state_version": result["state_version"],
+                    "retry": attempt > 1,
+                },
+            )
+            if response.status_code == 200:
+                return response.json()
+            error = response.json().get("error", {}) if response.content else {}
+            if (
+                response.status_code == 503
+                and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
+                and attempt < 3
+            ):
+                self.operation_retries_by_session.setdefault(session_id, []).append(
+                    {"operation": key, "attempt": attempt, "state_version": result["state_version"]}
+                )
+                print(
+                    f"{key}: retryable real-model failure, retrying unchanged state",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                continue
             raise AssertionError(
                 f"{key}: expected 200, received {response.status_code}: {response.text}"
             )
-        return response.json()
+        raise AssertionError(f"{key}: exhausted retry loop")
+
+    def inspect_available_evidence(
+        self,
+        client: TestClient,
+        session_id: str,
+        headers: dict[str, str],
+        result: dict,
+        key: str,
+    ) -> dict:
+        """Read every newly available investigation archive, one transaction at a time."""
+        while True:
+            catalog = client.get(
+                f"/api/game/session/{session_id}/actions", headers=headers
+            )
+            self.assertEqual(200, catalog.status_code, catalog.text)
+            archive_variant = next(
+                variant
+                for action in catalog.json()["actions"]
+                if action["action_id"] == "inspect_archives"
+                for variant in action["variants"]
+                if variant["variant_id"] == "consult_county_archives"
+            )
+            available = [
+                item["target_id"]
+                for item in archive_variant.get("target_choices", ())
+                if item["target_id"] in EVIDENCE_ARCHIVE_IDS
+            ]
+            if not available:
+                return result
+            archive_id = available[0]
+            response = client.post(
+                f"/api/game/session/{session_id}/governance/actions",
+                headers=headers,
+                json={
+                    "state_version": result["state_version"],
+                    "action_kind": "inspect_archives",
+                    "variant_id": archive_variant["variant_id"],
+                    "location_id": archive_variant["location_choices"][0]["location_id"],
+                    "archive_ids": [archive_id],
+                },
+            )
+            self.assertEqual(201, response.status_code, response.text)
+            result = response.json()
+            self.archive_reads_by_session.setdefault(session_id, []).append(
+                {
+                    "story_day": result["visible_state"]["story"]["day"],
+                    "archive_id": archive_id,
+                    "new_fact_ids": [
+                        item["fact_id"]
+                        for item in result.get("newly_learned_facts", ())
+                    ],
+                }
+            )
+            print(f"{key}: read {archive_id}", file=sys.stderr, flush=True)
 
     def reach_day_three(
         self, container, client, session_id, headers, route_index: int
@@ -120,12 +211,20 @@ class RealRouteRunner(StoryRoutesV3Tests):
         result, decision_index = self.drain_decisions(
             container, client, session_id, headers, result, route_index, 0
         )
+        if route_index == 0:
+            result = self.inspect_available_evidence(
+                client, session_id, headers, result, "real-route-0-d1"
+            )
         result = self.end_day(
             client, session_id, headers, result, f"real-route-{route_index}-end-d1"
         )
         result, decision_index = self.drain_decisions(
             container, client, session_id, headers, result, route_index, decision_index
         )
+        if route_index == 0:
+            result = self.inspect_available_evidence(
+                client, session_id, headers, result, "real-route-0-d2"
+            )
 
         prompts = (
             "请明确说明周氏宗族、散姓和关键村民之间的关系，不要只说笼统顾虑。",
@@ -248,6 +347,14 @@ class RealRouteRunner(StoryRoutesV3Tests):
                 route_index,
                 decision_index,
             )
+            if route_index == 0:
+                result = self.inspect_available_evidence(
+                    client,
+                    session_id,
+                    headers,
+                    result,
+                    f"real-route-0-d{story_day:02d}",
+                )
             if result["visible_state"]["story"]["day"] >= self.stop_day:
                 break
             result = self.end_day(
@@ -299,6 +406,9 @@ class RealRouteRunner(StoryRoutesV3Tests):
                 count for provider, count in providers.items()
                 if "fake" in provider.casefold()
             ),
+            "archive_mode": "evidence_investigation" if route_index == 0 else "ignore_archives",
+            "archive_reads": self.archive_reads_by_session.get(session_id, []),
+            "recovered_operation_retries": self.operation_retries_by_session.get(session_id, []),
             "group_turns": group_records,
             "night_followups": night_plans,
         }

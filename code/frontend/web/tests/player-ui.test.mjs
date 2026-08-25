@@ -25,6 +25,78 @@ test("sanitizes player copy", async () => {
   assert.equal(toPlayerText("[BEAT_C01] NPC与玩家对应剧情节点"), "人物与你后续事态");
 });
 
+test("groups archive investigations and exposes only read meeting evidence", () => {
+  const archives = [
+    {
+      archive_id: "archive_unread",
+      title: "三年度环保报告版本",
+      read_status: "unread",
+      first_read_cost_action_points: 2,
+      result_fact_count: 1,
+      strategic_uses: ["申请独立环境复核"],
+    },
+    {
+      archive_id: "archive_read",
+      title: "36户基础底账",
+      read_status: "read",
+      read_at_days: [2],
+      evidence_level: "E2",
+      strategic_uses: ["核对签约分母"],
+    },
+    {
+      archive_id: "archive_legacy_read",
+      title: "项目简报",
+      read_at_days: [1],
+      evidence_level: "E1",
+    },
+  ];
+
+  assert.deepEqual(playerUi.archiveInvestigationGroups(archives), {
+    unread: [archives[0]],
+    read: [archives[1], archives[2]],
+    unreadCount: 1,
+  });
+  assert.deepEqual(
+    playerUi.meetingEvidenceArchives(archives).map(item => item.archive_id),
+    ["archive_read", "archive_legacy_read"],
+  );
+});
+
+test("projects safe decision unlock requirements and archive read gains", () => {
+  assert.deepEqual(
+    playerUi.decisionUnlockRequirements({
+      unlock_requirements: [
+        { archive_name: "血铅普查原始总表", reason: "公开结果需要完整依据。" },
+        { archive_name: "", reason: "隐藏内部信息" },
+      ],
+    }),
+    [{ archiveName: "血铅普查原始总表", reason: "公开结果需要完整依据。" }],
+  );
+  assert.deepEqual(
+    playerUi.archiveReadGains({
+      newly_learned_facts: [{ fact_id: "fact_lead_census", title: "血铅普查总表" }],
+      strategic_uses: ["推动完整医疗处置", "纳入巡察材料"],
+    }),
+    {
+      facts: [{ fact_id: "fact_lead_census", title: "血铅普查总表" }],
+      strategicUses: ["推动完整医疗处置", "纳入巡察材料"],
+    },
+  );
+});
+
+test("connects archive investigation state to the visible player workflow", async () => {
+  const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
+  assert.match(source, /新到未读/);
+  assert.match(source, /已读可重读/);
+  assert.match(source, /每次选择一份/);
+  assert.match(source, /meetingEvidenceArchives/);
+  assert.match(source, /decisionUnlockRequirements/);
+  assert.match(source, /前往查档/);
+  assert.match(source, /新掌握线索/);
+  assert.match(source, /可用于什么/);
+  assert.match(source, /只能引用已经查阅且证据等级足够的材料/);
+});
+
 test("closes the public signing reward after day 75", () => {
   assert.equal(typeof playerUi.publicWindowRewardAvailable, "function");
   assert.equal(playerUi.publicWindowRewardAvailable(75), true);

@@ -294,7 +294,12 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                         },
                     ]
                     continue
-            except (RoleLLMUnavailableError, RoleLLMConfigurationError):
+            except RoleLLMUnavailableError as exc:
+                last_error = exc
+                if attempt < self._settings.role_llm_max_retries:
+                    continue
+                raise
+            except RoleLLMConfigurationError:
                 raise
         raise RoleLLMResponseRetryableError(
             "真实模型连续返回无效结果，请重试或重新配置接口",

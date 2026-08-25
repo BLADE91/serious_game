@@ -101,6 +101,54 @@ export function archivePlayerSections(value: PlayerRecord | null | undefined): A
   return projected.length ? projected : [{ heading: "档案正文", body: "这份档案暂无可读正文。" }];
 }
 
+function isReadArchive(value: PlayerRecord): boolean {
+  return value.read_status === "read"
+    || (Array.isArray(value.read_at_days) && value.read_at_days.length > 0);
+}
+
+export function archiveInvestigationGroups(value: unknown): {
+  unread: PlayerRecord[];
+  read: PlayerRecord[];
+  unreadCount: number;
+} {
+  const archives = Array.isArray(value)
+    ? value.filter(item => item && typeof item === "object" && !Array.isArray(item)) as PlayerRecord[]
+    : [];
+  const read = archives.filter(isReadArchive);
+  const unread = archives.filter(item => !isReadArchive(item));
+  return { unread, read, unreadCount: unread.length };
+}
+
+export function meetingEvidenceArchives(value: unknown): PlayerRecord[] {
+  return archiveInvestigationGroups(value).read;
+}
+
+export function decisionUnlockRequirements(value: PlayerRecord | null | undefined): Array<{
+  archiveName: string;
+  reason: string;
+}> {
+  return (Array.isArray(value?.unlock_requirements) ? value.unlock_requirements : []).flatMap(raw => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const requirement = raw as PlayerRecord;
+    const archiveName = String(requirement.archive_name || "").trim();
+    if (!archiveName) return [];
+    return [{ archiveName, reason: String(requirement.reason || "").trim() }];
+  });
+}
+
+export function archiveReadGains(value: PlayerRecord | null | undefined): {
+  facts: PlayerRecord[];
+  strategicUses: string[];
+} {
+  const facts = Array.isArray(value?.newly_learned_facts)
+    ? value.newly_learned_facts.filter(item => item && typeof item === "object" && !Array.isArray(item)) as PlayerRecord[]
+    : [];
+  const strategicUses = Array.isArray(value?.strategic_uses)
+    ? value.strategic_uses.map(String).filter(Boolean)
+    : [];
+  return { facts, strategicUses };
+}
+
 export function conversationSpeakerLabel(turn: PlayerRecord, npcName: string): string {
   const speaker = String(turn.speaker_type || turn.speaker || "npc");
   return speaker === "player" ? "你" : npcName || "对方";
@@ -398,7 +446,7 @@ export function canonicalActionEntry(value: PlayerRecord): PlayerRecord | null {
 }
 
 type GovernanceWriter = {
-  write: (sessionId: string, path: string, method: string, body: PlayerRecord) => Promise<unknown>;
+  write: (sessionId: string, path: string, method: "POST" | "PUT", body: PlayerRecord) => Promise<unknown>;
 };
 
 export function submitGovernanceAction(

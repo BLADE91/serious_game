@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, aiConfigurationErrorMessage, aiConfigurationView, archivePlayerSections, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, peopleRelationshipView, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, reviewEndingView, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, aiConfigurationErrorMessage, aiConfigurationView, archiveInvestigationGroups, archivePlayerSections, archiveReadGains, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, createSingleFlight, decisionUnlockRequirements, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, meetingEvidenceArchives, peopleRelationshipView, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, reviewEndingView, sessionEntry, submitGovernanceAction, toPlayerText } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -98,7 +98,7 @@ const friendlyStatus = (value: unknown) => {
     explanation_requested: "要求解释", counteroffered: "提出调整", rejected: "本户拒绝",
     critical: "紧急", high: "较高", medium: "一般", low: "较低",
     pending: "待处理", checkpoint: "自动保存", manual: "手动存档", public: "公开", internal: "内部掌握",
-    confidential: "保密", secret: "机密", E1: "初步材料", E2: "可核材料", E3: "正式证据",
+    confidential: "保密", restricted: "限内部查阅", secret: "机密", 内部: "内部掌握", 敏感: "敏感材料", 机密: "机密材料", E1: "初步材料", E2: "可核材料", E3: "正式证据",
     unknown: "尚未发现", discovered: "已经发现", acknowledged: "已经确认", committed: "资源已承诺",
     satisfied: "已经办结", lawfully_refused: "已依法拒绝", breached: "承诺违约", expired: "处置逾期",
   };
@@ -227,7 +227,7 @@ export default function GameShell() {
   const [formOpen, setFormOpen] = useState<null | { title: string; kind: string; item?: Dict }>(null);
   const [governanceRecordOpen, setGovernanceRecordOpen] = useState<null | { meeting?: Dict; document?: Dict }>(null);
   const [characterProfileOpen, setCharacterProfileOpen] = useState<Character | null>(null);
-  const [archiveReadingOpen, setArchiveReadingOpen] = useState<Dict[] | null>(null);
+  const [archiveReadingOpen, setArchiveReadingOpen] = useState<Dict | null>(null);
   const [meetingResolutionOpen, setMeetingResolutionOpen] = useState(false);
   const [contractProposalOpen, setContractProposalOpen] = useState<Dict | null>(null);
   const [contractOpen, setContractOpen] = useState<Dict | null>(null);
@@ -828,7 +828,7 @@ export default function GameShell() {
     setBusy(true); setNotice("");
     try {
       const result = await api.archiveDetail(sessionId, archiveId) as Dict;
-      setArchiveReadingOpen(arr(result.archive ? [result.archive] : []));
+      setArchiveReadingOpen({ records: arr(result.archive ? [result.archive] : []) });
     } catch (error) { fail(error); }
     finally { setBusy(false); }
   }
@@ -940,7 +940,11 @@ export default function GameShell() {
               {stageSpeaker && <div className="gal-portrait" aria-label={`${stageSpeaker}立绘`}><CharacterPortrait character={stageCharacter} fallbackName={stageSpeaker} priority /></div>}
               <div className={stageSpeaker ? "gal-dialogue has-speaker" : "gal-dialogue narration"}>
                 <header><span>{decisionReady ? "当前必须作出决定" : stageSpeaker || (currentLine ? "县长手记" : "现场暂歇")}</span><small>{playerLines.length ? `今日 ${Math.max(1, narrative.currentIndex + 1)} / ${playerLines.length}` : "等待新消息"}</small></header>
-                {decisionReady && pending ? <div className="decision-stage-inline"><h3>{playerText(pending.title || pending.prompt || pending.situation, "当前事项需要你的决定")}</h3>{pending.description && <p>{playerText(pending.description)}</p>}{["sorting", "allocation"].includes(pending.input_kind) ? <StructuredDecision key={pending.decision_id} pending={pending} busy={busy} onSubmit={payload => perform(() => api.action(sessionId, { input_mode: "decision", client_action_id: api.key("decision"), state_version: state.state_version, decision_id: pending.decision_id, ...payload }), "决定已经记录，后续影响会在剧情和定性态势中体现")} /> : <div className="decision-options">{options.map((option, index) => <button key={option.option_id || index} onClick={() => submitDecision(option)} disabled={busy || option.available === false}><span>{chineseIndex(index)}</span><div><b>{playerText(option.text || option.label, `方案${chineseIndex(index)}`)}</b>{option.description && <small>{playerText(option.description)}</small>}</div><i>{option.available === false ? playerText(option.unavailable_reason, "条件不足") : "采纳"}</i></button>)}</div>}</div> : <p>{stageText}{conversationStreamingReply && !conversationStreamingReply.complete && <i className="stream-cursor" aria-hidden="true" />}</p>}
+                {decisionReady && pending ? <div className="decision-stage-inline"><h3>{playerText(pending.title || pending.prompt || pending.situation, "当前事项需要你的决定")}</h3>{pending.description && <p>{playerText(pending.description)}</p>}{["sorting", "allocation"].includes(pending.input_kind) ? <StructuredDecision key={pending.decision_id} pending={pending} busy={busy} onSubmit={payload => perform(() => api.action(sessionId, { input_mode: "decision", client_action_id: api.key("decision"), state_version: state.state_version, decision_id: pending.decision_id, ...payload }), "决定已经记录，后续影响会在剧情和定性态势中体现")} /> : <div className="decision-options">{options.map((option, index) => {
+                  const requirements = decisionUnlockRequirements(option);
+                  const locked = option.available === false;
+                  return <section className={locked ? "decision-option locked" : "decision-option"} key={option.option_id || index}><button onClick={() => submitDecision(option)} disabled={busy || locked}><span>{chineseIndex(index)}</span><div><b>{playerText(option.text || option.label, `方案${chineseIndex(index)}`)}</b>{option.description && <small>{playerText(option.description)}</small>}</div><i>{locked ? playerText(option.unavailable_reason, "条件不足") : "采纳"}</i></button>{locked && requirements.length > 0 && <div className="decision-unlock-guidance"><b>证据条件尚未满足</b><ul>{requirements.map(requirement => <li key={`${requirement.archiveName}:${requirement.reason}`}>需先查阅《{requirement.archiveName}》{requirement.reason ? `：${requirement.reason}` : "，或通过正式接触取得相关事实。"}</li>)}</ul><button type="button" onClick={() => void loadPanel("actions")}>前往查档</button></div>}</section>;
+                })}</div>}</div> : <p>{stageText}{conversationStreamingReply && !conversationStreamingReply.complete && <i className="stream-cursor" aria-hidden="true" />}</p>}
                 <nav className="narrative-controls" aria-label="剧情阅读控制">
                   <button onClick={() => dispatchNarrative({ type: "PREVIOUS" })} disabled={narrative.currentIndex <= 0}>上一段</button>
                   <button onClick={() => dispatchNarrative({ type: "NEXT" })} disabled={narrative.currentIndex >= playerLines.length - 1}>下一段</button>
@@ -997,7 +1001,7 @@ export default function GameShell() {
     {meetingResolutionOpen && activeMeeting && <Modal title="确认会议决议" onClose={() => { if (!busy) setMeetingResolutionOpen(false); }}><MeetingResolutionForm meeting={activeMeeting} governance={governance || {}} state={state} busy={busy} notice={notice} onOpenProfile={setCharacterProfileOpen} onCancel={() => setMeetingResolutionOpen(false)} onSubmit={submitMeetingResolution} /></Modal>}
     {characterProfileOpen && <Modal title="人物介绍" className="character-profile-modal" onClose={() => setCharacterProfileOpen(null)}><CharacterProfileView character={characterProfileOpen} /></Modal>}
     {governanceRecordOpen && <Modal title={governanceRecordOpen.document ? "决议文件详情" : "会议纪要"} onClose={() => { if (!busy) setGovernanceRecordOpen(null); }}><GovernanceRecordDetail key={`${governanceRecordOpen.document?.document_id || governanceRecordOpen.meeting?.meeting_id}:${governanceRecordOpen.document?.version || governanceRecordOpen.document?.status || "meeting"}`} record={governanceRecordOpen} governance={governance || panelData || {}} busy={busy} onAction={performDocumentAction} /></Modal>}
-    {archiveReadingOpen && <Modal title="档案查阅结果" className="archive-reading-modal" onClose={() => setArchiveReadingOpen(null)}><ArchiveReading records={archiveReadingOpen} /></Modal>}
+    {archiveReadingOpen && <Modal title="档案查阅结果" className="archive-reading-modal" onClose={() => setArchiveReadingOpen(null)}><ArchiveReading result={archiveReadingOpen} /></Modal>}
     {contractProposalOpen && <Modal title="确认逐户合同提议" onClose={() => { if (!busy) setContractProposalOpen(null); }}><ContractBatchProposal proposal={contractProposalOpen} busy={busy} onConfirm={confirmContractBatch} /></Modal>}
     {contractOpen && <Modal title={`逐户合同 · ${playerText(contractOpen.signatory_name, contractOpen.household_id || "待确认")}`} className="contract-modal" onClose={() => { if (!busy) setContractOpen(null); }}><ContractWorkspace key={`${contractOpen.contract_id}:${contractOpen.current_version}:${contractOpen.status}`} contract={contractOpen} governance={governance || panelData || {}} state={state} busy={busy} api={api} sessionId={sessionId} onPerform={performContractAction} onOpenContract={openContractDetail} /></Modal>}
     {overtimeOpen && <Modal title="申请加班" onClose={() => { if (!busy) setOvertimeOpen(false); }}><OvertimeChoice state={state} busy={busy} onChoose={requestOvertime} /></Modal>}
@@ -1290,7 +1294,7 @@ function StructuredDecision({ pending, busy, onSubmit }: { pending: Dict; busy: 
 
 function ActionPanel({ data, onRun }: { data: Dict | null; onRun: (item: Dict) => void }) {
   const items = canonicalActionFamilies(data?.actions || data?.items || data) as Dict[];
-  return <div className="card-list action-list canonical-actions">{items.length ? items.map((item, index) => <article key={item.action_id || index}><div className="card-number">{chineseIndex(index)}</div><div><h3>{playerText(item.name || item.action_name, GOVERNANCE_ACTION_LABELS[String(item.action_id)] || "治理行动")}</h3><p>{playerText(item.description, "根据当前情况安排工作")}</p><div className="action-variants">{arr(item.variants).map(variant => <section key={String(variant.variant_id)} className={variant.available === false ? "unavailable" : ""}><div><b>{playerText(variant.name, "当前办理方式")}</b><p>{playerText(variant.description || variant.visible_result)}</p><small>{actionPointLabel(variant)}</small>{variant.available === false && <em>{playerText(variant.unavailable_reason, "当前条件尚未满足")}</em>}</div><button onClick={() => onRun({ ...item, ...variant, action_id: item.action_id })} disabled={variant.available === false}>{variant.available === false ? "条件不足" : "填写方案"}</button></section>)}</div></div></article>) : <Empty text="目前没有可安排的行动。先处理现场事项，或结束今天。"/>}</div>;
+  return <div className="card-list action-list canonical-actions">{items.length ? items.map((item, index) => <article key={item.action_id || index}><div className="card-number">{chineseIndex(index)}</div><div><h3>{playerText(item.name || item.action_name, GOVERNANCE_ACTION_LABELS[String(item.action_id)] || "治理行动")}</h3><p>{playerText(item.description, "根据当前情况安排工作")}</p><div className="action-variants">{arr(item.variants).map(variant => { const unreadArchiveCount = item.action_id === "inspect_archives" ? arr(variant.target_choices).length : 0; return <section key={String(variant.variant_id)} className={variant.available === false ? "unavailable" : ""}><div><b>{playerText(variant.name, "当前办理方式")}</b><p>{playerText(variant.description || variant.visible_result)}</p><small>{actionPointLabel(variant)}{item.action_id === "inspect_archives" ? ` · 待查档案 ${unreadArchiveCount} 份` : ""}</small>{variant.available === false && <em>{playerText(variant.unavailable_reason, "当前条件尚未满足")}</em>}</div><button onClick={() => onRun({ ...item, ...variant, action_id: item.action_id })} disabled={variant.available === false}>{variant.available === false ? "条件不足" : "填写方案"}</button></section>; })}</div></div></article>) : <Empty text="目前没有可安排的行动。先处理现场事项，或结束今天。"/>}</div>;
 }
 
 function OpportunityPanel({ data, activeConversation, onStart, onContinue, onOpenProfile }: { data: Dict | null; activeConversation: Dict | null; onStart: (item: Dict) => void; onContinue: () => void; onOpenProfile: (character: Character) => void }) {
@@ -1319,6 +1323,7 @@ function GovernancePanel({ data, busy, onDisposeDemand, onOpenRecord, onOpenArch
   const meetings = arr(data.meetings);
   const documents = arr(data.documents);
   const archives = arr(data.archives);
+  const archiveGroups = archiveInvestigationGroups(archives);
   const contracts = arr(data.contracts);
   const demands = arr(data.npc_demands);
   const demandedResourceIds = new Set(
@@ -1330,7 +1335,7 @@ function GovernancePanel({ data, busy, onDisposeDemand, onOpenRecord, onOpenArch
   const activeActions = actions.filter(item => item.status === "active");
   const stats = [
     ["进行中的行动", activeActions.length], ["已召开会议", arr(data.meetings).length],
-    ["已形成文件", arr(data.documents).length], ["逐户合同", arr(data.contracts).length],
+    ["已形成文件", arr(data.documents).length], ["待查档案", archiveGroups.unreadCount],
   ];
   const cash = get(data, "resources.cash_ledger");
   return <div className="governance-panel"><div className="governance-grid">{stats.map(([label, value]) => <div key={String(label)}><strong>{value}</strong><span>{label}</span></div>)}</div>{cash && <section className="resource-card"><small>财政资源</small><h3>可安排 {displayValue(cash.available_unencumbered, "待定")} 万元</h3><p>已承诺 {displayValue(cash.committed, 0)} 万元 · 已支付 {displayValue(cash.paid, 0)} 万元</p></section>}{strategicPools.length > 0 && <section className="resource-card resource-pool-card" data-testid="resource-pool-summary"><small>可调配专项资源</small><h3>承诺会真实占用，后续对象只能使用剩余额度</h3><div className="resource-pool-grid">{strategicPools.map(item => { const capacity = Number(item.capacity || 0); const available = Number(item.available_to_reserve ?? item.available ?? capacity); const used = Number(item.blocked_total ?? item.used ?? Math.max(0, capacity - available)); const unit = playerText(item.unit, "份"); return <article key={String(item.resource_id)}><b>{playerText(item.name || item.label, item.resource_id)}</b><span>可用 {available} / {capacity} {unit}</span>{used > 0 && <em>已占用 {used}</em>}{Number(item.available_day || 1) > 1 && <small>第 {item.available_day} 日开放</small>}</article>; })}</div></section>}<PanelSection title="已发现的核心诉求" items={demands} empty="尚未通过剧情或正式接触发现人物诉求" render={(item) => <div className="demand-card" data-testid="npc-demand-card"><div className="evidence-head"><h4>{playerText(item.npc_name)} · {playerText(item.title)}</h4><span>{friendlyStatus(item.status)}</span></div><p>{playerText(item.description)}</p>{arr(item.required_resources).length > 0 && <small>所需资源：{arr(item.required_resources).map(value => `${playerText(value.name, value.resource_id)} ×${value.quantity}`).join("、")}</small>}<div className="demand-actions">{values(item.allowed_transitions).map(String).map(transition => <button key={transition} disabled={busy} onClick={() => onDisposeDemand(item, transition)}>{({ acknowledged: "确认诉求", committed: "预占资源并承诺", satisfied: "确认交付", lawfully_refused: "依法拒绝", breached: "登记违约" } as Record<string, string>)[transition] || "更新状态"}</button>)}</div></div>} /><PanelSection title="行动记录" items={actions.slice().reverse().slice(0, 6)} empty="尚未开展治理行动" render={(item) => <><div className="evidence-head"><h4>{GOVERNANCE_ACTION_LABELS[item.action_kind] || "治理行动"}</h4><span>{friendlyStatus(item.status)}</span></div><p>{playerText(item.topic, `第 ${item.story_day || "待定"} 日开展`)}</p></>} /><PanelSection title="逐户合同" items={contracts} empty="尚未建立逐户合同；可在入户走访中明确提出逐户签约" render={(item) => <div className="governance-record-row"><div><h4>{playerText(item.signatory_name, item.household_id || "待确认家庭")}</h4><p>{item.household_id} · {friendlyStatus(item.status)} · {playerText(item.resource_hold_status, "未预占")}</p></div><button onClick={() => onOpenContract(item)}>{item.status === "signed" ? "查看合同" : "办理合同"}</button></div>} /><PanelSection title="已取得档案" items={archives} empty="尚未取得可查阅档案" render={(item) => { const hasBeenRead = values(item.read_at_days).length > 0; return <div className="governance-record-row"><div><h4>{playerText(item.title, "治理档案")}</h4><p>{friendlyStatus(item.evidence_level)} · {hasBeenRead ? `已于第 ${values(item.read_at_days).at(-1)} 日查阅` : "尚未查阅"}</p></div><button disabled={!hasBeenRead} title={!hasBeenRead ? "请先从行动页执行一次查阅档案" : undefined} onClick={() => onOpenArchive(item)}>{hasBeenRead ? "重读正文" : "等待查阅"}</button></div>; }} /><PanelSection title="近期会议" items={meetings} empty="尚未召开正式会议" render={(item) => { const document = documents.find(value => String(value.source_meeting_id) === String(item.meeting_id)); return <div className="governance-record-row"><div><h4>{playerText(item.topic || item.title, "治理协调会")}</h4><p>第 {item.story_day || "待定"} 日 · {friendlyStatus(item.status)}</p></div><button onClick={() => onOpenRecord({ meeting: item, document })}>{document ? "查看决议" : "查看纪要"}</button></div>; }} /><PanelSection title="已形成文件" items={documents} empty="尚未形成新的正式文件" render={(item) => <div className="governance-record-row"><div><h4>{playerText(item.title || DOCUMENT_TYPE_LABELS[item.document_type], "治理文件")}</h4><p>{friendlyStatus(item.status)} · 第 {item.issued_day || item.story_day || "待定"} 日</p></div><button onClick={() => onOpenRecord({ document: item, meeting: meetings.find(value => String(value.meeting_id) === String(item.source_meeting_id)) })}>查看文件</button></div>} /></div>;
@@ -1421,8 +1426,10 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
   </div>;
 }
 
-function ArchiveReading({ records }: { records: Dict[] }) {
-  return <div className="archive-reading">{records.map((record, index) => <article key={record.archive_id || index}><header><small>{playerText(record.category, "治理档案")} · {friendlyStatus(record.evidence_level)}</small><h3>{playerText(record.title, `档案${chineseIndex(index)}`)}</h3><p>取得于第 {record.acquired_day || "待定"} 日 · {friendlyStatus(record.confidentiality)}</p></header><div className="archive-body">{archivePlayerSections(record).map((section, sectionIndex) => <section key={`${section.heading}:${sectionIndex}`}><h4>{section.heading}</h4><p>{section.body}</p></section>)}</div></article>)}</div>;
+function ArchiveReading({ result }: { result: Dict }) {
+  const records = arr(result.records);
+  const gains = archiveReadGains(result);
+  return <div className="archive-reading">{records.map((record, index) => <article key={record.archive_id || index}><header><small>{playerText(record.category, "治理档案")} · {friendlyStatus(record.evidence_level)}</small><h3>{playerText(record.title, `档案${chineseIndex(index)}`)}</h3><p>取得于第 {record.acquired_day || "待定"} 日 · {friendlyStatus(record.confidentiality)}</p></header><div className="archive-body">{archivePlayerSections(record).map((section, sectionIndex) => <section key={`${section.heading}:${sectionIndex}`}><h4>{section.heading}</h4><p>{section.body}</p></section>)}</div></article>)}{gains.facts.length > 0 && <section className="archive-read-gains learned"><h3>新掌握线索</h3>{gains.facts.map((fact, index) => <article key={String(fact.fact_id || index)}><b>{playerText(fact.title || fact.name, `线索${chineseIndex(index)}`)}</b>{Boolean(fact.summary) && <p>{playerText(fact.summary)}</p>}</article>)}</section>}{gains.strategicUses.length > 0 && <section className="archive-read-gains uses"><h3>可用于什么</h3><ul>{gains.strategicUses.map(item => <li key={item}>{playerText(item)}</li>)}</ul></section>}</div>;
 }
 
 function GovernanceRecordDetail({ record, governance, busy, onAction }: { record: { meeting?: Dict; document?: Dict }; governance: Dict; busy: boolean; onAction: (documentId: string, suffix: string, method: "POST" | "PUT", body: Dict, success: string) => Promise<void> }) {
@@ -1468,7 +1475,7 @@ function DeskPanel({ data }: { data: Dict | null }) {
 function KnowledgePanel({ data }: { data: Dict | null }) {
   if (!data) return <Empty text="正在核对已掌握材料…"/>;
   const groups = [["已确认事实", arr(data.facts)], ["待核线索", arr(data.clues)], ["证据材料", arr(data.evidence)]] as const;
-  return <div className="knowledge-panel">{groups.map(([title, items]) => <PanelSection key={title} title={title} items={items} empty={`暂无${title}`} render={(item) => <><div className="evidence-head"><h4>{playerText(item.title || item.name || item.label, "新材料")}</h4>{(item.evidence_level || item.confidentiality) && <span>{friendlyStatus(item.evidence_level || item.confidentiality)}</span>}</div><p>{playerText(item.text || item.summary || item.description || item.content, "已收入案头，等待进一步核实。")}</p></>} />)}</div>;
+  return <div className="knowledge-panel">{groups.map(([title, items]) => <PanelSection key={title} title={title} items={items} empty={`暂无${title}`} render={(item) => <><div className="evidence-head"><h4>{playerText(item.title || item.name || item.label, "新材料")}</h4>{(item.evidence_level || item.confidentiality) && <span>{friendlyStatus(item.evidence_level || item.confidentiality)}</span>}</div><p>{playerText(item.text || item.summary || item.description || item.content, "已收入案头，等待进一步核实。")}</p>{(item.source_label || item.use_hint) && <dl className="knowledge-provenance">{item.source_label && <><dt>来源</dt><dd>{playerText(item.source_label)}</dd></>}{item.use_hint && <><dt>用途</dt><dd>{playerText(item.use_hint)}</dd></>}</dl>}</>} />)}</div>;
 }
 
 function MapPanel({ data, blocked, remainingActionPoints, onRun }: { data: Dict | null; blocked: boolean; remainingActionPoints: number; onRun: (item: Dict) => void }) {
@@ -1540,10 +1547,15 @@ function SavePanel({ data, state, api, sessionId, busy, onPerform, onConfirm }: 
 }
 
 function PanelSection({ title, items, empty, render }: { title: string; items: Dict[]; empty: string; render: (item: Dict, index: number) => React.ReactNode }) {
+  if (title === "已取得档案") {
+    const groups = archiveInvestigationGroups(items);
+    const renderGroup = (groupTitle: string, groupItems: Dict[], groupEmpty: string, unread: boolean) => <section className="panel-section archive-investigation-group"><h3>{groupTitle}</h3>{groupItems.length ? <div>{groupItems.map((item, index) => <article key={item.archive_id || index}><div className="archive-investigation-summary">{render(item, index)}<small>{unread ? `首次消耗 ${displayValue(item.first_read_cost_action_points, 1)} 点精力 · 预计形成 ${displayValue(item.result_fact_count, 0)} 条权威事实` : "已读档案可免费重读"}</small>{values(item.strategic_uses).length > 0 && <p className="archive-strategic-use">可用于：{values(item.strategic_uses).map(value => playerText(value)).join("；")}</p>}{unread && <p className="archive-read-route">请从“行动—查阅档案”选择一份首次查阅。</p>}</div></article>)}</div> : <p className="section-empty">{groupEmpty}</p>}</section>;
+    return <>{renderGroup(`新到未读（${groups.unreadCount}）`, groups.unread as Dict[], "当前没有新到未读档案", true)}{renderGroup("已读可重读", groups.read as Dict[], "尚无已读档案", false)}</>;
+  }
   return <section className="panel-section"><h3>{title}</h3>{items.length ? <div>{items.map((item, index) => <article key={item.id || item.title || item.document_id || item.meeting_id || index}>{render(item, index)}</article>)}</div> : <p className="section-empty">{empty}</p>}</section>;
 }
 
-function ContextForm({ config, state, api, sessionId, notice, onPerform, onArchivesRead, onOpenProfile }: { config: { kind: string; item?: Dict }; state: Dict; api: GameApi; sessionId: string; notice: string; onPerform: (fn: () => Promise<Dict>, text?: string, rebuildNarrative?: boolean, onResult?: (result: Dict) => void) => Promise<boolean>; onArchivesRead: (records: Dict[]) => void; onOpenProfile: (character: Character) => void }) {
+function ContextForm({ config, state, api, sessionId, notice, onPerform, onArchivesRead, onOpenProfile }: { config: { kind: string; item?: Dict }; state: Dict; api: GameApi; sessionId: string; notice: string; onPerform: (fn: () => Promise<Dict>, text?: string, rebuildNarrative?: boolean, onResult?: (result: Dict) => void) => Promise<boolean>; onArchivesRead: (result: Dict) => void; onOpenProfile: (character: Character) => void }) {
   const item = config.item || {};
   if (config.kind === "resource" && (item.execution_mode === "governance" || ["household_visit", "cadre_interview", "leadership_meeting", "inspect_archives"].includes(item.action_id))) {
     return <GovernanceActionForm item={item} state={state} api={api} sessionId={sessionId} notice={notice} onPerform={onPerform} onArchivesRead={onArchivesRead} onOpenProfile={onOpenProfile} />;
@@ -1623,7 +1635,7 @@ function ResourceActionForm({ item, state, api, sessionId, notice, onPerform, on
   </form>;
 }
 
-function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, onArchivesRead, onOpenProfile }: { item: Dict; state: Dict; api: GameApi; sessionId: string; notice: string; onPerform: (fn: () => Promise<Dict>, text?: string, rebuildNarrative?: boolean, onResult?: (result: Dict) => void) => Promise<boolean>; onArchivesRead: (records: Dict[]) => void; onOpenProfile: (character: Character) => void }) {
+function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, onArchivesRead, onOpenProfile }: { item: Dict; state: Dict; api: GameApi; sessionId: string; notice: string; onPerform: (fn: () => Promise<Dict>, text?: string, rebuildNarrative?: boolean, onResult?: (result: Dict) => void) => Promise<boolean>; onArchivesRead: (result: Dict) => void; onOpenProfile: (character: Character) => void }) {
   const actionId = String(item.action_id || "");
   const variantId = String(item.variant_id || "");
   const locationChoices = arr(item.location_choices);
@@ -1653,9 +1665,13 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
   const descriptorTargets = arr(item.target_choices);
   const targetChoices = descriptorTargets.length ? descriptorTargets : arr(get(overview, `target_catalogs.${item.target_kind}`, []));
   const descriptorArchiveIds = new Set(descriptorTargets.map(choice => String(choice.target_id || choice.archive_id)));
+  const allArchives = arr(overview?.archives);
+  const unreadArchives = archiveInvestigationGroups(allArchives).unread as Dict[];
+  const meetingArchives = meetingEvidenceArchives(allArchives) as Dict[];
   const archiveChoices = isArchive && descriptorArchiveIds.size
-    ? arr(overview?.archives).filter(choice => descriptorArchiveIds.has(String(choice.archive_id)))
-    : arr(overview?.archives);
+    ? unreadArchives.filter(choice => descriptorArchiveIds.has(String(choice.archive_id)))
+    : unreadArchives;
+  const evidenceArchiveChoices = isMeeting ? meetingArchives : archiveChoices;
   const documentTypes = arr(overview?.document_types);
   const minTargets = Number(item.participant_rules?.minimum ?? 1);
   const maxTargets = Number(item.participant_rules?.maximum ?? Math.max(1, minTargets));
@@ -1664,7 +1680,7 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
   const missingRequiredParticipantIds = requiredParticipantIds.filter(id => !selectedTargets.includes(id));
   const requiredParticipantNames = requiredParticipantIds.map(id => playerText(targetChoices.find(choice => String(choice.target_id || choice.id) === id)?.label, id));
   const requiredEvidenceLevel = String(selectedDocumentRule?.required_evidence_level || "E0");
-  const highestSelectedEvidenceRank = Math.max(0, ...selectedArchives.map(id => EVIDENCE_RANK[String(archiveChoices.find(choice => String(choice.archive_id) === id)?.evidence_level || "E0")] || 0));
+  const highestSelectedEvidenceRank = Math.max(0, ...selectedArchives.map(id => EVIDENCE_RANK[String(evidenceArchiveChoices.find(choice => String(choice.archive_id) === id)?.evidence_level || "E0")] || 0));
   const documentEvidenceValid = !documentType || highestSelectedEvidenceRank >= (EVIDENCE_RANK[requiredEvidenceLevel] || 0);
   const selectedCountValid = isArchive
     ? selectedArchives.length >= minTargets && selectedArchives.length <= maxTargets
@@ -1682,14 +1698,14 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
     if (current.length >= maxTargets) return current;
     return [...current, targetId];
   });
-  const toggleArchive = (archiveId: string) => setSelectedArchives(current => current.includes(archiveId) ? current.filter(value => value !== archiveId) : [...current, archiveId]);
+  const toggleArchive = (archiveId: string) => setSelectedArchives(current => current.includes(archiveId) ? current.filter(value => value !== archiveId) : isArchive ? [archiveId] : [...current, archiveId]);
   const chooseDocumentType = (value: string) => {
     setDocumentType(value);
     if (!value) { setSelectedArchives([]); return; }
     const rule = documentTypes.find(item => item.document_type === value);
     const requiredIds = values(rule?.required_countersign_ids).map(String);
     const minimumRank = EVIDENCE_RANK[String(rule?.required_evidence_level || "E0")] || 0;
-    const bestArchive = archiveChoices
+    const bestArchive = meetingArchives
       .filter(choice => (EVIDENCE_RANK[String(choice.evidence_level || "E0")] || 0) >= minimumRank)
       .sort((left, right) => (EVIDENCE_RANK[String(right.evidence_level || "E0")] || 0) - (EVIDENCE_RANK[String(left.evidence_level || "E0")] || 0))[0];
     setSelectedTargets(current => {
@@ -1697,7 +1713,7 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
       return [...requiredIds, ...current.filter(id => !required.has(id))].slice(0, maxTargets);
     });
     setSelectedArchives(current => {
-      const currentMeetsRequirement = current.some(id => (EVIDENCE_RANK[String(archiveChoices.find(choice => String(choice.archive_id) === id)?.evidence_level || "E0")] || 0) >= minimumRank);
+      const currentMeetsRequirement = current.some(id => (EVIDENCE_RANK[String(meetingArchives.find(choice => String(choice.archive_id) === id)?.evidence_level || "E0")] || 0) >= minimumRank);
       return currentMeetsRequirement || !bestArchive ? current : [String(bestArchive.archive_id)];
     });
   };
@@ -1717,7 +1733,7 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
       proposed_document_type: isMeeting && documentType ? documentType : null,
       lead_npc_id: requiresLead ? leadNpcId : null,
     }) as Promise<Dict>, isMeeting ? "班子会议已经发起" : isArchive ? "档案正文已经调出并记录查阅" : "行动已经发起", false, result => {
-      if (isArchive) onArchivesRead(arr(result.archives));
+      if (isArchive) onArchivesRead({ ...result, records: arr(result.archives) });
     });
   }}>
     <p>{item.description}</p>
@@ -1726,8 +1742,8 @@ function GovernanceActionForm({ item, state, api, sessionId, notice, onPerform, 
     {!isMeeting && !isArchive && <label>本次重点了解什么<textarea value={topic} readOnly={isCanonicalOpportunity} onChange={event => setTopic(event.target.value)} maxLength={500} required placeholder="例如：核实对方最关心的补偿、住房或程序问题" /></label>}
     {!isArchive && <fieldset className="choice-fieldset"><legend>{isMeeting ? "参会领导（选择二至八人）" : actionId === "cadre_interview" ? "访谈对象（选择一至三人）" : "走访对象（选择一人）"}</legend>{isMeeting && <p className="field-help">这里只列出已随剧情公开、且在设定中具有领导职务的干部；普通干部、村民和外部人员不能进入班子会议。</p>}<div className="choice-grid character-choice-grid">{targetChoices.map(choice => { const id = String(choice.target_id || choice.id); const selected = selectedTargets.includes(id); const fallbackName = playerText(choice.label || choice.name, "未命名对象"); return <CharacterChoiceCard key={id} character={resolveCharacter(id, fallbackName)} fallbackName={fallbackName} inputId={`governance-person-${actionId}-${id}`} type={maxTargets === 1 ? "radio" : "checkbox"} name="targets" value={id} checked={selected} disabled={isCanonicalOpportunity} onChange={() => toggleTarget(id)} onOpenProfile={onOpenProfile} />; })}</div><small>已选择 {selectedTargets.length} 人{selectedTargets.length < minTargets ? `，还需选择 ${minTargets - selectedTargets.length} 人` : ""}</small></fieldset>}
     {requiresLead && selectedTargets.length > 0 && <fieldset className="choice-fieldset"><legend>指定分管或牵头领导</legend><p className="field-help">该领导首先汇报议题的事实、依据、方案与风险；其他参会领导随后逐一表态。</p><div className="choice-grid character-choice-grid">{selectedTargets.map(id => { const fallbackName = playerText(targetChoices.find(choice => String(choice.target_id || choice.id) === id)?.label, id); return <CharacterChoiceCard key={`lead-${id}`} character={resolveCharacter(id, fallbackName)} fallbackName={fallbackName} inputId={`meeting-lead-${id}`} type="radio" name="meeting-lead" value={id} checked={leadNpcId === id} onChange={() => setLeadNpcId(id)} onOpenProfile={onOpenProfile} />; })}</div>{!leadNpcId && <span className="field-error">必须确定一名主要汇报人。</span>}</fieldset>}
-    {isMeeting && documentType && <fieldset className="choice-fieldset"><legend>会议依据（至少达到 {requiredEvidenceLevel}）</legend><p className="field-help">拟形成红头文件时，会议必须引用已经取得且证据等级足够的材料。</p><div className="choice-grid meeting-evidence-choices">{archiveChoices.map(choice => { const id = String(choice.archive_id); const selected = selectedArchives.includes(id); return <label className={selected ? "choice-card selected" : "choice-card"} key={id}><input type="checkbox" value={id} checked={selected} onChange={() => toggleArchive(id)} /><span><b>{choice.title || "未命名材料"}</b><small>{friendlyStatus(choice.evidence_level)} · {choice.evidence_level || "E0"}</small></span></label>; })}</div>{!archiveChoices.length && <div className="blocked-reason">当前还没有可供会议引用的材料。</div>}{!documentEvidenceValid && <span className="field-error">所选材料尚未达到 {requiredEvidenceLevel}，请改选更高等级材料或仅形成会议纪要。</span>}</fieldset>}
-    {isArchive && <fieldset className="choice-fieldset"><legend>要查阅的档案（可多选）</legend><div className="choice-grid">{archiveChoices.map(choice => { const id = String(choice.archive_id); const selected = selectedArchives.includes(id); return <label className={selected ? "choice-card selected" : "choice-card"} key={id}><input type="checkbox" value={id} checked={selected} onChange={() => toggleArchive(id)} /><span><b>{choice.title || "未命名档案"}</b><small>{friendlyStatus(choice.evidence_level)}</small></span></label>; })}</div>{!archiveChoices.length && <div className="empty-state"><p>目前没有已取得、可查阅的档案。</p></div>}</fieldset>}
+    {isMeeting && documentType && <fieldset className="choice-fieldset"><legend>会议依据（至少达到 {requiredEvidenceLevel}）</legend><p className="field-help">拟形成红头文件时，会议只能引用已经查阅且证据等级足够的材料。</p><div className="choice-grid meeting-evidence-choices">{meetingArchives.map(choice => { const id = String(choice.archive_id); const selected = selectedArchives.includes(id); return <label className={selected ? "choice-card selected" : "choice-card"} key={id}><input type="checkbox" value={id} checked={selected} onChange={() => toggleArchive(id)} /><span><b>{choice.title || "未命名材料"}</b><small>{friendlyStatus(choice.evidence_level)} · {choice.evidence_level || "E0"}</small></span></label>; })}</div>{!meetingArchives.length && <div className="blocked-reason">当前还没有已读、可供会议引用的材料。</div>}{!documentEvidenceValid && <span className="field-error">所选材料尚未达到 {requiredEvidenceLevel}，请改选更高等级材料或仅形成会议纪要。</span>}</fieldset>}
+    {isArchive && <fieldset className="choice-fieldset"><legend>要查阅的档案（每次选择一份）</legend><p className="field-help">首次查阅会立即扣除标示精力，并把权威事实和用途收入线索页；已读档案可在治理页免费重读。</p><div className="choice-grid archive-investigation-choices">{archiveChoices.map(choice => { const id = String(choice.archive_id); const selected = selectedArchives.includes(id); return <label className={selected ? "choice-card selected" : "choice-card"} key={id}><input type="radio" name="archive-investigation" value={id} checked={selected} onChange={() => toggleArchive(id)} /><span><b>{choice.title || "未命名档案"}</b><small>{friendlyStatus(choice.evidence_level)} · {friendlyStatus(choice.confidentiality)} · 首次 {displayValue(choice.first_read_cost_action_points, actionPointCost(item) ?? 1)} 点精力</small><small>预计形成 {displayValue(choice.result_fact_count, 0)} 条事实</small>{values(choice.strategic_uses).length > 0 && <em>可用于：{values(choice.strategic_uses).map(value => playerText(value)).join("；")}</em>}</span></label>; })}</div>{!archiveChoices.length && <div className="empty-state"><p>目前没有新到未读档案，可到治理页免费重读已读档案。</p></div>}</fieldset>}
     {isMeeting && documentTypes.length > 0 && <label>拟形成文件（可选）<select value={documentType} onChange={event => chooseDocumentType(event.target.value)}><option value="">仅形成会议纪要</option>{documentTypes.map(value => <option key={value.document_type} value={value.document_type}>{DOCUMENT_TYPE_LABELS[value.document_type] || "专项治理文件"}</option>)}</select>{requiredParticipantNames.length > 0 && <small className="required-participants">该文件要求 {requiredParticipantNames.join("、")} 参会，选择文件时会自动加入。</small>}{missingRequiredParticipantIds.length > 0 && <span className="field-error">仍缺少必要会签人，请重新选择文件以自动补齐。</span>}</label>}
     {notice && <div className="notice form-notice" role="status">{notice}</div>}
     <button disabled={!validSelection || !topicValid}>{isMeeting ? "发起班子会议" : isArchive ? "开始查阅" : "发起行动"}</button>

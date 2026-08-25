@@ -56,11 +56,13 @@ class StoryReviewRound1Tests(unittest.TestCase):
         day: int,
         *,
         flags: set[str] | None = None,
+        known_fact_ids: set[str] | None = None,
     ):
         session = container.sessions.get_owned(session_id, headers["X-Account-ID"])
         package = container.packages.get("pkg_gameplay_v3")
         session.game_state = replace(session.game_state, story_day=day)
         session.flags = set(flags or ())
+        session.known_fact_ids = set(known_fact_ids or ())
         session.pending_decision = None
         session.pending_decision_queue.clear()
         session.narrative_feed.clear()
@@ -182,7 +184,13 @@ class StoryReviewRound1Tests(unittest.TestCase):
 
     def test_d18_keeps_qian_visit_when_dp2_01_does_not_break_with_him(self) -> None:
         container, client, session_id, headers = self.build_api("d18-visit")
-        session = self.reset_to_day(container, session_id, headers, 17)
+        session = self.reset_to_day(
+            container,
+            session_id,
+            headers,
+            17,
+            known_fact_ids={"fact_connected_invoices"},
+        )
         submitted = self.submit_decision(
             client, session_id, headers, session, "dp2_01", "a"
         )

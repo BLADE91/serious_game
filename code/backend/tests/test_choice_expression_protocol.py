@@ -151,6 +151,30 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         with self.assertRaises(RoleLLMUnavailableError):
             gateway.select(self.selection_task())
 
+    def test_transient_transport_failure_retries_the_same_real_model(self) -> None:
+        calls = 0
+
+        def transport(_url: str, _key: str, _body: dict, _timeout: float) -> dict:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RoleLLMUnavailableError("temporary timeout")
+            return {
+                "choices": [{"message": {"content": '{"choice_id":"contact_zhao"}'}}],
+                "usage": {},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        result = gateway.select(self.selection_task())
+
+        self.assertEqual("contact_zhao", result.choice_id)
+        self.assertEqual(2, calls)
+        audits = self.audits.list_for_session("session-a")
+        self.assertEqual("openai_compatible", audits[-1].provider)
+        self.assertEqual(1, audits[-1].retry_count)
+
     def test_expression_returns_text_only_and_retries_unsafe_stage_actions(self) -> None:
         responses = iter((
             {"text": "（她抹着眼泪跪下）县长，求求您救命。"},
