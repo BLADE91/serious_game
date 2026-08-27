@@ -1,0 +1,123 @@
+{
+  "file_count": 23,
+  "files": [
+    {
+      "path": "action_rules.json",
+      "sha256": "d6fedde8ce5f7aec594947f988fcc8ef1f2d63544d67139dd94490d556e96571",
+      "size": 6115
+    },
+    {
+      "path": "content_catalog.json",
+      "sha256": "ade41da7fef8094f79316bfb70dd360e4bf3ca75c2e27796983508c9d932b8c6",
+      "size": 7357
+    },
+    {
+      "path": "decisions.json",
+      "sha256": "c9c287ba9255c6865d3962740ea88ba7579d86bd66e06df0490d2ef2aab04913",
+      "size": 676854
+    },
+    {
+      "path": "ending_rules.json",
+      "sha256": "f75f263629f7cc026fa0a7c8fc798262fec3fb8fbfcc3ff50421c128a908fb89",
+      "size": 172873
+    },
+    {
+      "path": "event_rules.json",
+      "sha256": "243daf51ddc69c015f8feabc0e1d95442743d1ce9f8bd54df2fca0d3c2ea350d",
+      "size": 4133
+    },
+    {
+      "path": "facts.json",
+      "sha256": "c82d0b1cd20ff43b8ad19d464e5695f0bfe12f1bd37376232e4f3fc2fe0a7a3f",
+      "size": 8825
+    },
+    {
+      "path": "flags.json",
+      "sha256": "821b67c22707306313a1858662b2f93902dd8657b5e0f9d33ff691d61fc6ffc2",
+      "size": 9866
+    },
+    {
+      "path": "governance_config.json",
+      "sha256": "2852549cef9cb855e16e6373b29b6d81f9748978d4a1e29fe79f11a6801f3190",
+      "size": 11773
+    },
+    {
+      "path": "household_signatories.json",
+      "sha256": "59477bb93c0f2cf1262a67e77110926e673aded9cc5ff06d1493ef6bb6de3671",
+      "size": 10855
+    },
+    {
+      "path": "households.json",
+      "sha256": "19ac150d88e87a026b2ebf6c8c9e80bf2b03477f92a3e681f2206fbdcafcc4d3",
+      "size": 21221
+    },
+    {
+      "path": "interaction_opportunities.json",
+      "sha256": "e42bc944c1a830efd6f3845d48de9e49d908b37df8c0cca4b7203859a2b0d2ac",
+      "size": 33606
+    },
+    {
+      "path": "map_locations.json",
+      "sha256": "3b02d238eeccf84baaac2ebf7810e1fc4c06b287de1959b1a7002babf123469d",
+      "size": 2450
+    },
+    {
+      "path": "npc_demands.json",
+      "sha256": "9e4073ad1d368c78604e250f39ba0ca7a21c1a8951ce224fc149255b721f2a35",
+      "size": 15898
+    },
+    {
+      "path": "npc_profiles.json",
+      "sha256": "5451530ef8c27be08c408d4429c4b324e3de7831a16f2cf38167b96df02960d1",
+      "size": 115439
+    },
+    {
+      "path": "numbers.json",
+      "sha256": "5524c1c3707aa3b3d79f2eec20f047928bcf3157f74d829eef94f8e5132b927c",
+      "size": 2300
+    },
+    {
+      "path": "origins.json",
+      "sha256": "117e331303b7a8030a66a9704abb38921377ef1a24dbca9f98ad1c7e47945cc9",
+      "size": 1186
+    },
+    {
+      "path": "package_manifest.json",
+      "sha256": "3917f5ac5af2be22cf8283babc38ece997aa75797447b4ffb5f01b982889e579",
+      "size": 669
+    },
+    {
+      "path": "prompt_templates/role_turn_system.md",
+      "sha256": "a296550bc15fc1b452a7d7352b901f447c978424ee78cf8623af5beb73d28130",
+      "size": 1576
+    },
+    {
+      "path": "public_briefing.json",
+      "sha256": "e921da01267dd3b0b4d09346af0324afafe92fa37c786e397520979bd8257bd7",
+      "size": 14995
+    },
+    {
+      "path": "resource_actions.json",
+      "sha256": "1b9a3065c9652407772e722064b0401ed9b72e4dfe827740de0341b3432dd8cf",
+      "size": 11882
+    },
+    {
+      "path": "social_rules.json",
+      "sha256": "046ed2f9eb9c95f066627ff0c8d123ee96ff6a5a769af0647e2854879d347919",
+      "size": 12076
+    },
+    {
+      "path": "story_beats.json",
+      "sha256": "cc20687170fbd76a0394bc4b932bf13135e475e7d811a04d2b6edc6fc07f25bb",
+      "size": 141598
+    },
+    {
+      "path": "story_calendar.json",
+      "sha256": "4e6dff0d6978a64b23b0e4ccb8b5e81362b75e3a9684e3b156072db5c2b90142",
+      "size": 587
+    }
+  ],
+  "root_name": "pkg_gameplay_v2",
+  "schema_version": 1,
+  "total_bytes": 1284134
+}
