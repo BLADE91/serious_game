@@ -40,9 +40,10 @@ PLAYER_PROBE = (
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description="M3 全角色真实 API 矩阵测试")
     value.add_argument("--start", type=int, default=0)
-    value.add_argument("--limit", type=int, default=5)
-    value.add_argument("--package-id", default="pkg_gameplay_v2")
-    value.add_argument("--base-url", default="https://api.qianzhang-ai.cn/v1")
+    value.add_argument("--limit", type=int, default=0)
+    value.add_argument("--package-id", default="pkg_gameplay_v3")
+    value.add_argument("--base-url")
+    value.add_argument("--output-dir", type=Path)
     value.add_argument("--probe", default=PLAYER_PROBE)
     value.add_argument(
         "--require-policy-boundary", action="store_true",
@@ -51,11 +52,16 @@ def parser() -> argparse.ArgumentParser:
     return value
 
 
-def main() -> None:
+def main() -> int:
     args = parser().parse_args()
-    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    environment = Settings.from_env()
+    if environment.role_llm_provider != "openai_compatible":
+        raise SystemExit("live role matrix requires ROLE_LLM_PROVIDER=openai_compatible")
+    if environment.role_llm_fallback_to_fake:
+        raise SystemExit("live role matrix refuses Fake fallback")
+    api_key = os.getenv(environment.role_llm_api_key_env, "").strip()
     if not api_key:
-        raise SystemExit("DASHSCOPE_API_KEY is required")
+        raise SystemExit("configured real API key is required")
     package = FileScriptPackageLoader().load(
         BACKEND_ROOT / "content" / "packages" / args.package_id
     )
@@ -63,12 +69,12 @@ def main() -> None:
         item for item in package.interaction_opportunities
         if item.availability_mode is not AvailabilityMode.CLOSED
     ]
-    selected = opportunities[args.start : args.start + args.limit]
+    selected = opportunities[args.start : args.start + args.limit] if args.limit else opportunities[args.start:]
     settings = replace(
         Settings(environment="test", repository="memory"),
         role_llm_provider="openai_compatible",
-        role_llm_base_url=args.base_url.rstrip("/"),
-        role_llm_model="qwen3.6-plus",
+        role_llm_base_url=(args.base_url or environment.role_llm_base_url).rstrip("/"),
+        role_llm_model=environment.role_llm_model,
         role_llm_timeout_seconds=45,
         role_llm_max_retries=2,
         role_llm_fallback_to_fake=False,
@@ -207,12 +213,27 @@ def main() -> None:
             ),
             "result": result_data,
         })
-    print(json.dumps({
+    report = {
         "range": [args.start, args.start + len(selected)],
         "total_live_opportunities": len(opportunities),
+        "provider": "openai_compatible",
+        "model": settings.role_llm_model,
+        "fake_calls": sum(
+            1 for item in results for provider in item["audit_providers"]
+            if "fake" in str(provider).casefold()
+        ),
         "results": results,
-    }, ensure_ascii=False))
+    }
+    if args.output_dir is not None:
+        args.output_dir.mkdir(parents=True, exist_ok=False)
+        (args.output_dir / "role-matrix.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    print(json.dumps(report, ensure_ascii=False))
+    return 0 if report["fake_calls"] == 0 and all(
+        item["status"] == "passed" for item in results
+    ) else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

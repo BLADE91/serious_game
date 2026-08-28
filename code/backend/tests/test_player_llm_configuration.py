@@ -660,6 +660,37 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
         self.assertEqual("unconfigured", status.mode)
         self.assertFalse(status.active)
 
+    def test_real_failure_matrix_rejects_partial_commit_or_missing_faults(self) -> None:
+        from tools.run_real_failure_matrix import validate_failure_report
+
+        passing = {
+            "provider": "openai_compatible",
+            "fake_calls": 0,
+            "cases": [
+                {
+                    "fault": fault,
+                    "failed_without_state_change": True,
+                    "retry_committed_once": True,
+                    "api_key_leaks": 0,
+                }
+                for fault in ("timeout", "disconnect", "truncated_json", "invalid_auth")
+            ],
+            "account_isolation": {
+                "server_default_requests": 1,
+                "personal_requests": 1,
+                "mixed_requests": 0,
+            },
+        }
+        validate_failure_report(passing)
+        broken = json.loads(json.dumps(passing))
+        broken["cases"][0]["failed_without_state_change"] = False
+        with self.assertRaisesRegex(ValueError, "partial"):
+            validate_failure_report(broken)
+        missing = json.loads(json.dumps(passing))
+        missing["cases"] = missing["cases"][:-1]
+        with self.assertRaisesRegex(ValueError, "invalid_auth"):
+            validate_failure_report(missing)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -41,7 +41,30 @@ def _default_stages(backend_root: Path, run_root: Path) -> tuple[Stage, ...]:
     return (
         (
             "capabilities",
-            (python, str(tools / "run_choice_expression_live_matrix.py")),
+            (
+                python,
+                str(tools / "run_choice_expression_live_matrix.py"),
+                "--output-dir",
+                str(run_root / "capabilities"),
+            ),
+        ),
+        (
+            "roles",
+            (
+                python,
+                str(tools / "run_m3_live_role_matrix.py"),
+                "--output-dir",
+                str(run_root / "roles"),
+            ),
+        ),
+        (
+            "failures",
+            (
+                python,
+                str(tools / "run_real_failure_matrix.py"),
+                "--output-dir",
+                str(run_root / "failures"),
+            ),
         ),
         (
             "features",

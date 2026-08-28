@@ -151,6 +151,41 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         with self.assertRaises(RoleLLMUnavailableError):
             gateway.select(self.selection_task())
 
+    def test_live_reliability_gate_is_per_capability_and_fail_closed(self) -> None:
+        from tools.run_choice_expression_live_matrix import validate_reliability_report
+
+        passing = {
+            "fake_calls": 0,
+            "audit_providers": {"openai_compatible": 120},
+            "capabilities": {
+                name: {
+                    "first_attempt_success_rate": 0.95,
+                    "corrected_success_rate": 1.0,
+                    "total": 20,
+                }
+                for name in (
+                    "single_choice", "multiple_choice", "expression",
+                    "night_followup", "contract_rendering", "document_rendering",
+                )
+            },
+        }
+        validate_reliability_report(passing)
+        failing = json.loads(json.dumps(passing))
+        failing["capabilities"]["night_followup"]["first_attempt_success_rate"] = 0.90
+        with self.assertRaisesRegex(ValueError, "night_followup"):
+            validate_reliability_report(failing)
+        failing = json.loads(json.dumps(passing))
+        failing["fake_calls"] = 1
+        with self.assertRaisesRegex(ValueError, "Fake"):
+            validate_reliability_report(failing)
+        failing = json.loads(json.dumps(passing))
+        failing["audit_providers"] = {
+            "openai_compatible": 119,
+            "fake": 1,
+        }
+        with self.assertRaisesRegex(ValueError, "provider"):
+            validate_reliability_report(failing)
+
     def test_transient_transport_failure_retries_the_same_real_model(self) -> None:
         calls = 0
 

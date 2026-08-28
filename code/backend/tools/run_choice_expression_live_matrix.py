@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 import json
 import os
+from pathlib import Path
 import time
 
 from serious_game_backend.config import Settings
@@ -30,6 +31,45 @@ CAPABILITIES = (
     "contract_rendering",
     "document_rendering",
 )
+
+
+def validate_reliability_report(report: dict) -> None:
+    """Fail closed unless every real-model capability clears both thresholds."""
+
+    if int(report.get("fake_calls", 0)):
+        raise ValueError("Fake calls are forbidden in the live reliability matrix")
+    audit_providers = report.get("audit_providers")
+    if not isinstance(audit_providers, dict) or not audit_providers:
+        raise ValueError("provider audit evidence is missing")
+    unexpected_providers = sorted(
+        str(provider)
+        for provider, count in audit_providers.items()
+        if int(count) > 0 and str(provider) != "openai_compatible"
+    )
+    if unexpected_providers:
+        raise ValueError(
+            "unexpected provider audit evidence: " + ", ".join(unexpected_providers)
+        )
+    capabilities = report.get("capabilities")
+    if not isinstance(capabilities, dict):
+        raise ValueError("capability results are missing")
+    missing = sorted(set(CAPABILITIES) - set(capabilities))
+    if missing:
+        raise ValueError("missing capabilities: " + ", ".join(missing))
+    failures: list[str] = []
+    for capability in CAPABILITIES:
+        result = capabilities[capability]
+        if int(result.get("total", 0)) <= 0:
+            failures.append(f"{capability}: no real calls")
+            continue
+        first_rate = float(result.get("first_attempt_success_rate", 0.0))
+        corrected_rate = float(result.get("corrected_success_rate", 0.0))
+        if first_rate < 0.95:
+            failures.append(f"{capability}: first attempt {first_rate:.3%} < 95%")
+        if corrected_rate < 0.99:
+            failures.append(f"{capability}: corrected {corrected_rate:.3%} < 99%")
+    if failures:
+        raise ValueError("; ".join(failures))
 
 
 def run_capability(gateway, capability: str, index: int) -> None:
@@ -163,6 +203,7 @@ def run_capability(gateway, capability: str, index: int) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repetitions", type=int, default=20)
+    parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
     settings = Settings.from_env()
     settings.validate()
@@ -217,10 +258,17 @@ def main() -> int:
     first = Counter(
         item["capability"] for item in outcomes if item["first_attempt"]
     )
+    audit_records = audits.list_for_session("live_choice_expression_matrix")
+    audit_providers = Counter(item.provider for item in audit_records)
     report = {
         "provider": "openai_compatible",
         "model": settings.role_llm_model,
-        "fake_calls": 0,
+        "audit_providers": dict(audit_providers),
+        "fake_calls": sum(
+            count
+            for provider, count in audit_providers.items()
+            if "fake" in provider.casefold()
+        ),
         "repetitions": args.repetitions,
         "logical_tasks": len(outcomes),
         "elapsed_seconds": round(time.perf_counter() - started, 3),
@@ -235,13 +283,29 @@ def main() -> int:
                 "first_attempt": first[capability],
                 "succeeded": succeeded[capability],
                 "total": totals[capability],
+                "first_attempt_success_rate": round(
+                    first[capability] / totals[capability], 6
+                ),
+                "corrected_success_rate": round(
+                    succeeded[capability] / totals[capability], 6
+                ),
             }
             for capability in CAPABILITIES
         },
         "failures": [item for item in outcomes if not item["succeeded"]],
     }
+    if args.output_dir is not None:
+        args.output_dir.mkdir(parents=True, exist_ok=False)
+        (args.output_dir / "capability-matrix.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if report["corrected_success_rate"] >= 0.99 else 1
+    try:
+        validate_reliability_report(report)
+    except ValueError as exc:
+        print(f"reliability gate failed: {exc}", flush=True)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
