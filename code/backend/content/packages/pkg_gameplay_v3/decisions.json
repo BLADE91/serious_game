@@ -10499,9 +10499,6 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "required_flags": [
-        "周氏松口"
-      ],
       "scene_id": "C04_S04",
       "presentation_blocks": [
         {
@@ -10533,59 +10530,38 @@
         {
           "option_id": "a",
           "text": "把他请上楼，当面把那四亩地的说法给他。",
+          "required_fact_ids": [
+            "fact_original_vouchers"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "四十一张原始凭证",
+              "reason": "必须先核对旧账凭证，才能当面给出可核验的四亩地处理说法。"
+            }
+          ],
           "consequence": "他上楼的时候把鞋在门口的垫子上蹭了很久",
           "effects": {
-            "metric_deltas": {},
+            "metric_deltas": {
+              "public_trust": [
+                5,
+                10
+              ],
+              "media_pressure": [
+                -10,
+                -5
+              ]
+            },
             "ledger_deltas": {},
-            "open_flags": [],
+            "open_flags": [
+              "谭老六已安抚",
+              "谭老六愿意进入拟约",
+              "谭老六核心矛盾已缓解",
+              "谭老六合同批次可发起",
+              "旧账缺口已坐实"
+            ],
             "close_flags": [],
             "state_assignments": {}
           },
-          "conditional_effects": [
-            {
-              "required_flags": [
-                "旧账缺口已坐实"
-              ],
-              "forbidden_flags": [
-                "谭老六合同批次可发起",
-                "谭老六被强压"
-              ],
-              "effects": {
-                "metric_deltas": {
-                  "public_trust": [
-                    5,
-                    10
-                  ],
-                  "media_pressure": [
-                    -10,
-                    -5
-                  ]
-                },
-                "ledger_deltas": {},
-                "open_flags": [
-                  "谭老六已安抚",
-                  "谭老六愿意进入拟约",
-                  "谭老六核心矛盾已缓解",
-                  "谭老六合同批次可发起"
-                ],
-                "close_flags": []
-              }
-            },
-            {
-              "forbidden_flags": [
-                "旧账缺口已坐实",
-                "谭老六合同批次可发起"
-              ],
-              "effects": {
-                "metric_deltas": {},
-                "ledger_deltas": {},
-                "open_flags": [
-                  "谭老六被空口应付"
-                ],
-                "close_flags": []
-              }
-            }
-          ],
           "unavailable_reason": "条件不足"
         },
         {
@@ -12585,8 +12561,14 @@
             ],
             "state_assignments": {}
           },
-          "required_flags": [
-            "迁坟旧例在手"
+          "required_fact_ids": [
+            "fact_grave_protocol"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "迁坟四件事",
+              "reason": "需先通过正式会谈掌握择地、择日、起灵和祭祀延续的完整规矩。"
+            }
           ],
           "unavailable_reason": "条件不足"
         },
@@ -18885,6 +18867,32 @@
           },
           "conditional_effects": [
             {
+              "required_flags": [
+                "环评揭穿"
+              ],
+              "effects": {
+                "metric_deltas": {},
+                "ledger_deltas": {},
+                "open_flags": [
+                  "环评已处理"
+                ],
+                "close_flags": []
+              }
+            },
+            {
+              "required_flags": [
+                "掌握血铅"
+              ],
+              "effects": {
+                "metric_deltas": {},
+                "ledger_deltas": {},
+                "open_flags": [
+                  "环评已处理"
+                ],
+                "close_flags": []
+              }
+            },
+            {
               "forbidden_flags": [
                 "苗喜旺核心矛盾已缓解",
                 "差异化口子已开"
@@ -22524,20 +22532,36 @@
           "option_id": "b",
           "text": "不报。四个人一个一个约谈，责任写在纸上，人留在岗位上把事办完，名单不上交",
           "consequence": "名单没上交",
-          "effects": {
-            "metric_deltas": {},
-            "ledger_deltas": {},
-            "open_flags": [
-              "班子拥护"
+      "effects": {
+        "metric_deltas": {},
+        "ledger_deltas": {},
+        "open_flags": [
+          "班子拥护"
             ],
             "close_flags": [
               "班子结怨"
             ],
-            "state_assignments": {}
-          },
-          "unavailable_reason": "条件不足"
-        }
-      ],
+        "state_assignments": {}
+      },
+      "unavailable_reason": "条件不足"
+    },
+    {
+      "option_id": "c",
+      "text": "不替谁兜底，也不把四个人捆在一张名单上。把已经坐实的责任逐人移交，未坐实的继续核查，各自回岗位等正式结论",
+      "consequence": "你没有换取拥护，也没有用一张名单把所有人推成敌人。会散后，四个人各自回了办公室",
+      "effects": {
+        "metric_deltas": {},
+        "ledger_deltas": {},
+        "open_flags": [],
+        "close_flags": [
+          "班子拥护",
+          "班子结怨"
+        ],
+        "state_assignments": {}
+      },
+      "unavailable_reason": "条件不足"
+    }
+  ],
       "scene_id": "C06_S05",
       "presentation_blocks": [
         {

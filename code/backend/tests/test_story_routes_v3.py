@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import Counter
 from pathlib import Path
 import unittest
 
@@ -8,10 +10,46 @@ from fastapi.testclient import TestClient
 from serious_game_backend.api.app import create_app
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
+from tools.full_acceptance.ending_witnesses import load_contract_terms, load_witnesses
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = BACKEND_ROOT / "content" / "packages"
+WITNESS_PROFILE_PATH = (
+    PACKAGE_ROOT / "pkg_gameplay_v3" / "acceptance_route_profiles.json"
+)
+CONTRACT_GROUP_SCHEDULE = (
+    (53, "npc_zhou_dashan"),
+    (53, "npc_tan_laoliu"),
+    (56, "npc_yuan_guilan"),
+    (56, "npc_wu_xiuying"),
+    (57, "npc_he_tiezhu"),
+    (57, "npc_yang_bo"),
+    (64, "npc_zhou_kuiyuan"),
+    (68, "npc_zhou_mancang"),
+    (71, "npc_ning_dehai"),
+    (73, "npc_ma_changshun"),
+    (77, "npc_lao_juetou"),
+    (78, "npc_miao_xiwang"),
+    (84, "npc_deng_shouben"),
+)
+DEMAND_OPPORTUNITY_BY_ID = {
+    "demand_shi_wenbin": "opp_22_shi_wenbin_contact",
+    "demand_zhou_mancang": "opp_03_zhou_mancang_contact",
+    "demand_he_tiezhu": "opp_03_he_tiezhu_contact",
+    "demand_miao_xiwang": "opp_03_miao_xiwang_contact",
+    "demand_he_xingbang": "opp_46_he_xingbang_contact",
+    "demand_gu_keming": "opp_59_gu_keming_contact",
+}
+PEOPLE_AXIS_DEMAND_IDS = {
+    "归心": frozenset(DEMAND_OPPORTUNITY_BY_ID),
+    "认可": frozenset((
+        "demand_shi_wenbin",
+        "demand_zhou_mancang",
+        "demand_he_tiezhu",
+        "demand_gu_keming",
+    )),
+}
 
 
 class StoryRoutesV3Tests(unittest.TestCase):
@@ -25,13 +63,14 @@ class StoryRoutesV3Tests(unittest.TestCase):
         )
         container = build_container(settings)
         client = TestClient(create_app(settings, container=container))
+        client.__enter__()
         headers = {"X-Account-ID": f"acct_story_route_{route_index}"}
         response = client.post(
             "/api/game/session",
             headers=headers,
             json={
                 "client_request_id": f"story-route-{route_index}",
-                "origin_id": ("technical", "grassroots", "integrity")[route_index],
+                "origin_id": ("technical", "grassroots", "integrity")[route_index % 3],
                 "package_id": "pkg_gameplay_v3",
             },
         )
@@ -56,20 +95,352 @@ class StoryRoutesV3Tests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         return response.json()
 
+    def inspect_all_available_archives(
+        self, client, session_id, headers, result: dict
+    ) -> dict:
+        while True:
+            catalog = client.get(
+                f"/api/game/session/{session_id}/actions", headers=headers
+            )
+            self.assertEqual(200, catalog.status_code, catalog.text)
+            variant = next(
+                item
+                for action in catalog.json()["actions"]
+                for item in action["variants"]
+                if item["variant_id"] == "consult_county_archives"
+            )
+            unread = [
+                item for item in variant["target_choices"]
+                if item.get("read_status") != "read"
+            ]
+            if not unread:
+                return result
+            archive = unread[0]
+            cost = int(archive.get("first_read_cost_action_points", 1))
+            stored_state = client.get(
+                f"/api/game/session/{session_id}", headers=headers
+            )
+            self.assertEqual(200, stored_state.status_code, stored_state.text)
+            if int(
+                stored_state.json()["ledger"]["action_points"]["remaining"]
+            ) < cost:
+                return result
+            response = client.post(
+                f"/api/game/session/{session_id}/governance/actions",
+                headers=headers,
+                json={
+                    "state_version": result["state_version"],
+                    "action_kind": "inspect_archives",
+                    "variant_id": variant["variant_id"],
+                    "location_id": variant["location_choices"][0]["location_id"],
+                    "archive_ids": [archive["target_id"]],
+                },
+            )
+            self.assertEqual(201, response.status_code, response.text)
+            result = {**result, "state_version": response.json()["state_version"]}
+
+    def complete_one_available_opportunity(
+        self,
+        client,
+        session_id,
+        headers,
+        result: dict,
+        serial: int,
+        allowed_ids: set[str] | None = None,
+    ) -> tuple[dict, int, bool]:
+        response = client.get(
+            f"/api/game/session/{session_id}/opportunities", headers=headers
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        opportunities = [
+            item for item in response.json()["opportunities"]
+            if item.get("cta_available") and not item.get("conversation_active")
+            and (allowed_ids is None or item["opportunity_id"] in allowed_ids)
+        ]
+        if not opportunities:
+            return result, serial, False
+        state = client.get(
+            f"/api/game/session/{session_id}", headers=headers
+        )
+        self.assertEqual(200, state.status_code, state.text)
+        remaining = int(state.json()["ledger"]["action_points"]["remaining"])
+        opportunity = opportunities[0]
+        if remaining < int(opportunity["cost_action_points"]):
+            return result, serial, False
+        opportunity_id = opportunity["opportunity_id"]
+        npc_id = opportunity["npc_id"]
+        player_text = opportunity["conversation_goal"]
+        if opportunity_id == "opp_03_zhou_kuiyuan_contact":
+            player_text = (
+                "请把迁坟的四件事说清楚：择地、择日、起灵和祭祀延续，"
+                "我会按村里旧例逐项核对。"
+            )
+        started = self.action(client, session_id, headers, {
+            "input_mode": "conversation_start",
+            "client_action_id": f"witness-opportunity-{serial:04d}-start",
+            "state_version": result["state_version"],
+            "opportunity_id": opportunity_id,
+            "target_npc_id": npc_id,
+        })
+        conversation_id = started["conversation"]["conversation_id"]
+        talked = self.action(client, session_id, headers, {
+            "input_mode": "free_text",
+            "client_action_id": f"witness-opportunity-{serial:04d}-turn",
+            "state_version": started["state_version"],
+            "conversation_id": conversation_id,
+            "opportunity_id": opportunity_id,
+            "target_npc_id": npc_id,
+            "player_text": player_text,
+        })
+        closed = self.action(client, session_id, headers, {
+            "input_mode": "conversation_end",
+            "client_action_id": f"witness-opportunity-{serial:04d}-end",
+            "state_version": talked["state_version"],
+            "conversation_id": conversation_id,
+        })
+        return closed, serial + 1, True
+
+    def drain_optional_opportunities(
+        self,
+        container,
+        client,
+        session_id,
+        headers,
+        result: dict,
+        profile,
+        serial: int,
+        allowed_ids: set[str] | None = None,
+    ) -> tuple[dict, int]:
+        while True:
+            result, serial, completed = self.complete_one_available_opportunity(
+                client, session_id, headers, result, serial, allowed_ids
+            )
+            if not completed:
+                return result, serial
+            result, serial = self.drain_profile_decisions(
+                container,
+                client,
+                session_id,
+                headers,
+                result,
+                profile,
+                serial,
+            )
+
+    def advance_selected_demands(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        result: dict,
+        demand_ids: frozenset[str],
+    ) -> dict:
+        if not demand_ids:
+            return result
+        while True:
+            overview = client.get(
+                f"/api/game/session/{session_id}/governance", headers=headers
+            )
+            self.assertEqual(200, overview.status_code, overview.text)
+            candidates = [
+                item for item in overview.json()["npc_demands"]
+                if item["demand_id"] in demand_ids
+                and set(item.get("allowed_transitions", ()))
+                & {"acknowledged", "lawfully_refused", "committed", "satisfied"}
+            ]
+            if not candidates:
+                return result
+            demand = candidates[0]
+            allowed = demand["allowed_transitions"]
+            transition = next(
+                value for value in (
+                    "acknowledged",
+                    "lawfully_refused",
+                    "committed",
+                    "satisfied",
+                )
+                if value in allowed
+            )
+            response = client.post(
+                f"/api/game/session/{session_id}/governance/npc-demands/"
+                f"{demand['demand_id']}/dispose",
+                headers=headers,
+                json={
+                    "state_version": result["state_version"],
+                    "transition": transition,
+                },
+            )
+            self.assertEqual(200, response.status_code, response.text)
+            result = {**result, "state_version": response.json()["state_version"]}
+
+    def sign_contracts_toward_target(
+        self,
+        client,
+        session_id,
+        headers,
+        result: dict,
+        *,
+        target_signed: int,
+        contract_terms: dict[str, dict],
+        processed_representatives: set[str],
+    ) -> dict:
+        state = client.get(f"/api/game/session/{session_id}", headers=headers)
+        self.assertEqual(200, state.status_code, state.text)
+        current = int(state.json()["ledger"]["signed_households"]["signed"])
+        story_day = int(state.json()["story"]["day"])
+        if current >= target_signed:
+            return result
+        eligible = [
+            representative
+            for available_day, representative in CONTRACT_GROUP_SCHEDULE
+            if available_day <= story_day
+            and representative not in processed_representatives
+        ]
+        for representative in eligible:
+            if current >= target_signed:
+                break
+            live_state = client.get(
+                f"/api/game/session/{session_id}", headers=headers
+            )
+            self.assertEqual(200, live_state.status_code, live_state.text)
+            if int(
+                live_state.json()["ledger"]["action_points"]["remaining"]
+            ) < 2:
+                return result
+            catalog_response = client.get(
+                f"/api/game/session/{session_id}/actions", headers=headers
+            )
+            self.assertEqual(200, catalog_response.status_code, catalog_response.text)
+            household_action = next(
+                item for item in catalog_response.json()["actions"]
+                if item["action_id"] == "household_visit"
+            )
+            variant = next((
+                item for item in household_action["variants"]
+                if representative in {
+                    choice["target_id"] for choice in item.get("target_choices", [])
+                }
+            ), None)
+            if variant is None or not variant.get("available", True):
+                continue
+            started = client.post(
+                f"/api/game/session/{session_id}/governance/actions",
+                headers=headers,
+                json={
+                    "state_version": result["state_version"],
+                    "action_kind": "household_visit",
+                    "variant_id": variant["variant_id"],
+                    "location_id": variant["location_choices"][0]["location_id"],
+                    "target_ids": [representative],
+                    "topic": "逐户合同与正式签约",
+                },
+            )
+            self.assertEqual(201, started.status_code, started.text)
+            started_body = started.json()
+            action_id = started_body["action"]["action_instance_id"]
+            turn = client.post(
+                f"/api/game/session/{session_id}/governance/actions/{action_id}/turn",
+                headers=headers,
+                json={
+                    "state_version": started_body["state_version"],
+                    "player_text": (
+                        "我正式向你代表的每一户分别发起合同，请逐户核对条款并签约。"
+                    ),
+                    "client_action_id": f"witness-contract-{action_id}",
+                },
+            )
+            self.assertEqual(200, turn.status_code, turn.text)
+            turn_body = turn.json()
+            proposal = turn_body.get("contract_batch_proposal")
+            if proposal is None:
+                finished = client.post(
+                    f"/api/game/session/{session_id}/governance/actions/{action_id}/finish",
+                    headers=headers,
+                    json={"state_version": turn_body["state_version"]},
+                )
+                self.assertEqual(200, finished.status_code, finished.text)
+                result = finished.json()
+                continue
+            confirmed = client.post(
+                f"/api/game/session/{session_id}/governance/contract-batches/"
+                f"{proposal['batch_id']}/confirm",
+                headers=headers,
+                json={"state_version": turn_body["state_version"], "confirmed": True},
+            )
+            self.assertEqual(200, confirmed.status_code, confirmed.text)
+            confirmed_body = confirmed.json()
+            state_version = confirmed_body["state_version"]
+            for contract in confirmed_body["contracts"]:
+                if current >= target_signed:
+                    break
+                household_id = contract["household_id"]
+                self.assertIn(household_id, contract_terms)
+                terms = dict(contract_terms[household_id])
+                for field in ("payment_day", "move_out_day", "housing_delivery_day"):
+                    terms[field] = max(story_day, int(terms[field]))
+                if story_day > 75:
+                    terms["public_window_reward"] = False
+                drafted = client.put(
+                    f"/api/game/session/{session_id}/governance/contracts/"
+                    f"{contract['contract_id']}/terms",
+                    headers=headers,
+                    json={"state_version": state_version, **terms},
+                )
+                self.assertEqual(200, drafted.status_code, drafted.text)
+                draft_body = drafted.json()
+                self.assertEqual("pass", draft_body["contract"]["audit_status"])
+                reviewed = client.post(
+                    f"/api/game/session/{session_id}/governance/contracts/"
+                    f"{contract['contract_id']}/review",
+                    headers=headers,
+                    json={"state_version": draft_body["state_version"]},
+                )
+                self.assertEqual(200, reviewed.status_code, reviewed.text)
+                review_body = reviewed.json()
+                if review_body["contract"]["status"] == "accepted":
+                    signed = client.post(
+                        f"/api/game/session/{session_id}/governance/contracts/"
+                        f"{contract['contract_id']}/sign",
+                        headers=headers,
+                        json={
+                            "state_version": review_body["state_version"],
+                            "confirmed": True,
+                        },
+                    )
+                    self.assertEqual(200, signed.status_code, signed.text)
+                    review_body = signed.json()
+                self.assertEqual("signed", review_body["contract"]["status"])
+                state_version = review_body["state_version"]
+                current += 1
+            finished = client.post(
+                f"/api/game/session/{session_id}/governance/actions/{action_id}/finish",
+                headers=headers,
+                json={"state_version": state_version},
+            )
+            self.assertEqual(200, finished.status_code, finished.text)
+            result = finished.json()
+            processed_representatives.add(representative)
+        return result
+
     def drain_required_group_conversation(
         self, client, session_id, headers, result: dict, key: str
     ) -> dict:
         round_index = 0
         while result["visible_state"].get("active_group_conversation"):
             round_index += 1
+            active_group = result["visible_state"]["active_group_conversation"]
+            resolved = active_group.get("phase") == "resolved"
+            body = {
+                "state_version": result["state_version"],
+                "client_action_id": f"{key}-group-{round_index:02d}",
+            }
+            if not resolved:
+                body["player_text"] = "请各位只围绕已确认的议题逐项说明。"
             response = client.post(
-                f"/api/game/session/{session_id}/group-conversation/turn",
+                f"/api/game/session/{session_id}/group-conversation/"
+                f"{'finish' if resolved else 'turn'}",
                 headers=headers,
-                json={
-                    "state_version": result["state_version"],
-                    "player_text": "请各位只围绕已确认的议题逐项说明。",
-                    "client_action_id": f"{key}-group-{round_index:02d}",
-                },
+                json=body,
             )
             self.assertEqual(200, response.status_code, response.text)
             result = response.json()
@@ -95,6 +466,122 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 }
             }
         return {"option_id": selected["option_id"], "parameters": parameters}
+
+    def choose_profile_option(self, pending: dict, profile) -> dict:
+        decision_id = pending["decision_id"]
+        self.assertIn(
+            decision_id,
+            profile.decision_policy,
+            f"{profile.route_id} has no policy for {decision_id}",
+        )
+        configured = profile.decision_policy[decision_id]
+        if isinstance(configured, dict):
+            option_id = str(configured["option_id"])
+            parameters = dict(configured.get("parameters", {}))
+        else:
+            option_id = str(configured)
+            parameters = {}
+        available = {
+            item["option_id"]: item
+            for item in pending["options"]
+            if item.get("available", True)
+        }
+        self.assertIn(
+            option_id,
+            available,
+            f"{profile.route_id} chose unavailable {decision_id}:{option_id}",
+        )
+        if pending.get("input_kind") == "allocation" and not parameters:
+            fields = pending["input_schema"]["fields"]
+            total = int(pending["input_schema"]["total"])
+            ordered = option_id.split("_")
+            allocations = {field: 0 for field in fields}
+            allocations[ordered[0] if ordered[0] in allocations else fields[0]] = total
+            parameters = {"allocations": allocations}
+        return {"option_id": option_id, "parameters": parameters}
+
+    def drain_profile_decisions(
+        self, container, client, session_id, headers, result: dict, profile, serial: int
+    ) -> tuple[dict, int]:
+        pending = result["visible_state"].get("pending_decision")
+        while pending is not None:
+            stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+            self.assertTrue(any(
+                item.decision_id == pending["decision_id"]
+                and item.presentation_phase == "decision"
+                for item in stored.narrative_feed
+            ))
+            choice = self.choose_profile_option(pending, profile)
+            result = self.action(client, session_id, headers, {
+                "input_mode": "decision",
+                "client_action_id": f"{profile.route_id}-decision-{serial:03d}",
+                "state_version": result["state_version"],
+                "decision_id": pending["decision_id"],
+                **choice,
+            })
+            serial += 1
+            pending = result["visible_state"].get("pending_decision")
+        return result, serial
+
+    def reach_day_three_with_profile(
+        self, container, client, session_id, headers, profile
+    ) -> tuple[dict, int]:
+        session = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+        pending = session.pending_decision
+        self.assertIsNotNone(pending)
+        result = {
+            "state_version": session.state_version,
+            "visible_state": {"pending_decision": {
+                "decision_id": pending.decision_id,
+                "input_kind": pending.input_kind,
+                "input_schema": pending.input_schema,
+                "options": [
+                    {"option_id": item.option_id, "available": item.available}
+                    for item in pending.options
+                ],
+            }},
+        }
+        result, serial = self.drain_profile_decisions(
+            container, client, session_id, headers, result, profile, 0
+        )
+        result = self.inspect_all_available_archives(
+            client, session_id, headers, result
+        )
+        result = self.end_day(
+            client, session_id, headers, result, f"{profile.route_id}-end-d1"
+        )
+        result, serial = self.drain_profile_decisions(
+            container, client, session_id, headers, result, profile, serial
+        )
+        result = self.inspect_all_available_archives(
+            client, session_id, headers, result
+        )
+        started = self.action(client, session_id, headers, {
+            "input_mode": "conversation_start",
+            "client_action_id": f"{profile.route_id}-wu-start",
+            "state_version": result["state_version"],
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+        })
+        conversation_id = started["conversation"]["conversation_id"]
+        talked = self.action(client, session_id, headers, {
+            "input_mode": "free_text",
+            "client_action_id": f"{profile.route_id}-wu-talk",
+            "state_version": started["state_version"],
+            "conversation_id": conversation_id,
+            "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+            "target_npc_id": "npc_wu_xiuying",
+            "player_text": "请把柳林村各户真正担心的事告诉我。",
+        })
+        closed = self.action(client, session_id, headers, {
+            "input_mode": "conversation_end",
+            "client_action_id": f"{profile.route_id}-wu-end",
+            "state_version": talked["state_version"],
+            "conversation_id": conversation_id,
+        })
+        return self.end_day(
+            client, session_id, headers, closed, f"{profile.route_id}-end-d2"
+        ), serial
 
     def drain_decisions(
         self,
@@ -278,8 +765,195 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 "代码照此算", "行动点重置", "轴 T", "flag_",
             ):
                 self.assertNotIn(marker, player_text)
+            client.__exit__(None, None, None)
 
         self.assertEqual(3, len(set(route_sequences)))
+
+    def replay_published_witness(
+        self, route_index: int, profile, contract_terms: dict[str, dict]
+    ) -> dict:
+        print(f"replaying {profile.route_id}", flush=True)
+        container, client, session_id, headers = self.build_runner(route_index)
+        try:
+            return self._replay_published_witness(
+                container,
+                client,
+                session_id,
+                headers,
+                profile,
+                contract_terms,
+            )
+        finally:
+            client.__exit__(None, None, None)
+
+    def _replay_published_witness(
+        self,
+        container,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        profile,
+        contract_terms: dict[str, dict],
+    ) -> dict:
+        result, serial = self.reach_day_three_with_profile(
+            container, client, session_id, headers, profile
+        )
+        target_signed = int(
+            profile.daily_action_policy[0]["target_signed_households"]
+        )
+        processed_representatives: set[str] = set()
+        people_axis = str(
+            profile.conversation_strategies.get("people_axis", "route_default")
+        )
+        selected_demand_ids = PEOPLE_AXIS_DEMAND_IDS.get(
+            people_axis, frozenset()
+        )
+        for story_day in range(3, 91):
+            if result["visible_state"]["status"] == "ended":
+                break
+            result = self.drain_required_group_conversation(
+                client,
+                session_id,
+                headers,
+                result,
+                f"{profile.route_id}-day-{story_day:02d}",
+            )
+            result, serial = self.drain_profile_decisions(
+                container,
+                client,
+                session_id,
+                headers,
+                result,
+                profile,
+                serial,
+            )
+            allowed_opportunity_ids = {
+                "opp_d53_tan_laoliu_paid_recovery",
+                "opp_d55_yuan_guilan_paid_recovery",
+            }
+            configured_grave_choice = profile.decision_policy.get("dp5_03")
+            if configured_grave_choice == "a":
+                allowed_opportunity_ids.add("opp_03_zhou_kuiyuan_contact")
+            allowed_opportunity_ids.update(
+                DEMAND_OPPORTUNITY_BY_ID[demand_id]
+                for demand_id in selected_demand_ids
+            )
+            result, serial = self.drain_optional_opportunities(
+                container,
+                client,
+                session_id,
+                headers,
+                result,
+                profile,
+                serial,
+                allowed_opportunity_ids,
+            )
+            result = self.advance_selected_demands(
+                client,
+                session_id,
+                headers,
+                result,
+                selected_demand_ids,
+            )
+            result = self.inspect_all_available_archives(
+                client, session_id, headers, result
+            )
+            result = self.sign_contracts_toward_target(
+                client,
+                session_id,
+                headers,
+                result,
+                target_signed=target_signed,
+                contract_terms=contract_terms,
+                processed_representatives=processed_representatives,
+            )
+            result = self.end_day(
+                client,
+                session_id,
+                headers,
+                result,
+                f"{profile.route_id}-end-{story_day:02d}",
+            )
+        ending = result["visible_state"]["ending"]
+        stored_session = container.sessions.get_owned(
+            session_id, headers["X-Account-ID"]
+        )
+        witness = {
+            "route_id": profile.route_id,
+            "expected_main": profile.target_main_ending_ids[0],
+            "expected_sub": profile.target_sub_ending_ids[0],
+            "story_day": result["visible_state"]["story"]["day"],
+            "main_ending_id": ending["main_ending_id"],
+            "sub_ending_id": ending["sub_ending_id"],
+            "ledger": result["visible_state"]["ledger"]["signed_households"],
+            "axes": ending["axes"],
+            "signed_contracts": sorted(
+                contract.household_id
+                for contract in stored_session.household_contracts.values()
+                if contract.status == "signed"
+            ),
+            "demand_status_counts": dict(Counter(
+                str(item.get("status", "unknown"))
+                for item in stored_session.npc_demand_states.values()
+            )),
+            "people_flags": sorted(
+                stored_session.flags
+                & {
+                    "吴秀英同盟", "困难户帮扶", "样板签约", "最后一公里攻坚成功",
+                    "额外补偿", "毛坯据实", "血铅补实", "俯身接怨", "民生优先",
+                    "秀英寒心", "越级上访", "虚假签约", "强制施压", "样板充数",
+                    "面子优先", "压制媒体", "宗族对立", "暴力驱逐", "掘坟结怨",
+                }
+            ),
+        }
+        print(
+            f"completed {profile.route_id}: {ending['main_ending_id']}/"
+            f"{ending['sub_ending_id']}",
+            flush=True,
+        )
+        return witness
+
+    def test_every_published_ending_witness_replays_through_formal_api(self) -> None:
+        profiles = load_witnesses(WITNESS_PROFILE_PATH)
+        contract_terms = load_contract_terms(WITNESS_PROFILE_PATH)
+        witnesses: list[dict] = []
+        failures: list[str] = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(
+                    self.replay_published_witness,
+                    route_index,
+                    profile,
+                    contract_terms,
+                ): profile.route_id
+                for route_index, profile in enumerate(profiles, start=100)
+            }
+            for future in as_completed(futures):
+                route_id = futures[future]
+                try:
+                    witness = future.result()
+                except Exception as exc:  # noqa: BLE001 - aggregate all route failures
+                    failures.append(f"{route_id}: {type(exc).__name__}: {exc}")
+                    continue
+                witnesses.append(witness)
+                if witness["story_day"] != 90:
+                    failures.append(f"{route_id}: ended on D{witness['story_day']}")
+                if witness["main_ending_id"] != witness["expected_main"]:
+                    failures.append(
+                        f"{route_id}: main {witness['main_ending_id']} != "
+                        f"{witness['expected_main']}; axes={witness['axes']}"
+                    )
+                if witness["sub_ending_id"] != witness["expected_sub"]:
+                    failures.append(
+                        f"{route_id}: sub {witness['sub_ending_id']} != "
+                        f"{witness['expected_sub']}; ledger={witness['ledger']}; "
+                        f"axes={witness['axes']}; signed={witness['signed_contracts']}; "
+                        f"demands={witness['demand_status_counts']}; "
+                        f"people_flags={witness['people_flags']}"
+                    )
+        self.assertFalse(failures, "\n".join(failures))
+        self.assertEqual(24, len({item["main_ending_id"] for item in witnesses}))
+        self.assertEqual(95, len({item["sub_ending_id"] for item in witnesses}))
 
 
 if __name__ == "__main__":

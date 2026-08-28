@@ -1,13 +1,13 @@
 {
   "package_id": "pkg_gameplay_v3",
   "title": "浊流之上",
-  "package_version": "3.4.0-archive-investigation",
+  "package_version": "3.5.3-ending-witnesses",
   "source_version": "最终剧本_20260723",
-  "content_hash": "sha256:d4d4c5e861d5ded69a721305236bfa72c28c0e89baa3ff2313f2ff45b595a18c",
+  "content_hash": "sha256:ace77d484f00d2d4829a1cf183832fe6843c9d392b864584b6400f82c05f5062",
   "status": "published",
   "gameplay_schema_version": 4,
   "script_schema_version": 2,
   "rules_schema_version": 3,
-  "notes": "真实 AI 选择—表达协议；权威档案调查、事实门槛与证据型治理选项；D1-D90 验收矩阵及 D13-D30 母稿锁保持。",
+  "notes": "真实 AI 选择—表达协议；六场夜间强制会谈采用人物劝服博弈并接入长期记忆；18项事实与线索均声明可校验的查档或会谈获取路径；D1-D90 验收矩阵逐日登记必读剧情、决策呈现、人物转换、档案解锁和强制会谈；95条合法结局见证路线纳入内容验收。",
   "source_sha256": "sha256:07bdb97ce1fec9a109bc1346ce2179300fc5c2fa58efeb28863b44b5f7c337f3"
 }
