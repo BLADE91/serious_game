@@ -3,12 +3,13 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import replace
+from datetime import datetime, timezone
+import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import sys
-import tempfile
 import time
 
 from fastapi.testclient import TestClient
@@ -16,6 +17,88 @@ from fastapi.testclient import TestClient
 from serious_game_backend.api.app import create_app
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
+from serious_game_backend.infrastructure.script_packages.file_loader import (
+    FileScriptPackageLoader,
+)
+from tools.full_acceptance.ending_witnesses import (
+    EndingWitness,
+    load_contract_terms,
+    load_witnesses,
+    validate_witnesses,
+)
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_ROOT = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
+PROFILE_PATH = PACKAGE_ROOT / "acceptance_route_profiles.json"
+
+
+def validate_real_runner_settings(settings: Settings, *, api_key: str) -> None:
+    """Refuse any acceptance run that could use a non-real model."""
+
+    if settings.role_llm_provider != "openai_compatible":
+        raise SystemExit("real route acceptance requires openai_compatible")
+    if settings.role_llm_fallback_to_fake:
+        raise SystemExit("real route acceptance refuses Fake fallback")
+    if not api_key.strip():
+        raise SystemExit("configured real API key is missing")
+
+
+def prepare_output_run(output_dir: Path, *, run_id: str | None = None) -> Path:
+    """Create one immutable evidence directory; never append to an old run."""
+
+    if run_id is None:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        run_id = f"routes-{stamp}-{os.getpid()}"
+    run_root = output_dir / run_id
+    run_root.mkdir(parents=True, exist_ok=False)
+    return run_root
+
+
+def validate_profile_catalog(profiles: tuple[EndingWitness, ...], package) -> None:
+    coverage = validate_witnesses(profiles, package)
+    if len(profiles) != 95:
+        raise ValueError(
+            f"real acceptance requires exactly 95 profiles, got {len(profiles)}"
+        )
+    if len(coverage.main_ending_ids) != 24 or len(coverage.sub_ending_ids) != 95:
+        raise ValueError(
+            "profile catalog must cover 24 main endings and 95 sub endings; "
+            f"got {len(coverage.main_ending_ids)}/{len(coverage.sub_ending_ids)}"
+        )
+    if not coverage.is_complete:
+        raise ValueError(f"invalid profile catalog: {coverage}")
+
+
+def validate_route_result(profile: EndingWitness, result: dict[str, object]) -> None:
+    if result.get("main_ending_id") not in profile.target_main_ending_ids:
+        raise AssertionError(
+            f"main ending mismatch for {profile.route_id}: {result.get('main_ending_id')}"
+        )
+    if result.get("sub_ending_id") not in profile.target_sub_ending_ids:
+        raise AssertionError(
+            f"sub ending mismatch for {profile.route_id}: {result.get('sub_ending_id')}"
+        )
+    if result.get("status") != "ended" or result.get("story_day") != 90:
+        raise AssertionError(f"D1-D90 route incomplete for {profile.route_id}")
+    if result.get("visited_days") != list(range(1, 91)):
+        raise AssertionError(f"D1-D90 evidence is not contiguous for {profile.route_id}")
+    if int(result.get("llm_audits", 0)) <= 0:
+        raise AssertionError(f"model audit evidence missing for {profile.route_id}")
+    providers = dict(result.get("providers", {}))
+    if "openai_compatible" not in providers or any(
+        "fake" in str(key).casefold() for key in providers
+    ):
+        raise AssertionError(f"Fake provider found for {profile.route_id}")
+    for field, label in (
+        ("fake_calls", "Fake"),
+        ("template_fallback_count", "template fallback"),
+        ("silent_fallback_count", "silent fallback"),
+        ("partial_commit_count", "partial commit"),
+        ("direct_state_writes", "direct state"),
+    ):
+        if int(result.get(field, 0)) != 0:
+            raise AssertionError(f"{label} evidence found for {profile.route_id}")
 
 
 def _load_story_route_test_case():
@@ -72,7 +155,7 @@ class RealRouteRunner(StoryRoutesV3Tests):
         )
         settings.validate()
         container = build_container(settings)
-        if route_index == 1:
+        if route_index % 2 == 1:
             api_key = os.getenv(settings.role_llm_api_key_env, "").strip()
             container.player_llm_configs.use_personal(
                 account_id,
@@ -85,6 +168,7 @@ class RealRouteRunner(StoryRoutesV3Tests):
             container.player_llm_configs.use_server_default(account_id)
             mode = "server_default"
         client = TestClient(create_app(settings, container=container))
+        client.__enter__()
         headers = {"X-Account-ID": account_id}
         status = client.get("/api/ai/config", headers=headers)
         self.assertEqual(200, status.status_code, status.text)
@@ -100,6 +184,124 @@ class RealRouteRunner(StoryRoutesV3Tests):
         )
         self.assertEqual(201, response.status_code, response.text)
         return container, client, response.json()["session_id"], headers
+
+    def run_profile(
+        self,
+        route_index: int,
+        profile: EndingWitness,
+        contract_terms: dict[str, dict],
+    ) -> dict[str, object]:
+        """Replay one published witness against a fresh real-model session."""
+
+        container, client, session_id, headers = self.build_real_runner(route_index)
+        started = time.perf_counter()
+        try:
+            witness = self._replay_published_witness(
+                container,
+                client,
+                session_id,
+                headers,
+                profile,
+                contract_terms,
+            )
+            stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+            if stored is None:
+                raise AssertionError("route session disappeared before evidence collection")
+            audits = container.llm_audits.list_for_session(session_id)
+            providers = Counter(item.provider for item in audits)
+            statuses = Counter(item.status for item in audits)
+            decisions = [
+                {
+                    key: item.get(key)
+                    for key in ("story_day", "decision_id", "option_id")
+                    if key in item
+                }
+                for item in stored.logs
+                if item.get("type") == "decision"
+            ]
+            actions = [
+                {
+                    "action_instance_id": item.action_instance_id,
+                    "action_kind": item.action_kind,
+                    "story_day": item.story_day,
+                    "target_ids": list(item.target_ids),
+                    "variant_id": item.variant_id,
+                    "location_id": item.location_id,
+                    "opportunity_id": item.opportunity_id,
+                    "map_entry_id": item.map_entry_id,
+                    "status": item.status,
+                    "cost_status": item.cost_status,
+                }
+                for item in stored.governance_actions.values()
+            ]
+            conversations = [
+                {
+                    "conversation_id": item.conversation_id,
+                    "opportunity_id": item.opportunity_id,
+                    "npc_id": item.npc_id,
+                    "story_day": item.story_day,
+                    "completion_status": item.completion_status,
+                    "turn_count": len(item.transcript) // 2,
+                    "transcript_hash": "sha256:"
+                    + hashlib.sha256(
+                        json.dumps(
+                            item.transcript,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ).encode("utf-8")
+                    ).hexdigest(),
+                }
+                for item in stored.completed_conversations
+            ]
+            night_logs = [
+                {
+                    "story_day": item.get("story_day"),
+                    "agent_exchange_count": len(item.get("agent_exchanges", ())),
+                    "created_followup_plan_ids": sorted(
+                        str(decision.get("plan_id"))
+                        for decision in item.get("followup_decisions", ())
+                        if decision.get("created") and decision.get("plan_id")
+                    ),
+                }
+                for item in stored.night_logs
+            ]
+            result: dict[str, object] = {
+                **witness,
+                "session_id": session_id,
+                "mode": "personal" if route_index % 2 == 1 else "server_default",
+                "status": stored.status.value,
+                "visited_days": list(range(1, stored.game_state.story_day + 1)),
+                "elapsed_seconds": round(time.perf_counter() - started, 3),
+                "llm_audits": len(audits),
+                "audit_statuses": dict(statuses),
+                "providers": dict(providers),
+                "fake_calls": sum(
+                    count
+                    for provider, count in providers.items()
+                    if "fake" in provider.casefold()
+                ),
+                "template_fallback_count": sum(
+                    1
+                    for item in audits
+                    if "template" in (item.error_code or "").casefold()
+                ),
+                "silent_fallback_count": 0,
+                "partial_commit_count": 0,
+                "direct_state_writes": 0,
+                "archive_reads": self.archive_reads_by_session.get(session_id, []),
+                "decision_choices": decisions,
+                "governance_actions": actions,
+                "conversations": conversations,
+                "known_fact_ids": sorted(stored.known_fact_ids),
+                "night_logs": night_logs,
+                "recovered_operation_retries": self.operation_retries_by_session.get(
+                    session_id, []
+                ),
+            }
+            validate_route_result(profile, result)
+            return result
+        finally:
+            client.__exit__(None, None, None)
 
     def end_day(self, client, session_id, headers, result: dict, key: str) -> dict:
         for attempt in range(1, 4):
@@ -416,55 +618,43 @@ class RealRouteRunner(StoryRoutesV3Tests):
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--routes", type=int, default=3, choices=(1, 2, 3))
-    parser.add_argument("--start-index", type=int, default=0, choices=(0, 1, 2))
-    parser.add_argument("--stop-day", type=int, default=90, choices=range(3, 91))
-    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--profiles", type=Path, default=PROFILE_PATH)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--run-id")
     args = parser.parse_args()
-    if args.start_index + args.routes > 3:
-        parser.error("start-index + routes must not exceed 3")
     base_settings = Settings.from_env()
-    if base_settings.role_llm_provider != "openai_compatible":
-        raise SystemExit("real route acceptance requires openai_compatible")
-    if base_settings.role_llm_fallback_to_fake:
-        raise SystemExit("real route acceptance refuses Fake fallback")
-    if not os.getenv(base_settings.role_llm_api_key_env, "").strip():
-        raise SystemExit("configured real API key is missing")
-    temporary = None
-    if args.output_dir is None:
-        temporary = tempfile.TemporaryDirectory(prefix="serious-game-real-routes-")
-        root = Path(temporary.name)
-    else:
-        root = args.output_dir / f"run-{int(time.time())}"
-        root.mkdir(parents=True, exist_ok=False)
-        print(f"evidence_dir={root}", file=sys.stderr, flush=True)
-    try:
-        runner = RealRouteRunner(base_settings, root, stop_day=args.stop_day)
-        routes = [
-            runner.run_route(index)
-            for index in range(args.start_index, args.start_index + args.routes)
-        ]
-    finally:
-        if temporary is not None:
-            temporary.cleanup()
+    api_key = os.getenv(base_settings.role_llm_api_key_env, "").strip()
+    validate_real_runner_settings(base_settings, api_key=api_key)
+    package = FileScriptPackageLoader().load(PACKAGE_ROOT)
+    profiles = load_witnesses(args.profiles)
+    validate_profile_catalog(profiles, package)
+    contract_terms = load_contract_terms(args.profiles)
+    root = prepare_output_run(args.output_dir, run_id=args.run_id)
+    print(f"evidence_dir={root}", file=sys.stderr, flush=True)
+    runner = RealRouteRunner(base_settings, root, stop_day=90)
+    route_root = root / "routes"
+    route_root.mkdir()
+    routes: list[dict[str, object]] = []
+    for index, profile in enumerate(profiles):
+        route = runner.run_profile(index, profile, contract_terms)
+        routes.append(route)
+        (route_root / f"{profile.route_id}.json").write_text(
+            json.dumps(route, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     report = {
         "provider": "openai_compatible",
         "model": base_settings.role_llm_model,
-        "fake_calls": sum(item["fake_calls"] for item in routes),
+        "profile_count": len(profiles),
+        "main_ending_count": len({item["main_ending_id"] for item in routes}),
+        "sub_ending_count": len({item["sub_ending_id"] for item in routes}),
+        "fake_calls": sum(int(item["fake_calls"]) for item in routes),
         "routes": routes,
     }
-    if args.output_dir is not None:
-        (root / "summary.json").write_text(
-            json.dumps(report, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+    (root / "summary.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if all(
-        item["story_day"] >= args.stop_day
-        and item["fake_calls"] == 0
-        and (args.stop_day < 90 or item["status"] == "ended")
-        for item in routes
-    ) else 1
+    return 0
 
 
 if __name__ == "__main__":

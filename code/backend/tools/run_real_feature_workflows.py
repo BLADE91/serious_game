@@ -10,8 +10,119 @@ import time
 
 from fastapi.testclient import TestClient
 
-from run_real_v3_routes import RealRouteRunner
+from tools.run_real_v3_routes import RealRouteRunner
+from tools.run_real_v3_routes import PROFILE_PATH
+from tools.full_acceptance.ending_witnesses import load_contract_terms, load_witnesses
 from serious_game_backend.config import Settings
+from serious_game_backend.domain.script_package import ScriptPackage
+
+
+EXPECTED_GOVERNANCE_FAMILIES = {
+    "inspect_archives",
+    "household_visit",
+    "cadre_interview",
+    "leadership_meeting",
+}
+
+
+def validate_feature_workflow_report(report: dict[str, object]) -> None:
+    """Fail closed unless every published system has real execution evidence."""
+
+    if report.get("provider") != "openai_compatible":
+        raise AssertionError("feature workflow did not use openai_compatible")
+    if int(report.get("fake_calls", 0)) != 0:
+        raise AssertionError("feature workflow contains Fake calls")
+    if int(report.get("server_default_accounts", 0)) < 1:
+        raise AssertionError("server-default account evidence is missing")
+    if int(report.get("personal_api_accounts", 0)) < 1:
+        raise AssertionError("personal API account evidence is missing")
+    if report.get("account_gateway_isolation") is not True:
+        raise AssertionError("account gateway isolation was not demonstrated")
+    requirements = (
+        ("archive_ids", 11, "11 archives"),
+        ("fact_acquisition_path_ids", 27, "27 fact acquisition paths"),
+        ("opportunity_ids", 32, "32 opportunities"),
+        ("npc_ids", 29, "29 NPCs"),
+        ("map_location_ids", 8, "8 map locations"),
+        ("household_ids", 36, "36 households"),
+    )
+    for field, expected, label in requirements:
+        values = {str(item) for item in report.get(field, ())}
+        if len(values) != expected:
+            raise AssertionError(f"expected {label}, got {len(values)}")
+    families = {str(item) for item in report.get("governance_action_families", ())}
+    if families != EXPECTED_GOVERNANCE_FAMILIES:
+        raise AssertionError(
+            "four governance action families were not all exercised: "
+            f"{sorted(families)}"
+        )
+    for field, label in (
+        ("meeting_completed", "meeting"),
+        ("contract_completed", "contract"),
+        ("document_completed", "document"),
+        ("save_load_completed", "save/load"),
+        ("review_completed", "review"),
+    ):
+        if report.get(field) is not True:
+            raise AssertionError(f"{label} workflow evidence is missing")
+
+
+def collect_session_coverage(
+    session,
+    package: ScriptPackage,
+    *,
+    map_location_ids: set[str] | None = None,
+) -> dict[str, list[str]]:
+    """Derive coverage only from persisted, player-reachable transaction records."""
+
+    archive_ids = {
+        archive_id
+        for archive_id, record in session.archive_records.items()
+        if record.read_at_days
+        and archive_id
+        in {item.archive_id for item in package.archive_investigations}
+    }
+    completed = {
+        item.opportunity_id
+        for item in session.completed_conversations
+        if item.completion_status == "completed"
+    }
+    opportunity_ids = {
+        item.opportunity_id
+        for item in package.interaction_opportunities
+        if item.opportunity_id in completed
+    }
+    npc_ids = {
+        item.npc_id
+        for item in session.completed_conversations
+        if item.completion_status == "completed"
+    }
+    path_ids: set[str] = set()
+    for fact_id, fact in package.facts.items():
+        for method in fact.acquisition_methods:
+            route_type = str(method["route_type"])
+            source_id = str(method["source_id"])
+            if (
+                route_type == "archive" and source_id in archive_ids
+            ) or (
+                route_type == "conversation" and source_id in opportunity_ids
+            ):
+                path_ids.add(f"{fact_id}:{route_type}:{source_id}")
+    household_ids = {
+        contract.household_id for contract in session.household_contracts.values()
+    }
+    action_families = {
+        item.action_kind for item in session.governance_actions.values()
+    }
+    return {
+        "archive_ids": sorted(archive_ids),
+        "fact_acquisition_path_ids": sorted(path_ids),
+        "opportunity_ids": sorted(opportunity_ids),
+        "npc_ids": sorted(npc_ids),
+        "map_location_ids": sorted(map_location_ids or set()),
+        "household_ids": sorted(household_ids),
+        "governance_action_families": sorted(action_families),
+    }
 
 
 def _expect(response, status: int = 200) -> dict:
@@ -326,7 +437,11 @@ def _server_default_workflow(
     recovered_retries = len(runner.operation_retries_by_session.get(session_id, ()))
     if audit["fake_calls"] or audit["statuses"].get("failed", 0) > recovered_retries:
         raise AssertionError(f"real server workflow audit failed: {audit}")
-    return {
+    package = container.packages.get("pkg_gameplay_v3")
+    if package is None:
+        raise AssertionError("v3 package disappeared during server workflow")
+    coverage = collect_session_coverage(after_load, package)
+    payload = {
         "account": "server_default",
         "session_id": session_id,
         "story_day": after_load.game_state.story_day,
@@ -348,7 +463,10 @@ def _server_default_workflow(
         "manual_save_load_semantic_equal": semantic_equal,
         "recovered_operation_retries": recovered_retries,
         "audit": audit,
+        "coverage": coverage,
     }
+    client.__exit__(None, None, None)
+    return payload
 
 
 def _personal_contract_workflow(
@@ -579,7 +697,15 @@ def _personal_contract_workflow(
     recovered_retries = len(runner.operation_retries_by_session.get(session_id, ()))
     if audit["fake_calls"] or audit["statuses"].get("failed", 0) > recovered_retries:
         raise AssertionError(f"real personal workflow audit failed: {audit}")
-    return {
+    package = container.packages.get("pkg_gameplay_v3")
+    if package is None:
+        raise AssertionError("v3 package disappeared during personal workflow")
+    coverage = collect_session_coverage(
+        stored,
+        package,
+        map_location_ids={item["location_id"] for item in map_records},
+    )
+    payload = {
         "account": "personal",
         "session_id": session_id,
         "story_day": stored.game_state.story_day,
@@ -591,7 +717,165 @@ def _personal_contract_workflow(
         "map_locations": map_records,
         "recovered_operation_retries": recovered_retries,
         "audit": audit,
+        "coverage": coverage,
     }
+    client.__exit__(None, None, None)
+    return payload
+
+
+def _exercise_all_available_map_locations(
+    client: TestClient,
+    container,
+    session_id: str,
+    headers: dict[str, str],
+    result: dict,
+    covered: set[str],
+) -> dict:
+    document = _expect(client.get(f"/api/game/session/{session_id}/map", headers=headers))
+    for location in document["locations"]:
+        location_id = location["location_id"]
+        if location_id in covered:
+            continue
+        card = next(
+            (item for item in location["entry_cards"] if item.get("available")),
+            None,
+        )
+        if card is None:
+            continue
+        minimum = int(card["participant_rules"]["minimum"])
+        selected = list(card.get("preselected_npc_ids", ()))
+        if len(selected) < minimum:
+            selected = [
+                item["target_id"] for item in card.get("target_choices", ())[:minimum]
+            ]
+        before = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+        if before is None:
+            raise AssertionError("map inventory session disappeared")
+        started = _governance_action(
+            client,
+            session_id,
+            headers,
+            {
+                "state_version": result["state_version"],
+                "action_kind": card["action_id"],
+                "variant_id": card["variant_id"],
+                "location_id": card["preselected_location_id"],
+                "map_entry_id": card["map_entry_id"],
+                "target_ids": selected,
+                "topic": f"在{location['name']}核实公开事项和办理进度",
+            },
+        )
+        if started["action"]["location_id"] != location_id:
+            raise AssertionError(f"map location lock failed for {location_id}")
+        cancelled = _expect(
+            client.post(
+                f"/api/game/session/{session_id}/governance/actions/"
+                f"{started['action']['action_instance_id']}/cancel",
+                headers=headers,
+                json={"state_version": started["state_version"]},
+            )
+        )
+        if (
+            cancelled["visible_state"]["ledger"]["action_points"]["remaining"]
+            != before.game_state.action_points
+        ):
+            raise AssertionError(f"cancelled map action charged AP at {location_id}")
+        result = cancelled
+        covered.add(location_id)
+    return result
+
+
+def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
+    """Exercise every currently compatible published inventory in one legal route."""
+
+    container, client, session_id, headers = runner.build_real_runner(2)
+    package = container.packages.get("pkg_gameplay_v3")
+    if package is None:
+        raise AssertionError("v3 package disappeared during inventory workflow")
+    profiles = load_witnesses(PROFILE_PATH)
+    profile = profiles[0]
+    contract_terms = load_contract_terms(PROFILE_PATH)
+    result, serial = runner.reach_day_three_with_profile(
+        container, client, session_id, headers, profile
+    )
+    all_opportunities = {
+        item.opportunity_id for item in package.interaction_opportunities
+    }
+    all_demands = frozenset(item.demand_id for item in package.npc_demands)
+    processed_representatives: set[str] = set()
+    map_location_ids: set[str] = set()
+    for story_day in range(3, 91):
+        if result["visible_state"]["status"] == "ended":
+            break
+        result = runner.drain_required_group_conversation(
+            client,
+            session_id,
+            headers,
+            result,
+            f"feature-inventory-d{story_day:02d}",
+        )
+        result, serial = runner.drain_profile_decisions(
+            container, client, session_id, headers, result, profile, serial
+        )
+        result, serial = runner.drain_optional_opportunities(
+            container,
+            client,
+            session_id,
+            headers,
+            result,
+            profile,
+            serial,
+            all_opportunities,
+        )
+        result = runner.advance_selected_demands(
+            client, session_id, headers, result, all_demands
+        )
+        result = runner.inspect_all_available_archives(
+            client, session_id, headers, result
+        )
+        result = runner.sign_contracts_toward_target(
+            client,
+            session_id,
+            headers,
+            result,
+            target_signed=36,
+            contract_terms=contract_terms,
+            processed_representatives=processed_representatives,
+        )
+        if story_day >= 46:
+            result = _exercise_all_available_map_locations(
+                client,
+                container,
+                session_id,
+                headers,
+                result,
+                map_location_ids,
+            )
+        result = runner.end_day(
+            client,
+            session_id,
+            headers,
+            result,
+            f"feature-inventory-end-d{story_day:02d}",
+        )
+    stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+    if stored is None:
+        raise AssertionError("inventory workflow session disappeared")
+    review = _expect(client.get(f"/api/game/session/{session_id}/review", headers=headers))
+    audit = _audit_summary(container, session_id)
+    coverage = collect_session_coverage(
+        stored, package, map_location_ids=map_location_ids
+    )
+    payload = {
+        "account": "server_default",
+        "session_id": session_id,
+        "story_day": stored.game_state.story_day,
+        "review_available": bool(review),
+        "audit": audit,
+        "coverage": coverage,
+    }
+    client.__exit__(None, None, None)
+    return payload
 
 
 def main() -> int:
@@ -612,14 +896,55 @@ def main() -> int:
     workflows = [
         _server_default_workflow(runner, root),
         _personal_contract_workflow(runner, root),
+        _published_inventory_workflow(runner),
     ]
+    coverage_fields = (
+        "archive_ids",
+        "fact_acquisition_path_ids",
+        "opportunity_ids",
+        "npc_ids",
+        "map_location_ids",
+        "household_ids",
+        "governance_action_families",
+    )
     report = {
         "provider": "openai_compatible",
         "model": settings.role_llm_model,
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "fake_calls": sum(item["audit"]["fake_calls"] for item in workflows),
+        "server_default_accounts": sum(
+            item["account"] == "server_default" for item in workflows
+        ),
+        "personal_api_accounts": sum(
+            item["account"] == "personal" for item in workflows
+        ),
+        "account_gateway_isolation": (
+            len({item["session_id"] for item in workflows}) == len(workflows)
+            and {item["account"] for item in workflows}
+            == {"server_default", "personal"}
+        ),
+        **{
+            field: sorted({
+                value
+                for item in workflows
+                for value in item["coverage"].get(field, ())
+            })
+            for field in coverage_fields
+        },
+        "meeting_completed": any(item.get("meeting_npc_order") for item in workflows),
+        "contract_completed": any(item.get("signed_contract_id") for item in workflows),
+        "document_completed": any(item.get("document_status") == "issued" for item in workflows),
+        "save_load_completed": any(
+            item.get("manual_save_load_semantic_equal") is True for item in workflows
+        ),
+        "review_completed": any(
+            item.get("contract_review_status") == "accepted"
+            or item.get("review_available") is True
+            for item in workflows
+        ),
         "workflows": workflows,
     }
+    validate_feature_workflow_report(report)
     (root / "summary.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
