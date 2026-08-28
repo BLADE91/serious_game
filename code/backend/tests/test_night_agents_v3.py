@@ -25,6 +25,11 @@ from serious_game_backend.infrastructure.llm.fake import FakeRoleLLMGateway
 from serious_game_backend.infrastructure.script_packages.file_loader import (
     FileScriptPackageLoader,
 )
+from tools.run_real_night_matrix import (
+    FOLLOWUP_PLAN_IDS,
+    STRATEGIES,
+    validate_night_matrix_report,
+)
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +86,69 @@ class NightAgentV3ConfigurationTests(unittest.TestCase):
             for subnetwork_id in scene["subnetwork_ids"]
         }
         self.assertEqual(set(self.package.relationship_subnetworks), participating)
+
+    def test_declares_exactly_the_six_published_forced_followup_plans(self) -> None:
+        forced_plan_ids = {
+            str(plan["plan_id"])
+            for scene in self.package.night_agent_scenes
+            for plan in scene.get("followup_plans", ())
+            if plan.get("required_when")
+        }
+
+        self.assertEqual(
+            {
+                "followup_d10_county_reporting",
+                "followup_d29_zhao_protection",
+                "followup_d40_village_mediation",
+                "followup_d55_environment",
+                "followup_d70_public_oversight",
+                "followup_d84_final_inspection",
+            },
+            forced_plan_ids,
+        )
+        for scene in self.package.night_agent_scenes:
+            for plan in scene.get("followup_plans", ()):
+                if plan.get("plan_id") not in forced_plan_ids:
+                    continue
+                self.assertTrue(plan.get("persuasion_context"))
+                self.assertEqual(
+                    set(plan.get("participant_ids", ())),
+                    set(plan.get("participant_guidance", {})),
+                )
+
+    def test_real_matrix_contract_requires_all_six_plans_and_four_strategies(self) -> None:
+        cases = [
+            {
+                "plan_id": plan_id,
+                "strategy": strategy,
+                "provider": "openai_compatible",
+                "fake_calls": 0,
+                "template_fallback_count": 0,
+                "silent_fallback_count": 0,
+                "partial_commit_count": 0,
+                "triggered_legally": True,
+                "model_audits": 1,
+                "transcript": [{"speaker_type": "npc", "text": "已记录。"}],
+                "participant_states": [{"npc_id": "npc", "status": "active"}],
+                "morning_card": "夜间结算完成。",
+                "memory_check": True,
+            }
+            for plan_id in FOLLOWUP_PLAN_IDS
+            for strategy in STRATEGIES
+        ]
+        report = {
+            "provider": "openai_compatible",
+            "fake_calls": 0,
+            "cases": cases,
+            "ordinary_contact_combinations": ["scene:a->b"],
+            "legal_no_contact_count": 1,
+            "technical_failure_count": 1,
+            "technical_failure_partial_commits": 0,
+        }
+
+        validate_night_matrix_report(report)
+        with self.assertRaisesRegex(AssertionError, "24"):
+            validate_night_matrix_report({**report, "cases": cases[:-1]})
 
 
 class RecordingNightGateway(FakeRoleLLMGateway):
@@ -442,6 +510,40 @@ class NightAgentV3SettlementTests(unittest.TestCase):
         self.assertEqual(before.flags, session.flags)
         self.assertEqual(before.game_state, session.game_state)
 
+    def test_legal_no_contact_commits_a_morning_card_without_a_failure_fallback(self) -> None:
+        delegate = FakeRoleLLMGateway()
+
+        class NoContactGateway:
+            def __getattr__(self, name):
+                return getattr(delegate, name)
+
+            def run_night_turn(self, context):
+                if context.phase == "contact_selection":
+                    return NightAgentResult(
+                        npc_id=context.npc_id,
+                        model_id="no-contact-choice",
+                        contact_ids=(),
+                        contact_response="今晚不主动联系任何人。",
+                        rationale="人物明确选择保持沉默。",
+                    )
+                return delegate.run_night_turn(context)
+
+        session = self._session_on(29)
+        record = self._service(NoContactGateway()).run_night(session, self.package)
+
+        self.assertEqual(1, len(session.night_logs))
+        self.assertEqual([], record["agent_failures"])
+        self.assertTrue(record["morning_card"])
+        self.assertTrue(record["contact_selections"])
+        self.assertTrue(all(
+            item["contact_ids"] == [] for item in record["contact_selections"]
+        ))
+        self.assertFalse(any(
+            proposal.get("fallback")
+            for exchange in record["agent_exchanges"]
+            for proposal in exchange.get("action_proposals", ())
+        ))
+
     def test_legal_fixture_is_repeatable_for_same_seed(self) -> None:
         first_session = self._session_on(29)
         first_session.random_seed = "night-v3-repeatable-seed"
@@ -526,16 +628,23 @@ class NightAgentV3FullPlaybackTests(unittest.TestCase):
             group_round = 0
             while result["visible_state"].get("active_group_conversation"):
                 group_round += 1
+                active_group = result["visible_state"]["active_group_conversation"]
+                resolved = active_group.get("phase") == "resolved"
+                endpoint = (
+                    "finish" if resolved else "turn"
+                )
+                body = {
+                    "state_version": result["state_version"],
+                    "client_action_id": (
+                        f"night-v3-group-{index:02d}-{group_round:02d}"
+                    ),
+                }
+                if not resolved:
+                    body["player_text"] = "请各位只围绕已经确认的议题逐项说明。"
                 response = runner.client.post(
-                    f"/api/game/session/{runner.session_id}/group-conversation/turn",
+                    f"/api/game/session/{runner.session_id}/group-conversation/{endpoint}",
                     headers=runner.headers,
-                    json={
-                        "state_version": result["state_version"],
-                        "player_text": "请各位只围绕已经确认的议题逐项说明。",
-                        "client_action_id": (
-                            f"night-v3-group-{index:02d}-{group_round:02d}"
-                        ),
-                    },
+                    json=body,
                 )
                 runner.assertEqual(200, response.status_code, response.text)
                 result = response.json()
