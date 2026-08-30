@@ -65,6 +65,73 @@ def test_environment_reply_covers_treatment_and_evidence_custody() -> None:
     assert "每次交接都登记去向" in combined
 
 
+def test_contract_review_retries_unavailable_model_only_after_state_restoration(
+    tmp_path: Path,
+) -> None:
+    draft_state = {
+        "state_version": 17,
+        "visible_state": {
+            "status": "active",
+            "story": {"day": 71},
+            "ledger": {"signed_households": {"signed": 4}},
+        },
+    }
+
+    class Response:
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self._payload = payload
+            self.content = b"response"
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self._payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.post_count = 0
+
+        def post(self, *_args, **_kwargs) -> Response:
+            self.post_count += 1
+            if self.post_count == 1:
+                return Response(503, {
+                    "error": {
+                        "code": "ROLE_LLM_UNAVAILABLE",
+                        "message": "模型服务暂时不可用",
+                    },
+                })
+            return Response(200, {
+                **draft_state,
+                "contract": {"contract_id": "contract-1", "status": "accepted"},
+            })
+
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, draft_state)
+
+    runner = real_routes_module.RealRouteRunner(
+        Settings(environment="test"), tmp_path
+    )
+    client = Client()
+
+    response = runner.review_contract_for_route(
+        client,
+        "session-1",
+        {"X-Account-ID": "account-1"},
+        "contract-1",
+        draft_state,
+    )
+
+    assert response.status_code == 200
+    assert client.post_count == 2
+    assert runner.operation_retries_by_session["session-1"] == [{
+        "operation": "contract-review:contract-1",
+        "attempt": 1,
+        "state_version": 17,
+        "state_restored": True,
+        "error_code": "ROLE_LLM_UNAVAILABLE",
+    }]
+
+
 def test_d29_night_matrix_uses_a_legal_protection_trigger_choice() -> None:
     profiles = {item.route_id: item for item in load_witnesses(PROFILE_PATH)}
     profile = _profile_for_plan(profiles, "followup_d29_zhao_protection")

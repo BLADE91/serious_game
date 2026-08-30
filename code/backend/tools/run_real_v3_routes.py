@@ -219,6 +219,17 @@ def _public_state_fingerprint(payload: dict) -> str:
     ).hexdigest()
 
 
+def _is_retryable_model_failure(response) -> bool:
+    error = response.json().get("error", {}) if response.content else {}
+    return (
+        response.status_code == 503
+        and error.get("code") in {
+            "ROLE_LLM_RESPONSE_RETRYABLE",
+            "ROLE_LLM_UNAVAILABLE",
+        }
+    )
+
+
 def _load_story_route_test_case():
     test_path = Path(__file__).resolve().parents[1] / "tests" / "test_story_routes_v3.py"
     spec = importlib.util.spec_from_file_location("serious_game_story_routes_v3", test_path)
@@ -266,6 +277,56 @@ class RealRouteRunner(StoryRoutesV3Tests):
         self.archive_reads_by_session: dict[str, list[dict]] = {}
         self.operation_retries_by_session: dict[str, list[dict]] = {}
         self.visited_days_by_session: dict[str, list[int]] = {}
+
+    def review_contract_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        contract_id: str,
+        draft_body: dict,
+    ):
+        operation = f"contract-review:{contract_id}"
+        response = None
+        for attempt in range(1, 4):
+            response = super().review_contract_for_route(
+                client,
+                session_id,
+                headers,
+                contract_id,
+                draft_body,
+            )
+            if response.status_code == 200:
+                return response
+            if not _is_retryable_model_failure(response) or attempt >= 3:
+                return response
+            current = client.get(
+                f"/api/game/session/{session_id}", headers=headers
+            )
+            state_restored = (
+                current.status_code == 200
+                and _public_state_fingerprint(current.json())
+                == _public_state_fingerprint(draft_body)
+            )
+            error_code = response.json().get("error", {}).get("code")
+            self.operation_retries_by_session.setdefault(session_id, []).append({
+                "operation": operation,
+                "attempt": attempt,
+                "state_version": draft_body["state_version"],
+                "state_restored": state_restored,
+                "error_code": error_code,
+            })
+            if not state_restored:
+                raise AssertionError(
+                    f"{operation}: real-model failure changed public state"
+                )
+            print(
+                f"{operation}: retryable real-model failure, retrying unchanged state",
+                file=sys.stderr,
+                flush=True,
+            )
+        assert response is not None
+        return response
 
     def build_real_runner(
         self, route_index: int
@@ -530,10 +591,8 @@ class RealRouteRunner(StoryRoutesV3Tests):
                 if not visited or visited[-1] != day:
                     visited.append(day)
                 return payload
-            error = response.json().get("error", {}) if response.content else {}
             if (
-                response.status_code == 503
-                and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
+                _is_retryable_model_failure(response)
                 and attempt < 3
             ):
                 current = client.get(
@@ -766,11 +825,7 @@ class RealRouteRunner(StoryRoutesV3Tests):
                         response = client.post(endpoint, headers=headers, json=payload)
                         if response.status_code == 200:
                             break
-                        error = response.json().get("error", {}) if response.content else {}
-                        retryable = (
-                            response.status_code == 503
-                            and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
-                        )
+                        retryable = _is_retryable_model_failure(response)
                         if not retryable:
                             break
                         current = client.get(

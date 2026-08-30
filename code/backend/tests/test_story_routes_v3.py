@@ -350,6 +350,21 @@ class StoryRoutesV3Tests(unittest.TestCase):
             self.assertEqual(200, response.status_code, response.text)
             result = {**result, "state_version": response.json()["state_version"]}
 
+    def review_contract_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        contract_id: str,
+        draft_body: dict,
+    ):
+        return client.post(
+            f"/api/game/session/{session_id}/governance/contracts/"
+            f"{contract_id}/review",
+            headers=headers,
+            json={"state_version": draft_body["state_version"]},
+        )
+
     def sign_contracts_toward_target(
         self,
         client,
@@ -466,11 +481,12 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 self.assertEqual(200, drafted.status_code, drafted.text)
                 draft_body = drafted.json()
                 self.assertEqual("pass", draft_body["contract"]["audit_status"])
-                reviewed = client.post(
-                    f"/api/game/session/{session_id}/governance/contracts/"
-                    f"{contract['contract_id']}/review",
-                    headers=headers,
-                    json={"state_version": draft_body["state_version"]},
+                reviewed = self.review_contract_for_route(
+                    client,
+                    session_id,
+                    headers,
+                    contract["contract_id"],
+                    draft_body,
                 )
                 self.assertEqual(200, reviewed.status_code, reviewed.text)
                 review_body = reviewed.json()
