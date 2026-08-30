@@ -365,6 +365,44 @@ class StoryRoutesV3Tests(unittest.TestCase):
             json={"state_version": draft_body["state_version"]},
         )
 
+    def governance_turn_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        action_id: str,
+        started_body: dict,
+        *,
+        player_text: str,
+        client_action_id: str,
+    ):
+        return client.post(
+            f"/api/game/session/{session_id}/governance/actions/{action_id}/turn",
+            headers=headers,
+            json={
+                "state_version": started_body["state_version"],
+                "player_text": player_text,
+                "client_action_id": client_action_id,
+            },
+        )
+
+    def set_contract_terms_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        contract_id: str,
+        *,
+        state_version: int,
+        terms: dict,
+    ):
+        return client.put(
+            f"/api/game/session/{session_id}/governance/contracts/"
+            f"{contract_id}/terms",
+            headers=headers,
+            json={"state_version": state_version, **terms},
+        )
+
     def sign_contracts_toward_target(
         self,
         client,
@@ -430,16 +468,16 @@ class StoryRoutesV3Tests(unittest.TestCase):
             self.assertEqual(201, started.status_code, started.text)
             started_body = started.json()
             action_id = started_body["action"]["action_instance_id"]
-            turn = client.post(
-                f"/api/game/session/{session_id}/governance/actions/{action_id}/turn",
-                headers=headers,
-                json={
-                    "state_version": started_body["state_version"],
-                    "player_text": (
-                        "我正式向你代表的每一户分别发起合同，请逐户核对条款并签约。"
-                    ),
-                    "client_action_id": f"witness-contract-{action_id}",
-                },
+            turn = self.governance_turn_for_route(
+                client,
+                session_id,
+                headers,
+                action_id,
+                started_body,
+                player_text=(
+                    "我正式向你代表的每一户分别发起合同，请逐户核对条款并签约。"
+                ),
+                client_action_id=f"witness-contract-{action_id}",
             )
             self.assertEqual(200, turn.status_code, turn.text)
             turn_body = turn.json()
@@ -472,11 +510,13 @@ class StoryRoutesV3Tests(unittest.TestCase):
                     terms[field] = max(story_day, int(terms[field]))
                 if story_day > 75:
                     terms["public_window_reward"] = False
-                drafted = client.put(
-                    f"/api/game/session/{session_id}/governance/contracts/"
-                    f"{contract['contract_id']}/terms",
-                    headers=headers,
-                    json={"state_version": state_version, **terms},
+                drafted = self.set_contract_terms_for_route(
+                    client,
+                    session_id,
+                    headers,
+                    contract["contract_id"],
+                    state_version=state_version,
+                    terms=terms,
                 )
                 self.assertEqual(200, drafted.status_code, drafted.text)
                 draft_body = drafted.json()

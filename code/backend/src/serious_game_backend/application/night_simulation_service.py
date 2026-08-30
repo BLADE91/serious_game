@@ -1288,16 +1288,27 @@ class NightSimulationService:
                 "original_proposal"
             ),
         })
+        safe_failure_details = {
+            "scene_id": context.scene_id,
+            "phase": context.phase,
+            "npc_id": context.npc_id,
+            "operation_id": context.operation_id,
+            "cause_code": getattr(last_error, "code", type(last_error).__name__),
+        }
         if isinstance(last_error, NightTurnSafetyError):
             raise RoleLLMExpressionUnsafeError(
-                "夜间表达未通过事实与提示安全检查，请重试"
+                "夜间表达未通过事实与提示安全检查，请重试",
+                details=safe_failure_details,
             ) from last_error
         if isinstance(last_error, RoleLLMBudgetExceededError):
             raise last_error
         if isinstance(last_error, RoleLLMResponseRetryableError):
-            raise last_error
+            raise RoleLLMResponseRetryableError(
+                str(last_error), details=safe_failure_details
+            ) from last_error
         raise RoleLLMResponseRetryableError(
-            "夜间真实模型调用未完成，日终状态保持不变，请重试"
+            "夜间真实模型调用未完成，日终状态保持不变，请重试",
+            details=safe_failure_details,
         ) from last_error
 
     @staticmethod

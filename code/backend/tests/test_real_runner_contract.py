@@ -132,6 +132,123 @@ def test_contract_review_retries_unavailable_model_only_after_state_restoration(
     }]
 
 
+def test_governance_turn_retries_with_retry_flag_after_state_restoration(
+    tmp_path: Path,
+) -> None:
+    state = {
+        "state_version": 8,
+        "visible_state": {
+            "status": "active",
+            "story": {"day": 67},
+            "active_governance_action": {"action_instance_id": "action-1"},
+        },
+    }
+
+    class Response:
+        content = b"response"
+
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.payloads: list[dict] = []
+
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, state)
+
+        def post(self, *_args, **kwargs) -> Response:
+            self.payloads.append(dict(kwargs["json"]))
+            if len(self.payloads) == 1:
+                return Response(503, {
+                    "error": {"code": "ROLE_LLM_UNAVAILABLE"},
+                })
+            return Response(200, {**state, "governance_turn": {"text": "同意核对"}})
+
+    runner = real_routes_module.RealRouteRunner(
+        Settings(environment="test"), tmp_path
+    )
+    client = Client()
+    response = runner.governance_turn_for_route(
+        client,
+        "session-1",
+        {"X-Account-ID": "account-1"},
+        "action-1",
+        state,
+        player_text="请逐户核对合同",
+        client_action_id="contract-action-turn-1",
+    )
+
+    assert response.status_code == 200
+    assert [item["retry"] for item in client.payloads] == [False, True]
+    assert runner.operation_retries_by_session["session-1"][0][
+        "state_restored"
+    ] is True
+
+
+def test_contract_terms_retry_does_not_add_unsupported_retry_field(
+    tmp_path: Path,
+) -> None:
+    state = {
+        "state_version": 21,
+        "visible_state": {
+            "status": "active",
+            "story": {"day": 67},
+        },
+    }
+
+    class Response:
+        content = b"response"
+
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.payloads: list[dict] = []
+
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, state)
+
+        def put(self, *_args, **kwargs) -> Response:
+            self.payloads.append(dict(kwargs["json"]))
+            if len(self.payloads) == 1:
+                return Response(503, {
+                    "error": {"code": "ROLE_LLM_RESPONSE_RETRYABLE"},
+                })
+            return Response(200, {**state, "contract": {"status": "draft"}})
+
+    runner = real_routes_module.RealRouteRunner(
+        Settings(environment="test"), tmp_path
+    )
+    client = Client()
+    response = runner.set_contract_terms_for_route(
+        client,
+        "session-1",
+        {"X-Account-ID": "account-1"},
+        "contract-1",
+        state_version=21,
+        terms={"cash_amount": 100},
+    )
+
+    assert response.status_code == 200
+    assert len(client.payloads) == 2
+    assert all("retry" not in item for item in client.payloads)
+    assert runner.operation_retries_by_session["session-1"][0][
+        "state_restored"
+    ] is True
+
+
 def test_d29_night_matrix_uses_a_legal_protection_trigger_choice() -> None:
     profiles = {item.route_id: item for item in load_witnesses(PROFILE_PATH)}
     profile = _profile_for_plan(profiles, "followup_d29_zhao_protection")

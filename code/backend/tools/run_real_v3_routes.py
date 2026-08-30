@@ -278,23 +278,34 @@ class RealRouteRunner(StoryRoutesV3Tests):
         self.operation_retries_by_session: dict[str, list[dict]] = {}
         self.visited_days_by_session: dict[str, list[int]] = {}
 
-    def review_contract_for_route(
+    def _request_model_write(
         self,
         client,
         session_id: str,
         headers: dict[str, str],
-        contract_id: str,
-        draft_body: dict,
+        *,
+        method: str,
+        path: str,
+        payload: dict,
+        operation: str,
+        supports_retry_field: bool,
     ):
-        operation = f"contract-review:{contract_id}"
+        baseline = client.get(
+            f"/api/game/session/{session_id}", headers=headers
+        )
+        if baseline.status_code != 200:
+            raise AssertionError(
+                f"{operation}: could not capture pre-operation state: "
+                f"{baseline.status_code}: {baseline.text}"
+            )
+        baseline_payload = baseline.json()
         response = None
         for attempt in range(1, 4):
-            response = super().review_contract_for_route(
-                client,
-                session_id,
-                headers,
-                contract_id,
-                draft_body,
+            attempt_payload = dict(payload)
+            if supports_retry_field:
+                attempt_payload["retry"] = attempt > 1
+            response = getattr(client, method)(
+                path, headers=headers, json=attempt_payload
             )
             if response.status_code == 200:
                 return response
@@ -306,13 +317,13 @@ class RealRouteRunner(StoryRoutesV3Tests):
             state_restored = (
                 current.status_code == 200
                 and _public_state_fingerprint(current.json())
-                == _public_state_fingerprint(draft_body)
+                == _public_state_fingerprint(baseline_payload)
             )
             error_code = response.json().get("error", {}).get("code")
             self.operation_retries_by_session.setdefault(session_id, []).append({
                 "operation": operation,
                 "attempt": attempt,
-                "state_version": draft_body["state_version"],
+                "state_version": payload["state_version"],
                 "state_restored": state_restored,
                 "error_code": error_code,
             })
@@ -327,6 +338,95 @@ class RealRouteRunner(StoryRoutesV3Tests):
             )
         assert response is not None
         return response
+
+    def action(self, client, session_id, headers, payload: dict) -> dict:
+        response = self._request_model_write(
+            client,
+            session_id,
+            headers,
+            method="post",
+            path=f"/api/game/session/{session_id}/action",
+            payload=payload,
+            operation=str(payload.get("client_action_id", "conversation-action")),
+            supports_retry_field=True,
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        return response.json()
+
+    def review_contract_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        contract_id: str,
+        draft_body: dict,
+    ):
+        return self._request_model_write(
+            client,
+            session_id,
+            headers,
+            method="post",
+            path=(
+                f"/api/game/session/{session_id}/governance/contracts/"
+                f"{contract_id}/review"
+            ),
+            payload={"state_version": draft_body["state_version"]},
+            operation=f"contract-review:{contract_id}",
+            supports_retry_field=False,
+        )
+
+    def governance_turn_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        action_id: str,
+        started_body: dict,
+        *,
+        player_text: str,
+        client_action_id: str,
+    ):
+        return self._request_model_write(
+            client,
+            session_id,
+            headers,
+            method="post",
+            path=(
+                f"/api/game/session/{session_id}/governance/actions/"
+                f"{action_id}/turn"
+            ),
+            payload={
+                "state_version": started_body["state_version"],
+                "player_text": player_text,
+                "client_action_id": client_action_id,
+            },
+            operation=client_action_id,
+            supports_retry_field=True,
+        )
+
+    def set_contract_terms_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        contract_id: str,
+        *,
+        state_version: int,
+        terms: dict,
+    ):
+        return self._request_model_write(
+            client,
+            session_id,
+            headers,
+            method="put",
+            path=(
+                f"/api/game/session/{session_id}/governance/contracts/"
+                f"{contract_id}/terms"
+            ),
+            payload={"state_version": state_version, **terms},
+            operation=f"contract-terms:{contract_id}",
+            supports_retry_field=False,
+        )
 
     def build_real_runner(
         self, route_index: int

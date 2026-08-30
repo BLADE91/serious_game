@@ -19,7 +19,10 @@ from serious_game_backend.application.scripted_effect_service import (
 )
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
-from serious_game_backend.domain.errors import RoleLLMResponseRetryableError
+from serious_game_backend.domain.errors import (
+    RoleLLMResponseRetryableError,
+    RoleLLMUnavailableError,
+)
 from serious_game_backend.domain.llm import NightAgentResult
 from serious_game_backend.infrastructure.llm.fake import FakeRoleLLMGateway
 from serious_game_backend.infrastructure.script_packages.file_loader import (
@@ -545,6 +548,26 @@ class NightAgentV3SettlementTests(unittest.TestCase):
         self.assertEqual([], session.night_logs)
         self.assertEqual(before.flags, session.flags)
         self.assertEqual(before.game_state, session.game_state)
+
+    def test_model_failure_reports_safe_night_phase_without_hidden_payload(self) -> None:
+        class UnavailableGateway:
+            def run_night_turn(self, _context):
+                raise RoleLLMUnavailableError("供应商暂时不可用")
+
+        session = self._session_on(29)
+        with self.assertRaises(RoleLLMResponseRetryableError) as caught:
+            self._service(UnavailableGateway()).run_night(session, self.package)
+
+        details = caught.exception.details
+        self.assertEqual("ROLE_LLM_UNAVAILABLE", details["cause_code"])
+        self.assertIn(details["phase"], {
+            "contact_selection", "invitation_response", "dialogue", "action",
+        })
+        self.assertTrue(details["scene_id"])
+        self.assertTrue(details["npc_id"])
+        self.assertTrue(details["operation_id"])
+        self.assertNotIn("original_proposal", details)
+        self.assertNotIn("response", details)
 
     def test_legal_no_contact_commits_a_morning_card_without_a_failure_fallback(self) -> None:
         delegate = FakeRoleLLMGateway()
