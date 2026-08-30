@@ -54,6 +54,17 @@ def test_group_reply_strategy_prefers_specific_agenda_over_generic_material_word
     assert all("纪检人员" not in item for item in public)
 
 
+def test_environment_reply_covers_treatment_and_evidence_custody() -> None:
+    replies = credible_group_replies({
+        "agenda": "环保复核、儿童治疗与原始材料保管",
+    })
+    combined = "".join(replies)
+
+    assert "县医院负责儿童复检和转诊" in combined
+    assert "第三方机构负责双份盲检" in combined
+    assert "每次交接都登记去向" in combined
+
+
 def test_d29_night_matrix_uses_a_legal_protection_trigger_choice() -> None:
     profiles = {item.route_id: item for item in load_witnesses(PROFILE_PATH)}
     profile = _profile_for_plan(profiles, "followup_d29_zhao_protection")
