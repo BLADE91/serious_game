@@ -403,6 +403,19 @@ class StoryRoutesV3Tests(unittest.TestCase):
             json={"state_version": state_version, **terms},
         )
 
+    def group_conversation_turn_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        body: dict,
+    ):
+        return client.post(
+            f"/api/game/session/{session_id}/group-conversation/turn",
+            headers=headers,
+            json=body,
+        )
+
     def sign_contracts_toward_target(
         self,
         client,
@@ -571,24 +584,19 @@ class StoryRoutesV3Tests(unittest.TestCase):
             if not resolved:
                 replies = credible_group_replies(active_group)
                 body["player_text"] = replies[(round_index - 1) % len(replies)]
-            endpoint = (
-                f"/api/game/session/{session_id}/group-conversation/"
-                f"{'finish' if resolved else 'turn'}"
-            )
-            response = None
-            for attempt in range(3):
-                body["retry"] = attempt > 0
-                response = client.post(endpoint, headers=headers, json=body)
-                if response.status_code == 200:
-                    break
-                error = response.json().get("error", {}) if response.content else {}
-                if not (
-                    response.status_code == 503
-                    and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
-                    and attempt < 2
-                ):
-                    break
-            assert response is not None
+            if resolved:
+                response = client.post(
+                    f"/api/game/session/{session_id}/group-conversation/finish",
+                    headers=headers,
+                    json=body,
+                )
+            else:
+                response = self.group_conversation_turn_for_route(
+                    client,
+                    session_id,
+                    headers,
+                    body,
+                )
             self.assertEqual(200, response.status_code, response.text)
             result = response.json()
         return result

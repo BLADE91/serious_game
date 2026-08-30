@@ -191,6 +191,76 @@ def test_governance_turn_retries_with_retry_flag_after_state_restoration(
     ] is True
 
 
+def test_group_conversation_turn_retries_unavailable_model_atomically(
+    tmp_path: Path,
+) -> None:
+    state = {
+        "state_version": 40,
+        "visible_state": {
+            "status": "active",
+            "story": {"day": 40},
+            "active_group_conversation": {
+                "conversation_id": "group-d40",
+                "phase": "active",
+            },
+        },
+    }
+
+    class Response:
+        content = b"response"
+
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.payloads: list[dict] = []
+
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, state)
+
+        def post(self, *_args, **kwargs) -> Response:
+            self.payloads.append(dict(kwargs["json"]))
+            if len(self.payloads) == 1:
+                return Response(503, {
+                    "error": {"code": "ROLE_LLM_UNAVAILABLE"},
+                })
+            return Response(200, {
+                **state,
+                "group_turn": {"text": "我会逐户说明迁坟和安置安排。"},
+            })
+
+    runner = real_routes_module.RealRouteRunner(
+        Settings(environment="test"), tmp_path
+    )
+    client = Client()
+    response = runner.group_conversation_turn_for_route(
+        client,
+        "session-1",
+        {"X-Account-ID": "account-1"},
+        {
+            "state_version": 40,
+            "client_action_id": "ending-03c-day-40-group-01",
+            "player_text": "我会逐户给出方案。",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["retry"] for item in client.payloads] == [False, True]
+    assert runner.operation_retries_by_session["session-1"] == [{
+        "operation": "ending-03c-day-40-group-01",
+        "attempt": 1,
+        "state_version": 40,
+        "state_restored": True,
+        "error_code": "ROLE_LLM_UNAVAILABLE",
+    }]
+
+
 def test_contract_terms_retry_does_not_add_unsupported_retry_field(
     tmp_path: Path,
 ) -> None:

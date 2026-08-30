@@ -428,6 +428,24 @@ class RealRouteRunner(StoryRoutesV3Tests):
             supports_retry_field=False,
         )
 
+    def group_conversation_turn_for_route(
+        self,
+        client,
+        session_id: str,
+        headers: dict[str, str],
+        body: dict,
+    ):
+        return self._request_model_write(
+            client,
+            session_id,
+            headers,
+            method="post",
+            path=f"/api/game/session/{session_id}/group-conversation/turn",
+            payload=body,
+            operation=str(body["client_action_id"]),
+            supports_retry_field=True,
+        )
+
     def build_real_runner(
         self, route_index: int
     ) -> tuple[object, TestClient, str, dict[str, str]]:
