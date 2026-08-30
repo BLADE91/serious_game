@@ -17,6 +17,7 @@ from tools.run_full_acceptance import run_stages, workspace_fingerprint
 from tools.build_full_acceptance_report import build_ending_operation_markdown
 from tools.run_browser_acceptance import validate_browser_report
 from tools.run_real_feature_workflows import (
+    _drain_group_conversations,
     _with_recovery_decision_policy,
     validate_feature_workflow_report,
 )
@@ -259,6 +260,67 @@ def test_group_conversation_turn_retries_unavailable_model_atomically(
         "state_restored": True,
         "error_code": "ROLE_LLM_UNAVAILABLE",
     }]
+
+
+def test_feature_workflow_group_turn_uses_real_runner_model_write_hook() -> None:
+    initial = {
+        "state_version": 40,
+        "visible_state": {
+            "active_group_conversation": {
+                "conversation_id": "group-d40",
+                "phase": "active",
+                "agenda": "迁坟与安置",
+            },
+        },
+    }
+    completed = {
+        "state_version": 41,
+        "visible_state": {"active_group_conversation": None},
+    }
+
+    class Response:
+        status_code = 200
+        content = b"response"
+        text = "ok"
+
+        def json(self) -> dict:
+            return completed
+
+    class Client:
+        def post(self, *_args, **_kwargs):
+            raise AssertionError("feature workflow bypassed the real runner hook")
+
+    class Runner:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def group_conversation_turn_for_route(
+            self, _client, session_id, headers, body
+        ) -> Response:
+            self.calls.append({
+                "session_id": session_id,
+                "headers": headers,
+                "body": dict(body),
+            })
+            return Response()
+
+    runner = Runner()
+    result = _drain_group_conversations(
+        Client(),
+        "session-1",
+        {"X-Account-ID": "account-1"},
+        initial,
+        "feature-group-d40",
+        runner,
+    )
+
+    assert result == completed
+    assert len(runner.calls) == 1
+    assert runner.calls[0]["body"]["state_version"] == 40
+    assert runner.calls[0]["body"]["client_action_id"].startswith(
+        "feature-group-d40-01"
+    )
+    assert runner.calls[0]["body"]["player_text"]
 
 
 def test_contract_terms_retry_does_not_add_unsupported_retry_field(

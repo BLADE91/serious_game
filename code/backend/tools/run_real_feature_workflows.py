@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient
 
 from tools.run_real_v3_routes import (
     RealRouteRunner,
-    _public_state_fingerprint,
     credible_group_replies,
 )
 from tools.run_real_v3_routes import PROFILE_PATH
@@ -207,55 +206,32 @@ def _drain_group_conversations(
             raise AssertionError("forced conversation did not settle after 40 real turns")
         group = result["visible_state"]["active_group_conversation"]
         resolved = group.get("phase") == "resolved"
-        endpoint = (
-            f"/api/game/session/{session_id}/group-conversation/"
-            f"{'finish' if resolved else 'turn'}"
-        )
-        response = None
-        replies = (None,) if resolved else credible_group_replies(group)
-        for phrasing_index, player_text in enumerate(replies, start=1):
-            payload = {
-                "state_version": result["state_version"],
-                "client_action_id": f"{key}-{turn:02d}-p{phrasing_index}",
-            }
-            if player_text is not None:
-                payload["player_text"] = player_text
-            for attempt in range(3):
-                payload["retry"] = attempt > 0
-                response = client.post(endpoint, headers=headers, json=payload)
-                if response.status_code == 200:
-                    break
-                error = response.json().get("error", {}) if response.content else {}
-                retryable = (
-                    response.status_code == 503
-                    and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
+        payload = {
+            "state_version": result["state_version"],
+            "client_action_id": f"{key}-{turn:02d}",
+        }
+        if resolved:
+            response = client.post(
+                f"/api/game/session/{session_id}/group-conversation/finish",
+                headers=headers,
+                json=payload,
+            )
+        else:
+            replies = credible_group_replies(group)
+            payload["player_text"] = replies[(turn - 1) % len(replies)]
+            if runner is None:
+                response = client.post(
+                    f"/api/game/session/{session_id}/group-conversation/turn",
+                    headers=headers,
+                    json=payload,
                 )
-                if not retryable:
-                    break
-                current = client.get(
-                    f"/api/game/session/{session_id}", headers=headers
+            else:
+                response = runner.group_conversation_turn_for_route(
+                    client,
+                    session_id,
+                    headers,
+                    payload,
                 )
-                state_restored = (
-                    current.status_code == 200
-                    and _public_state_fingerprint(current.json())
-                    == _public_state_fingerprint(result)
-                )
-                if runner is not None:
-                    runner.operation_retries_by_session.setdefault(session_id, []).append(
-                        {
-                            "operation": payload["client_action_id"],
-                            "attempt": attempt + 1,
-                            "state_version": result["state_version"],
-                            "state_restored": state_restored,
-                        }
-                    )
-                if attempt == 2:
-                    break
-            if response is not None and response.status_code == 200:
-                break
-            if response is not None and response.status_code != 503:
-                break
-        assert response is not None
         result = _expect(response)
     return result
 

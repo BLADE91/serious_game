@@ -922,55 +922,30 @@ class RealRouteRunner(StoryRoutesV3Tests):
             while result["visible_state"].get("active_group_conversation"):
                 group = dict(result["visible_state"]["active_group_conversation"])
                 resolved = group.get("phase") == "resolved"
-                endpoint = (
-                    f"/api/game/session/{session_id}/group-conversation/"
-                    f"{'finish' if resolved else 'turn'}"
-                )
-                response = None
-                replies = (None,) if resolved else credible_group_replies(group)
-                for phrasing_index, player_text in enumerate(replies, start=1):
-                    payload = {
-                        "state_version": result["state_version"],
-                        "client_action_id": (
-                            f"real-route-{route_index}-group-{story_day:02d}-"
-                            f"{len(group_records) + 1:02d}-p{phrasing_index}"
-                        ),
-                    }
-                    if player_text is not None:
-                        payload["player_text"] = player_text
-                    for attempt in range(3):
-                        payload["retry"] = attempt > 0
-                        response = client.post(endpoint, headers=headers, json=payload)
-                        if response.status_code == 200:
-                            break
-                        retryable = _is_retryable_model_failure(response)
-                        if not retryable:
-                            break
-                        current = client.get(
-                            f"/api/game/session/{session_id}", headers=headers
-                        )
-                        state_restored = (
-                            current.status_code == 200
-                            and _public_state_fingerprint(current.json())
-                            == _public_state_fingerprint(result)
-                        )
-                        self.operation_retries_by_session.setdefault(
-                            session_id, []
-                        ).append(
-                            {
-                                "operation": payload["client_action_id"],
-                                "attempt": attempt + 1,
-                                "state_version": result["state_version"],
-                                "state_restored": state_restored,
-                            }
-                        )
-                        if attempt == 2:
-                            break
-                    if response is not None and response.status_code == 200:
-                        break
-                    if response is not None and response.status_code != 503:
-                        break
-                assert response is not None
+                payload = {
+                    "state_version": result["state_version"],
+                    "client_action_id": (
+                        f"real-route-{route_index}-group-{story_day:02d}-"
+                        f"{len(group_records) + 1:02d}"
+                    ),
+                }
+                if resolved:
+                    response = client.post(
+                        f"/api/game/session/{session_id}/group-conversation/finish",
+                        headers=headers,
+                        json=payload,
+                    )
+                else:
+                    replies = credible_group_replies(group)
+                    payload["player_text"] = replies[
+                        len(group_records) % len(replies)
+                    ]
+                    response = self.group_conversation_turn_for_route(
+                        client,
+                        session_id,
+                        headers,
+                        payload,
+                    )
                 self.assertEqual(200, response.status_code, response.text)
                 result = response.json()
                 group_records.append({
