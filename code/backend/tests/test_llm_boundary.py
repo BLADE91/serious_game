@@ -133,6 +133,49 @@ class LlmBoundaryTests(unittest.TestCase):
                 random_seed="seed",
             )
 
+    def test_continue_dialogue_allows_factual_use_of_chuqu(self) -> None:
+        result = RoleTurnResult(
+            npc_id="npc_luo_jian",
+            dialogue="原件随后就转送出去了，具体去向可以查签收记录。",
+            conversation_state="continue",
+        )
+        service = NPCTurnService(StubRoleLLMGateway(result), self.validator)
+
+        validated = service.run(
+            RoleTurnContext(
+                session_id="session_1",
+                npc_id="npc_luo_jian",
+                player_text="原件后来去了哪里？",
+                story_day=42,
+                opportunity_id="opp_31_luo_jian_contact",
+            ),
+            NPCState(npc_id="npc_luo_jian", state_tier=NPCStateTier.LIMITED),
+            random_seed="seed",
+        )
+
+        self.assertEqual("continue", validated.conversation_state)
+
+    def test_continue_dialogue_still_rejects_direct_exit_order(self) -> None:
+        result = RoleTurnResult(
+            npc_id="npc_test",
+            dialogue="这件事不必再问了，请你现在出去。",
+            conversation_state="continue",
+        )
+        service = NPCTurnService(StubRoleLLMGateway(result), self.validator)
+
+        with self.assertRaises(RoleLLMResponseError):
+            service.run(
+                RoleTurnContext(
+                    session_id="session_1",
+                    npc_id="npc_test",
+                    player_text="请继续说明。",
+                    story_day=2,
+                    opportunity_id="opp_test",
+                ),
+                NPCState(npc_id="npc_test", state_tier=NPCStateTier.LIMITED),
+                random_seed="seed",
+            )
+
     def test_fact_signature_keeps_specific_phrases_without_banning_generic_words(
         self,
     ) -> None:

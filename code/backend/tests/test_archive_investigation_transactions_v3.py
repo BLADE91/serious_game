@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -101,6 +102,38 @@ class TestArchiveInvestigationTransactionsV3:
             assert choice["result_fact_count"] == 1
             assert choice["strategic_uses"]
 
+    def test_knowledge_lists_each_currently_reachable_unknown_fact_without_future_spoilers(self) -> None:
+        session = self.runtime.sessions.get_owned(self.session_id, self.account_id)
+        assert session is not None
+        session.known_npc_ids.add("npc_wu_xiuying")
+        session.flags.add("flag_clan_map")
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/knowledge",
+            headers=self.headers,
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        leads = {item["fact_id"]: item for item in payload["investigation_leads"]}
+
+        assert "fact_total_households" in leads
+        assert "fact_two_million_fee" in leads
+        assert "fact_clan_power_map" in leads
+        assert "fact_wu_independent_voice" in leads
+        assert "fact_connected_invoices" not in leads
+        assert all(item["methods"] for item in leads.values())
+        assert all(
+            method["unlock_day"] <= 2
+            for item in leads.values()
+            for method in item["methods"]
+        )
+        assert all(
+            "source_id" not in method
+            for item in leads.values()
+            for method in item["methods"]
+        )
+
     def test_first_read_atomically_spends_ap_unlocks_fact_and_supports_free_reread(self) -> None:
         before = self.runtime.sessions.get_owned(self.session_id, self.account_id)
         assert before is not None
@@ -141,6 +174,56 @@ class TestArchiveInvestigationTransactionsV3:
         assert after_reread is not None
         assert after_reread.game_state.action_points == 7
         assert after_reread.state_version == stored.state_version
+
+    def test_household_registry_names_every_household_and_uses_player_units(self) -> None:
+        response = self._inspect(["archive_household_registry"])
+        assert response.status_code == 201, response.text
+
+        sections = response.json()["archives"][0]["player_sections"]
+        assert len(sections) == 36
+        assert sections[0] == {
+            "heading": "1. 周大山（户号 ZDS-01）",
+            "body": (
+                "登记4人，安置4人。合法住宅260平方米，认定宅基地240平方米，"
+                "承包地4亩。权属情况：超建部分待认定。"
+            ),
+            "kind": "household",
+        }
+        assert sections[1]["heading"] == "2. 周有福（户号 ZDS-02）"
+        assert sections[-1]["heading"] == "36. 邓守本（户号 DENG-01）"
+
+        player_text = "\n".join(
+            f"{section['heading']}\n{section['body']}" for section in sections
+        )
+        assert "260.0" not in player_text
+        assert "overbuild_partly_recognized" not in player_text
+        assert "registered_population" not in player_text
+        assert "representative_group" not in player_text
+
+    def test_every_authoritative_investigation_archive_returns_plain_chinese_prose(self) -> None:
+        package = self.runtime.packages.get("pkg_gameplay_v3")
+        assert package is not None
+
+        for definition in package.archive_investigations:
+            self._set_day(max(2, definition.unlock_day), action_points=11)
+            response = self._inspect([definition.archive_id])
+            assert response.status_code == 201, (
+                definition.archive_id,
+                response.text,
+            )
+            sections = response.json()["archives"][0]["player_sections"]
+            assert sections, definition.archive_id
+            for section in sections:
+                assert section["heading"].strip(), definition.archive_id
+                assert section["body"].strip(), definition.archive_id
+                assert not re.search(
+                    r"\b[a-z]+(?:_[a-z0-9]+)+\b",
+                    f"{section['heading']} {section['body']}",
+                ), (definition.archive_id, section)
+                assert not re.search(
+                    r"(?<![A-Za-z])\d+\.0(?!\d)",
+                    f"{section['heading']} {section['body']}",
+                ), (definition.archive_id, section)
 
     def test_repeat_and_multi_archive_requests_have_no_partial_commit(self) -> None:
         first = self._inspect(["archive_household_registry"])

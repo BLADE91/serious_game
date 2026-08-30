@@ -1418,6 +1418,9 @@ class TerminalApp:
             contract_id,
             state_version=self._require_version(),
         )
+        self._handle_contract_review_result(reviewed)
+
+    def _handle_contract_review_result(self, reviewed: dict) -> bool:
         self.state_version = int(reviewed["state_version"])
         contract = reviewed["contract"]
         self.output(
@@ -1425,27 +1428,15 @@ class TerminalApp:
             f"{contract['review_reason']}"
         )
         self.output(f"资源状态：{contract['resource_hold_status']}")
-        if contract["status"] != "accepted":
-            if contract.get("counteroffer"):
-                self.output(f"反报价：{contract['counteroffer']}")
-            return
-        if self._select(
-            "确认按当前版本完成签署？",
-            ["确认签署；预占转为正式承诺"],
-            back_label="暂不签署，保留短期预占",
-        ) is None:
-            return
-        signed = self.api.sign_contract(
-            self._require_session(),
-            contract_id,
-            state_version=self._require_version(),
-            confirmed=True,
-        )
-        self.state_version = int(signed["state_version"])
-        self.output(
-            f"合同签署成功｜资源状态："
-            f"{signed['contract']['resource_hold_status']}"
-        )
+        if contract["status"] == "signed":
+            self.output(
+                f"合同签署成功｜资源状态："
+                f"{contract['resource_hold_status']}"
+            )
+            return True
+        if contract.get("counteroffer"):
+            self.output(f"反报价：{contract['counteroffer']}")
+        return False
 
     def _process_document(self, document_id: str) -> None:
         overview = self.api.get_governance(self._require_session())
@@ -2330,11 +2321,8 @@ class TerminalApp:
             if conversation.get("conversation_type") == "petition"
             else "干部会谈"
         )
-        self.output(
-            f"【强制群组会谈｜{type_label}｜"
-            f"{conversation.get('turn_count', 0)}/"
-            f"{conversation.get('max_turns', 3)}轮】"
-        )
+        phase = str(conversation.get("phase", "active"))
+        self.output(f"【强制群组会谈｜{type_label}｜{'等待收起' if phase == 'resolved' else '进行中'}】")
         self.output(f"议题：{conversation.get('agenda')}")
         demands = conversation.get("demands", [])
         if demands:
@@ -2344,6 +2332,22 @@ class TerminalApp:
                 str(item) for item in conversation.get("participant_ids", [])
             )
         )
+        self._render_group_conversation_status(conversation)
+        if phase == "resolved":
+            if self._select(
+                "NPC已经停止追问，是否结束并归档本场夜间会谈？",
+                ["结束夜间会谈"],
+                back_label="继续查看记录",
+            ) is None:
+                return
+            result = self.api.finish_group_conversation(
+                self._require_session(),
+                state_version=self._require_version(),
+            )
+            self.state = result["visible_state"]
+            self.state_version = int(result["state_version"])
+            self.output("夜间会谈已经归档；如有排队会谈将继续显示。")
+            return
         response = self.input("请输入你对本轮群组会谈的回应：").strip()
         if not response:
             self.output("强制群组会谈必须作出回应。")
@@ -2367,11 +2371,20 @@ class TerminalApp:
                 f"{item.get('npc_name')} [{item.get('model_id')}]："
                 f"{item.get('text')}"
             )
-        if result.get("completed"):
-            if current:
-                self.output("本场群组会谈已完成，下一场强制会谈已经开始。")
-            else:
-                self.output("强制群组会谈队列已经处理完毕。")
+        if current:
+            self._render_group_conversation_status(current)
+
+    def _render_group_conversation_status(self, conversation: dict) -> None:
+        for npc_id, state in dict(
+            conversation.get("participant_states", {})
+        ).items():
+            summary = str(state.get("public_summary", "")).strip()
+            status = str(state.get("status", "active"))
+            if summary:
+                self.output(f"{npc_id}｜{status}｜{summary}")
+        closure = str(conversation.get("closure_text", "")).strip()
+        if closure:
+            self.output(f"结束语：{closure}")
 
     def _menu_decision(self, pending: dict) -> None:
         kind = pending.get("input_kind", "choice")

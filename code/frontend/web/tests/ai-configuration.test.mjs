@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 import { GameApi } from "../app/lib/api.ts";
 import * as playerUi from "../app/lib/player-ui.ts";
+
+const shellPath = new URL("../app/GameShell.tsx", import.meta.url);
+const stylesPath = new URL("../app/globals.css", import.meta.url);
 
 
 test("projects the login AI step without ever requiring a stored key", () => {
@@ -73,6 +77,28 @@ test("shows safe actionable AI configuration errors", () => {
   }), "AI 接口测试失败，请检查地址、Key 和模型名后重试。");
 });
 
+test("keeps an explicit API test result visible until the player continues", async () => {
+  const source = await readFile(shellPath, "utf8");
+  const configureBody = source.match(/async function configureAI[\s\S]*?\n  function continueAfterAIConfiguration/)?.[0] || "";
+
+  assert.match(source, /接口测试成功/);
+  assert.match(source, /接口测试失败/);
+  assert.match(source, /success && view\.configured[\s\S]*?onContinue/);
+  assert.doesNotMatch(configureBody, /setAuthOpen\(false\)/);
+  assert.doesNotMatch(configureBody, /setSessionOpen\(true\)/);
+});
+
+test("places the welcome action on a separate row below the credits", async () => {
+  const [source, styles] = await Promise.all([
+    readFile(shellPath, "utf8"),
+    readFile(stylesPath, "utf8"),
+  ]);
+
+  assert.match(source, /className="welcome-credits"[\s\S]*?开发：/);
+  assert.match(source, /className="welcome-action"[\s\S]*?接下调令，前往云溪/);
+  assert.match(styles, /\.welcome-action\s*\{[^}]*display:\s*(?:flex|grid|block)/);
+});
+
 test("uses authenticated API configuration endpoints without browser persistence", async () => {
   const requests = [];
   const originalFetch = globalThis.fetch;
@@ -110,4 +136,31 @@ test("uses authenticated API configuration endpoints without browser persistence
   ]);
   assert.match(String(requests[1].body), /ephemeral-key/);
   assert.equal(typeof sessionStorage, "undefined");
+});
+
+test("persists only the CSRF token in a same-site cookie so an authenticated browser can reopen", () => {
+  const originalDocument = globalThis.document;
+  const originalSessionStorage = globalThis.sessionStorage;
+  const stored = new Map();
+  let cookie = "";
+  globalThis.sessionStorage = {
+    setItem(key, value) { stored.set(key, value); },
+    getItem(key) { return stored.get(key) || null; },
+    removeItem(key) { stored.delete(key); },
+  };
+  globalThis.document = {
+    get cookie() { return cookie; },
+    set cookie(value) { cookie = value; },
+  };
+  try {
+    const api = new GameApi("/api/backend");
+    api.setCsrfToken("csrf value", "custom_csrf");
+    assert.equal(stored.get("qingjiang-csrf"), "csrf value");
+    assert.match(cookie, /^custom_csrf=csrf%20value; Path=\/; SameSite=Lax$/);
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+    if (originalSessionStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = originalSessionStorage;
+  }
 });

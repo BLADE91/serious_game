@@ -73,7 +73,9 @@ class NPCRelationshipService:
             return
         rules = package.npc_discovery_rules or {}
         profiles = {item.npc_id: item for item in package.npc_profiles}
+        profile_ids_by_name = {item.name: item.npc_id for item in package.npc_profiles}
         known = set(session.known_npc_ids)
+        encountered = set(session.encountered_npc_ids)
         initial_known = rules.get("initial_known_npc_ids")
         if initial_known is None:
             initial_known = (package.governance_config or {}).get(
@@ -94,6 +96,11 @@ class NPCRelationshipService:
         for npc_id, profile in profiles.items():
             if profile.name and profile.name in visible_text:
                 known.add(npc_id)
+        encountered.update(
+            profile_ids_by_name[item.speaker]
+            for item in session.narrative_feed
+            if item.speaker in profile_ids_by_name
+        )
         for fact_id in session.known_fact_ids:
             fact = package.facts.get(fact_id)
             if fact is not None:
@@ -118,6 +125,26 @@ class NPCRelationshipService:
                 known.add(npc_id)
 
         session.known_npc_ids = known.intersection(profiles)
+        encountered.update(
+            item.npc_id for item in session.completed_conversations
+        )
+        if session.active_conversation is not None:
+            encountered.add(session.active_conversation.npc_id)
+        encountered.update(
+            npc_id
+            for action in session.governance_actions.values()
+            if action.action_kind != "inspect_archives"
+            for npc_id in action.target_ids
+            if npc_id in profiles
+        )
+        if session.active_group_conversation is not None:
+            encountered.update(session.active_group_conversation.participant_ids)
+        encountered.update(
+            str(npc_id)
+            for group in session.completed_group_conversations
+            for npc_id in group.get("participant_ids", ())
+            if str(npc_id) in profiles
+        )
         contactable = {
             npc_id
             for npc_id in rules.get("initial_contactable_npc_ids", ())
@@ -136,7 +163,21 @@ class NPCRelationshipService:
         if session.game_state.story_day >= 90:
             contactable.clear()
         session.contactable_npc_ids = contactable
+        encountered.update(contactable)
+        session.encountered_npc_ids = encountered.intersection(
+            session.known_npc_ids
+        )
         NPCRelationshipService._synchronize_edges(session, package)
+
+    @staticmethod
+    def actionable_npc_ids(
+        session: GameSession,
+        package: ScriptPackage,
+    ) -> set[str]:
+        NPCRelationshipService.synchronize(session, package)
+        return set(session.encountered_npc_ids).union(
+            session.contactable_npc_ids
+        )
 
     @staticmethod
     def _base_opportunity_available(opportunity, session: GameSession) -> bool:
@@ -266,6 +307,18 @@ class NPCRelationshipService:
         package: ScriptPackage,
         npc_id: str,
     ) -> dict[str, str]:
+        if npc_id not in session.encountered_npc_ids:
+            source = NPCRelationshipService.known_source_reason(
+                session, package, npc_id
+            ).rstrip("。")
+            return {
+                dimension: f"{source}；尚未与此人直接接触，暂不能判断{label}。"
+                for dimension, label in (
+                    ("trust", "信任"),
+                    ("attitude", "态度"),
+                    ("anxiety", "焦虑"),
+                )
+            }
         context = NPCRelationshipService.relationship_context(session, npc_id)
         latest_by_dimension: dict[str, str] = {}
         for item in reversed(session.logs):
@@ -319,11 +372,13 @@ class NPCRelationshipService:
             None,
         )
         if profile is not None and any(
-            profile.name in value
-            for item in session.narrative_feed
-            for value in (item.text or "", item.speaker or "")
+            item.speaker == profile.name for item in session.narrative_feed
         ):
-            return "当前公开剧情已经介绍了此人。"
+            return "当前公开剧情中已经与此人见面。"
+        if profile is not None and any(
+            profile.name in (item.text or "") for item in session.narrative_feed
+        ):
+            return "公开卷宗或剧情材料提到了此人。"
         if npc_id in dict(rules.get("by_npc", {})):
             return "随着搬迁工作推进，此人已进入公开工作联系范围。"
         return "已有公开办事记录将此人纳入当前工作联系。"
@@ -342,14 +397,31 @@ class NPCRelationshipService:
             reasons = NPCRelationshipService.public_relationship_reasons(
                 session, package, npc_id
             )
+            discovery_state = (
+                "contactable"
+                if npc_id in session.contactable_npc_ids
+                else "encountered"
+                if npc_id in session.encountered_npc_ids
+                else "mentioned"
+            )
+            context = (
+                NPCRelationshipService.relationship_context(session, npc_id)
+                if discovery_state != "mentioned"
+                else {
+                    "trust_band": "not_assessed",
+                    "attitude_band": "not_assessed",
+                    "anxiety_band": "not_assessed",
+                }
+            )
             values.append({
                 "npc_id": npc_id,
                 "name": profiles[npc_id].name,
+                "discovery_state": discovery_state,
                 "contact_state": (
                     "contactable"
                     if npc_id in session.contactable_npc_ids else "known"
                 ),
-                **NPCRelationshipService.relationship_context(session, npc_id),
+                **context,
                 "relationship_reasons": reasons,
                 "recent_change_reasons": list(reasons.values())[:3],
             })
@@ -358,10 +430,11 @@ class NPCRelationshipService:
     @staticmethod
     def public_edges(session: GameSession, package: ScriptPackage) -> list[dict]:
         NPCRelationshipService.synchronize(session, package)
+        encountered = set(session.encountered_npc_ids)
         return [
             dict(item)
             for item in session.relationship_edges
             if item.get("visibility") in {"suspected", "confirmed"}
-            and item.get("source_npc_id") in session.known_npc_ids
-            and item.get("target_npc_id") in session.known_npc_ids
+            and item.get("source_npc_id") in encountered
+            and item.get("target_npc_id") in encountered
         ]

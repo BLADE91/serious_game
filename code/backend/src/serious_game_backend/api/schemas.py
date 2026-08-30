@@ -168,6 +168,14 @@ class GroupConversationTurnRequest(BaseModel):
     retry: bool = False
 
 
+class GroupConversationFinishRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    state_version: int = Field(ge=1)
+    client_action_id: str = Field(min_length=8, max_length=128)
+    retry: bool = False
+
+
 class GovernanceActionStartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

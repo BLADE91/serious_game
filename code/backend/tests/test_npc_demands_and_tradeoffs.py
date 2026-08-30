@@ -29,6 +29,7 @@ from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.game_state import GameState
 from serious_game_backend.domain.gameplay_governance import (
     ContractVersion,
+    GovernanceActionRecord,
     HouseholdContract,
     ResourceReservation,
 )
@@ -421,6 +422,14 @@ def test_capacity_one_demand_reservation_transfers_to_signed_contract(package):
         current_version=1,
     )
     session.household_contracts[contract.contract_id] = contract
+    session.governance_actions["action_capacity_one"] = GovernanceActionRecord(
+        action_instance_id="action_capacity_one",
+        action_kind="household_visit",
+        story_day=46,
+        target_ids=(demand.npc_id,),
+        required_permissions=(),
+        status="active",
+    )
     service._reserve_contract_resources(session, limited_package, contract)
     active_housing = [
         item for item in session.resource_reservations
@@ -432,14 +441,22 @@ def test_capacity_one_demand_reservation_transfers_to_signed_contract(package):
     service._validate_contract_reservations(session, contract)
 
     wired, sessions = demand_service(session, limited_package)
-    signed = wired.sign_contract(
-        account_id=session.account_id,
-        session_id=session.session_id,
-        state_version=session.state_version,
-        contract_id=contract.contract_id,
-        confirmed=True,
-    )
-    assert signed["signed"] is True
+    before = encode_session(session)
+    with pytest.raises(ActionUnavailableError, match="不能绕过复核"):
+        wired.sign_contract(
+            account_id=session.account_id,
+            session_id=session.session_id,
+            state_version=session.state_version,
+            contract_id=contract.contract_id,
+            confirmed=True,
+        )
+    assert encode_session(
+        sessions.get_owned(session.session_id, session.account_id)
+    ) == before
+
+    wired._finalize_contract_signature(session, contract)
+    NPCDemandService.sync(session, limited_package)
+    sessions.save(session, expected_version=session.state_version)
     stored = sessions.get_owned(session.session_id, session.account_id)
     assert stored is not None
     assert stored.npc_demand_states[demand.demand_id]["status"] == "satisfied"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from threading import Event
 from typing import Callable
@@ -131,9 +132,9 @@ class NPCTurnService:
             raise RoleLLMResponseError("角色模型返回了非法的会谈状态")
         if (result.conversation_state == "end") != bool(result.exit_narrative):
             raise RoleLLMResponseError("角色模型会谈状态与离场叙事不一致")
-        if result.conversation_state == "continue" and any(
-            marker in result.dialogue
-            for marker in ("请回吧", "不必再谈", "谈话到此", "不谈了", "出去")
+        if (
+            result.conversation_state == "continue"
+            and self._contains_exit_directive(result.dialogue)
         ):
             raise RoleLLMResponseError("角色对白已经送客，但会谈状态仍为 continue")
         validated = self._validator.validate_role_turn(
@@ -155,6 +156,19 @@ class NPCTurnService:
             })
             wait_for_stream_ack(acknowledged, stream_cancelled)
         return validated
+
+    @staticmethod
+    def _contains_exit_directive(dialogue: str) -> bool:
+        if any(
+            marker in dialogue
+            for marker in ("请回吧", "不必再谈", "谈话到此", "不谈了")
+        ):
+            return True
+        return bool(re.search(
+            r"(?:^|[，。！？；])(?:请你?|给我|你(?:现在|马上|立刻)?|都)?"
+            r"(?:现在|马上|立刻)?出去(?:吧|！|!|。|$)",
+            dialogue,
+        ))
 
     @staticmethod
     def _normalize_result_shape(result: object) -> RoleTurnResult:

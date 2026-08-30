@@ -10,10 +10,16 @@ import json
 import os
 from pathlib import Path
 import socket
+import sys
 from threading import RLock, Thread
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.llm import SelectionOption, SelectionTask
@@ -170,9 +176,10 @@ def transaction_snapshot(container, session_id: str, account_id: str) -> dict:
         for item in container.snapshots.list_history(account_id, session_id)
     ]
     return {
+        "_payload": encoded,
         "semantic_hash": _digest(encoded),
         "state_version": session.state_version,
-        "action_points": session.game_state.action_points_remaining,
+        "action_points": session.game_state.action_points,
         "active_conversation_turns": (
             len(session.active_conversation.transcript)
             if session.active_conversation is not None else 0
@@ -182,6 +189,33 @@ def transaction_snapshot(container, session_id: str, account_id: str) -> dict:
         "flags_hash": _digest(encoded["flags"]),
         "snapshot_ids": snapshots,
     }
+
+
+def changed_paths(before: object, after: object, prefix: str = "") -> list[str]:
+    if isinstance(before, dict) and isinstance(after, dict):
+        paths: list[str] = []
+        for key in sorted(set(before) | set(after)):
+            child = f"{prefix}.{key}" if prefix else str(key)
+            if key not in before or key not in after:
+                paths.append(child)
+            else:
+                paths.extend(changed_paths(before[key], after[key], child))
+        return paths
+    if isinstance(before, list) and isinstance(after, list):
+        if before == after:
+            return []
+        return [prefix]
+    return [] if before == after else [prefix]
+
+
+def public_snapshot(snapshot: dict) -> dict:
+    return {key: value for key, value in snapshot.items() if key != "_payload"}
+
+
+def is_semantically_unchanged(paths: list[str]) -> bool:
+    """A failed attempt may touch wall-clock metadata, never gameplay state."""
+
+    return set(paths) <= {"updated_at"}
 
 
 def _selection(account_id: str, operation_id: str) -> SelectionTask:
@@ -255,16 +289,43 @@ def run_failure_cases(settings: Settings, api_key: str, root: Path, proxy: Fault
         environment="test",
         repository="sqlite",
         default_package_id="pkg_gameplay_v3",
-        role_llm_base_url=proxy.base_url("server"),
         role_llm_max_retries=0,
         role_llm_timeout_seconds=max(5, int(settings.role_llm_timeout_seconds)),
         role_llm_fallback_to_fake=False,
     )
-    runner = RealRouteRunner(runner_settings, runtime_root, stop_day=3)
+    def fault_transport(_base: str, key: str, body: dict, timeout: float) -> dict:
+        return OpenAICompatibleRoleLLMGateway._http_transport(
+            proxy.base_url("server"), key, body, timeout
+        )
+
+    runner = RealRouteRunner(
+        runner_settings,
+        runtime_root,
+        stop_day=3,
+        player_llm_transport=fault_transport,
+        player_llm_resolver=lambda *_args, **_kwargs: [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("93.184.216.34", 443),
+            )
+        ],
+    )
     container, client, session_id, headers = runner.build_real_runner(991)
     try:
-        result, _serial = runner.reach_day_three(
+        result, decision_index = runner.reach_day_three(
             container, client, session_id, headers, 991
+        )
+        result, _decision_index = runner.drain_decisions(
+            container,
+            client,
+            session_id,
+            headers,
+            result,
+            991,
+            decision_index,
         )
         started = runner.action(client, session_id, headers, {
             "input_mode": "conversation_start",
@@ -307,12 +368,27 @@ def run_failure_cases(settings: Settings, api_key: str, root: Path, proxy: Fault
             after_failure = transaction_snapshot(
                 container, session_id, headers["X-Account-ID"]
             )
-            unchanged = before == after_failure
+            payload_changes = changed_paths(before["_payload"], after_failure["_payload"])
+            unchanged = is_semantically_unchanged(payload_changes)
             proxy.set_mode("pass")
+            if fault == "invalid_auth":
+                container.player_llm_configs.use_personal(
+                    headers["X-Account-ID"],
+                    base_url=settings.role_llm_base_url,
+                    api_key=api_key,
+                    model=settings.role_llm_model,
+                )
             retry = client.post(
                 f"/api/game/session/{session_id}/action",
                 headers=headers,
-                json={**body, "retry": True},
+                json={
+                    **body,
+                    "client_action_id": (
+                        f"{operation_id}-reconfigured"
+                        if fault == "invalid_auth" else operation_id
+                    ),
+                    "retry": True,
+                },
             )
             after_retry = transaction_snapshot(
                 container, session_id, headers["X-Account-ID"]
@@ -329,9 +405,15 @@ def run_failure_cases(settings: Settings, api_key: str, root: Path, proxy: Fault
                     (failed.json().get("error") or {}).get("code")
                     if failed_status != 599 else "transport_aborted"
                 ),
-                "before": before,
-                "after_failure": after_failure,
-                "after_retry": after_retry,
+                "before": public_snapshot(before),
+                "after_failure": public_snapshot(after_failure),
+                "after_retry": public_snapshot(after_retry),
+                "failure_changed_paths": payload_changes,
+                "retry_status": retry.status_code,
+                "retry_code": (
+                    (retry.json().get("error") or {}).get("code")
+                    if retry.status_code >= 400 else None
+                ),
                 "failed_without_state_change": unchanged,
                 "retry_committed_once": committed_once,
                 "api_key_leaks": int(api_key in leaked_text),

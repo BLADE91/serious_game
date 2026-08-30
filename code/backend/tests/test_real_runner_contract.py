@@ -1,17 +1,33 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
+import tools.run_real_v3_routes as real_routes_module
 from serious_game_backend.config import Settings
 from serious_game_backend.infrastructure.script_packages.file_loader import (
     FileScriptPackageLoader,
 )
 from tools.full_acceptance.ending_witnesses import load_witnesses
-from tools.run_full_acceptance import run_stages
-from tools.run_real_feature_workflows import validate_feature_workflow_report
+from tools.run_full_acceptance import run_stages, workspace_fingerprint
+from tools.build_full_acceptance_report import build_ending_operation_markdown
+from tools.run_browser_acceptance import validate_browser_report
+from tools.run_real_feature_workflows import (
+    _with_recovery_decision_policy,
+    validate_feature_workflow_report,
+)
+from tools.run_real_night_matrix import (
+    FOLLOWUP_PLAN_IDS,
+    _profile_for_plan,
+    _strategy_texts,
+)
 from tools.run_real_v3_routes import (
+    build_ending_operation_record,
+    credible_group_replies,
     prepare_output_run,
     validate_profile_catalog,
     validate_real_runner_settings,
@@ -22,6 +38,97 @@ from tools.run_real_v3_routes import (
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
 PROFILE_PATH = PACKAGE_ROOT / "acceptance_route_profiles.json"
+
+
+def test_group_reply_strategy_prefers_specific_agenda_over_generic_material_word() -> None:
+    environmental = credible_group_replies({
+        "agenda": "环保复核、儿童治疗与原始材料保管",
+    })
+    assert any("第三方检测" in item and "县医院" in item for item in environmental)
+    assert all("纪检人员" not in item for item in environmental)
+
+    public = credible_group_replies({
+        "agenda": "公开监督、记者查阅与材料更正",
+    })
+    assert any("公开" in item and "记者" in item for item in public)
+    assert all("纪检人员" not in item for item in public)
+
+
+def test_d29_night_matrix_uses_a_legal_protection_trigger_choice() -> None:
+    profiles = {item.route_id: item for item in load_witnesses(PROFILE_PATH)}
+    profile = _profile_for_plan(profiles, "followup_d29_zhao_protection")
+    assert profile.decision_policy["dp2_01"] == "d"
+    assert profile.decision_policy["dp2_02"] == "b"
+    assert profile.route_id.endswith("-d29-protection")
+
+
+def test_inventory_profile_can_answer_recovery_decisions_it_unlocks() -> None:
+    base_profile = load_witnesses(PROFILE_PATH)[0]
+    profile = _with_recovery_decision_policy(base_profile)
+
+    assert profile.decision_policy["dp5_04_recovery"] == "a"
+    assert profile.decision_policy["dp5_05_recovery"] == "b"
+
+
+@pytest.mark.parametrize(
+    "script",
+    (
+        "run_real_failure_matrix.py",
+        "run_real_feature_workflows.py",
+        "run_real_night_matrix.py",
+        "run_real_v3_routes.py",
+    ),
+)
+def test_real_acceptance_scripts_are_directly_executable_from_backend_root(
+    script: str,
+) -> None:
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = "src"
+    completed = subprocess.run(
+        (sys.executable, f"tools/{script}", "--help"),
+        cwd=BACKEND_ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--output-dir" in completed.stdout
+
+
+def test_real_route_runner_forwards_acceptance_transport_to_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = lambda *_args: {}  # noqa: E731 - stable identity for this wiring test
+    resolver = lambda *_args: []  # noqa: E731 - stable identity for this wiring test
+    captured: dict[str, object] = {}
+
+    def capture_container(_settings, **kwargs):
+        captured.update(kwargs)
+        raise RuntimeError("container captured")
+
+    monkeypatch.setattr(real_routes_module, "build_container", capture_container)
+    runner = real_routes_module.RealRouteRunner(
+        Settings(environment="test"),
+        tmp_path,
+        player_llm_transport=transport,
+        player_llm_resolver=resolver,
+    )
+
+    with pytest.raises(RuntimeError, match="container captured"):
+        runner.build_real_runner(1)
+
+    assert captured["player_llm_transport"] is transport
+    assert captured["player_llm_resolver"] is resolver
+
+
+def test_every_forced_night_plan_has_specific_credible_player_replies() -> None:
+    for plan_id in FOLLOWUP_PLAN_IDS:
+        replies = _strategy_texts(plan_id, "credible")
+        assert len(replies) >= 2
+        assert len(set(replies)) == len(replies)
+        assert all(len(reply) >= 30 for reply in replies)
 
 
 def test_real_runner_refuses_fake_provider_fallback_and_missing_key() -> None:
@@ -75,7 +182,8 @@ def _passing_route_result(profile) -> dict[str, object]:
         "template_fallback_count": 0,
         "silent_fallback_count": 0,
         "partial_commit_count": 0,
-        "direct_state_writes": 0,
+        "mutation_interface": "http_api_only",
+        "failed_calls": [],
     }
 
 
@@ -90,7 +198,7 @@ def _passing_route_result(profile) -> dict[str, object]:
         ("template_fallback_count", 1, "template fallback"),
         ("silent_fallback_count", 1, "silent fallback"),
         ("partial_commit_count", 1, "partial commit"),
-        ("direct_state_writes", 1, "direct state"),
+        ("mutation_interface", "database_write", "direct state"),
     ),
 )
 def test_real_runner_rejects_invalid_route_evidence(
@@ -104,6 +212,52 @@ def test_real_runner_rejects_invalid_route_evidence(
 
     with pytest.raises(AssertionError, match=message):
         validate_route_result(profile, result)
+
+
+def test_real_runner_rejects_retry_without_state_restoration_evidence() -> None:
+    profile = load_witnesses(PROFILE_PATH)[0]
+    result = _passing_route_result(profile)
+    result["failed_calls"] = [{
+        "operation": "end-d10",
+        "state_restored": False,
+    }]
+
+    with pytest.raises(AssertionError, match="state restoration"):
+        validate_route_result(profile, result)
+
+
+def test_ending_operation_record_preserves_player_actions_and_mechanism_effects() -> None:
+    profile = load_witnesses(PROFILE_PATH)[0]
+    result = {
+        **_passing_route_result(profile),
+        "axes": {"integrity": "clean"},
+        "decision_choices": [{"story_day": 1, "decision_id": "dp1", "option_id": "a"}],
+        "archive_reads": [{"story_day": 2, "archive_id": "archive-1", "new_fact_ids": ["fact-1"]}],
+        "conversations": [{"story_day": 3, "npc_id": "npc-1", "completion_status": "completed"}],
+        "governance_actions": [{"story_day": 4, "action_kind": "household_visit", "status": "completed"}],
+        "contracts": [{"signed_day": 5, "household_id": "WU-01", "status": "signed"}],
+        "administrative_documents": [{"story_day": 6, "document_id": "doc-1", "status": "published"}],
+        "group_conversations": [{"story_day": 10, "conversation_id": "group-1", "phase": "resolved"}],
+        "known_fact_ids": ["fact-1"],
+        "night_logs": [{"story_day": 10, "created_followup_plan_ids": ["followup-1"]}],
+    }
+
+    record = build_ending_operation_record(profile, result)
+
+    assert record["route_id"] == profile.route_id
+    assert [item["mechanism"] for item in record["operation_sequence"]] == [
+        "decision", "archive", "conversation", "governance_action", "contract",
+        "document", "forced_night_conversation",
+    ]
+    assert record["mechanism_effects"]["red_head_documents"]["published_count"] == 1
+    assert record["mechanism_effects"]["contracts"]["signed_households"] == ["WU-01"]
+    assert record["ending_state"]["axes"] == {"integrity": "clean"}
+
+    markdown = build_ending_operation_markdown([{"operation_record": record}])
+    assert f"## {profile.route_id}" in markdown
+    assert "红头文件" in markdown
+    assert "D6 | 红头文件" in markdown
+    assert "WU-01" in markdown
 
 
 def test_feature_workflow_report_requires_every_published_system() -> None:
@@ -130,6 +284,7 @@ def test_feature_workflow_report_requires_every_published_system() -> None:
         "document_completed": True,
         "save_load_completed": True,
         "review_completed": True,
+        "contract_review_statuses": ["signed"],
     }
 
     validate_feature_workflow_report(complete)
@@ -137,6 +292,54 @@ def test_feature_workflow_report_requires_every_published_system() -> None:
     incomplete = {**complete, "household_ids": complete["household_ids"][:-1]}
     with pytest.raises(AssertionError, match="36 households"):
         validate_feature_workflow_report(incomplete)
+
+    stale = {**complete, "contract_review_statuses": ["accepted"]}
+    with pytest.raises(AssertionError, match="signed"):
+        validate_feature_workflow_report(stale)
+
+
+def test_default_acceptance_stage_scripts_exist() -> None:
+    tools_root = BACKEND_ROOT / "tools"
+    assert (tools_root / "run_browser_acceptance.py").is_file()
+    assert (tools_root / "build_full_acceptance_report.py").is_file()
+
+
+def test_browser_acceptance_parallelizes_routes_before_the_visual_inventory() -> None:
+    source = (BACKEND_ROOT / "tools" / "run_browser_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+    assert "ThreadPoolExecutor" in source
+    assert 'FULL_E2E_SHARD_TOTAL' in source
+    assert 'e2e/full-game.spec.ts' in source
+    assert 'e2e/visual-matrix.spec.ts' in source
+    assert source.index('e2e/full-game.spec.ts') < source.index('e2e/visual-matrix.spec.ts')
+
+
+def test_workspace_fingerprint_is_stable_and_bound_to_head() -> None:
+    repository = BACKEND_ROOT.parents[1]
+    first = workspace_fingerprint(repository)
+    second = workspace_fingerprint(repository)
+
+    assert first == second
+    assert len(first["workspace_fingerprint"]) == 64
+    assert len(first["git_commit"]) >= 7
+
+
+def test_browser_report_rejects_skipped_or_missing_execution() -> None:
+    passing = {
+        "suites": [{
+            "specs": [{
+                "tests": [{"status": "expected"}, {"status": "expected"}],
+            }],
+        }],
+    }
+    assert validate_browser_report(passing, expected_tests=2)["passed"] == 2
+    with pytest.raises(AssertionError, match="skipped"):
+        validate_browser_report({
+            "suites": [{"specs": [{"tests": [{"status": "skipped"}]}]}],
+        }, expected_tests=1)
+    with pytest.raises(AssertionError, match="expected at least"):
+        validate_browser_report(passing, expected_tests=3)
 
 
 def test_full_acceptance_stops_after_the_first_failed_stage() -> None:

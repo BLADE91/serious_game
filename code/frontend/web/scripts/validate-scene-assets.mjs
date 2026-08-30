@@ -44,8 +44,6 @@ assert.deepEqual(resolverAssets, expected, "resolver and public whitelist must c
 const beats = JSON.parse(await readFile(path.join(backendPackage, "story_beats.json"), "utf8")).beats;
 const decisions = JSON.parse(await readFile(path.join(backendPackage, "decisions.json"), "utf8")).decisions;
 const endings = JSON.parse(await readFile(path.join(backendPackage, "ending_rules.json"), "utf8")).main_endings;
-const beatIds = new Set(beats.map(item => item.beat_id));
-const blockIds = new Set(beats.flatMap(item => [...(item.opening_blocks || []), ...(item.night_blocks || [])]).map(item => item.block_id));
 const decisionIds = new Set(decisions.map(item => item.decision_id));
 const endingIds = new Set(endings.map(item => item.ending_id));
 const storySceneIds = new Set(STORY_SCENES.map(item => item.id));

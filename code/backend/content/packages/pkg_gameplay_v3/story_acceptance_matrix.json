@@ -77,7 +77,104 @@
       "outcome_transition_ids": [
         "ev1_01_reception_bag_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d01_opening",
+        "d01_arrival_geography",
+        "d01_arrival_economy",
+        "d01_arrival_drive",
+        "d01_arrival_factory",
+        "d01_arrival_stop",
+        "d01_arrival_structure",
+        "d01_briefing_office",
+        "d01_briefing_greeting",
+        "d01_briefing_files",
+        "d01_briefing_intro",
+        "d01_briefing_pause",
+        "d01_briefing_dossier_1",
+        "d01_briefing_dossier_2",
+        "d01_briefing_dossier_3",
+        "d01_briefing_dossier_4",
+        "d01_briefing_dossier_5",
+        "d01_briefing_policy",
+        "d01_briefing_actions",
+        "d01_briefing_ledger",
+        "d01_briefing_role",
+        "d01_briefing_look",
+        "d01_briefing_boundary",
+        "d01_reception_scene",
+        "d01_reception_toast_intro",
+        "d01_reception_toast",
+        "d01_reception_turn",
+        "d01_reception_qian_position",
+        "d01_reception_zhao_intro",
+        "d01_reception_zhao_position",
+        "d01_reception_sun_intro",
+        "d01_reception_sun_position",
+        "d01_reception_pressure",
+        "d01_reception_bag",
+        "d01_qian_offer",
+        "d01_bag_detail"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev1_01_reception_bag",
+          "presentation_entry_ids": [
+            "ev1_01_reception_bag_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [
+        "archive_household_registry",
+        "archive_coordination_fee_index"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 2,
@@ -129,7 +226,65 @@
         "d02_wu_bridge",
         "d02_wu_encounter"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d02_morning_call",
+        "d02_morning_office",
+        "d02_jiang_open",
+        "d02_jiang_first",
+        "d02_jiang_second",
+        "d02_jiang_third",
+        "d02_jiang_account",
+        "d02_taskforce_intro",
+        "d02_taskforce_context",
+        "d02_wu_roster_introduction"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_01_taskforce_faction_map",
+          "presentation_entry_ids": [
+            "dp1_01_taskforce_faction_map_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_wu_xiuying",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_wu_xiuying",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [
+        "archive_village_social_excerpt"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 3,
@@ -164,7 +319,27 @@
       "outcome_transition_ids": [
         "dp1_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d03_compensation_storm",
+        "d03_faction_map_formed"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_02",
+          "presentation_entry_ids": [
+            "dp1_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 4,
@@ -182,7 +357,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第4日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第4日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 5,
@@ -213,7 +393,30 @@
       "outcome_transition_ids": [
         "dp1_03_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d05_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_03",
+          "presentation_entry_ids": [
+            "dp1_03_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_yuan_guilan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_yuan_guilan",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 6,
@@ -237,7 +440,19 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d06_source_opening"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_yuan_guilan",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 7,
@@ -269,7 +484,34 @@
       "outcome_transition_ids": [
         "dp1_04_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d07_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_04",
+          "presentation_entry_ids": [
+            "dp1_04_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 8,
@@ -305,7 +547,38 @@
       "outcome_transition_ids": [
         "ev1_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d08_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev1_02",
+          "presentation_entry_ids": [
+            "ev1_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_yuan_guilan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 9,
@@ -339,7 +612,31 @@
       "outcome_transition_ids": [
         "dp1_05_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d09_source_opening",
+        "d09_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_05",
+          "presentation_entry_ids": [
+            "dp1_05_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 10,
@@ -373,7 +670,32 @@
       "outcome_transition_ids": [
         "ev1_03_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d10_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev1_03",
+          "presentation_entry_ids": [
+            "ev1_03_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_yuan_guilan",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": [
+        "followup_d10_county_reporting"
+      ]
     },
     {
       "story_day": 11,
@@ -406,7 +728,26 @@
       "outcome_transition_ids": [
         "dp1_06_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d11_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_06",
+          "presentation_entry_ids": [
+            "dp1_06_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 12,
@@ -436,7 +777,21 @@
       "outcome_transition_ids": [
         "dp1_07_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d12_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_07",
+          "presentation_entry_ids": [
+            "dp1_07_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 13,
@@ -466,7 +821,21 @@
       "outcome_transition_ids": [
         "dp1_08_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d13_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_08",
+          "presentation_entry_ids": [
+            "dp1_08_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 14,
@@ -491,7 +860,16 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d14_route",
+        "d14_field",
+        "d14_close"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 15,
@@ -528,7 +906,37 @@
       "outcome_transition_ids": [
         "dp1_09_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d15_close",
+        "d15_ma_intro",
+        "d15_ma_words",
+        "d15_choice_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp1_09",
+          "presentation_entry_ids": [
+            "dp1_09_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_ma_changshun",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_ma_changshun",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_ma_changshun",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 16,
@@ -555,7 +963,27 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d16_rain",
+        "d16_invoice",
+        "d16_calendar"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [
+        "archive_invoice_number_index"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 17,
@@ -592,7 +1020,41 @@
       "outcome_transition_ids": [
         "dp2_01_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d17_feng_arrival",
+        "d17_feng_words",
+        "d17_evidence",
+        "d17_tension"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_01",
+          "presentation_entry_ids": [
+            "dp2_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_feng_jingzhi",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_feng_jingzhi",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_feng_jingzhi",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 18,
@@ -636,7 +1098,46 @@
         "dp2_02_followup",
         "dp2_02_phone_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d18_qian_arrival",
+        "d18_qian_offer",
+        "d18_box",
+        "d18_choice_setup",
+        "d18_phone_pressure",
+        "d18_phone_choice_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_02",
+          "presentation_entry_ids": [
+            "dp2_02_presentation",
+            "dp2_02_phone_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [
+        "archive_original_vouchers"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 19,
@@ -654,7 +1155,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第19日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第19日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 20,
@@ -692,7 +1198,42 @@
       "outcome_transition_ids": [
         "dp2_03_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d20_note",
+        "d20_arrival",
+        "d20_liu_account",
+        "d20_liu_demand",
+        "d20_choice_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_03",
+          "presentation_entry_ids": [
+            "dp2_03_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_liu_san",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_liu_san",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_liu_san",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 21,
@@ -710,7 +1251,14 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第21日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第21日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [
+        "archive_environmental_report_versions"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 22,
@@ -747,7 +1295,41 @@
       "outcome_transition_ids": [
         "dp2_04_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d22_shi_arrival",
+        "d22_reports",
+        "d22_shi_words",
+        "d22_health_sheet"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_04",
+          "presentation_entry_ids": [
+            "dp2_04_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_shi_wenbin",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_shi_wenbin",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_shi_wenbin",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 23,
@@ -765,7 +1347,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第23日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第23日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 24,
@@ -793,7 +1380,26 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d24_school",
+        "d24_roster",
+        "d24_wu_words",
+        "d24_response"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_wu_xiuying",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_wu_xiuying",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 25,
@@ -831,7 +1437,41 @@
       "outcome_transition_ids": [
         "dp2_05_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d25_meeting",
+        "d25_miao",
+        "d25_sun_words",
+        "d25_choice_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_05",
+          "presentation_entry_ids": [
+            "dp2_05_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_miao_xiwang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 26,
@@ -878,7 +1518,57 @@
         "ev2_01_followup",
         "dp2_06_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d26_tan_scene",
+        "d26_camera",
+        "d26_tan_words",
+        "d26_first_choice_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev2_01",
+          "presentation_entry_ids": [
+            "ev2_01_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp2_06",
+          "presentation_entry_ids": [
+            "d26_zhao_after_meeting",
+            "d26_zhao_warning",
+            "d26_jiang_meeting"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_chen_mo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "encountered"
+        },
+        {
+          "npc_id": "npc_chen_mo",
+          "state": "contactable"
+        },
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 27,
@@ -916,7 +1606,33 @@
       "outcome_transition_ids": [
         "dp2_07_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d27_source_opening",
+        "d27_real_count",
+        "d27_sun_proposal",
+        "d27_pen"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_07",
+          "presentation_entry_ids": [
+            "dp2_07_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 28,
@@ -955,7 +1671,37 @@
         "dp2_08_followup",
         "dp2_09_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d28_four_fronts",
+        "d28_cards"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_08",
+          "presentation_entry_ids": [
+            "dp2_08_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp2_09",
+          "presentation_entry_ids": [
+            "dp2_09_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 29,
@@ -992,7 +1738,34 @@
       "outcome_transition_ids": [
         "dp2_10_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d29_source_opening",
+        "d29_feng_words",
+        "d29_four_mouths"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp2_10",
+          "presentation_entry_ids": [
+            "dp2_10_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_feng_jingzhi",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_feng_jingzhi",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": [
+        "followup_d29_zhao_protection"
+      ]
     },
     {
       "story_day": 30,
@@ -1023,7 +1796,28 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d30_zheng_card",
+        "d30_source_opening",
+        "d30_remaining",
+        "d30_lamp"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [
+        "archive_signing_ledger_comparison"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 31,
@@ -1055,7 +1849,31 @@
       "outcome_transition_ids": [
         "dp3_01_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d31_fog",
+        "d31_arrival"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_01",
+          "presentation_entry_ids": [
+            "dp3_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhang_li",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhang_li",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 32,
@@ -1088,7 +1906,27 @@
       "outcome_transition_ids": [
         "dp3_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d32_ledger",
+        "d32_question"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_02",
+          "presentation_entry_ids": [
+            "dp3_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 33,
@@ -1106,7 +1944,17 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第33日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第33日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 34,
@@ -1146,7 +1994,42 @@
         "dp3_03_followup",
         "dp3_04_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d34_meeting",
+        "d34_zhao_words",
+        "d34_room"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_03",
+          "presentation_entry_ids": [
+            "dp3_03_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp3_04",
+          "presentation_entry_ids": [
+            "dp3_04_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_sun_qiang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 35,
@@ -1165,7 +2048,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第35日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第35日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 36,
@@ -1200,7 +2088,32 @@
       "outcome_transition_ids": [
         "dp3_05_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d36_knock",
+        "d36_qian_terms",
+        "d36_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_05",
+          "presentation_entry_ids": [
+            "dp3_05_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 37,
@@ -1218,7 +2131,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第37日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第37日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 38,
@@ -1252,7 +2170,32 @@
       "outcome_transition_ids": [
         "dp3_06_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d38_hint",
+        "d38_petition",
+        "d38_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_06",
+          "presentation_entry_ids": [
+            "dp3_06_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 39,
@@ -1262,15 +2205,42 @@
         "dp3_06_followup",
         "D38:day_closed"
       ],
-      "opening_block_ids": [],
-      "scene_ids": [],
+      "opening_block_ids": [
+        "d39_petition_archive_lead"
+      ],
+      "scene_ids": [
+        "C03_S03"
+      ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_tan_laoliu",
+        "npc_cui_guanglin"
+      ],
       "prerequisite_narrative_ids": [],
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第39日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第39日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [
+        "d39_petition_archive_lead"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_cui_guanglin",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_cui_guanglin",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 40,
@@ -1287,7 +2257,14 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第40日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第40日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": [
+        "followup_d40_village_mediation"
+      ]
     },
     {
       "story_day": 41,
@@ -1319,7 +2296,27 @@
       "outcome_transition_ids": [
         "dp3_07_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d41_four_files",
+        "d41_clock"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_07",
+          "presentation_entry_ids": [
+            "dp3_07_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 42,
@@ -1352,7 +2349,34 @@
       "outcome_transition_ids": [
         "ev3_01_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d42_he_tiezhu_known"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev3_01",
+          "presentation_entry_ids": [
+            "ev3_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_luo_jian",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_luo_jian",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 43,
@@ -1395,7 +2419,40 @@
         "dp3_tea_disposition_followup",
         "dp3_08_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d43_notice",
+        "d43_tea",
+        "d43_pressure"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev3_01_followup",
+          "presentation_entry_ids": [
+            "ev3_01_followup_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp3_tea_disposition",
+          "presentation_entry_ids": [
+            "dp3_tea_disposition_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp3_08",
+          "presentation_entry_ids": [
+            "dp3_08_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 44,
@@ -1434,7 +2491,36 @@
       "outcome_transition_ids": [
         "dp3_09_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d44_wait",
+        "d44_room",
+        "d44_statement"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_09",
+          "presentation_entry_ids": [
+            "dp3_09_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhang_li",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 45,
@@ -1473,7 +2559,47 @@
       "outcome_transition_ids": [
         "dp3_10_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d45_calls",
+        "d45_jiang",
+        "d45_setup"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp3_10",
+          "presentation_entry_ids": [
+            "dp3_10_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhang_li",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_qian_wei",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [
+        "archive_lead_census_master",
+        "archive_eia_raw_data"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 46,
@@ -1513,7 +2639,43 @@
         "dp4_01_followup",
         "dp4_roster_disposition_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d46_ke_introduction",
+        "d46_bag",
+        "d46_summary",
+        "d46_handoff"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_01",
+          "presentation_entry_ids": [
+            "dp4_01_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp4_roster_disposition",
+          "presentation_entry_ids": [
+            "dp4_roster_disposition_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_ke_qinian",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_ke_qinian",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 47,
@@ -1538,7 +2700,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第47日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第47日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 48,
@@ -1555,7 +2722,9 @@
         "C04_S02"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_wang_fang"
+      ],
       "prerequisite_narrative_ids": [
         "dp4_02_presentation"
       ],
@@ -1568,7 +2737,31 @@
       "outcome_transition_ids": [
         "dp4_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d48_source_opening",
+        "d48_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_02",
+          "presentation_entry_ids": [
+            "dp4_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_wang_fang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_wang_fang",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 49,
@@ -1607,7 +2800,27 @@
       "outcome_transition_ids": [
         "dp4_03_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d49_source_opening",
+        "d49_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_03",
+          "presentation_entry_ids": [
+            "dp4_03_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 50,
@@ -1625,7 +2838,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第50日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第50日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 51,
@@ -1658,7 +2876,35 @@
       "outcome_transition_ids": [
         "dp4_04_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d51_zhou_kuiyuan_intro",
+        "d51_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_04",
+          "presentation_entry_ids": [
+            "dp4_04_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_kuiyuan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_kuiyuan",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 52,
@@ -1691,7 +2937,30 @@
       "outcome_transition_ids": [
         "dp4_05_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d52_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_05",
+          "presentation_entry_ids": [
+            "dp4_05_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_dashan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 53,
@@ -1724,7 +2993,31 @@
       "outcome_transition_ids": [
         "dp4_06_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d53_source_opening",
+        "d53_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_06",
+          "presentation_entry_ids": [
+            "dp4_06_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 54,
@@ -1749,7 +3042,27 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d54_yang_bo_intro"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_wu_xiuying",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_yang_bo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_yang_bo",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 55,
@@ -1778,7 +3091,28 @@
       "outcome_transition_ids": [
         "ev4_01_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d55_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev4_01",
+          "presentation_entry_ids": [
+            "ev4_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_yuan_guilan",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": [
+        "followup_d55_environment"
+      ]
     },
     {
       "story_day": 56,
@@ -1810,7 +3144,30 @@
       "outcome_transition_ids": [
         "dp4_07_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d56_he_tiezhu_intro"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_07",
+          "presentation_entry_ids": [
+            "dp4_07_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 57,
@@ -1845,7 +3202,28 @@
         "ev4_02_followup",
         "dp4_08_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d57_source_opening",
+        "d57_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev4_02",
+          "presentation_entry_ids": [
+            "ev4_02_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp4_08",
+          "presentation_entry_ids": [
+            "dp4_08_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 58,
@@ -1885,7 +3263,39 @@
         "ev4_03_followup",
         "dp4_09_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d58_source_opening",
+        "d58_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev4_03",
+          "presentation_entry_ids": [
+            "ev4_03_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp4_09",
+          "presentation_entry_ids": [
+            "dp4_09_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_liu_san",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [
+        "archive_inspection_schedule"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 59,
@@ -1924,7 +3334,37 @@
         "ev4_04_followup",
         "dp4_10_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d59_source_opening",
+        "d59_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev4_04",
+          "presentation_entry_ids": [
+            "ev4_04_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp4_10",
+          "presentation_entry_ids": [
+            "dp4_10_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_gu_keming",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_gu_keming",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 60,
@@ -1956,7 +3396,24 @@
       "outcome_transition_ids": [
         "dp4_11_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d60_source_opening",
+        "d60_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp4_11",
+          "presentation_entry_ids": [
+            "dp4_11_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [
+        "archive_resettlement_acceptance_sample"
+      ],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 61,
@@ -1988,7 +3445,22 @@
       "outcome_transition_ids": [
         "dp5_01_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d61_source_opening",
+        "d61_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_01",
+          "presentation_entry_ids": [
+            "dp5_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 62,
@@ -2006,7 +3478,12 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": "第62日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第62日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 63,
@@ -2038,7 +3515,27 @@
       "outcome_transition_ids": [
         "dp5_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d63_source_opening",
+        "d63_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_02",
+          "presentation_entry_ids": [
+            "dp5_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 64,
@@ -2071,7 +3568,31 @@
       "outcome_transition_ids": [
         "dp5_03_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d64_source_opening",
+        "d64_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_03",
+          "presentation_entry_ids": [
+            "dp5_03_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_mancang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_mancang",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 65,
@@ -2099,7 +3620,19 @@
       "outcome_transition_ids": [
         "ev5_01_followup"
       ],
-      "free_action_prompt": "第65日，今天没有必须处理的主线事项，可以自由安排行动。"
+      "free_action_prompt": "第65日，今天没有必须处理的主线事项，可以自由安排行动。",
+      "required_story_entry_ids": [],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev5_01",
+          "presentation_entry_ids": [
+            "ev5_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 66,
@@ -2121,7 +3654,14 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d66_source_opening"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 67,
@@ -2151,7 +3691,22 @@
       "outcome_transition_ids": [
         "dp5_04_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d67_source_opening",
+        "d67_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_04",
+          "presentation_entry_ids": [
+            "dp5_04_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 68,
@@ -2184,7 +3739,27 @@
       "outcome_transition_ids": [
         "dp5_05_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d68_zhou_arrival",
+        "d68_second_step"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_05",
+          "presentation_entry_ids": [
+            "dp5_05_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_mancang",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 69,
@@ -2208,7 +3783,23 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d69_source_opening"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_mancang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_mancang",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 70,
@@ -2234,7 +3825,30 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d70_source_opening",
+        "d70_ning_introduction"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_ning_dehai",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_ning_dehai",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": [
+        "followup_d70_public_oversight"
+      ]
     },
     {
       "story_day": 71,
@@ -2264,7 +3878,22 @@
       "outcome_transition_ids": [
         "dp5_06_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d71_source_opening",
+        "d71_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_06",
+          "presentation_entry_ids": [
+            "dp5_06_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 72,
@@ -2294,7 +3923,21 @@
       "outcome_transition_ids": [
         "ev5_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d72_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev5_02",
+          "presentation_entry_ids": [
+            "ev5_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 73,
@@ -2325,7 +3968,22 @@
       "outcome_transition_ids": [
         "dp5_07_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d73_source_opening",
+        "d73_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_07",
+          "presentation_entry_ids": [
+            "dp5_07_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 74,
@@ -2364,7 +4022,33 @@
         "dp5_08_followup",
         "dp5_09_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d74_source_opening",
+        "d74_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp5_08",
+          "presentation_entry_ids": [
+            "dp5_08_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp5_09",
+          "presentation_entry_ids": [
+            "dp5_09_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 75,
@@ -2408,7 +4092,40 @@
         "dp5_11_followup",
         "dp5_12_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d75_source_opening",
+        "d75_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev5_03",
+          "presentation_entry_ids": [
+            "ev5_03_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp5_10",
+          "presentation_entry_ids": [
+            "dp5_10_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp5_11",
+          "presentation_entry_ids": [
+            "dp5_11_presentation"
+          ]
+        },
+        {
+          "decision_id": "dp5_12",
+          "presentation_entry_ids": [
+            "dp5_12_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 76,
@@ -2443,7 +4160,22 @@
       "outcome_transition_ids": [
         "dp6_01_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d76_source_opening",
+        "d76_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_01",
+          "presentation_entry_ids": [
+            "dp6_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 77,
@@ -2476,7 +4208,31 @@
       "outcome_transition_ids": [
         "dp6_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d77_source_opening",
+        "d77_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_02",
+          "presentation_entry_ids": [
+            "dp6_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_lao_juetou",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_lao_juetou",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 78,
@@ -2508,7 +4264,34 @@
       "outcome_transition_ids": [
         "dp6_03_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d78_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_03",
+          "presentation_entry_ids": [
+            "dp6_03_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_xingbang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_miao_xiwang",
+          "state": "contactable"
+        },
+        {
+          "npc_id": "npc_he_xingbang",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 79,
@@ -2539,7 +4322,22 @@
       "outcome_transition_ids": [
         "ev6_01_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d79_crowd",
+        "d79_choice"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev6_01",
+          "presentation_entry_ids": [
+            "ev6_01_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 80,
@@ -2573,7 +4371,28 @@
       "outcome_transition_ids": [
         "dp6_04_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d80_receipt",
+        "d80_zhao",
+        "d80_choice"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_04",
+          "presentation_entry_ids": [
+            "dp6_04_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 81,
@@ -2604,7 +4423,22 @@
       "outcome_transition_ids": [
         "dp6_05_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d81_source_opening",
+        "d81_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_05",
+          "presentation_entry_ids": [
+            "dp6_05_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 82,
@@ -2634,7 +4468,21 @@
       "outcome_transition_ids": [
         "ev6_02_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d82_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "ev6_02",
+          "presentation_entry_ids": [
+            "ev6_02_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 83,
@@ -2670,7 +4518,32 @@
       "outcome_transition_ids": [
         "dp6_06_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d83_draft",
+        "d83_chen",
+        "d83_choice"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_06",
+          "presentation_entry_ids": [
+            "dp6_06_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_chen_mo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_chen_mo",
+          "state": "encountered"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 84,
@@ -2702,7 +4575,32 @@
       "outcome_transition_ids": [
         "dp6_07_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d84_source_opening"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_07",
+          "presentation_entry_ids": [
+            "dp6_07_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_deng_shouben",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_deng_shouben",
+          "state": "contactable"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": [
+        "followup_d84_final_inspection"
+      ]
     },
     {
       "story_day": 85,
@@ -2734,7 +4632,23 @@
       "outcome_transition_ids": [
         "dp6_08_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d85_list",
+        "d85_room",
+        "d85_choice"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_08",
+          "presentation_entry_ids": [
+            "dp6_08_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 86,
@@ -2761,7 +4675,25 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d86_empty",
+        "d86_receipts",
+        "d86_pause"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_kuiyuan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 87,
@@ -2793,7 +4725,22 @@
       "outcome_transition_ids": [
         "dp6_09_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d87_source_opening",
+        "d87_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_09",
+          "presentation_entry_ids": [
+            "dp6_09_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 88,
@@ -2815,7 +4762,14 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d88_source_opening"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 89,
@@ -2847,7 +4801,27 @@
       "outcome_transition_ids": [
         "dp6_10_followup"
       ],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d89_source_opening",
+        "d89_transition_context"
+      ],
+      "decision_presentation_order": [
+        {
+          "decision_id": "dp6_10",
+          "presentation_entry_ids": [
+            "dp6_10_presentation"
+          ]
+        }
+      ],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "mentioned"
+        }
+      ],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     },
     {
       "story_day": 90,
@@ -2869,7 +4843,14 @@
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
-      "free_action_prompt": ""
+      "free_action_prompt": "",
+      "required_story_entry_ids": [
+        "d90_source_opening"
+      ],
+      "decision_presentation_order": [],
+      "npc_discovery_transitions": [],
+      "archive_unlock_ids": [],
+      "forced_conversation_plan_ids": []
     }
   ]
 }

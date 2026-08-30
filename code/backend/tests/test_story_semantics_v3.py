@@ -27,6 +27,48 @@ PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
 
 
 class StorySemanticsV3Tests(unittest.TestCase):
+    def test_story_does_not_repeat_long_player_visible_blocks_verbatim(self) -> None:
+        package = FileScriptPackageLoader().load(PACKAGE_DIR)
+        occurrences: dict[str, list[str]] = {}
+        for day in range(1, 91):
+            beat = package.story_day(day)
+            for block in (*beat.opening_blocks, *beat.night_blocks):
+                text = block.text.strip()
+                if len(text) >= 40:
+                    occurrences.setdefault(text, []).append(f"D{day}:{block.block_id}")
+        duplicates = {text: locations for text, locations in occurrences.items() if len(locations) > 1}
+        self.assertEqual({}, duplicates)
+
+    def test_d1_dossiers_present_evidence_without_spoiling_hidden_routes(self) -> None:
+        package = FileScriptPackageLoader().load(PACKAGE_DIR)
+        dossier_text = "\n".join(
+            block.text for block in package.story_day(1).opening_blocks
+            if block.block_id.startswith("d01_briefing_dossier_")
+        )
+        for authorial_label in ("贪腐线", "隐瞒线", "三条暗线", "第一个扣子", "最危险的一颗雷"):
+            self.assertNotIn(authorial_label, dossier_text)
+        self.assertIn("两百万", dossier_text)
+        self.assertIn("涉铅遗留", dossier_text)
+
+    def test_six_forced_followups_define_character_persuasion_guidance(self) -> None:
+        package = FileScriptPackageLoader().load(PACKAGE_DIR)
+        plans = [
+            plan
+            for scene in package.night_agent_scenes
+            for plan in scene.get("followup_plans", ())
+        ]
+        self.assertEqual(6, len(plans))
+        for plan in plans:
+            self.assertTrue(str(plan.get("persuasion_context", "")).strip())
+            guidance = plan.get("participant_guidance")
+            self.assertEqual(set(plan["participant_ids"]), set(guidance or {}))
+            for npc_id in plan["participant_ids"]:
+                item = guidance[npc_id]
+                self.assertTrue(item.get("core_concerns"))
+                self.assertTrue(item.get("convincing_signals"))
+                self.assertTrue(item.get("suspicion_signals"))
+                self.assertTrue(str(item.get("questioning_style", "")).strip())
+
     def test_night_followup_plans_are_complete_package_owned_candidates(self) -> None:
         def mutate(document: dict) -> None:
             scene = next(
@@ -39,6 +81,21 @@ class StorySemanticsV3Tests(unittest.TestCase):
         with self.assertRaises(ContentValidationError) as raised:
             FileScriptPackageLoader().load(package_dir)
         self.assertIn("follow-up", raised.exception.message)
+
+    def test_followup_rejects_missing_participant_persuasion_guidance(self) -> None:
+        def mutate(document: dict) -> None:
+            scene = next(
+                item for item in document["night_agent_scenes"]
+                if item["scene_id"] == "night_d84_inspection_followup"
+            )
+            scene["followup_plans"][0]["participant_guidance"].pop(
+                "npc_zhang_li"
+            )
+
+        package_dir = self.mutate_package("social_rules.json", mutate)
+        with self.assertRaises(ContentValidationError) as raised:
+            FileScriptPackageLoader().load(package_dir)
+        self.assertIn("劝服策略", raised.exception.message)
 
     def test_player_visible_text_rejects_ascii_comma_in_chinese_context_only(self) -> None:
         with self.assertRaises(ContentValidationError):
@@ -340,13 +397,52 @@ class StorySemanticsV3Tests(unittest.TestCase):
             "decision_display_node_ids",
             "outcome_transition_ids",
             "free_action_prompt",
+            "required_story_entry_ids",
+            "decision_presentation_order",
+            "npc_discovery_transitions",
+            "archive_unlock_ids",
+            "forced_conversation_plan_ids",
         }
+        archive_ids = {
+            item.archive_id for item in package.archive_investigations
+        }
+        followup_plan_ids = {
+            str(plan["plan_id"])
+            for scene in package.night_agent_scenes
+            for plan in scene.get("followup_plans", ())
+        }
+        npc_ids = {item.npc_id for item in package.npc_profiles}
         for row in matrix:
             self.assertTrue(required_fields.issubset(row), f"D{row['story_day']} matrix fields")
             if row["state"] == "free_action":
                 self.assertTrue(row["free_action_prompt"].strip())
             else:
                 self.assertTrue(row["opening_block_ids"] or row["decision_ids"])
+            self.assertEqual(
+                row["opening_block_ids"],
+                row["required_story_entry_ids"],
+            )
+            self.assertEqual(
+                row["decision_ids"],
+                [item["decision_id"] for item in row["decision_presentation_order"]],
+            )
+            self.assertTrue(
+                set(row["archive_unlock_ids"]).issubset(archive_ids)
+            )
+            self.assertTrue(
+                set(row["forced_conversation_plan_ids"]).issubset(
+                    followup_plan_ids
+                )
+            )
+            self.assertTrue(
+                all(
+                    item["npc_id"] in npc_ids
+                    and item["state"] in {
+                        "mentioned", "encountered", "contactable"
+                    }
+                    for item in row["npc_discovery_transitions"]
+                )
+            )
 
     def test_acceptance_matrix_rejects_a_wrong_decision_display_reference(self) -> None:
         def mutate(document: dict) -> None:
@@ -362,6 +458,32 @@ class StorySemanticsV3Tests(unittest.TestCase):
             field="decision_display_node_ids",
         )
         self.assertIn("决策", error.message)
+
+    def test_acceptance_matrix_rejects_unknown_runtime_transition_ids(self) -> None:
+        cases = (
+            ("archive_unlock_ids", "archive_not_registered"),
+            ("forced_conversation_plan_ids", "followup_not_registered"),
+            (
+                "npc_discovery_transitions",
+                [{"npc_id": "npc_not_registered", "state": "mentioned"}],
+            ),
+        )
+        for field, value in cases:
+            with self.subTest(field=field):
+                def mutate(document: dict, *, field=field, value=value) -> None:
+                    row = document["days"][0]
+                    row[field] = value if isinstance(value, list) else [value]
+
+                package_dir = self.mutate_package(
+                    "story_acceptance_matrix.json", mutate
+                )
+                error = self.assert_validation_context(
+                    package_dir,
+                    day=1,
+                    node="beat_d01_arrival_and_reception",
+                    field=field,
+                )
+                self.assertIn("验收矩阵", error.message)
 
     def test_v3_is_the_default_and_v2_is_runtime_retired_without_file_edits(self) -> None:
         with patch.dict("os.environ", {}, clear=True):

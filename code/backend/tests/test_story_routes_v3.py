@@ -86,6 +86,69 @@ class StoryRoutesV3Tests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         return response.json()
 
+    def test_opportunity_driver_does_not_end_a_conversation_twice_when_npc_closed_it(self) -> None:
+        class Response:
+            status_code = 200
+            text = ""
+
+            def __init__(self, payload: dict) -> None:
+                self.payload = payload
+
+            def json(self) -> dict:
+                return self.payload
+
+        class Client:
+            def get(self, path: str, *, headers: dict[str, str]) -> Response:
+                if path.endswith("/opportunities"):
+                    return Response({"opportunities": [{
+                        "opportunity_id": "opp_auto_close",
+                        "npc_id": "npc_wang_fang",
+                        "conversation_goal": "核实公开材料",
+                        "cost_action_points": 1,
+                        "cta_available": True,
+                        "conversation_active": False,
+                    }]})
+                return Response({
+                    "ledger": {"action_points": {"remaining": 8}}
+                })
+
+        calls: list[dict] = []
+        results = iter((
+            {
+                "state_version": 2,
+                "conversation": {"conversation_id": "conv-auto-close"},
+                "visible_state": {"active_conversation": {
+                    "conversation_id": "conv-auto-close"
+                }},
+            },
+            {
+                "state_version": 3,
+                "completion_status": "completed",
+                "visible_state": {"active_conversation": None},
+            },
+        ))
+        original_action = self.action
+        self.action = lambda client, session_id, headers, payload: (
+            calls.append(payload) or next(results)
+        )
+        try:
+            result, serial, completed = self.complete_one_available_opportunity(
+                Client(),
+                "session",
+                {"X-Account-ID": "account"},
+                {"state_version": 1},
+                7,
+            )
+        finally:
+            self.action = original_action
+        self.assertTrue(completed)
+        self.assertEqual(8, serial)
+        self.assertEqual("completed", result["completion_status"])
+        self.assertEqual(
+            ["conversation_start", "free_text"],
+            [item["input_mode"] for item in calls],
+        )
+
     def end_day(self, client, session_id, headers, result: dict, key: str) -> dict:
         response = client.post(
             f"/api/game/session/{session_id}/end-day",
@@ -98,6 +161,8 @@ class StoryRoutesV3Tests(unittest.TestCase):
     def inspect_all_available_archives(
         self, client, session_id, headers, result: dict
     ) -> dict:
+        if result.get("visible_state", {}).get("pending_decision"):
+            return result
         while True:
             catalog = client.get(
                 f"/api/game/session/{session_id}/actions", headers=headers
@@ -175,6 +240,11 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 "请把迁坟的四件事说清楚：择地、择日、起灵和祭祀延续，"
                 "我会按村里旧例逐项核对。"
             )
+        elif opportunity_id == "opp_03_zhou_mancang_contact":
+            player_text = (
+                "你要求先摊什么账、再摆什么原始数据、最后才谈什么？"
+                "请把你认可的三步顺序完整说清楚。"
+            )
         started = self.action(client, session_id, headers, {
             "input_mode": "conversation_start",
             "client_action_id": f"witness-opportunity-{serial:04d}-start",
@@ -192,12 +262,18 @@ class StoryRoutesV3Tests(unittest.TestCase):
             "target_npc_id": npc_id,
             "player_text": player_text,
         })
-        closed = self.action(client, session_id, headers, {
-            "input_mode": "conversation_end",
-            "client_action_id": f"witness-opportunity-{serial:04d}-end",
-            "state_version": talked["state_version"],
-            "conversation_id": conversation_id,
-        })
+        if (
+            talked.get("completion_status") == "completed"
+            or talked.get("visible_state", {}).get("active_conversation") is None
+        ):
+            closed = talked
+        else:
+            closed = self.action(client, session_id, headers, {
+                "input_mode": "conversation_end",
+                "client_action_id": f"witness-opportunity-{serial:04d}-end",
+                "state_version": talked["state_version"],
+                "conversation_id": conversation_id,
+            })
         return closed, serial + 1, True
 
     def drain_optional_opportunities(
@@ -425,9 +501,43 @@ class StoryRoutesV3Tests(unittest.TestCase):
     def drain_required_group_conversation(
         self, client, session_id, headers, result: dict, key: str
     ) -> dict:
+        def credible_replies(active: dict) -> tuple[str, ...]:
+            agenda = str(active.get("agenda", ""))
+            if any(marker in agenda for marker in ("宗族", "迁坟", "安置")):
+                return (
+                    "周氏和散姓各推一名代表共同见证，镇干部只记录，县搬迁专班按公开政策复核；争议户单列继续协商，绝不替住户签字。",
+                    "迁坟礼序逐户确认，安置、医疗和就学逐户核权；确认表由住户、镇和县专班各留一份，更正保留原版本和经办人。",
+                    "代表只能见证、不能替别人决定；签字只确认材料已记录，不代表放弃异议，政策没有依据的事项不写成承诺。",
+                )
+            if any(marker in agenda for marker in ("材料", "保护", "证据", "交代")):
+                return (
+                    "原始材料今晚由两名经手人共同编号封存，制作只读副本并记录交接时间；明早交县纪委指定人员签收。",
+                    "封存、复制、移交分别留痕，赵建国可在纪检人员在场时逐项说明，任何人不得私自删改。",
+                )
+            if any(marker in agenda for marker in ("环保", "治疗", "复检", "取样")):
+                return (
+                    "明早由第三方检测机构和县医院分别进场，水样双份封存、编号盲检，儿童按原始名单逐人复检并建立转诊清单。",
+                    "家属和村民代表可见证封样，检测结果不先交企业改写；漏一名儿童就重新复核并保留原始记录。",
+                )
+            if any(marker in agenda for marker in ("公开", "监督", "舆情", "记者")):
+                return (
+                    "三日内公开台账版本、检测来源和更正记录，原始材料与对外口径并列保留，记者可依法查阅公开材料。",
+                    "公开页面保留历史版本，未回答的问题进入公开待办并标明责任部门、纠正时间和依据。",
+                )
+            if any(marker in agenda for marker in ("巡察", "整改", "逾期", "自查", "终局")):
+                return (
+                    "终局汇报按已完成、逾期、证据不足三类逐项列示，不把承诺写成结果；每项附责任人、原始记录和下一节点。",
+                    "签约、环保、医疗和资金分别附原始依据，缺什么就如实写缺什么，巡察组可抽查底稿并保留更正前版本。",
+                )
+            return (
+                "我承认当前记录里的差距，不把未完成写成完成；明早由县镇共同核对原始台账，三日内公开差额、责任人和可复核记录。",
+                "未完成事项继续标注逾期，原始表和更正表并列保留，任何人不得为达标补签或改口。",
+            )
+
         round_index = 0
         while result["visible_state"].get("active_group_conversation"):
             round_index += 1
+            self.assertLessEqual(round_index, 40, "forced conversation did not settle")
             active_group = result["visible_state"]["active_group_conversation"]
             resolved = active_group.get("phase") == "resolved"
             body = {
@@ -435,13 +545,26 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 "client_action_id": f"{key}-group-{round_index:02d}",
             }
             if not resolved:
-                body["player_text"] = "请各位只围绕已确认的议题逐项说明。"
-            response = client.post(
+                replies = credible_replies(active_group)
+                body["player_text"] = replies[(round_index - 1) % len(replies)]
+            endpoint = (
                 f"/api/game/session/{session_id}/group-conversation/"
-                f"{'finish' if resolved else 'turn'}",
-                headers=headers,
-                json=body,
+                f"{'finish' if resolved else 'turn'}"
             )
+            response = None
+            for attempt in range(3):
+                body["retry"] = attempt > 0
+                response = client.post(endpoint, headers=headers, json=body)
+                if response.status_code == 200:
+                    break
+                error = response.json().get("error", {}) if response.content else {}
+                if not (
+                    response.status_code == 503
+                    and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
+                    and attempt < 2
+                ):
+                    break
+            assert response is not None
             self.assertEqual(200, response.status_code, response.text)
             result = response.json()
         return result
@@ -817,6 +940,12 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 headers,
                 result,
                 f"{profile.route_id}-day-{story_day:02d}",
+            )
+            # A profile may legally choose an evidence-gated option that was
+            # opened by the previous day's archive release.  Acquire all
+            # currently available evidence before attempting that decision.
+            result = self.inspect_all_available_archives(
+                client, session_id, headers, result
             )
             result, serial = self.drain_profile_decisions(
                 container,

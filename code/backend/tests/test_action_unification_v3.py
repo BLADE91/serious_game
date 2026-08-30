@@ -220,6 +220,14 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         return response.json()["actions"]
 
+    def _mark_encountered(self, *npc_ids: str) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_action_unification"
+        )
+        session.known_npc_ids.update(npc_ids)
+        session.encountered_npc_ids.update(npc_ids)
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+
     def _map(self) -> dict:
         response = self.client.get(
             f"/api/game/session/{self.session_id}/map", headers=self.headers
@@ -311,6 +319,7 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self,
     ) -> None:
         self._set_story_state(day=3)
+        self._mark_encountered("npc_zhou_dashan")
         factory = next(
             item for item in self._map()["locations"]
             if item["location_id"] == "loc_hongda_factory"
@@ -422,6 +431,13 @@ class ActionUnificationV3Tests(unittest.TestCase):
 
     def test_meeting_variants_filter_their_own_legal_participants(self) -> None:
         self._set_story_state(day=31)
+        self._mark_encountered(
+            "npc_zhao_jianguo",
+            "npc_qian_wei",
+            "npc_sun_qiang",
+            "npc_zhou_dashan",
+            "npc_zhou_kuiyuan",
+        )
         variants = {
             variant["variant_id"]: variant
             for action in self._actions()
@@ -470,6 +486,7 @@ class ActionUnificationV3Tests(unittest.TestCase):
         self.assertNotIn("npc_gu_keming", leadership_ids)
 
     def test_governance_submission_executes_selected_variant_context(self) -> None:
+        self._mark_encountered("npc_zhao_jianguo", "npc_zhou_dashan")
         session = self.runtime.sessions.get_owned(
             self.session_id, "acct_action_unification"
         )
@@ -507,6 +524,7 @@ class ActionUnificationV3Tests(unittest.TestCase):
         )
 
     def test_conversation_variant_persists_follow_up_action_record(self) -> None:
+        self._mark_encountered("npc_zhou_dashan")
         session = self.runtime.sessions.get_owned(
             self.session_id, "acct_action_unification"
         )
@@ -535,6 +553,7 @@ class ActionUnificationV3Tests(unittest.TestCase):
 
     def test_governance_submission_rejects_targets_from_another_variant(self) -> None:
         self._set_story_state(day=31)
+        self._mark_encountered("npc_zhao_jianguo", "npc_zhou_dashan")
         session = self.runtime.sessions.get_owned(
             self.session_id, "acct_action_unification"
         )

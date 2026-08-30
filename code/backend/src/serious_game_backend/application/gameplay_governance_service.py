@@ -40,6 +40,7 @@ from serious_game_backend.application.archive_investigation_service import (
     public_investigation_choice,
 )
 from serious_game_backend.application.npc_demand_service import NPCDemandService
+from serious_game_backend.application.npc_memory_service import NPCMemoryService
 from serious_game_backend.application.stream_lifecycle import (
     StreamCancelCallback,
     StreamCancelled,
@@ -137,6 +138,7 @@ class GameplayGovernanceService:
         disclosure_gate: DisclosureGateService | None = None,
         operations: OperationRepository | None = None,
         transactions: RuntimeTransactionRepository | None = None,
+        npc_memories: NPCMemoryService | None = None,
     ) -> None:
         self._sessions = sessions
         self._packages = packages
@@ -148,6 +150,7 @@ class GameplayGovernanceService:
         self._story_flow = story_flow
         self._snapshots = snapshots
         self._disclosure_gate = disclosure_gate or DisclosureGateService()
+        self._npc_memories = npc_memories
         self._leases = (
             TurnOperationLeaseService(sessions, operations, transactions)
             if operations is not None and transactions is not None
@@ -800,9 +803,36 @@ class GameplayGovernanceService:
             # Thinking/reply events are released in participant order only
             # after the authoritative transaction succeeds.
         replies = []
+        committed_turns = []
         for npc_id in action.target_ids:
             profile = profiles[npc_id]
             npc_state = session.npc_states[npc_id]
+            memory_context = (
+                self._npc_memories.context(
+                    session_id=session.session_id,
+                    npc_id=npc_id,
+                    story_day=session.game_state.story_day,
+                    query=text,
+                )
+                if self._npc_memories is not None
+                else {"memory_items": (), "unresolved_commitments": ()}
+            )
+            relationship_context = NPCRelationshipService.relationship_context(
+                session, npc_id
+            )
+            recent_change_reasons = (
+                NPCRelationshipService.recent_visible_change_reasons(
+                    session, npc_id
+                )
+            )
+            unresolved_demands = tuple(
+                demand.description
+                for demand in package.npc_demands
+                if demand.npc_id == npc_id
+                and session.npc_demand_states.get(demand.demand_id, {}).get(
+                    "status"
+                ) in {"discovered", "acknowledged", "committed"}
+            )
             turn = self._npc_turns.run(
                 RoleTurnContext(
                     session_id=session.session_id,
@@ -853,6 +883,13 @@ class GameplayGovernanceService:
                         fact_boundary.forbidden_fact_signatures
                         if fact_boundary is not None else {}
                     ),
+                    memory_items=memory_context["memory_items"],
+                    relationship_context=relationship_context,
+                    recent_visible_change_reasons=recent_change_reasons,
+                    unresolved_commitments=memory_context[
+                        "unresolved_commitments"
+                    ],
+                    unresolved_demands=unresolved_demands,
                     conversation_turn_count=sum(
                         item.get("speaker_type") == "player"
                         for item in action.transcript
@@ -890,6 +927,7 @@ class GameplayGovernanceService:
                     "input_relevance": "irrelevant",
                 })
                 continue
+            committed_turns.append((npc_id, turn))
             if npc_state.attitude_score is not None:
                 session.npc_states[npc_id] = replace(
                     npc_state,
@@ -971,16 +1009,104 @@ class GameplayGovernanceService:
                 session, package, action.target_ids[0], text
             )
         self._commit_action_cost(session, action)
-        response = self._complete_leased_turn(lease, package, {
-            "input_rejected": False,
-            "replies": replies,
-            "acquired_archive_ids": acquired,
-            "contract_batch_proposal": (
-                asdict(proposal) if proposal is not None else None
-            ),
-        }, include_visible_state=True)
+        created_memory_ids: list[str] = []
+        try:
+            for npc_id, turn in committed_turns:
+                created_memory_ids.extend(self._record_governance_turn_memory(
+                    session=session,
+                    package=package,
+                    action=action,
+                    npc_id=npc_id,
+                    player_text=text,
+                    turn=turn,
+                ))
+            response = self._complete_leased_turn(lease, package, {
+                "input_rejected": False,
+                "replies": replies,
+                "acquired_archive_ids": acquired,
+                "contract_batch_proposal": (
+                    asdict(proposal) if proposal is not None else None
+                ),
+            }, include_visible_state=True)
+        except Exception:
+            if created_memory_ids and self._npc_memories is not None:
+                self._npc_memories.invalidate(tuple(created_memory_ids))
+            raise
         self._emit_committed_replies(replies, stream_event, stream_cancelled)
         return response
+
+    def _record_governance_turn_memory(
+        self,
+        *,
+        session: GameSession,
+        package: ScriptPackage,
+        action: GovernanceActionRecord,
+        npc_id: str,
+        player_text: str,
+        turn,
+    ) -> tuple[str, ...]:
+        if self._npc_memories is None:
+            return ()
+        operation_prefix = (
+            f"{action.action_instance_id}:memory:"
+            f"{sum(item.get('speaker_type') == 'player' for item in action.transcript)}:"
+            f"{npc_id}"
+        )
+        common = {
+            "session_id": session.session_id,
+            "account_id": session.account_id,
+            "npc_id": npc_id,
+            "story_day": session.game_state.story_day,
+        }
+        npc_name = next(
+            (item.name for item in package.npc_profiles if item.npc_id == npc_id),
+            npc_id,
+        )
+        created_memory_ids: list[str] = []
+        try:
+            memory = self._npc_memories.record(
+                **common,
+                operation_id=f"{operation_prefix}:episode",
+                candidate=(
+                    f"玩家说：{player_text}；{npc_name}回应：{turn.dialogue}"
+                )[:500],
+            )
+            if memory is not None:
+                created_memory_ids.append(memory.memory_id)
+            if turn.disclosure_id is not None:
+                fact = package.facts.get(turn.disclosure_id)
+                memory = self._npc_memories.record_authoritative(
+                    **common,
+                    operation_id=f"{operation_prefix}:disclosure",
+                    content=(
+                        f"{fact.title}：{fact.text}"
+                        if fact is not None
+                        else f"已披露事实：{turn.disclosure_id}"
+                    ),
+                    memory_type="disclosure",
+                    actor_id=npc_id,
+                    due_day=None,
+                    resolution_state="observed",
+                )
+                if memory is not None:
+                    created_memory_ids.append(memory.memory_id)
+            if turn.attitude_delta != 0 or turn.anxiety_delta != 0:
+                memory = self._npc_memories.record_authoritative(
+                    **common,
+                    operation_id=f"{operation_prefix}:relationship",
+                    content=f"本次会谈使玩家与{npc_name}的关系发生了可观察变化。",
+                    memory_type="relationship",
+                    actor_id=npc_id,
+                    due_day=None,
+                    resolution_state="observed",
+                )
+                if memory is not None:
+                    created_memory_ids.append(memory.memory_id)
+        except Exception:
+            if created_memory_ids:
+                self._npc_memories.invalidate(tuple(created_memory_ids))
+            raise
+        return tuple(created_memory_ids)
 
     def finish_action(
         self,
@@ -1772,6 +1898,7 @@ class GameplayGovernanceService:
         batch = session.contract_batches.get(batch_id)
         if batch is None:
             raise NotFoundError("合同批次不存在")
+        self._require_contract_conversation(session, batch=batch)
         if batch.status != "pending_confirmation":
             raise ActionUnavailableError("合同批次已经确认或取消")
         if not confirmed:
@@ -1840,6 +1967,7 @@ class GameplayGovernanceService:
             account_id, session_id, state_version
         )
         contract = self._contract(session, contract_id)
+        self._require_contract_conversation(session, contract=contract)
         if contract.status not in {
             "awaiting_terms", "draft", "explanation_requested",
             "counteroffered", "rejected",
@@ -1912,6 +2040,7 @@ class GameplayGovernanceService:
             account_id, session_id, state_version
         )
         contract = self._contract(session, contract_id)
+        self._require_contract_conversation(session, contract=contract)
         if contract.status not in {
             "draft", "explanation_requested", "counteroffered", "rejected",
         } or contract.term_sheet is None:
@@ -1955,6 +2084,7 @@ class GameplayGovernanceService:
             account_id, session_id, state_version
         )
         contract = self._contract(session, contract_id)
+        self._require_contract_conversation(session, contract=contract)
         if contract.status != "draft" or contract.term_sheet is None:
             raise ActionUnavailableError("只有完成资源条款的草案可以送审")
         current_version = self._current_contract_version(contract)
@@ -2025,9 +2155,8 @@ class GameplayGovernanceService:
         contract.review_history = contract.review_history[-8:]
         if decision == "accept":
             self._reserve_contract_resources(session, package, contract)
-            contract.reserved_until_day = min(
-                89, session.game_state.story_day + 2
-            )
+            contract.reserved_until_day = None
+            self._finalize_contract_signature(session, contract)
         else:
             self._release_contract_reservations(
                 session,
@@ -2041,6 +2170,7 @@ class GameplayGovernanceService:
             "state_version": session.state_version,
             "missing_hard_conditions": missing_conditions,
             "contract": self._public_contract(contract, include_text=True),
+            "visible_state": self._projector.project(session, package),
         }
 
     def sign_contract(
@@ -2056,12 +2186,29 @@ class GameplayGovernanceService:
             account_id, session_id, state_version
         )
         contract = self._contract(session, contract_id)
+        self._require_contract_conversation(session, contract=contract)
         if not confirmed:
             return {
                 "state_version": session.state_version,
                 "signed": False,
                 "contract": self._public_contract(contract),
             }
+        if contract.status == "signed":
+            return {
+                "state_version": session.state_version,
+                "signed": True,
+                "contract": self._public_contract(contract, include_text=True),
+                "visible_state": self._projector.project(session, package),
+            }
+        raise ActionUnavailableError(
+            "签约已在本户复核接受时完成；未签署状态不能绕过复核"
+        )
+
+    def _finalize_contract_signature(
+        self,
+        session: GameSession,
+        contract: HouseholdContract,
+    ) -> None:
         if session.game_state.story_day >= 90:
             raise ActionUnavailableError("D90只验收，不再新增签约")
         if contract.status != "accepted" or contract.term_sheet is None:
@@ -2073,15 +2220,6 @@ class GameplayGovernanceService:
             raise ActionUnavailableError(
                 "D75后不再适用公开签约奖励，请取消该奖励并重新送审"
             )
-        if (
-            contract.reserved_until_day is not None
-            and session.game_state.story_day > contract.reserved_until_day
-        ):
-            self._release_contract_reservations(
-                session, contract_id, reason="expired_before_signing"
-            )
-            contract.status = "draft"
-            raise ActionUnavailableError("资源预占已经过期，请重新送审")
         if any(
             item.household_id == contract.household_id
             and item.status == "signed"
@@ -2101,7 +2239,7 @@ class GameplayGovernanceService:
         for reservation in session.resource_reservations:
             if (
                 reservation.owner_type == "contract"
-                and reservation.owner_id == contract_id
+                and reservation.owner_id == contract.contract_id
                 and reservation.status == "reserved"
             ):
                 reservation.status = "committed"
@@ -2182,13 +2320,6 @@ class GameplayGovernanceService:
             evidence_level="E3",
             confidentiality="private",
         )
-        self._commit(session, state_version)
-        return {
-            "state_version": session.state_version,
-            "signed": True,
-            "contract": self._public_contract(contract, include_text=True),
-            "visible_state": self._projector.project(session, package),
-        }
 
     def settle_due_contracts(
         self, session: GameSession, package: ScriptPackage
@@ -2490,8 +2621,7 @@ class GameplayGovernanceService:
         whose identities are public before the first scripted encounter.
         """
         if package.gameplay_schema_version >= 4:
-            NPCRelationshipService.synchronize(session, package)
-            return set(session.known_npc_ids)
+            return NPCRelationshipService.actionable_npc_ids(session, package)
         config = package.governance_config or {}
         visible = set(config.get("initial_visible_npc_ids", ()))
         day = session.game_state.story_day
@@ -3164,6 +3294,20 @@ class GameplayGovernanceService:
         allowed_numbers = set(
             self._STRUCTURED_NUMBER_PATTERN.findall(structured_text)
         )
+        for resource in config.get("resource_pools", []):
+            if str(resource.get("resource_id", "")) not in expected_resource_ids:
+                continue
+            player_visible_metadata = {
+                "name": resource.get("name", ""),
+                "attributes": resource.get("attributes", {}),
+            }
+            allowed_numbers.update(self._STRUCTURED_NUMBER_PATTERN.findall(
+                json.dumps(
+                    player_visible_metadata,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            ))
         extra_numbers = sorted(
             set(self._STRUCTURED_NUMBER_PATTERN.findall(content))
             - allowed_numbers
@@ -3409,7 +3553,7 @@ class GameplayGovernanceService:
                 "合同资源不足，不能预占",
                 details={"resources": failures},
             )
-        expires = min(89, session.game_state.story_day + 2)
+        expires = None
         for resource_id, amount in requested.items():
             remaining = amount
             for reservation in reusable:
@@ -3465,17 +3609,6 @@ class GameplayGovernanceService:
                 expires_day=expires,
             )
             session.resource_reservations.append(reservation)
-            self._record_resource_event(
-                session,
-                change_kind="reservation",
-                source_type="contract_review",
-                source_id=contract.contract_id,
-                resource_id=resource_id,
-                quantity=remaining,
-                reservation_id=reservation.reservation_id,
-                expires_day=expires,
-                payment_status="unpaid",
-            )
 
     @staticmethod
     def _reusable_demand_reservations(
@@ -4126,6 +4259,7 @@ class GameplayGovernanceService:
         limited = package.limited_signatory_for(contract.household_id)
         assert limited is not None
         profile = (
+            f"{limited.role_setting}；"
             f"初始立场：{limited.initial_position}；"
             f"核心关切：{limited.core_concern}；"
             f"接受条件：{limited.acceptance_condition}；"
@@ -4467,6 +4601,34 @@ class GameplayGovernanceService:
         return value
 
     @staticmethod
+    def _require_contract_conversation(
+        session: GameSession,
+        *,
+        batch: ContractBatch | None = None,
+        contract: HouseholdContract | None = None,
+    ) -> None:
+        if batch is None and contract is not None:
+            batch = session.contract_batches.get(contract.batch_id)
+        authorized_npc_ids = set()
+        if batch is not None:
+            authorized_npc_ids.add(batch.representative_npc_id)
+        if contract is not None and contract.signatory_npc_id:
+            authorized_npc_ids.add(contract.signatory_npc_id)
+        active = next(
+            (
+                item for item in session.governance_actions.values()
+                if item.status == "active"
+                and item.action_kind == "household_visit"
+                and bool(authorized_npc_ids.intersection(item.target_ids))
+            ),
+            None,
+        )
+        if active is None:
+            raise ActionUnavailableError(
+                "请在与相关签约人或代表进行入户会谈时办理这份合同"
+            )
+
+    @staticmethod
     def _household(
         package: ScriptPackage, household_id: str
     ) -> HouseholdDefinition:
@@ -4588,13 +4750,18 @@ class GameplayGovernanceService:
         if include_content:
             result["player_sections"] = (
                 GameplayGovernanceService._archive_player_sections(
-                    value
+                    value,
+                    package=package,
                 )
             )
         return result
 
     @staticmethod
-    def _archive_player_sections(value: ArchiveRecord) -> list[dict[str, str]]:
+    def _archive_player_sections(
+        value: ArchiveRecord,
+        *,
+        package: ScriptPackage | None = None,
+    ) -> list[dict[str, str]]:
         """Strictly project only documented archive schemas into public prose."""
         try:
             source = json.loads(value.content)
@@ -4602,14 +4769,6 @@ class GameplayGovernanceService:
         except (TypeError, ValueError):
             source = value.content
             parsed_json = False
-        field_labels = {
-            "registered_population": "登记人口",
-            "resettlement_population": "安置人口",
-            "legal_residential_area_m2": "合法住宅面积",
-            "homestead_recognized_m2": "认定宅基地面积",
-            "contracted_land_mu": "承包地面积",
-            "ownership_status": "权属情况",
-        }
         ownership_labels = {
             "clear": "权属清晰",
             "overbuild_partly_recognized": "超建部分待认定",
@@ -4624,7 +4783,12 @@ class GameplayGovernanceService:
         }
         sections: list[dict[str, str]] = []
 
-        def add(heading: str, body_parts: list[str]) -> None:
+        def add(
+            heading: str,
+            body_parts: list[str],
+            *,
+            kind: str | None = None,
+        ) -> None:
             body = "。".join(
                 part.strip().rstrip("。")
                 for part in body_parts
@@ -4634,6 +4798,8 @@ class GameplayGovernanceService:
                 return
             body = f"{body}。"
             item = {"heading": heading or "档案记录", "body": body}
+            if kind:
+                item["kind"] = kind
             if item not in sections:
                 sections.append(item)
 
@@ -4643,6 +4809,15 @@ class GameplayGovernanceService:
             if isinstance(item, (str, int, float)):
                 return str(item)
             return ""
+
+        def quantity(item: object) -> str:
+            if isinstance(item, bool):
+                return ""
+            if isinstance(item, int):
+                return str(item)
+            if isinstance(item, float):
+                return str(int(item)) if item.is_integer() else f"{item:g}"
+            return scalar(item)
 
         if isinstance(source, str) and not parsed_json:
             # Only persisted prose from explicitly public archive classes is trusted.
@@ -4663,17 +4838,51 @@ class GameplayGovernanceService:
                             [scalar(item.get("value")), scalar(item.get("detail"))],
                         )
         elif value.source_id == "households" and isinstance(source, list):
+            households = {
+                item.household_id: item
+                for item in package.households
+            } if package is not None else {}
+            npc_names = {
+                item.npc_id: item.name
+                for item in package.npc_profiles
+            } if package is not None else {}
             for index, item in enumerate(source, start=1):
                 if not isinstance(item, dict):
                     continue
-                parts = []
-                for key, label in field_labels.items():
-                    rendered = scalar(item.get(key))
-                    if key == "ownership_status" and rendered:
-                        rendered = ownership_labels.get(rendered, "权属事项待进一步核验")
-                    if rendered:
-                        parts.append(f"{label}：{rendered}")
-                add(f"第{index}户底账", parts)
+                household_id = scalar(item.get("household_id"))
+                household = households.get(household_id)
+                limited = (
+                    package.limited_signatory_for(household_id)
+                    if package is not None else None
+                )
+                household_name = (
+                    limited.name if limited is not None
+                    else npc_names.get(
+                        household.representative_npc,
+                        "户主姓名待核",
+                    ) if household is not None
+                    else "户主姓名待核"
+                )
+                ownership = scalar(item.get("ownership_status"))
+                add(
+                    f"{index}. {household_name}（户号 {household_id}）",
+                    [
+                        (
+                            f"登记{quantity(item.get('registered_population'))}人，"
+                            f"安置{quantity(item.get('resettlement_population'))}人"
+                        ),
+                        (
+                            f"合法住宅{quantity(item.get('legal_residential_area_m2'))}平方米，"
+                            f"认定宅基地{quantity(item.get('homestead_recognized_m2'))}平方米，"
+                            f"承包地{quantity(item.get('contracted_land_mu'))}亩"
+                        ),
+                        (
+                            "权属情况："
+                            f"{ownership_labels.get(ownership, '权属事项待进一步核验')}"
+                        ),
+                    ],
+                    kind="household",
+                )
         elif value.source_id == "governance_config" and isinstance(source, dict):
             envelopes = source.get("budget_envelopes")
             if isinstance(envelopes, dict):

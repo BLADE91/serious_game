@@ -16,6 +16,7 @@ test("keeps every state-changing gameplay workflow connected to an API route", a
   for (const route of [
     "/action/stream",
     "/group-conversation/turn/stream",
+    "/group-conversation/finish",
     "/governance/actions",
     "/governance/meetings/",
     "/governance/documents/",
@@ -30,6 +31,35 @@ test("keeps every state-changing gameplay workflow connected to an API route", a
   }
 });
 
+test("renders persuasion follow-ups as reviewable conversations without a turn quota", async () => {
+  const [shell, styles] = await Promise.all([
+    readFile(shellPath, "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(shell, /group\.max_turns|conversation\.max_turns/);
+  assert.match(shell, /conversation\.participant_states/);
+  assert.match(shell, /在场人物已暂时接受，等待发起人确认收束/);
+  assert.match(shell, /人仍在追问/);
+  assert.match(shell, /item\.status !== "settled"/);
+  assert.match(shell, /conversation\.phase === "resolved"/);
+  assert.match(shell, /结束夜间会谈/);
+  assert.match(shell, /有新发言/);
+  assert.match(shell, /forced-group-timeline/);
+  assert.match(shell, /leadership-meeting-room/);
+  assert.match(styles, /\.ai-thinking-banner[^{]*\{[^}]*top:\s*50%/s);
+  assert.match(styles, /\.ai-thinking-banner strong[^{]*\{[^}]*font-size:\s*2[2-4]px/s);
+});
+
+test("people cards show one compact metric projection and only confirmed relations", async () => {
+  const [shell, playerUi] = await Promise.all([
+    readFile(shellPath, "utf8"),
+    readFile(new URL("../app/lib/player-ui.ts", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(shell, /relationship-reasons/);
+  assert.doesNotMatch(shell, /待核实/);
+  assert.match(playerUi, /visibility !== "confirmed"/);
+});
+
 test("assigns attempt keys to every streamed group and governance turn", async () => {
   const shell = await readFile(shellPath, "utf8");
   for (const prefix of ["group-turn", "meeting-turn", "governance-turn"]) {
@@ -37,17 +67,22 @@ test("assigns attempt keys to every streamed group and governance turn", async (
   }
 });
 
-test("surfaces forced group conversations and the complete contract lifecycle without private night traces", async () => {
+test("signs an accepted household contract without a second confirmation step", async () => {
   const shell = await readFile(shellPath, "utf8");
   assert.match(shell, /ForcedGroupConversationScene/);
   assert.match(shell, /发起人：/);
   assert.match(shell, /participant_ids/);
   assert.match(shell, /contract_batch_proposal/);
+  assert.match(shell, />签订合同</);
+  assert.doesNotMatch(shell, /if \(result\.contract_batch_proposal\) setContractProposalOpen/);
+  assert.match(shell, /activeContractWorkflow/);
+  assert.match(shell, /openContractDetail\(activeContractWorkflow\.contract\)/);
   assert.match(shell, /确认逐户合同提议/);
   assert.match(shell, /核验条款并生成合同/);
   assert.match(shell, /保存正文并重新审校/);
   assert.match(shell, /送交本户复核/);
-  assert.match(shell, /正式签署并入账/);
+  assert.doesNotMatch(shell, /正式签署并入账/);
+  assert.doesNotMatch(shell, /确认本人签署/);
   assert.match(shell, /group_conversation_timeline/);
   assert.doesNotMatch(shell, /contact_selections/);
   assert.doesNotMatch(shell, /contact_responses/);
@@ -131,6 +166,6 @@ test("renders every non-meeting NPC exchange as a Galgame stage", async () => {
   assert.match(shell, /className="gal-stage governance-gal-stage conversation-mode"/);
   assert.match(shell, /data-testid="governance-gal-scene"/);
   assert.match(shell, /className="gal-portrait" aria-label=\{`\$\{targetName\}立绘`\}/);
-  assert.match(shell, /className="gal-stage forced-group-gal-stage conversation-mode"/);
+  assert.match(shell, /className="forced-group-gal-stage leadership-meeting-room"/);
   assert.match(shell, /streamingReplies=\{streamingReplies\}/);
 });

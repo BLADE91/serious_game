@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from serious_game_backend.api.app import create_app
 from serious_game_backend.application.npc_memory_service import NPCMemoryService
+from serious_game_backend.application.npc_demand_service import NPCDemandService
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.conversation import CompletedConversation
@@ -148,6 +149,107 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         return response.json()
 
+    def _field_visit_variant(self) -> dict:
+        response = self.client.get(
+            f"/api/game/session/{self.session_id}/actions",
+            headers=self.headers,
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        return next(
+            variant
+            for action in response.json()["actions"]
+            for variant in action["variants"]
+            if variant["variant_id"] == "field_visit"
+        )
+
+    def _field_visit_targets(self) -> set[str]:
+        field_visit = self._field_visit_variant()
+        return {item["target_id"] for item in field_visit["target_choices"]}
+
+    def test_dossier_mention_does_not_fake_contact_or_bypass_he_tiezhu_gate(
+        self,
+    ) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_relationship_v3"
+        )
+        session.pending_decision = None
+        session.pending_decision_queue.clear()
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+
+        body = self._opportunities()
+        he = next(
+            item for item in body["people"]
+            if item["npc_id"] == "npc_he_tiezhu"
+        )
+        self.assertEqual("mentioned", he.get("discovery_state"))
+        self.assertEqual("known", he["contact_state"])
+        self.assertEqual(
+            {"trust_band": "not_assessed", "attitude_band": "not_assessed", "anxiety_band": "not_assessed"},
+            {key: he[key] for key in ("trust_band", "attitude_band", "anxiety_band")},
+        )
+        self.assertTrue(all(
+            "尚未与此人直接接触" in reason
+            for reason in he["relationship_reasons"].values()
+        ))
+        self.assertNotIn("npc_he_tiezhu", self._field_visit_targets())
+        self.assertFalse(self._field_visit_variant()["available"])
+        self.assertEqual(
+            "尚无已经正式接触的可选对象",
+            self._field_visit_variant()["unavailable_reason"],
+        )
+
+        before = self.runtime.sessions.get_owned(
+            self.session_id, "acct_relationship_v3"
+        )
+        rejected = self.client.post(
+            f"/api/game/session/{self.session_id}/governance/actions",
+            headers=self.headers,
+            json={
+                "state_version": before.state_version,
+                "action_kind": "household_visit",
+                "variant_id": "field_visit",
+                "location_id": "loc_liulin_village",
+                "target_ids": ["npc_he_tiezhu"],
+                "topic": "第一日提前走访何铁柱",
+            },
+        )
+        self.assertEqual(409, rejected.status_code, rejected.text)
+        after = self.runtime.sessions.get_owned(
+            self.session_id, "acct_relationship_v3"
+        )
+        self.assertEqual(before.state_version, after.state_version)
+        self.assertEqual(before.game_state.action_points, after.game_state.action_points)
+        self.assertEqual(before.governance_actions, after.governance_actions)
+
+        after.game_state = replace(after.game_state, story_day=15)
+        package = self.runtime.packages.get("pkg_gameplay_v3")
+        NPCDemandService.sync(after, package)
+        self.runtime.sessions.save(after, expected_version=after.state_version)
+        governance = self.client.get(
+            f"/api/game/session/{self.session_id}/governance",
+            headers=self.headers,
+        )
+        self.assertEqual(200, governance.status_code, governance.text)
+        self.assertNotIn(
+            "npc_he_tiezhu",
+            {item["npc_id"] for item in governance.json()["npc_demands"]},
+        )
+
+        after = self.runtime.sessions.get_owned(
+            self.session_id, "acct_relationship_v3"
+        )
+        after.game_state = replace(after.game_state, story_day=56)
+        self.runtime.sessions.save(after, expected_version=after.state_version)
+        opened = self._opportunities()
+        he = next(
+            item for item in opened["people"]
+            if item["npc_id"] == "npc_he_tiezhu"
+        )
+        self.assertEqual("contactable", he.get("discovery_state"))
+        self.assertEqual("contactable", he["contact_state"])
+        self.assertIn("npc_he_tiezhu", self._field_visit_targets())
+        self.assertTrue(self._field_visit_variant()["available"])
+
     def _start_and_end_wu_conversation(self, suffix: str) -> str:
         session = self.runtime.sessions.get_owned(
             self.session_id, "acct_relationship_v3"
@@ -244,11 +346,11 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
             {"calm", "uneasy", "worried", "strained", "critical"},
         )
         self.assertLessEqual(len(person["recent_change_reasons"]), 3)
-        ambient = next(
+        media_contact = next(
             item for item in body["people"] if item["npc_id"] == "npc_wang_fang"
         )
-        self.assertEqual("known", ambient["contact_state"])
-        self.assertEqual("not_assessed", ambient["trust_band"])
+        self.assertEqual("known", media_contact["contact_state"])
+        self.assertEqual("not_assessed", media_contact["trust_band"])
         serialized = json.dumps(body, ensure_ascii=False)
         for forbidden in (
             "trust_score",
@@ -442,16 +544,19 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
         )
         legacy = encode_session(session)
         legacy.pop("known_npc_ids", None)
+        legacy.pop("encountered_npc_ids", None)
         legacy.pop("contactable_npc_ids", None)
         legacy.pop("relationship_edges", None)
         legacy.pop("completed_conversations", None)
         restored_legacy = decode_session(legacy)
         self.assertEqual(set(), restored_legacy.known_npc_ids)
+        self.assertEqual(set(), restored_legacy.encountered_npc_ids)
         self.assertEqual(set(), restored_legacy.contactable_npc_ids)
         self.assertEqual([], restored_legacy.relationship_edges)
         self.assertEqual([], restored_legacy.completed_conversations)
 
         session.known_npc_ids = {"npc_wu_xiuying"}
+        session.encountered_npc_ids = {"npc_wu_xiuying"}
         session.contactable_npc_ids = {"npc_wu_xiuying"}
         session.relationship_edges = [{
             "edge_id": "rel_wu_zhou",
@@ -463,6 +568,9 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
         }]
         round_trip = decode_session(encode_session(session))
         self.assertEqual(session.known_npc_ids, round_trip.known_npc_ids)
+        self.assertEqual(
+            session.encountered_npc_ids, round_trip.encountered_npc_ids
+        )
         self.assertEqual(session.contactable_npc_ids, round_trip.contactable_npc_ids)
         self.assertEqual(session.relationship_edges, round_trip.relationship_edges)
 
@@ -496,6 +604,7 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
             self.session_id, "acct_relationship_v3"
         )
         expected_known = set(before.known_npc_ids)
+        expected_encountered = set(before.encountered_npc_ids)
         expected_contactable = set(before.contactable_npc_ids)
         expected_edges = [dict(item) for item in before.relationship_edges]
         expected_transcript = tuple(
@@ -523,6 +632,7 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
         self.assertEqual(200, saved.status_code, saved.text)
 
         before.known_npc_ids.clear()
+        before.encountered_npc_ids.clear()
         before.contactable_npc_ids.clear()
         before.relationship_edges.clear()
         before.completed_conversations.clear()
@@ -544,6 +654,7 @@ class RelationshipAndConversationV3Tests(unittest.TestCase):
             self.session_id, "acct_relationship_v3"
         )
         self.assertEqual(expected_known, restored.known_npc_ids)
+        self.assertEqual(expected_encountered, restored.encountered_npc_ids)
         self.assertEqual(expected_contactable, restored.contactable_npc_ids)
         self.assertEqual(expected_edges, restored.relationship_edges)
         self.assertEqual(

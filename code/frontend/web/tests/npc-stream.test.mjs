@@ -56,9 +56,39 @@ test("tracks thinking per NPC, progressive answers, and safe error cleanup", () 
   assert.equal(state.error, "对方暂时无法回应，请稍后重试。");
 });
 
-test("styles each rendered NPC thinking row instead of an absent child element", async () => {
+test("shows an immediate pending state until the first NPC response event", () => {
+  let state = playerUi.initialNpcStreamState();
+  state = playerUi.reduceNpcStream(state, { type: "request_started" });
+  assert.equal(state.requestPending, true);
+
+  state = playerUi.reduceNpcStream(state, { type: "stream_start" });
+  assert.equal(state.requestPending, true, "transport startup is not yet an NPC response");
+
+  state = playerUi.reduceNpcStream(state, {
+    type: "npc_thinking_start",
+    stream_id: "npc:0",
+    npc_id: "npc",
+    npc_name: "对方",
+  });
+  assert.equal(state.requestPending, true, "the request stays pending until reply text starts");
+  assert.equal(state.thinking["npc:0"].npc_name, "对方");
+
+  state = playerUi.reduceNpcStream(state, {
+    type: "npc_start",
+    stream_id: "npc:0",
+    npc_id: "npc",
+    npc_name: "对方",
+  });
+  assert.equal(state.requestPending, false);
+
+  state = playerUi.reduceNpcStream(state, { type: "request_finished" });
+  assert.equal(state.requestPending, false);
+});
+
+test("styles the central AI waiting layer used by streamed NPC replies", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(css, /\.npc-thinking-status\s*>\s*div\s*\{/);
+  assert.match(css, /\.ai-thinking-banner\s*\{[^}]*top:\s*50%/s);
+  assert.match(css, /\.ai-thinking-banner\s+strong\s*\{[^}]*font-size:\s*24px/s);
 });
 
 test("loads complete paginated conversation history with stable filters", async () => {

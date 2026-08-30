@@ -46,6 +46,122 @@ export function aiConfigurationView(value: PlayerRecord | null | undefined): {
   };
 }
 
+export function aiConfigurationMode(
+  value: PlayerRecord | null | undefined,
+): "personal" | "server_default" {
+  return aiConfigurationView(value).mode === "server_default"
+    ? "server_default"
+    : "personal";
+}
+
+export function conversationContractWorkflow(
+  activeAction: PlayerRecord | null | undefined,
+  rawBatches: unknown,
+  rawContracts: unknown,
+): { proposal: PlayerRecord | null; contract: PlayerRecord | null } | null {
+  if (
+    activeAction?.status !== "active"
+    || activeAction.action_kind !== "household_visit"
+  ) return null;
+  const targets = Array.isArray(activeAction.target_ids)
+    ? activeAction.target_ids.map(String)
+    : [];
+  if (targets.length !== 1) return null;
+  const targetId = targets[0];
+  const batches = Array.isArray(rawBatches)
+    ? rawBatches.filter(item => item && typeof item === "object" && !Array.isArray(item)) as PlayerRecord[]
+    : [];
+  const contracts = Array.isArray(rawContracts)
+    ? rawContracts.filter(item => item && typeof item === "object" && !Array.isArray(item)) as PlayerRecord[]
+    : [];
+  const matchingBatches = batches.filter(
+    item => String(item.representative_npc_id || "") === targetId,
+  );
+  const proposal = matchingBatches.find(
+    item => item.status === "pending_confirmation",
+  );
+  if (proposal) return { proposal, contract: null };
+  const confirmedBatchIds = new Set(
+    matchingBatches
+      .filter(item => item.status === "confirmed")
+      .map(item => String(item.batch_id || "")),
+  );
+  const allConfirmedBatchIds = new Set(
+    batches
+      .filter(item => item.status === "confirmed")
+      .map(item => String(item.batch_id || "")),
+  );
+  const contract = contracts.find(
+    item => (
+      confirmedBatchIds.has(String(item.batch_id || ""))
+      || (
+        String(item.signatory_npc_id || "") === targetId
+        && allConfirmedBatchIds.has(String(item.batch_id || ""))
+      )
+    )
+      && !["signed", "rejected"].includes(String(item.status || "")),
+  );
+  return contract ? { proposal: null, contract } : null;
+}
+
+export function conversationTimelineUpdate(
+  wasAtBottom: boolean,
+  previousLength: number,
+  nextLength: number,
+): { followLatest: boolean; showNewDialogue: boolean } {
+  if (nextLength <= previousLength) {
+    return { followLatest: false, showNewDialogue: false };
+  }
+  return wasAtBottom
+    ? { followLatest: true, showNewDialogue: false }
+    : { followLatest: false, showNewDialogue: true };
+}
+
+export function investigationLeadView(raw: unknown): Array<{
+  factId: string;
+  title: string;
+  category: string;
+  methods: Array<{
+    routeType: string;
+    label: string;
+    instructions: string;
+    unlockDay: number;
+  }>;
+}> {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const lead = item as PlayerRecord;
+    const methods = Array.isArray(lead.methods)
+      ? lead.methods.flatMap(value => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+        const method = value as PlayerRecord;
+        const routeType = String(method.route_type || "");
+        const label = String(method.label || "").trim();
+        const instructions = String(method.instructions || "").trim();
+        const unlockDay = Number(method.unlock_day);
+        if (
+          !["archive", "conversation"].includes(routeType)
+          || !label
+          || !instructions
+          || !Number.isInteger(unlockDay)
+          || unlockDay < 1
+        ) return [];
+        return [{ routeType, label, instructions, unlockDay }];
+      })
+      : [];
+    const factId = String(lead.fact_id || "");
+    const title = String(lead.title || "").trim();
+    if (!factId || !title || !methods.length) return [];
+    return [{
+      factId,
+      title,
+      category: String(lead.category || "clue"),
+      methods,
+    }];
+  });
+}
+
 export function requiresAIConfiguration(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   return String((value as PlayerRecord).code || "") === "ROLE_LLM_CONFIGURATION_REQUIRED";
@@ -89,14 +205,23 @@ export function qualitativeRelationshipLabel(value: unknown): string {
   return RELATIONSHIP_LABELS[String(value)] || "尚待观察";
 }
 
-export function archivePlayerSections(value: PlayerRecord | null | undefined): Array<{ heading: string; body: string }> {
+export function archivePlayerSections(value: PlayerRecord | null | undefined): Array<{
+  heading: string;
+  body: string;
+  kind?: "household";
+}> {
   const sections = Array.isArray(value?.player_sections) ? value.player_sections : [];
   const projected = sections.flatMap(raw => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
     const item = raw as PlayerRecord;
     const heading = toPlayerText(item.heading, "档案记录");
     const body = toPlayerText(item.body);
-    return body ? [{ heading, body }] : [];
+    if (!body) return [];
+    return [{
+      heading,
+      body,
+      ...(item.kind === "household" ? { kind: "household" as const } : {}),
+    }];
   });
   return projected.length ? projected : [{ heading: "档案正文", body: "这份档案暂无可读正文。" }];
 }
@@ -245,6 +370,90 @@ export function actionPointLabel(item: PlayerRecord | null | undefined): string 
   return cost === null ? "消耗待确认" : cost === 0 ? "不消耗精力" : `消耗 ${cost} 点精力`;
 }
 
+const RESOURCE_UNIT_LABELS: Record<string, string> = {
+  housing: "套",
+  medical: "名额",
+  school: "学位",
+  employment: "名额",
+  business: "份",
+  grave: "户次",
+  household_case: "户次",
+  case: "个",
+  batch: "批次",
+  session: "场",
+  slot: "名额",
+  unit: "份",
+};
+
+function resourceUnitLabel(name: string, rawUnit: string, category: string): string {
+  const namedUnits: Array<[RegExp, string]> = [
+    [/名额/, "名额"], [/学位/, "学位"], [/岗位/, "岗位"], [/户次/, "户次"],
+    [/批次/, "批次"], [/工时/, "工时"], [/场次/, "场次"], [/房/, "套"], [/包/, "份"],
+  ];
+  return namedUnits.find(([pattern]) => pattern.test(name))?.[1]
+    || RESOURCE_UNIT_LABELS[rawUnit]
+    || RESOURCE_UNIT_LABELS[category]
+    || "份";
+}
+
+export function resourceInventoryView(value: unknown): Array<{
+  resourceId: string;
+  name: string;
+  category: string;
+  capacity: number;
+  available: number;
+  used: number;
+  unit: string;
+  availableDay: number;
+  allocatableScope: string;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(raw => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const item = raw as PlayerRecord;
+    const resourceId = String(item.resource_id || "");
+    if (!resourceId) return [];
+    const category = String(item.category || "other");
+    const capacityValue = Number(item.capacity || 0);
+    const capacity = Number.isFinite(capacityValue) ? Math.max(0, capacityValue) : 0;
+    const availableValue = Number(item.available_to_reserve ?? item.available ?? capacity);
+    const available = Number.isFinite(availableValue) ? Math.max(0, Math.min(capacity, availableValue)) : capacity;
+    const usedValue = Number(item.blocked_total ?? item.used ?? capacity - available);
+    const used = Number.isFinite(usedValue) ? Math.max(0, Math.min(capacity, usedValue)) : capacity - available;
+    const attributes = item.attributes && typeof item.attributes === "object" && !Array.isArray(item.attributes)
+      ? item.attributes as PlayerRecord
+      : {};
+    const name = toPlayerText(item.name || item.label, "专项资源");
+    const rawUnit = String(item.unit || attributes.unit || category);
+    return [{
+      resourceId,
+      name,
+      category,
+      capacity,
+      available,
+      used,
+      unit: resourceUnitLabel(name, rawUnit, category),
+      availableDay: Math.max(1, Number(item.available_day || 1)),
+      allocatableScope: String(item.allocatable_scope || "contract"),
+    }];
+  });
+}
+
+export type AIActivity = { label: string };
+
+export async function withAIActivity<Result>(
+  setActivity: (value: AIActivity | null) => void,
+  label: string,
+  action: () => Promise<Result>,
+): Promise<Result> {
+  setActivity({ label });
+  try {
+    return await action();
+  } finally {
+    setActivity(null);
+  }
+}
+
 export function governanceCancelMessage(action: PlayerRecord | null | undefined): string {
   return action?.cost_status === "pending"
     ? "确认中止当前行动？尚未形成有效交流，不会消耗精力。"
@@ -308,6 +517,7 @@ type PublicPerson = {
   npc_id: string;
   name: string;
   contact_state: "known" | "contactable";
+  discovery_state: "mentioned" | "encountered" | "contactable";
   trust_band: string;
   attitude_band: string;
   anxiety_band: string;
@@ -331,12 +541,17 @@ export function peopleRelationshipView(value: PlayerRecord | null | undefined): 
     const item = raw as PlayerRecord;
     const contactState = String(item.contact_state || "");
     if (!new Set(["known", "contactable"]).has(contactState)) return [];
+    const rawDiscoveryState = String(item.discovery_state || "");
+    const discoveryState = new Set(["mentioned", "encountered", "contactable"]).has(rawDiscoveryState)
+      ? rawDiscoveryState
+      : contactState === "contactable" ? "contactable" : "encountered";
     const rawReasons = item.relationship_reasons && typeof item.relationship_reasons === "object" && !Array.isArray(item.relationship_reasons)
       ? item.relationship_reasons as PlayerRecord : {};
     return [{
       npc_id: String(item.npc_id || ""),
       name: String(item.name || ""),
       contact_state: contactState as PublicPerson["contact_state"],
+      discovery_state: discoveryState as PublicPerson["discovery_state"],
       trust_band: String(item.trust_band || "not_assessed"),
       attitude_band: String(item.attitude_band || "not_assessed"),
       anxiety_band: String(item.anxiety_band || "not_assessed"),
@@ -355,7 +570,7 @@ export function peopleRelationshipView(value: PlayerRecord | null | undefined): 
     const visibility = String(item.visibility || "");
     const source = String(item.source_npc_id || "");
     const target = String(item.target_npc_id || "");
-    if (!new Set(["suspected", "confirmed"]).has(visibility) || !visibleNpcIds.has(source) || !visibleNpcIds.has(target)) return [];
+    if (visibility !== "confirmed" || !visibleNpcIds.has(source) || !visibleNpcIds.has(target)) return [];
     return [{
       edge_id: String(item.edge_id || ""),
       source_npc_id: source,
@@ -369,19 +584,55 @@ export function peopleRelationshipView(value: PlayerRecord | null | undefined): 
   return { people, edges };
 }
 
+export function personDiscoveryPresentation(value: {
+  discovery_state?: unknown;
+  contact_state?: unknown;
+}): {
+  statusLabel: string;
+  showRelationship: boolean;
+  allowProfile: boolean;
+} {
+  if (value.discovery_state === "mentioned") {
+    return {
+      statusLabel: "卷宗提及 · 尚未接触",
+      showRelationship: false,
+      allowProfile: false,
+    };
+  }
+  if (value.discovery_state === "contactable" || value.contact_state === "contactable") {
+    return {
+      statusLabel: "当前可联系",
+      showRelationship: true,
+      allowProfile: true,
+    };
+  }
+  return {
+    statusLabel: "已见面 · 目前不可联系",
+    showRelationship: true,
+    allowProfile: true,
+  };
+}
+
 export type NpcStreamViewState = {
+  requestPending: boolean;
   thinking: Record<string, { npc_id: string; npc_name: string }>;
   replies: Array<{ stream_id: string; npc_id: string; npc_name: string; text: string; complete: boolean }>;
   error: string;
 };
 
 export function initialNpcStreamState(): NpcStreamViewState {
-  return { thinking: {}, replies: [], error: "" };
+  return { requestPending: false, thinking: {}, replies: [], error: "" };
 }
 
 export function reduceNpcStream(state: NpcStreamViewState, event: PlayerRecord): NpcStreamViewState {
   const type = String(event.type || "");
   const streamId = String(event.stream_id || "");
+  if (type === "request_started") {
+    return { ...state, requestPending: true, error: "" };
+  }
+  if (type === "request_finished") {
+    return { ...state, requestPending: false };
+  }
   if (type === "npc_thinking_start" && streamId) {
     return { ...state, error: "", thinking: { ...state.thinking, [streamId]: { npc_id: String(event.npc_id || ""), npc_name: String(event.npc_name || "") } } };
   }
@@ -391,7 +642,7 @@ export function reduceNpcStream(state: NpcStreamViewState, event: PlayerRecord):
     return { ...state, thinking };
   }
   if (type === "npc_start" && streamId) {
-    return { ...state, replies: [...state.replies, { stream_id: streamId, npc_id: String(event.npc_id || ""), npc_name: String(event.npc_name || ""), text: "", complete: false }] };
+    return { ...state, requestPending: false, replies: [...state.replies, { stream_id: streamId, npc_id: String(event.npc_id || ""), npc_name: String(event.npc_name || ""), text: "", complete: false }] };
   }
   if (type === "npc_delta" && streamId) {
     return { ...state, replies: state.replies.map(item => item.stream_id === streamId ? { ...item, text: item.text + String(event.delta || "") } : item) };
@@ -400,7 +651,10 @@ export function reduceNpcStream(state: NpcStreamViewState, event: PlayerRecord):
     return { ...state, replies: state.replies.map(item => item.stream_id === streamId ? { ...item, complete: true } : item) };
   }
   if (type === "error") {
-    return { ...state, thinking: {}, error: String(event.message || "对方暂时无法回应，请稍后重试。") };
+    return { ...state, requestPending: false, thinking: {}, error: String(event.message || "对方暂时无法回应，请稍后重试。") };
+  }
+  if (type === "complete") {
+    return { ...state, requestPending: false };
   }
   return state;
 }

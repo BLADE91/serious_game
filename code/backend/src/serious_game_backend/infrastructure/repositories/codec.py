@@ -123,6 +123,7 @@ def encode_session(session: GameSession) -> dict:
         "next_feed_cursor": session.next_feed_cursor,
         "known_fact_ids": sorted(session.known_fact_ids),
         "known_npc_ids": sorted(session.known_npc_ids),
+        "encountered_npc_ids": sorted(session.encountered_npc_ids),
         "contactable_npc_ids": sorted(session.contactable_npc_ids),
         "relationship_edges": session.relationship_edges,
         "night_logs": session.night_logs,
@@ -270,6 +271,7 @@ def decode_session(value: dict) -> GameSession:
         next_feed_cursor=int(value.get("next_feed_cursor", 1)),
         known_fact_ids=set(value.get("known_fact_ids", [])),
         known_npc_ids=set(value.get("known_npc_ids", [])),
+        encountered_npc_ids=set(value.get("encountered_npc_ids", [])),
         contactable_npc_ids=set(value.get("contactable_npc_ids", [])),
         relationship_edges=[
             dict(item) for item in value.get("relationship_edges", [])
@@ -296,7 +298,11 @@ def decode_session(value: dict) -> GameSession:
         ],
         active_group_conversation=(
             ForcedGroupConversation(**{
-                **value["active_group_conversation"],
+                **{
+                    key: item
+                    for key, item in value["active_group_conversation"].items()
+                    if key != "max_turns"
+                },
                 "participant_ids": tuple(
                     value["active_group_conversation"].get(
                         "participant_ids", ()
@@ -310,7 +316,7 @@ def decode_session(value: dict) -> GameSession:
         ),
         group_conversation_queue=[
             ForcedGroupConversation(**{
-                **item,
+                **{key: entry for key, entry in item.items() if key != "max_turns"},
                 "participant_ids": tuple(item.get("participant_ids", ())),
                 "demands": tuple(item.get("demands", ())),
             })

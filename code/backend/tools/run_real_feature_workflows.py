@@ -6,11 +6,21 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 import time
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 from fastapi.testclient import TestClient
 
-from tools.run_real_v3_routes import RealRouteRunner
+from tools.run_real_v3_routes import (
+    RealRouteRunner,
+    _public_state_fingerprint,
+    credible_group_replies,
+)
 from tools.run_real_v3_routes import PROFILE_PATH
 from tools.full_acceptance.ending_witnesses import load_contract_terms, load_witnesses
 from serious_game_backend.config import Settings
@@ -23,6 +33,19 @@ EXPECTED_GOVERNANCE_FAMILIES = {
     "cadre_interview",
     "leadership_meeting",
 }
+
+
+def _with_recovery_decision_policy(profile):
+    """Keep exploratory routes playable when they unlock mistake-recovery scenes."""
+
+    return replace(
+        profile,
+        decision_policy={
+            **profile.decision_policy,
+            "dp5_04_recovery": "a",
+            "dp5_05_recovery": "b",
+        },
+    )
 
 
 def validate_feature_workflow_report(report: dict[str, object]) -> None:
@@ -65,6 +88,13 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
     ):
         if report.get(field) is not True:
             raise AssertionError(f"{label} workflow evidence is missing")
+    review_statuses = {
+        str(item) for item in report.get("contract_review_statuses", ())
+    }
+    if "signed" not in review_statuses or "accepted" in review_statuses:
+        raise AssertionError(
+            "contract review must finish in signed state without a second sign step"
+        )
 
 
 def collect_session_coverage(
@@ -160,6 +190,74 @@ def _finish_action(
             json={"state_version": state_version},
         )
     )
+
+
+def _drain_group_conversations(
+    client: TestClient,
+    session_id: str,
+    headers: dict[str, str],
+    result: dict,
+    key: str,
+    runner: RealRouteRunner | None = None,
+) -> dict:
+    turn = 0
+    while result["visible_state"].get("active_group_conversation"):
+        turn += 1
+        if turn > 40:
+            raise AssertionError("forced conversation did not settle after 40 real turns")
+        group = result["visible_state"]["active_group_conversation"]
+        resolved = group.get("phase") == "resolved"
+        endpoint = (
+            f"/api/game/session/{session_id}/group-conversation/"
+            f"{'finish' if resolved else 'turn'}"
+        )
+        response = None
+        replies = (None,) if resolved else credible_group_replies(group)
+        for phrasing_index, player_text in enumerate(replies, start=1):
+            payload = {
+                "state_version": result["state_version"],
+                "client_action_id": f"{key}-{turn:02d}-p{phrasing_index}",
+            }
+            if player_text is not None:
+                payload["player_text"] = player_text
+            for attempt in range(3):
+                payload["retry"] = attempt > 0
+                response = client.post(endpoint, headers=headers, json=payload)
+                if response.status_code == 200:
+                    break
+                error = response.json().get("error", {}) if response.content else {}
+                retryable = (
+                    response.status_code == 503
+                    and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
+                )
+                if not retryable:
+                    break
+                current = client.get(
+                    f"/api/game/session/{session_id}", headers=headers
+                )
+                state_restored = (
+                    current.status_code == 200
+                    and _public_state_fingerprint(current.json())
+                    == _public_state_fingerprint(result)
+                )
+                if runner is not None:
+                    runner.operation_retries_by_session.setdefault(session_id, []).append(
+                        {
+                            "operation": payload["client_action_id"],
+                            "attempt": attempt + 1,
+                            "state_version": result["state_version"],
+                            "state_restored": state_restored,
+                        }
+                    )
+                if attempt == 2:
+                    break
+            if response is not None and response.status_code == 200:
+                break
+            if response is not None and response.status_code != 503:
+                break
+        assert response is not None
+        result = _expect(response)
+    return result
 
 
 def _audit_summary(container, session_id: str) -> dict:
@@ -435,7 +533,13 @@ def _server_default_workflow(
         raise AssertionError("manual load did not restore the saved business state")
     audit = _audit_summary(container, session_id)
     recovered_retries = len(runner.operation_retries_by_session.get(session_id, ()))
-    if audit["fake_calls"] or audit["statuses"].get("failed", 0) > recovered_retries:
+    if (
+        audit["fake_calls"]
+        or any(
+            item.get("state_restored") is not True
+            for item in runner.operation_retries_by_session.get(session_id, ())
+        )
+    ):
         raise AssertionError(f"real server workflow audit failed: {audit}")
     package = container.packages.get("pkg_gameplay_v3")
     if package is None:
@@ -547,46 +651,27 @@ def _personal_contract_workflow(
             json={"state_version": terms["state_version"]},
         )
     )
-    if reviewed["contract"]["status"] != "accepted":
+    if reviewed["contract"]["status"] != "signed":
         raise AssertionError(
-            f"contract was not accepted: {reviewed['contract']['review_history']}"
+            "accepted review did not immediately sign the contract: "
+            f"{reviewed['contract']['review_history']}"
         )
-    signed = _expect(
-        client.post(
-            f"/api/game/session/{session_id}/governance/contracts/{contract['contract_id']}/sign",
-            headers=headers,
-            json={"state_version": reviewed["state_version"], "confirmed": True},
-        )
-    )
-    if not signed["signed"]:
-        raise AssertionError("contract sign endpoint did not settle the contract")
     result = _finish_action(
         client,
         session_id,
         headers,
         conversation["action_id"],
-        signed["state_version"],
+        reviewed["state_version"],
     )
     result = runner.end_day(
         client, session_id, headers, result, "feature-personal-end-d3"
     )
     for day in range(4, 46):
-        while result["visible_state"].get("active_group_conversation"):
-            group = result["visible_state"]["active_group_conversation"]
-            result = _expect(
-                client.post(
-                    f"/api/game/session/{session_id}/group-conversation/turn",
-                    headers=headers,
-                    json={
-                        "state_version": result["state_version"],
-                        "player_text": "请逐项确认责任、依据和期限。",
-                        "client_action_id": (
-                            f"feature-personal-group-{day}-"
-                            f"{group['conversation_id']}-{result['state_version']}"
-                        ),
-                    },
-                )
-            )
+        result = _drain_group_conversations(
+            client, session_id, headers, result,
+            f"feature-personal-group-{day}",
+            runner,
+        )
         result, decision_index = runner.drain_decisions(
             container,
             client,
@@ -603,22 +688,9 @@ def _personal_contract_workflow(
             result,
             f"feature-personal-end-d{day}",
         )
-    while result["visible_state"].get("active_group_conversation"):
-        group = result["visible_state"]["active_group_conversation"]
-        result = _expect(
-            client.post(
-                f"/api/game/session/{session_id}/group-conversation/turn",
-                headers=headers,
-                json={
-                    "state_version": result["state_version"],
-                    "player_text": "请逐项确认责任、依据和期限。",
-                    "client_action_id": (
-                        f"feature-personal-group-46-"
-                        f"{group['conversation_id']}-{result['state_version']}"
-                    ),
-                },
-            )
-        )
+    result = _drain_group_conversations(
+        client, session_id, headers, result, "feature-personal-group-46", runner
+    )
     result, decision_index = runner.drain_decisions(
         container,
         client,
@@ -695,7 +767,13 @@ def _personal_contract_workflow(
         raise AssertionError("personal workflow session disappeared")
     audit = _audit_summary(container, session_id)
     recovered_retries = len(runner.operation_retries_by_session.get(session_id, ()))
-    if audit["fake_calls"] or audit["statuses"].get("failed", 0) > recovered_retries:
+    if (
+        audit["fake_calls"]
+        or any(
+            item.get("state_restored") is not True
+            for item in runner.operation_retries_by_session.get(session_id, ())
+        )
+    ):
         raise AssertionError(f"real personal workflow audit failed: {audit}")
     package = container.packages.get("pkg_gameplay_v3")
     if package is None:
@@ -793,7 +871,7 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     if package is None:
         raise AssertionError("v3 package disappeared during inventory workflow")
     profiles = load_witnesses(PROFILE_PATH)
-    profile = profiles[0]
+    profile = _with_recovery_decision_policy(profiles[0])
     contract_terms = load_contract_terms(PROFILE_PATH)
     result, serial = runner.reach_day_three_with_profile(
         container, client, session_id, headers, profile
@@ -807,12 +885,13 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     for story_day in range(3, 91):
         if result["visible_state"]["status"] == "ended":
             break
-        result = runner.drain_required_group_conversation(
+        result = _drain_group_conversations(
             client,
             session_id,
             headers,
             result,
             f"feature-inventory-d{story_day:02d}",
+            runner,
         )
         result, serial = runner.drain_profile_decisions(
             container, client, session_id, headers, result, profile, serial
@@ -827,9 +906,39 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
             serial,
             all_opportunities,
         )
-        result = runner.advance_selected_demands(
-            client, session_id, headers, result, all_demands
-        )
+        while True:
+            overview = _expect(
+                client.get(
+                    f"/api/game/session/{session_id}/governance",
+                    headers=headers,
+                )
+            )
+            candidates = [
+                item for item in overview["npc_demands"]
+                if item["demand_id"] in all_demands
+                and set(item.get("allowed_transitions", ()))
+                & {"acknowledged", "lawfully_refused"}
+            ]
+            if not candidates:
+                break
+            demand = candidates[0]
+            allowed = set(demand["allowed_transitions"])
+            transition = (
+                "lawfully_refused"
+                if "lawfully_refused" in allowed else "acknowledged"
+            )
+            disposed = _expect(
+                client.post(
+                    f"/api/game/session/{session_id}/governance/npc-demands/"
+                    f"{demand['demand_id']}/dispose",
+                    headers=headers,
+                    json={
+                        "state_version": result["state_version"],
+                        "transition": transition,
+                    },
+                )
+            )
+            result = {**result, "state_version": disposed["state_version"]}
         result = runner.inspect_all_available_archives(
             client, session_id, headers, result
         )
@@ -878,6 +987,102 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     return payload
 
 
+def _recovery_opportunity_workflow(runner: RealRouteRunner) -> dict:
+    """Reach both mistake-recovery conversations through legal player choices."""
+
+    container, client, session_id, headers = runner.build_real_runner(4)
+    package = container.packages.get("pkg_gameplay_v3")
+    if package is None:
+        raise AssertionError("v3 package disappeared during recovery workflow")
+    base_profile = load_witnesses(PROFILE_PATH)[0]
+    profile = _with_recovery_decision_policy(replace(
+        base_profile,
+        route_id="feature-recovery-opportunities",
+        decision_policy={
+            **base_profile.decision_policy,
+            "dp3_06": "c",
+            "dp4_06": "d",
+            "dp5_04": "d",
+        },
+    ))
+    result, serial = runner.reach_day_three_with_profile(
+        container, client, session_id, headers, profile
+    )
+    recovery_ids = {
+        "opp_d53_tan_laoliu_paid_recovery",
+        "opp_d69_zhou_mancang_restart",
+    }
+    recovery_prerequisite_ids = {
+        *recovery_ids,
+        "opp_03_zhou_mancang_contact",
+    }
+    for story_day in range(3, 70):
+        result = _drain_group_conversations(
+            client,
+            session_id,
+            headers,
+            result,
+            f"feature-recovery-group-d{story_day:02d}",
+            runner,
+        )
+        result, serial = runner.drain_profile_decisions(
+            container, client, session_id, headers, result, profile, serial
+        )
+        result, serial = runner.drain_optional_opportunities(
+            container,
+            client,
+            session_id,
+            headers,
+            result,
+            profile,
+            serial,
+            recovery_prerequisite_ids,
+        )
+        result = runner.inspect_all_available_archives(
+            client, session_id, headers, result
+        )
+        result = runner.end_day(
+            client,
+            session_id,
+            headers,
+            result,
+            f"feature-recovery-end-d{story_day:02d}",
+        )
+    stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+    if stored is None:
+        raise AssertionError("recovery workflow session disappeared")
+    completed = {
+        item.opportunity_id
+        for item in stored.completed_conversations
+        if item.completion_status == "completed"
+    }
+    missing = recovery_ids - completed
+    if missing:
+        raise AssertionError(
+            f"legal recovery workflow did not complete: {sorted(missing)}"
+        )
+    audit = _audit_summary(container, session_id)
+    if (
+        audit["fake_calls"]
+        or any(
+            item.get("state_restored") is not True
+            for item in runner.operation_retries_by_session.get(session_id, ())
+        )
+    ):
+        raise AssertionError(f"real recovery workflow audit failed: {audit}")
+    coverage = collect_session_coverage(stored, package)
+    payload = {
+        "account": "server_default",
+        "session_id": session_id,
+        "story_day": stored.game_state.story_day,
+        "completed_recovery_opportunity_ids": sorted(recovery_ids),
+        "audit": audit,
+        "coverage": coverage,
+    }
+    client.__exit__(None, None, None)
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -897,6 +1102,7 @@ def main() -> int:
         _server_default_workflow(runner, root),
         _personal_contract_workflow(runner, root),
         _published_inventory_workflow(runner),
+        _recovery_opportunity_workflow(runner),
     ]
     coverage_fields = (
         "archive_ids",
@@ -938,10 +1144,15 @@ def main() -> int:
             item.get("manual_save_load_semantic_equal") is True for item in workflows
         ),
         "review_completed": any(
-            item.get("contract_review_status") == "accepted"
+            item.get("contract_review_status") == "signed"
             or item.get("review_available") is True
             for item in workflows
         ),
+        "contract_review_statuses": sorted({
+            str(item["contract_review_status"])
+            for item in workflows
+            if item.get("contract_review_status")
+        }),
         "workflows": workflows,
     }
     validate_feature_workflow_report(report)

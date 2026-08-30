@@ -292,6 +292,7 @@ def build_container(
     npc_turns = NPCTurnService(role_llm, validator)
     input_review = InputReviewService(role_llm)
     story_flow = StoryFlowService()
+    npc_memories = NPCMemoryService(memory_repository)
     gameplay_governance = GameplayGovernanceService(
         sessions,
         packages,
@@ -305,8 +306,8 @@ def build_container(
         disclosure_gate,
         operations,
         transactions,
+        npc_memories,
     )
-    npc_memories = NPCMemoryService(memory_repository)
     auth = AuthService(
         accounts, auth_sessions,
         session_ttl_seconds=settings.auth_session_ttl_seconds,
@@ -405,6 +406,7 @@ def build_container(
             operations,
             transactions,
             disclosure_gate,
+            npc_memories,
         ),
         gameplay_governance=gameplay_governance,
         npc_turns=npc_turns,

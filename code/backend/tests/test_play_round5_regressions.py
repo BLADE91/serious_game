@@ -207,12 +207,11 @@ class PlayRound5ApiTests(unittest.TestCase):
         )
         self.assertEqual(201, started.status_code, started.text)
 
-    def test_every_visible_opportunity_has_a_descriptor_or_an_explicit_no_cta(self) -> None:
+    def test_every_published_opportunity_has_a_player_action_descriptor(self) -> None:
         package = self.runtime.packages.get("pkg_gameplay_v3")
         for configured in package.interaction_opportunities:
-            if configured.availability_mode.value == "closed":
-                continue
             with self.subTest(opportunity_id=configured.opportunity_id):
+                self.assertNotEqual("closed", configured.availability_mode.value)
                 self._enter_day(
                     configured.day_min,
                     flags=set(configured.requires_flags),
@@ -237,17 +236,58 @@ class PlayRound5ApiTests(unittest.TestCase):
                     if item["opportunity_id"] == configured.opportunity_id
                 )
                 descriptor = visible["canonical_action_descriptor"]
-                self.assertEqual(descriptor is not None, visible["cta_available"])
-                if descriptor is None:
-                    self.assertTrue(visible["no_cta_reason"])
-                else:
-                    self.assertEqual(
-                        configured.opportunity_id, descriptor["opportunity_id"]
-                    )
-                    self.assertEqual(
-                        [configured.npc_id], descriptor["preselected_npc_ids"]
-                    )
-                    self.assertTrue(descriptor["canonical_topic"].strip())
+                self.assertIsNotNone(descriptor)
+                self.assertTrue(visible["cta_available"])
+                self.assertIsNone(visible["no_cta_reason"])
+                self.assertEqual(
+                    configured.opportunity_id, descriptor["opportunity_id"]
+                )
+                self.assertEqual(
+                    [configured.npc_id], descriptor["preselected_npc_ids"]
+                )
+                self.assertTrue(descriptor["canonical_topic"].strip())
+
+    def test_tan_laoliu_recovery_is_reachable_after_the_player_follows_the_old_money(self) -> None:
+        package = self.runtime.packages.get("pkg_gameplay_v3")
+        recovery = next(
+            item
+            for item in package.interaction_opportunities
+            if item.opportunity_id == "opp_d53_tan_laoliu_paid_recovery"
+        )
+        self.assertEqual(
+            {"谭老六被强压", "白条线已启动"},
+            set(recovery.requires_flags),
+        )
+        follow_money = next(
+            item
+            for item in package.decisions["dp4_06"].options
+            if item.option_id == "d"
+        )
+        self.assertIn("白条线已启动", follow_money.effects.open_flags)
+        self.assertTrue(
+            set(recovery.requires_flags).isdisjoint(recovery.closes_on_flags)
+        )
+
+    def test_zhou_mancang_conversation_unlocks_the_ledger_order_decision_and_recovery(self) -> None:
+        package = self.runtime.packages.get("pkg_gameplay_v3")
+        contact = next(
+            item
+            for item in package.interaction_opportunities
+            if item.opportunity_id == "opp_03_zhou_mancang_contact"
+        )
+        self.assertEqual(
+            {"fact_zhou_ledger_order"},
+            set(contact.required_disclosure_ids),
+        )
+        self.assertIn("村账在手", contact.completion_flags)
+        negotiation = package.decisions["dp5_04"]
+        self.assertEqual({"村账在手"}, set(negotiation.required_flags))
+        restart = next(
+            item
+            for item in package.interaction_opportunities
+            if item.opportunity_id == "opp_d69_zhou_mancang_restart"
+        )
+        self.assertIn("周满仓已冷", restart.requires_flags)
 
 
 class PlayRound5PolicyTests(unittest.TestCase):

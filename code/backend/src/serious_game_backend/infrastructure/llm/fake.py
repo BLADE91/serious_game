@@ -176,12 +176,23 @@ class FakeRoleLLMGateway:
                     sum(ord(character) for character in context.npc_id)
                     % len(viewpoints)
                 ]
+            dialogue_act = (
+                "close" if "close" in context.allowed_dialogue_acts
+                else "settle"
+            )
             return NightAgentResult(
                 npc_id=context.npc_id,
                 model_id=model_id,
                 dialogue=(
                     f"关于“{context.scene_goal}”，{viewpoint}"
                 ),
+                dialogue_act=dialogue_act,
+                stance="convinced",
+                topic_settled=True,
+                memory_candidate=(
+                    f"D{context.story_day}：玩家在本场会谈中的说法尚未验证。"
+                ),
+                reason_code="protocol_stub_settle",
             )
         if context.phase == "dialogue":
             other = context.counterpart_ids[0] if context.counterpart_ids else "对方"

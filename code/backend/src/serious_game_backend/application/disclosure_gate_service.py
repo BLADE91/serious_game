@@ -83,6 +83,45 @@ class DisclosureGateService:
                 4, "旧包机会白名单", tuple(opportunity.allowed_fact_ids)
             )
         )
+        archive_unlock_days = {
+            fact_id: min(
+                item.unlock_day
+                for item in package.archive_investigations
+                if fact_id in item.result_fact_ids
+            )
+            for fact_id in {
+                value
+                for item in package.archive_investigations
+                for value in item.result_fact_ids
+            }
+        }
+
+        def available_through_this_conversation(fact_id: str) -> bool:
+            fact = package.facts.get(fact_id)
+            if fact is None:
+                return False
+            matching_days = [
+                int(method["unlock_day"])
+                for method in fact.acquisition_methods
+                if method.get("route_type") == "conversation"
+                and method.get("source_id") == opportunity.opportunity_id
+            ]
+            if matching_days:
+                return min(matching_days) <= session.game_state.story_day
+            if fact.acquisition_methods:
+                return False
+            return archive_unlock_days.get(fact_id, 1) <= session.game_state.story_day
+
+        gate = DisclosureGate(
+            gate.trust_tier,
+            gate.trust_label,
+            tuple(
+                fact_id
+                for fact_id in gate.allowed_fact_ids
+                if fact_id in session.known_fact_ids
+                or available_through_this_conversation(fact_id)
+            ),
+        )
         permitted = set(gate.allowed_fact_ids) | session.known_fact_ids
         return RoleTurnFactBoundary(
             gate=gate,

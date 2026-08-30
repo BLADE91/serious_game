@@ -44,6 +44,7 @@ class FactDefinition:
     use_hint: str = "可在后续会谈、调查和决策中作为已掌握材料引用。"
     disclosure_tier: int = 2
     owner_npc_ids: tuple[str, ...] = ()
+    acquisition_methods: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

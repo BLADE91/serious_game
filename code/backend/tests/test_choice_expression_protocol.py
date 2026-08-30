@@ -274,6 +274,39 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         ))
         self.assertEqual("我只核对已经公开的整改台账。", result.text)
 
+    def test_expression_retries_another_participants_duplicate_with_specific_feedback(self) -> None:
+        responses = iter((
+            {"text": "行，那就先按这个节奏走。"},
+            {"text": "镇里的执行记录我来盯，明天下午据实核对。"},
+        ))
+        requests: list[dict] = []
+
+        def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
+            requests.append(body)
+            return {
+                "choices": [{"message": {"content": json.dumps(next(responses), ensure_ascii=False)}}],
+                "usage": {},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        result = gateway.express(ExpressionTask(
+            task_id="distinct-group-expression",
+            role_id="npc_sun_qiang",
+            role_name="孙强",
+            confirmed_choice_ids=("settle",),
+            choice_summaries={"settle": "暂时接受"},
+            allowed_facts=("按真实台账推进。",),
+            forbidden_repeat_signatures=("行，那就先按这个节奏走。",),
+            persona="渡口镇党委书记",
+            context="县镇进度会谈",
+        ))
+
+        self.assertEqual("镇里的执行记录我来盯，明天下午据实核对。", result.text)
+        self.assertEqual(2, len(requests))
+        self.assertIn("重复了其他在场人物", requests[1]["messages"][-1]["content"])
+
     def test_role_disclosure_selection_receives_the_players_current_question(self) -> None:
         prompts: list[str] = []
 
@@ -410,6 +443,100 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         self.assertNotIn("优盘", expression_prompt)
         self.assertIn("说话简短克制", expression_prompt)
 
+    def test_role_expression_prioritizes_current_turn_and_forbids_repeating_old_topic(self) -> None:
+        prompts: list[str] = []
+
+        def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
+            prompt = "\n".join(
+                str(message.get("content", "")) for message in body["messages"]
+            )
+            prompts.append(prompt)
+            content = (
+                {"choice_id": "communication_cooperative"}
+                if "选择角色的沟通行为" in prompt
+                else {"text": "你好，坐吧。你今天想先了解哪件事？"}
+            )
+            return {
+                "choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}],
+                "usage": {},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        gateway.run_turn(RoleTurnContext(
+            session_id="session-current-turn",
+            account_id="account-current-turn",
+            operation_id="operation-current-turn",
+            story_day=2,
+            opportunity_id="opp-current-turn",
+            npc_id="npc_wu_xiuying",
+            npc_name="吴秀英",
+            npc_state_tier="deep",
+            player_text="你好。",
+            conversation_goal="听取吴秀英对搬迁安排的真实诉求。",
+            conversation_history=(
+                {"speaker_type": "player", "text": "我希望和您签合同。"},
+                {"speaker_type": "npc", "text": "合同的事先放一放，先把情况说清楚。"},
+            ),
+        ))
+
+        expression_prompt = prompts[-1]
+        self.assertIn("优先直接回应玩家本轮发言", expression_prompt)
+        self.assertIn("不得自行重提历史中但本轮未提及的话题", expression_prompt)
+        self.assertIn("不得重复近期NPC已经表达过的结论或句式", expression_prompt)
+        self.assertIn("不要复述场景标签、会谈类型或‘县长正在……’等开场说明", expression_prompt)
+        self.assertIn("玩家本轮发言：你好。", expression_prompt)
+        self.assertNotIn("谨慎但仍针对玩家当前问题作答", expression_prompt)
+        self.assertNotIn("合作、直接地回应玩家当前问题", expression_prompt)
+
+    def test_role_expression_uses_durable_memory_and_the_complete_current_conversation(self) -> None:
+        prompts: list[str] = []
+
+        def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
+            prompt = "\n".join(str(item.get("content", "")) for item in body["messages"])
+            prompts.append(prompt)
+            content = (
+                {"choice_id": "communication_cooperative"}
+                if "选择角色的沟通行为" in prompt
+                else {"text": "我记得这件事，先把之前答应的复核办完。"}
+            )
+            return {"choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}], "usage": {}}
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        history = tuple(
+            {"speaker_type": "player" if index % 2 == 0 else "npc", "text": f"历史第{index + 1}条"}
+            for index in range(12)
+        )
+        gateway.run_turn(RoleTurnContext(
+            session_id="session-memory-context",
+            account_id="account-memory-context",
+            operation_id="operation-memory-context",
+            story_day=40,
+            opportunity_id="opp-memory-context",
+            npc_id="npc_wu_xiuying",
+            npc_name="吴秀英",
+            npc_state_tier="deep",
+            player_text="您还记得之前答应的事吗？",
+            conversation_goal="核对此前承诺。",
+            conversation_history=history,
+            memory_items=("第2日，玩家答应公开逐户测算表。", "第18日，双方确认先复核旧契约。"),
+            unresolved_commitments=("公开逐户测算表尚未兑现。",),
+            unresolved_demands=("要求补偿标准公开透明。",),
+            relationship_context={"trust": "可协作", "attitude": "审慎"},
+            recent_visible_change_reasons=("玩家此前完整听取了她的意见。",),
+        ))
+
+        expression_prompt = prompts[-1]
+        self.assertIn("长期人物记忆", expression_prompt)
+        self.assertIn("公开逐户测算表尚未兑现", expression_prompt)
+        self.assertIn("要求补偿标准公开透明", expression_prompt)
+        self.assertIn("玩家此前完整听取了她的意见", expression_prompt)
+        self.assertIn("历史第1条", expression_prompt)
+        self.assertIn("历史第12条", expression_prompt)
+
     def test_personal_configuration_requires_all_six_real_capability_probes(self) -> None:
         calls: list[str] = []
 
@@ -475,6 +602,8 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
                 content = {"choice_ids": ["npc_zhao_jianguo"]}
             elif "night_followup_plan_a" in prompt:
                 content = {"choice_id": "night_followup_plan_a"}
+            elif "继续追问" in prompt and "暂时相信" in prompt:
+                content = {"choice_id": "settle"}
             else:
                 content = {"choice_id": "night_hold_position"}
             return {
@@ -510,6 +639,17 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
             transcript=({"speaker": "npc_zhao_jianguo", "text": "先核对台账。"},),
             **common,
         ))
+        group_dialogue = gateway.run_night_turn(NightAgentContext(
+            operation_id="night-group-dialogue",
+            phase="player_group_dialogue",
+            transcript=({"speaker_type": "player", "text": "明天公开台账。"},),
+            player_text="明天公开台账，并请县镇共同核对。",
+            allowed_dialogue_acts=("press", "challenge", "soften", "settle"),
+            memory_items=("玩家此前承诺公开台账，尚未兑现。",),
+            unresolved_commitments=("公开台账尚未兑现。",),
+            private_context="核心担忧是口径是否真实。",
+            **common,
+        ))
         action = gateway.run_night_turn(NightAgentContext(
             operation_id="night-action",
             phase="action_selection",
@@ -539,13 +679,22 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
 
         self.assertEqual(("npc_zhao_jianguo",), contact.contact_ids)
         self.assertEqual("我今晚只核对已经公开的整改进度。", dialogue.dialogue)
+        self.assertEqual("settle", group_dialogue.dialogue_act)
+        self.assertTrue(group_dialogue.topic_settled)
+        self.assertIn("明天公开台账", group_dialogue.memory_candidate or "")
         self.assertEqual("night_hold_position", action.action_id)
         self.assertTrue(followup.initiate_followup)
         self.assertEqual("night_followup_plan_a", followup.rationale)
-        self.assertEqual(4, len(requests))
+        self.assertEqual(6, len(requests))
         self.assertTrue(all("participant_ids" not in item or "合法候选" in item for item in requests))
         self.assertIn("本场景必须至少联系1人", requests[0])
         self.assertNotIn("没有必要时返回空数组", requests[0])
+        self.assertIn("核心担忧是口径是否真实", requests[2])
+        self.assertIn("不得追加议题之外的新验收门槛", requests[2])
+        self.assertIn("不得要求玩家交代剧本未提供的具体标准", requests[2])
+        self.assertNotIn("核心担忧是口径是否真实", requests[3])
+        self.assertIn("不得复述其他在场人物已经说过的句子", requests[3])
+        self.assertIn("只指出其回避或尚未回答", requests[3])
 
     def test_technical_night_failure_aborts_instead_of_settling_hold_position(self) -> None:
         service = NightSimulationService(
@@ -741,6 +890,133 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         self.assertIn("D10", document.data["document_text"])
         self.assertEqual(2, len(prompts))
         self.assertTrue(all("issues" not in prompt for prompt in prompts))
+
+    def test_group_expression_never_receives_private_persuasion_rubric(self) -> None:
+        prompts: list[str] = []
+        hidden_rubric = "容易相信的说法：只要承诺公开就立即放行"
+
+        def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
+            prompt = "\n".join(
+                str(message.get("content", "")) for message in body["messages"]
+            )
+            prompts.append(prompt)
+            content = (
+                {"choice_id": "settle"}
+                if "继续追问" in prompt and "暂时相信" in prompt
+                else {"text": "我先按你说的节点等公开结果。"}
+            )
+            return {
+                "choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}],
+                "usage": {},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        gateway.run_night_turn(NightAgentContext(
+            session_id="session-private-rubric",
+            account_id="account-private-rubric",
+            operation_id="operation-private-rubric",
+            story_day=40,
+            scene_id="group-private-rubric",
+            phase="player_group_dialogue",
+            npc_id="npc_wu_xiuying",
+            npc_name="吴秀英",
+            role_setting="退休教师，重视公平与公开。",
+            big_five={},
+            counterpart_ids=(),
+            scene_goal="核对补偿公开安排",
+            private_context=hidden_rubric,
+            player_text="我会公开逐户测算表。",
+            allowed_dialogue_acts=("press", "settle"),
+        ))
+
+        self.assertIn(hidden_rubric, prompts[0])
+        self.assertNotIn(hidden_rubric, prompts[-1])
+
+    def test_press_still_records_the_players_current_statement(self) -> None:
+        def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
+            prompt = "\n".join(
+                str(message.get("content", "")) for message in body["messages"]
+            )
+            content = (
+                {"choice_id": "press"}
+                if "继续追问" in prompt and "暂时相信" in prompt
+                else {"text": "具体哪一天公开？由谁签字？"}
+            )
+            return {
+                "choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}],
+                "usage": {},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        result = gateway.run_night_turn(NightAgentContext(
+            session_id="session-press-memory",
+            account_id="account-press-memory",
+            operation_id="operation-press-memory",
+            story_day=40,
+            scene_id="group-press-memory",
+            phase="player_group_dialogue",
+            npc_id="npc_wu_xiuying",
+            npc_name="吴秀英",
+            role_setting="退休教师。",
+            big_five={},
+            counterpart_ids=(),
+            scene_goal="核对公开承诺",
+            player_text="我承诺明天公开逐户测算表。",
+            allowed_dialogue_acts=("press", "settle"),
+        ))
+
+        self.assertEqual("press", result.dialogue_act)
+        self.assertIn("明天公开逐户测算表", result.memory_candidate or "")
+
+    def test_forced_conversation_may_repeat_its_core_question_when_player_keeps_evading(self) -> None:
+        requests: list[dict] = []
+
+        def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
+            requests.append(body)
+            prompt = "\n".join(
+                str(message.get("content", "")) for message in body["messages"]
+            )
+            content = (
+                {"choice_id": "press"}
+                if "继续追问" in prompt and "暂时相信" in prompt
+                else {"text": "具体哪一天公开？由谁签字？"}
+            )
+            return {
+                "choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}],
+                "usage": {},
+            }
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        result = gateway.run_night_turn(NightAgentContext(
+            session_id="session-repeat-core-question",
+            account_id="account-repeat-core-question",
+            operation_id="operation-repeat-core-question",
+            story_day=40,
+            scene_id="group-repeat-core-question",
+            phase="player_group_dialogue",
+            npc_id="npc_wu_xiuying",
+            npc_name="吴秀英",
+            role_setting="退休教师。",
+            big_five={},
+            counterpart_ids=(),
+            scene_goal="核对公开承诺",
+            transcript=(
+                {"speaker_type": "npc", "text": "具体哪一天公开？由谁签字？"},
+                {"speaker_type": "player", "text": "我会尽快研究。"},
+            ),
+            player_text="请相信我，我会尽快研究。",
+            allowed_dialogue_acts=("press", "settle"),
+        ))
+
+        self.assertEqual("press", result.dialogue_act)
+        self.assertEqual("具体哪一天公开？由谁签字？", result.dialogue)
+        self.assertEqual(2, len(requests))
 
 
 if __name__ == "__main__":

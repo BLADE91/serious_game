@@ -12,6 +12,7 @@ from serious_game_backend.infrastructure.script_packages.file_loader import File
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_backend_dev_v1"
 GAMEPLAY_PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v2"
+GAMEPLAY_V3_PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
 
 
 class ScriptPackageTests(unittest.TestCase):
@@ -518,6 +519,85 @@ class ScriptPackageTests(unittest.TestCase):
             loader.compute_content_hash(PACKAGE_DIR),
             loader.compute_content_hash(PACKAGE_DIR),
         )
+
+    def test_every_household_signatory_setting_contains_its_authoritative_ledger(self) -> None:
+        package = FileScriptPackageLoader().load(GAMEPLAY_V3_PACKAGE_DIR)
+        profiles = {item.npc_id: item for item in package.npc_profiles}
+        limited = {
+            item.household_id: item
+            for item in package.limited_household_signatories
+        }
+
+        for household in package.households:
+            ledger_markers = (
+                f"户号 {household.household_id}",
+                f"登记人口{household.registered_population}人",
+                f"实际居住{household.actual_residents}人",
+                f"安置人口{household.resettlement_population}人",
+                f"合法住宅{household.legal_residential_area_m2:g}平方米",
+                f"认定宅基地{household.homestead_recognized_m2:g}平方米",
+                f"承包地{household.contracted_land_mu:g}亩",
+            )
+            if household.is_shadow_household:
+                setting = limited[household.household_id].role_setting
+            else:
+                setting = profiles[household.representative_npc].role_setting
+            for marker in ledger_markers:
+                self.assertIn(marker, setting, (household.household_id, marker))
+
+    def test_every_v3_map_location_has_an_enabled_governance_entry(self) -> None:
+        package = FileScriptPackageLoader().load(GAMEPLAY_V3_PACKAGE_DIR)
+        enabled_variants = [
+            item
+            for item in package.governance_config.get("action_variants", ())
+            if item.get("enabled") is True
+        ]
+        covered_location_ids = {
+            str(location_id)
+            for variant in enabled_variants
+            for location_id in variant.get("legal_location_ids", ())
+        }
+
+        self.assertEqual(
+            {item.location_id for item in package.map_locations},
+            covered_location_ids,
+        )
+
+    def test_every_v3_fact_has_a_reachable_player_acquisition_method(self) -> None:
+        package = FileScriptPackageLoader().load(GAMEPLAY_V3_PACKAGE_DIR)
+        archives = {
+            item.archive_id: item for item in package.archive_investigations
+        }
+        opportunities = {
+            item.opportunity_id: item
+            for item in package.interaction_opportunities
+        }
+
+        self.assertEqual(18, len(package.facts))
+        for fact in package.facts.values():
+            self.assertTrue(fact.acquisition_methods, fact.fact_id)
+            for method in fact.acquisition_methods:
+                self.assertTrue(str(method["label"]).strip(), fact.fact_id)
+                self.assertTrue(str(method["instructions"]).strip(), fact.fact_id)
+                self.assertGreaterEqual(int(method["unlock_day"]), 1)
+                if method["route_type"] == "archive":
+                    archive = archives[str(method["source_id"])]
+                    self.assertIn(fact.fact_id, archive.result_fact_ids)
+                    self.assertEqual(archive.unlock_day, method["unlock_day"])
+                else:
+                    self.assertEqual("conversation", method["route_type"])
+                    opportunity = opportunities[str(method["source_id"])]
+                    self.assertIn(
+                        fact.fact_id,
+                        set(opportunity.allowed_fact_ids)
+                        | set(opportunity.completion_fact_ids),
+                    )
+                    self.assertGreaterEqual(
+                        int(method["unlock_day"]), opportunity.day_min
+                    )
+                    self.assertLessEqual(
+                        int(method["unlock_day"]), opportunity.day_max
+                    )
 
     def test_recording_days_d12_to_d26_have_complete_player_facing_flow(self) -> None:
         package = FileScriptPackageLoader().load(

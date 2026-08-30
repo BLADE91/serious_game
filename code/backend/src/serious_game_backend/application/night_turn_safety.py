@@ -18,6 +18,7 @@ def validate_night_turn_result(
     expected_npc_id: str,
     forbidden_fact_signatures: dict[str, tuple[str, ...]],
     forbidden_markers: tuple[str, ...] = (),
+    allow_unverified_memory_claims: bool = False,
 ) -> NightAgentResult:
     """Normalize the complete model result and reject any unauthorized fact."""
     if not isinstance(result, NightAgentResult):
@@ -25,7 +26,8 @@ def validate_night_turn_result(
 
     required_text = ("npc_id", "model_id", "agenda", "urgency", "rationale")
     optional_text = (
-        "dialogue", "action_id", "contact_response", "followup_type"
+        "dialogue", "action_id", "contact_response", "followup_type",
+        "dialogue_act", "stance", "memory_candidate", "reason_code",
     )
     sequence_text = (
         "contact_ids", "participant_ids", "demands", "target_ids", "topic_ids"
@@ -48,6 +50,8 @@ def validate_night_turn_result(
         normalized_sequences[field_name] = tuple(value)
     if type(result.initiate_followup) is not bool:
         raise NightTurnSafetyError("夜间角色模型返回了非法的布尔字段")
+    if type(result.topic_settled) is not bool:
+        raise NightTurnSafetyError("夜间角色模型返回了非法的收束状态")
     if result.npc_id != expected_npc_id:
         raise NightTurnSafetyError("夜间角色模型返回了错误的 npc_id")
     if result.urgency not in {"none", "normal", "high", "critical"}:
@@ -69,9 +73,17 @@ def validate_night_turn_result(
         *normalized.target_ids,
         *normalized.topic_ids,
         normalized.rationale,
+        normalized.dialogue_act or "",
+        normalized.stance or "",
+        normalized.reason_code or "",
     )
     normalized_outputs = tuple(
         normalize_fact_signature(value) for value in public_values if value
+    )
+    memory_output = normalize_fact_signature(normalized.memory_candidate or "")
+    all_outputs = (
+        *normalized_outputs,
+        *((memory_output,) if memory_output else ()),
     )
     normalized_markers = tuple(
         normalize_fact_signature(marker)
@@ -90,14 +102,18 @@ def validate_night_turn_result(
     if any(
         marker and marker in output
         for marker in normalized_markers
-        for output in normalized_outputs
+        for output in all_outputs
     ):
         raise NightTurnSafetyError("夜间角色模型输出包含禁止公开的内部信息")
     if any(
         signature and signature in output
         for signatures in forbidden_fact_signatures.values()
         for signature in signatures
-        for output in normalized_outputs
+        for output in (
+            normalized_outputs
+            if allow_unverified_memory_claims
+            else all_outputs
+        )
     ):
         raise NightTurnSafetyError("夜间角色模型输出包含未授权事实")
     return normalized

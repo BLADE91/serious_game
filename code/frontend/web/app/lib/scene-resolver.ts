@@ -202,18 +202,3 @@ export function resolveSceneForView(input: SceneViewInput): ResolvedScene {
   if (input.line) return resolveScene(input.line);
   return resolveScene({ beatId: input.beatId });
 }
-
-function nearestLineScene(input: SceneViewInput, expectedDay: number): ResolvedScene | null {
-  const lines = input.lines?.length ? input.lines : input.line ? [input.line] : [];
-  const start = input.lines?.length
-    ? Math.min(Math.max(0, input.currentIndex), lines.length - 1)
-    : lines.length - 1;
-  for (let index = start; index >= 0; index -= 1) {
-    const line = lines[index];
-    const lineDay = Number(line.storyDay);
-    if (Number.isFinite(expectedDay) && Number.isFinite(lineDay) && lineDay !== expectedDay) break;
-    const resolved = resolveScene(line);
-    if (resolved.matchedBy !== "fallback") return resolved;
-  }
-  return null;
-}

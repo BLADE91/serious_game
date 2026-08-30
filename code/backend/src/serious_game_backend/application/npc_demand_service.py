@@ -154,11 +154,15 @@ class NPCDemandService:
         }
         result = []
         if package.gameplay_schema_version >= 4:
-            NPCRelationshipService.synchronize(session, package)
+            actionable_npc_ids = NPCRelationshipService.actionable_npc_ids(
+                session, package
+            )
+        else:
+            actionable_npc_ids = set()
         for demand in package.npc_demands:
             if (
                 package.gameplay_schema_version >= 4
-                and demand.npc_id not in session.known_npc_ids
+                and demand.npc_id not in actionable_npc_ids
             ):
                 continue
             state = session.npc_demand_states.get(demand.demand_id, {})
@@ -292,8 +296,9 @@ class NPCDemandService:
         if session.game_state.story_day < int(rule.get("min_day", 1)):
             return False
         if package.gameplay_schema_version >= 4:
-            NPCRelationshipService.synchronize(session, package)
-            visible_npcs = set(session.known_npc_ids)
+            visible_npcs = NPCRelationshipService.actionable_npc_ids(
+                session, package
+            )
         else:
             visible_npcs = set(
                 (package.governance_config or {}).get(

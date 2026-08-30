@@ -22,7 +22,11 @@ from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.errors import ActionUnavailableError
 from serious_game_backend.domain.llm import GovernanceLLMResult
-from serious_game_backend.domain.gameplay_governance import HouseholdContract
+from serious_game_backend.domain.gameplay_governance import (
+    ContractBatch,
+    GovernanceActionRecord,
+    HouseholdContract,
+)
 from serious_game_backend.domain.story import ScriptedEffects
 from serious_game_backend.infrastructure.repositories.codec import (
     decode_session,
@@ -75,6 +79,27 @@ class GameplayGovernanceTests(unittest.TestCase):
                 "付款日：D10。", "payment_day", 10
             )
         )
+
+    def test_expected_housing_metadata_numbers_are_not_extra_commitments(self) -> None:
+        package = self.runtime.packages.get("pkg_gameplay_v2")
+        self.assertIsNotNone(package)
+        assert package is not None
+
+        allowed = self.runtime.gameplay_governance._unstructured_commitment_details(
+            "本户选择D1现房80㎡，其余资源与金额以结构化附件为准。",
+            structured={"housing_resource_id": "housing_d1_80"},
+            expected_resource_ids={"housing_d1_80"},
+            package=package,
+        )
+        unauthorized = self.runtime.gameplay_governance._unstructured_commitment_details(
+            "本户选择D1现房81㎡，其余资源与金额以结构化附件为准。",
+            structured={"housing_resource_id": "housing_d1_80"},
+            expected_resource_ids={"housing_d1_80"},
+            package=package,
+        )
+
+        self.assertEqual([], allowed["numbers"])
+        self.assertEqual(["81"], unauthorized["numbers"])
 
     def setUp(self) -> None:
         settings = Settings(
@@ -163,6 +188,92 @@ class GameplayGovernanceTests(unittest.TestCase):
         assert after is not None
         self.assertEqual(before, encode_session(after))
         self.assertEqual(version, after.state_version)
+
+    def test_contract_batch_confirmation_requires_the_matching_live_conversation(
+        self,
+    ) -> None:
+        session = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        session.pending_decision = None
+        session.pending_decision_queue.clear()
+        batch = ContractBatch(
+            batch_id="batch-conversation-boundary",
+            representative_npc_id="npc_zhou_dashan",
+            story_day=session.game_state.story_day,
+            household_ids=("ZDS-01",),
+            status="pending_confirmation",
+            player_request="为本户建立合同",
+            intent_reason="玩家在会谈中提出签约",
+        )
+        session.contract_batches[batch.batch_id] = batch
+        session.governance_actions["different-conversation"] = GovernanceActionRecord(
+            action_instance_id="different-conversation",
+            action_kind="household_visit",
+            story_day=session.game_state.story_day,
+            target_ids=("npc_wu_xiuying",),
+            required_permissions=("governance:household_visit",),
+            topic="听取吴秀英意见",
+        )
+        self.runtime.sessions.save(session, expected_version=session.state_version)
+
+        response = self.client.post(
+            (
+                f"/api/game/session/{self.session_id}/governance/"
+                f"contract-batches/{batch.batch_id}/confirm"
+            ),
+            headers=self.headers,
+            json={
+                "state_version": session.state_version,
+                "confirmed": True,
+            },
+        )
+
+        self.assertEqual(409, response.status_code, response.text)
+        self.assertIn("相关签约人或代表", response.text)
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        self.assertEqual("pending_confirmation", stored.contract_batches[batch.batch_id].status)
+        self.assertEqual({}, stored.household_contracts)
+
+    def test_governance_turn_does_not_commit_when_memory_persistence_fails(
+        self,
+    ) -> None:
+        self._resolve_opening()
+        started = self._post("/governance/actions", {
+            "state_version": self.state["state_version"],
+            "action_kind": "household_visit",
+            "target_ids": ["npc_zhou_dashan"],
+            "topic": "核对签约诉求",
+        }, expected=201)
+        action_id = started["action"]["action_instance_id"]
+
+        with patch.object(
+            self.runtime.npc_memories,
+            "record",
+            side_effect=RuntimeError("模拟人物记忆写入失败"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    (
+                        f"/api/game/session/{self.session_id}/governance/"
+                        f"actions/{action_id}/turn"
+                    ),
+                    headers=self.headers,
+                    json={
+                        "state_version": started["state_version"],
+                        "player_text": "我承诺明天公开逐户测算表。",
+                    },
+                )
+
+        stored = self.runtime.sessions.get_owned(
+            self.session_id, "acct_gameplay_governance"
+        )
+        action = stored.governance_actions[action_id]
+        self.assertEqual(started["state_version"], stored.state_version)
+        self.assertEqual([], action.transcript)
+        self.assertEqual("pending", action.cost_status)
 
     def _create_authorization_document(
         self, *, deadline_day: int = 10
@@ -1534,7 +1645,16 @@ class GameplayGovernanceTests(unittest.TestCase):
             f"/governance/contracts/{contract['contract_id']}/review",
             {"state_version": repaired["state_version"]},
         )
-        self.assertEqual("accepted", review["contract"]["status"])
+        self.assertEqual("signed", review["contract"]["status"])
+        self.assertIsNone(review["contract"]["reserved_until_day"])
+        self.assertEqual(
+            "已签署并占用资源，尚未支付",
+            review["contract"]["resource_hold_status"],
+        )
+        self.assertEqual(
+            1,
+            review["visible_state"]["ledger"]["signed_households"]["signed"],
+        )
         self.assertEqual(2, len(review["contract"]["review_history"]))
         self.assertEqual(
             "explain",
@@ -1555,10 +1675,6 @@ class GameplayGovernanceTests(unittest.TestCase):
                     contract["contract_id"]
                 ].review_history
             ),
-        )
-        self.assertEqual(
-            "预占至D3，尚未支付",
-            review["contract"]["resource_hold_status"],
         )
         reviewed_session = self.runtime.sessions.get_owned(
             self.session_id, "acct_gameplay_governance"
@@ -1591,10 +1707,10 @@ class GameplayGovernanceTests(unittest.TestCase):
             item for item in reserved_overview["resources"]["resource_pools"]
             if item["resource_id"] == "housing_d1_120"
         )
-        self.assertEqual(1, reserved_housing["reserved"])
-        self.assertEqual(0, reserved_housing["committed"])
+        self.assertEqual(0, reserved_housing["reserved"])
+        self.assertEqual(1, reserved_housing["committed"])
         self.assertEqual(
-            "预占至D3，尚未支付",
+            "已签署并占用资源，尚未支付",
             next(
                 item["display_status"]
                 for item in reserved_overview["resources"][
@@ -1602,22 +1718,6 @@ class GameplayGovernanceTests(unittest.TestCase):
                 ]
                 if item["resource_id"] == "housing_d1_120"
             ),
-        )
-        signed = self._post(
-            f"/governance/contracts/{contract['contract_id']}/sign",
-            {
-                "state_version": review["state_version"],
-                "confirmed": True,
-            },
-        )
-        self.assertTrue(signed["signed"])
-        self.assertEqual(
-            "已签署并占用资源，尚未支付",
-            signed["contract"]["resource_hold_status"],
-        )
-        self.assertEqual(
-            1,
-            signed["visible_state"]["ledger"]["signed_households"]["signed"],
         )
         overview = self.client.get(
             f"/api/game/session/{self.session_id}/governance",
@@ -1638,7 +1738,7 @@ class GameplayGovernanceTests(unittest.TestCase):
             item for item in overview["resource_ledger"]
             if item["source_id"] == contract["contract_id"]
         ]
-        self.assertTrue(any(
+        self.assertFalse(any(
             item["change_kind"] == "reservation"
             and item["source_type"] == "contract_review"
             for item in contract_entries
@@ -1748,6 +1848,25 @@ class GameplayGovernanceTests(unittest.TestCase):
         contracts = []
         state_version = session.state_version
         for batch in batches:
+            current = self.runtime.sessions.get_owned(
+                self.session_id, "acct_gameplay_governance"
+            )
+            for action in current.governance_actions.values():
+                if action.status == "active":
+                    action.status = "completed"
+            current.governance_actions[
+                f"contract-conversation-{batch.batch_id}"
+            ] = GovernanceActionRecord(
+                action_instance_id=f"contract-conversation-{batch.batch_id}",
+                action_kind="household_visit",
+                story_day=current.game_state.story_day,
+                target_ids=(batch.representative_npc_id,),
+                required_permissions=("governance:household_visit",),
+                topic="与本批次代表逐户核定合同",
+            )
+            self.runtime.sessions.save(
+                current, expected_version=current.state_version
+            )
             confirmed = self._post(
                 f"/governance/contract-batches/{batch.batch_id}/confirm",
                 {"state_version": state_version, "confirmed": True},
@@ -1794,6 +1913,7 @@ class GameplayGovernanceTests(unittest.TestCase):
             selected["remaining"] -= 1
             return str(selected["resource_id"])
 
+        batches_by_id = {batch.batch_id: batch for batch in batches}
         for contract in contracts:
             household = households[contract["household_id"]]
             allocations = {}
@@ -1828,6 +1948,28 @@ class GameplayGovernanceTests(unittest.TestCase):
                 "old_case_resolved": True,
                 "prior_payment_verified": True,
             }
+            current = self.runtime.sessions.get_owned(
+                self.session_id, "acct_gameplay_governance"
+            )
+            for action in current.governance_actions.values():
+                if action.status == "active":
+                    action.status = "completed"
+            representative_id = batches_by_id[
+                contract["batch_id"]
+            ].representative_npc_id
+            action_id = f"contract-work-{contract['contract_id']}"
+            current.governance_actions[action_id] = GovernanceActionRecord(
+                action_instance_id=action_id,
+                action_kind="household_visit",
+                story_day=current.game_state.story_day,
+                target_ids=(representative_id,),
+                required_permissions=("governance:household_visit",),
+                topic="与本户签约人或代表核定合同",
+            )
+            self.runtime.sessions.save(
+                current, expected_version=current.state_version
+            )
+            state_version = current.state_version
             drafted = self._put(
                 f"/governance/contracts/{contract['contract_id']}/terms",
                 {"state_version": state_version, **term_sheet},
@@ -1844,16 +1986,8 @@ class GameplayGovernanceTests(unittest.TestCase):
                 f"/governance/contracts/{contract['contract_id']}/review",
                 {"state_version": drafted["state_version"]},
             )
-            self.assertEqual("accepted", reviewed["contract"]["status"])
-            signed = self._post(
-                f"/governance/contracts/{contract['contract_id']}/sign",
-                {
-                    "state_version": reviewed["state_version"],
-                    "confirmed": True,
-                },
-            )
-            self.assertEqual("signed", signed["contract"]["status"])
-            state_version = signed["state_version"]
+            self.assertEqual("signed", reviewed["contract"]["status"])
+            state_version = reviewed["state_version"]
 
         completed = self.runtime.sessions.get_owned(
             self.session_id, "acct_gameplay_governance"
@@ -1898,6 +2032,16 @@ class GameplayGovernanceTests(unittest.TestCase):
             created_day=77,
         )
         session.household_contracts[contract.contract_id] = contract
+        session.governance_actions["post75-contract-conversation"] = (
+            GovernanceActionRecord(
+                action_instance_id="post75-contract-conversation",
+                action_kind="household_visit",
+                story_day=77,
+                target_ids=("npc_ma_qiusheng",),
+                required_permissions=("governance:household_visit",),
+                topic="核对本户合同",
+            )
+        )
         self.runtime.sessions.save(
             session, expected_version=session.state_version
         )
@@ -1954,7 +2098,10 @@ class GameplayGovernanceTests(unittest.TestCase):
             json={"state_version": original_version, "confirmed": True},
         )
         self.assertEqual(409, sign_response.status_code, sign_response.text)
-        self.assertIn("公开签约奖励", sign_response.text)
+        self.assertEqual(
+            "ACTION_UNAVAILABLE",
+            sign_response.json()["error"]["code"],
+        )
         still_unchanged = self.runtime.sessions.get_owned(
             self.session_id, "acct_gameplay_governance"
         )

@@ -383,6 +383,13 @@ class NightSimulationService:
                         accepted.append(invited_id)
                 if len(accepted) < 2:
                     continue
+                selected_plan = next(
+                    (
+                        plan for plan in followup_plans
+                        if str(plan.get("plan_id", "")) == result.followup_plan_id
+                    ),
+                    {},
+                )
                 conversation = ForcedGroupConversation(
                     conversation_id=f"group_{secrets.token_hex(12)}",
                     conversation_type=followup_type,
@@ -392,6 +399,16 @@ class NightSimulationService:
                     demands=result.demands,
                     urgency=result.urgency,
                     story_day=session.game_state.story_day + 1,
+                    followup_plan_id=result.followup_plan_id or "",
+                    persuasion_context=str(
+                        selected_plan.get("persuasion_context", "")
+                    ),
+                    participant_guidance={
+                        str(key): dict(value)
+                        for key, value in dict(
+                            selected_plan.get("participant_guidance", {})
+                        ).items()
+                    },
                 )
                 created.append(conversation)
                 proposal["created"] = True

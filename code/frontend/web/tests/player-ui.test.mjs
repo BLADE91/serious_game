@@ -21,8 +21,216 @@ test("normalizes every supported action point cost shape including zero", () => 
   assert.equal(actionPointLabel({ cost_action_points: 2 }), "消耗 2 点精力");
 });
 
+test("restores the configured AI mode from the authoritative response", () => {
+  assert.equal(typeof playerUi.aiConfigurationMode, "function");
+  assert.equal(playerUi.aiConfigurationMode({ active: true, mode: "server_default" }), "server_default");
+  assert.equal(playerUi.aiConfigurationMode({ active: true, mode: "personal" }), "personal");
+  assert.equal(playerUi.aiConfigurationMode({ active: false }), "personal");
+});
+
+test("shows unfinished contract work only during the matching representative conversation", () => {
+  assert.equal(typeof playerUi.conversationContractWorkflow, "function");
+  const batches = [
+    { batch_id: "batch-a", representative_npc_id: "npc_a", status: "confirmed", contract_ids: ["contract-a"] },
+    { batch_id: "batch-b", representative_npc_id: "npc_b", status: "pending_confirmation", contract_ids: [] },
+  ];
+  const contracts = [
+    { contract_id: "contract-a", batch_id: "batch-a", signatory_npc_id: "npc_household_a", status: "draft" },
+  ];
+  assert.deepEqual(
+    playerUi.conversationContractWorkflow(
+      { action_kind: "household_visit", status: "active", target_ids: ["npc_a"] },
+      batches,
+      contracts,
+    ),
+    { proposal: null, contract: contracts[0] },
+  );
+  assert.equal(
+    playerUi.conversationContractWorkflow(
+      { action_kind: "cadre_interview", status: "active", target_ids: ["npc_a"] },
+      batches,
+      contracts,
+    ),
+    null,
+  );
+  assert.equal(
+    playerUi.conversationContractWorkflow(
+      { action_kind: "household_visit", status: "active", target_ids: ["npc_b"] },
+      batches,
+      contracts,
+    )?.proposal?.batch_id,
+    "batch-b",
+  );
+  assert.deepEqual(
+    playerUi.conversationContractWorkflow(
+      { action_kind: "household_visit", status: "active", target_ids: ["npc_household_a"] },
+      batches,
+      contracts,
+    ),
+    { proposal: null, contract: contracts[0] },
+  );
+  assert.equal(playerUi.conversationContractWorkflow(null, batches, contracts), null);
+});
+
+test("uses the pre-update scroll state when deciding whether to follow new dialogue", () => {
+  assert.equal(typeof playerUi.conversationTimelineUpdate, "function");
+  assert.deepEqual(
+    playerUi.conversationTimelineUpdate(true, 2, 3),
+    { followLatest: true, showNewDialogue: false },
+  );
+  assert.deepEqual(
+    playerUi.conversationTimelineUpdate(false, 2, 3),
+    { followLatest: false, showNewDialogue: true },
+  );
+  assert.deepEqual(
+    playerUi.conversationTimelineUpdate(false, 3, 3),
+    { followLatest: false, showNewDialogue: false },
+  );
+});
+
+test("projects player-safe investigation leads with concrete acquisition instructions", () => {
+  assert.equal(typeof playerUi.investigationLeadView, "function");
+  assert.deepEqual(playerUi.investigationLeadView([
+    {
+      fact_id: "fact-a",
+      title: "资金去向疑点",
+      category: "clue",
+      methods: [
+        {
+          route_type: "archive",
+          label: "查阅《财政索引》",
+          instructions: "进入行动页选择“查阅档案”。",
+          unlock_day: 3,
+          source_id: "internal-archive-id",
+        },
+      ],
+    },
+    { fact_id: "fact-empty", title: "无路径", methods: [] },
+  ]), [
+    {
+      factId: "fact-a",
+      title: "资金去向疑点",
+      category: "clue",
+      methods: [
+        {
+          routeType: "archive",
+          label: "查阅《财政索引》",
+          instructions: "进入行动页选择“查阅档案”。",
+          unlockDay: 3,
+        },
+      ],
+    },
+  ]);
+});
+
 test("sanitizes player copy", async () => {
   assert.equal(toPlayerText("[BEAT_C01] NPC与玩家对应剧情节点"), "人物与你后续事态");
+});
+
+test("projects every authoritative resource pool with usable inventory totals", () => {
+  assert.equal(typeof playerUi.resourceInventoryView, "function");
+  assert.deepEqual(playerUi.resourceInventoryView([
+    {
+      resource_id: "lead_recheck_slot",
+      name: "血铅复检名额",
+      category: "medical",
+      capacity: 10,
+      available_to_reserve: 7,
+      blocked_total: 3,
+      available_day: 1,
+    },
+    {
+      resource_id: "grave_relocation_service",
+      name: "迁坟事务服务户次",
+      category: "grave",
+      capacity: 5,
+      available: 5,
+      attributes: { unit: "household_case" },
+      available_day: 30,
+    },
+    {
+      resource_id: "startup_interest_slot",
+      name: "创业贴息名额",
+      category: "business",
+      capacity: 4,
+      available: 4,
+    },
+    {
+      resource_id: "legal_review_slot",
+      name: "合法性审查工时",
+      category: "administrative_capacity",
+      capacity: 8,
+      available: 8,
+      attributes: { unit: "case" },
+    },
+  ]), [
+    {
+      resourceId: "lead_recheck_slot",
+      name: "血铅复检名额",
+      category: "medical",
+      capacity: 10,
+      available: 7,
+      used: 3,
+      unit: "名额",
+      availableDay: 1,
+      allocatableScope: "contract",
+    },
+    {
+      resourceId: "grave_relocation_service",
+      name: "迁坟事务服务户次",
+      category: "grave",
+      capacity: 5,
+      available: 5,
+      used: 0,
+      unit: "户次",
+      availableDay: 30,
+      allocatableScope: "contract",
+    },
+    {
+      resourceId: "startup_interest_slot",
+      name: "创业贴息名额",
+      category: "business",
+      capacity: 4,
+      available: 4,
+      used: 0,
+      unit: "名额",
+      availableDay: 1,
+      allocatableScope: "contract",
+    },
+    {
+      resourceId: "legal_review_slot",
+      name: "合法性审查工时",
+      category: "administrative_capacity",
+      capacity: 8,
+      available: 8,
+      used: 0,
+      unit: "工时",
+      availableDay: 1,
+      allocatableScope: "contract",
+    },
+  ]);
+});
+
+test("announces an AI operation before work and always clears it afterward", async () => {
+  assert.equal(typeof playerUi.withAIActivity, "function");
+  const activity = [];
+  let release;
+  const pending = playerUi.withAIActivity(
+    value => activity.push(value),
+    "正在生成并审校合同",
+    () => new Promise(resolve => { release = resolve; }),
+  );
+  assert.deepEqual(activity, [{ label: "正在生成并审校合同" }]);
+  release("完成");
+  assert.equal(await pending, "完成");
+  assert.deepEqual(activity, [{ label: "正在生成并审校合同" }, null]);
+
+  await assert.rejects(() => playerUi.withAIActivity(
+    value => activity.push(value),
+    "正在进行夜间结算",
+    async () => { throw new Error("供应商暂时不可用"); },
+  ));
+  assert.deepEqual(activity.slice(-2), [{ label: "正在进行夜间结算" }, null]);
 });
 
 test("groups archive investigations and exposes only read meeting evidence", () => {
@@ -176,18 +384,20 @@ test("builds a safe people and revealed-relationship view without internal field
   assert.equal(typeof playerUi.peopleRelationshipView, "function");
   const result = playerUi.peopleRelationshipView({
     people: [
-      { npc_id: "known", name: "甲", contact_state: "known", trust_band: "working", attitude_band: "neutral", anxiety_band: "uneasy", relationship_reasons: { trust: "按公开履约记录判断", attitude: "尚未公开表态", anxiety: "仍担忧后续安置" }, recent_change_reasons: ["一", "二", "三", "四"], trust_score: 61, personality: { openness: 99 }, hidden_demands: ["秘密"] },
-      { npc_id: "contact", name: "乙", contact_state: "contactable", trust_band: "trusted", attitude_band: "supportive", anxiety_band: "calm", recent_change_reasons: [] },
+      { npc_id: "mentioned", name: "卷宗人物", contact_state: "known", discovery_state: "mentioned", trust_band: "not_assessed", attitude_band: "not_assessed", anxiety_band: "not_assessed", relationship_reasons: { trust: "尚未直接接触", attitude: "尚未直接接触", anxiety: "尚未直接接触" }, recent_change_reasons: [] },
+      { npc_id: "known", name: "甲", contact_state: "known", discovery_state: "encountered", trust_band: "working", attitude_band: "neutral", anxiety_band: "uneasy", relationship_reasons: { trust: "按公开履约记录判断", attitude: "尚未公开表态", anxiety: "仍担忧后续安置" }, recent_change_reasons: ["一", "二", "三", "四"], trust_score: 61, personality: { openness: 99 }, hidden_demands: ["秘密"] },
+      { npc_id: "contact", name: "乙", contact_state: "contactable", discovery_state: "contactable", trust_band: "trusted", attitude_band: "supportive", anxiety_band: "calm", recent_change_reasons: [] },
       { npc_id: "unknown", name: "未知", contact_state: "unknown", trust_score: 50 },
     ],
     relationship_edges: [
-      { edge_id: "shown", source_npc_id: "known", target_npc_id: "contact", visibility: "suspected", channel: "同事", discovery_reason: "公开材料" },
+      { edge_id: "shown", source_npc_id: "known", target_npc_id: "contact", visibility: "confirmed", channel: "同事", discovery_reason: "公开材料" },
+      { edge_id: "suspected", source_npc_id: "known", target_npc_id: "contact", visibility: "suspected", channel: "同事", discovery_reason: "待进入线索" },
       { edge_id: "hidden", source_npc_id: "known", target_npc_id: "unknown", visibility: "hidden", private_audit: { prompt: "secret" } },
     ],
   });
-  assert.deepEqual(result.people.map(item => [item.npc_id, item.contact_state]), [["known", "known"], ["contact", "contactable"]]);
-  assert.deepEqual(result.people[0].recent_change_reasons, ["一", "二", "三"]);
-  assert.deepEqual(result.people[0].relationship_reasons, {
+  assert.deepEqual(result.people.map(item => [item.npc_id, item.discovery_state]), [["mentioned", "mentioned"], ["known", "encountered"], ["contact", "contactable"]]);
+  assert.deepEqual(result.people[1].recent_change_reasons, ["一", "二", "三"]);
+  assert.deepEqual(result.people[1].relationship_reasons, {
     trust: "按公开履约记录判断",
     attitude: "尚未公开表态",
     anxiety: "仍担忧后续安置",
@@ -197,6 +407,26 @@ test("builds a safe people and revealed-relationship view without internal field
   for (const forbidden of ["trust_score", "personality", "hidden_demands", "private_audit", "prompt", "unknown"]) {
     assert.doesNotMatch(serialized, new RegExp(forbidden));
   }
+});
+
+test("presents dossier mentions without pretending the player has met them", () => {
+  assert.equal(typeof playerUi.personDiscoveryPresentation, "function");
+  assert.deepEqual(playerUi.personDiscoveryPresentation({
+    discovery_state: "mentioned",
+    contact_state: "known",
+  }), {
+    statusLabel: "卷宗提及 · 尚未接触",
+    showRelationship: false,
+    allowProfile: false,
+  });
+  assert.deepEqual(playerUi.personDiscoveryPresentation({
+    discovery_state: "contactable",
+    contact_state: "contactable",
+  }), {
+    statusLabel: "当前可联系",
+    showRelationship: true,
+    allowProfile: true,
+  });
 });
 
 test("renders relationship bands as useful qualitative Chinese labels", () => {
@@ -228,6 +458,35 @@ test("consumes only player-safe archive sections and ignores raw structured cont
   for (const forbidden of ["内部标题", "deadline", "内部细节", '"key"', '"value"', '"detail"', "SECRET_ROOT_AUDIT", "SECRET_PROMPT", "SECRET_DEBUG"]) {
     assert.doesNotMatch(rendered, new RegExp(forbidden));
   }
+});
+
+test("preserves only the safe household layout hint for archive sections", () => {
+  const sections = playerUi.archivePlayerSections({
+    player_sections: [
+      {
+        heading: "1. 周大山（户号 ZDS-01）",
+        body: "登记4人，安置4人。",
+        kind: "household",
+      },
+      {
+        heading: "审计说明",
+        body: "这段仍按普通正文展示。",
+        kind: "private_debug_layout",
+      },
+    ],
+  });
+
+  assert.deepEqual(sections, [
+    {
+      heading: "1. 周大山（户号 ZDS-01）",
+      body: "登记4人，安置4人。",
+      kind: "household",
+    },
+    {
+      heading: "审计说明",
+      body: "这段仍按普通正文展示。",
+    },
+  ]);
 });
 
 test("labels canonical and legacy conversation speakers for player review", () => {
@@ -532,6 +791,9 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   assert.match(source, /performNpcStream/);
   assert.match(source, /\/action\/stream/);
   assert.match(source, /group-conversation\/turn\/stream/);
+  assert.equal((source.match(/new FormData\(event\.currentTarget as HTMLFormElement\)/g) || []).length, 2);
+  assert.match(source, /name="player_text"/);
+  assert.match(source, /data-state-version=\{state\.state_version\}/);
   assert.match(source, /governance\/meetings\/\$\{encodeURIComponent[\s\S]*\/turn\/stream/);
   assert.match(source, /governance\/actions\/\$\{encodeURIComponent[\s\S]*\/turn\/stream/);
   assert.match(source, /aria-live="polite"/);
@@ -589,6 +851,52 @@ test("uses the warm archival palette without the former green shell", async () =
   assert.match(styles, /\.night-stage-shade \{[^}]*background: rgba\(16,13,10,\.24\)/);
   assert.match(styles, /\.character-profile-stage::after \{ content: none; display: none; \}/);
   assert.match(styles, /\.scene-backdrop \{ animation: scene-enter \.18s ease-out; \}/);
+});
+
+test("decorative scene backdrops never intercept player controls", async () => {
+  const styles = await readFile(path.join(projectRoot, "app", "globals.css"), "utf8");
+  assert.match(styles, /\.scene-backdrop\s*\{[^}]*pointer-events:\s*none/s);
+});
+
+test("decision choices retain scroll clearance below the story heading", async () => {
+  const styles = await readFile(path.join(projectRoot, "app", "globals.css"), "utf8");
+  assert.match(styles, /\.decision-option\s*>\s*button\s*\{[^}]*scroll-margin-block:\s*76px\s+24px/s);
+});
+
+test("renders decisions in a document-flow stage instead of overflowing behind the story heading", async () => {
+  const [source, styles] = await Promise.all([
+    readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8"),
+    readFile(path.join(projectRoot, "app", "globals.css"), "utf8"),
+  ]);
+  assert.match(source, /decisionReady \? "gal-stage decision-mode"/);
+  assert.match(styles, /\.gal-stage\.decision-mode\s*\{[^}]*display:\s*block;[^}]*height:\s*auto/s);
+  assert.match(styles, /\.story-scroll\s*>\s*\.gal-stage\.decision-mode\s*\{[^}]*height:\s*auto/s);
+});
+
+test("does not open game entry while account and AI configuration restoration is still busy", async () => {
+  const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
+  assert.match(source, /<button onClick=\{openGameEntry\} disabled=\{busy\}>\{sessionId/);
+  assert.match(source, /className="welcome-action"><button onClick=\{openGameEntry\} disabled=\{busy\}>/);
+});
+
+test("exposes stable non-secret action and target identifiers for full browser acceptance", async () => {
+  const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
+  assert.match(source, /data-action-id=\{String\(item\.action_id \|\| ""\)\}/);
+  assert.match(source, /data-variant-id=\{String\(variant\.variant_id \|\| ""\)\}/);
+  assert.match(source, /data-target-id=\{value\}/);
+});
+
+test("uses the authoritative Yunxi county name throughout the player shell", async () => {
+  const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
+  assert.doesNotMatch(source, /清江县/);
+  assert.match(source, /<small>云溪县政府<\/small>/);
+  assert.match(source, /<small>云溪县政府 · 案头<\/small>/);
+  assert.match(source, /<Modal title="进入云溪县"/);
+});
+
+test("refreshes the active side panel after every successful player write", async () => {
+  const source = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
+  assert.match(source, /if \(panel !== "scene"\) \{\s*setPanel\(panel\);\s*setPanelData\(await api\.panel\(sessionId, panel\)\);/);
 });
 
 test("hides the retired day-four fatigue exposition from existing saves", async () => {

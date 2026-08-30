@@ -156,6 +156,9 @@ class MapService:
                     reason = reason or f"第 {location.unlock_day} 日后开放"
                 target_choices = variant_target_choices(session, package, variant)
                 descriptor = public_variant(session, package, variant)
+                if available and not descriptor["available"]:
+                    available = False
+                    reason = descriptor["unavailable_reason"]
                 legal_npc_ids = {
                     item["target_id"] for item in target_choices
                     if str(item["target_id"]).startswith("npc_")
@@ -273,14 +276,16 @@ class MapService:
                 if session.game_state.story_day >= item.unlock_day
                 and item.required_flags.issubset(session.flags)
             ]
+        visible_npc_ids = (
+            NPCRelationshipService.actionable_npc_ids(session, package)
+            if package.gameplay_schema_version >= 4
+            else set(session.npc_states)
+        )
         return [
             {"target_id": item.npc_id, "label": item.name}
             for item in package.npc_profiles
             if item.npc_id in session.npc_states
-            and (
-                package.gameplay_schema_version < 4
-                or item.npc_id in session.known_npc_ids
-            )
+            and item.npc_id in visible_npc_ids
         ]
 
     @staticmethod

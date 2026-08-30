@@ -129,6 +129,21 @@ def public_variant(
 ) -> dict:
     tier = package.action_cost_tier(session.game_state.story_day).value
     available, reason = variant_availability(session, variant)
+    target_choices = variant_target_choices(session, package, variant)
+    rules = participant_rules(str(variant["action_id"]))
+    if available and len(target_choices) < rules["minimum"]:
+        available = False
+        if not target_choices:
+            reason = (
+                "尚无可查阅档案"
+                if variant["target_kind"] == "available_archive"
+                else "尚无已经正式接触的可选对象"
+            )
+        else:
+            reason = (
+                f"至少需要 {rules['minimum']} 名已经正式接触的对象，"
+                f"目前只有 {len(target_choices)} 名"
+            )
     location_names = {item.location_id: item.name for item in package.map_locations}
     return {
         "variant_id": variant["variant_id"],
@@ -152,8 +167,8 @@ def public_variant(
             for location_id in variant["legal_location_ids"]
         ],
         "target_kind": variant["target_kind"],
-        "target_choices": variant_target_choices(session, package, variant),
-        "participant_rules": participant_rules(str(variant["action_id"])),
+        "target_choices": target_choices,
+        "participant_rules": rules,
         "available": available,
         "unavailable_reason": reason,
     }
@@ -202,8 +217,11 @@ def canonical_map_entry_descriptor(
             available, _ = variant_availability(session, variant)
             if not available:
                 return None
+            descriptor = public_variant(session, package, variant)
+            if not descriptor["available"]:
+                return None
             return {
-                **public_variant(session, package, variant),
+                **descriptor,
                 "title": map_variant_title(variant, location.location_id),
                 "map_entry_id": expected_id,
                 "location_locked": True,
@@ -221,8 +239,7 @@ def visible_governance_npc_ids(
     package: ScriptPackage,
 ) -> set[str]:
     if package.gameplay_schema_version >= 4:
-        NPCRelationshipService.synchronize(session, package)
-        return set(session.known_npc_ids)
+        return NPCRelationshipService.actionable_npc_ids(session, package)
     visible = set(
         (package.governance_config or {}).get("initial_visible_npc_ids", ())
     )
@@ -241,6 +258,8 @@ def visible_governance_npc_ids(
 
 
 def default_npc_location(npc_id: str) -> str:
+    if npc_id == "npc_sun_qiang":
+        return "loc_ferry_town"
     if npc_id in {"npc_shi_wenbin", "npc_ke_qinian"}:
         return "loc_environment_station"
     if npc_id in {"npc_he_tiezhu", "npc_yuan_guilan", "npc_luo_jian"}:
@@ -272,6 +291,7 @@ def canonical_opportunity_descriptor(
         "liaise_zhang_li": "cadre_interview",
         "private_testimony": "cadre_interview",
         "meet_party_secretary": "cadre_interview",
+        "contact_reporter": "cadre_interview",
     }.get(opportunity.action_id)
     if expected_action is None:
         return None

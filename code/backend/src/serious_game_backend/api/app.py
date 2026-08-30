@@ -27,6 +27,7 @@ from serious_game_backend.api.schemas import (
     PlayerLLMConfigurationRequest,
     ExportRequestBody,
     GovernancePurposeBody,
+    GroupConversationFinishRequest,
     GroupConversationTurnRequest,
     GovernanceActionStartRequest,
     GovernanceFinishRequest,
@@ -699,15 +700,25 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 if session.game_state.story_day >= item.unlock_day
                 and item.required_flags.issubset(session.flags)
             ]
+        visible_npc_ids = (
+            NPCRelationshipService.actionable_npc_ids(session, package)
+            if package.gameplay_schema_version >= 4
+            else set(session.npc_states)
+        )
         return [
             {"target_id": item.npc_id, "label": item.name}
             for item in package.npc_profiles
             if item.npc_id in session.npc_states
-            and (
-                package.gameplay_schema_version < 4
-                or item.npc_id in session.known_npc_ids
-            )
+            and item.npc_id in visible_npc_ids
         ]
+
+    def public_acquisition_method(method: dict[str, object]) -> dict:
+        return {
+            "route_type": str(method["route_type"]),
+            "unlock_day": int(method["unlock_day"]),
+            "label": str(method["label"]),
+            "instructions": str(method["instructions"]),
+        }
 
     def public_fact(item) -> dict:
         return {
@@ -718,6 +729,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "source_label": item.source_label,
             "related_npc_ids": list(item.related_npc_ids),
             "use_hint": item.use_hint,
+            "acquisition_methods": [
+                public_acquisition_method(method)
+                for method in item.acquisition_methods
+            ],
         }
 
     def related_materials(session, package, npc_id: str) -> list[dict]:
@@ -1122,9 +1137,42 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         category_keys = {"fact": "facts", "clue": "clues", "evidence": "evidence"}
         for item in facts:
             grouped[category_keys.get(item.category, "facts")].append(public_fact(item))
+        available_opportunity_ids = {
+            item.opportunity_id
+            for item in runtime.opportunities.list_available(session, package)
+        }
+        archive_unlock_days = {
+            item.archive_id: item.unlock_day
+            for item in package.archive_investigations
+        }
+        investigation_leads = []
+        for fact_id, fact in sorted(package.facts.items()):
+            if fact_id in session.known_fact_ids:
+                continue
+            methods = []
+            for method in fact.acquisition_methods:
+                route_type = str(method["route_type"])
+                source_id = str(method["source_id"])
+                unlock_day = int(method["unlock_day"])
+                if unlock_day > session.game_state.story_day:
+                    continue
+                if route_type == "archive":
+                    if archive_unlock_days.get(source_id) != unlock_day:
+                        continue
+                elif source_id not in available_opportunity_ids:
+                    continue
+                methods.append(public_acquisition_method(method))
+            if methods:
+                investigation_leads.append({
+                    "fact_id": fact.fact_id,
+                    "title": fact.title,
+                    "category": fact.category,
+                    "methods": methods,
+                })
         return {
             "state_version": session.state_version,
             "known_fact_ids": sorted(session.known_fact_ids),
+            "investigation_leads": investigation_leads,
             **grouped,
         }
 
@@ -1994,6 +2042,24 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             client_action_id=body.client_action_id,
             retry=body.retry,
         )
+
+    @app.post("/api/game/session/{session_id}/group-conversation/finish")
+    async def finish_group_conversation(
+        session_id: str,
+        body: GroupConversationFinishRequest,
+        x_account_id: str | None = Header(default=None),
+    ):
+        account_id = current_account_id(x_account_id)
+        result = runtime.group_conversations.finish(
+            account_id=account_id,
+            session_id=session_id,
+            state_version=body.state_version,
+            client_action_id=body.client_action_id,
+            retry=body.retry,
+        )
+        if result.get("status") == "processing":
+            return JSONResponse(status_code=202, content=result)
+        return result
 
     @app.get("/api/game/session/{session_id}/operations/{client_action_id}")
     async def get_operation(

@@ -148,6 +148,7 @@ def test_group_turn_resolves_from_npc_choices_without_auto_archiving() -> None:
         urgency="high",
         story_day=11,
         status="active",
+        followup_plan_id="followup_d10_county_reporting",
     )
     runtime.sessions.save(session, expected_version=session.state_version)
 
@@ -188,6 +189,7 @@ def test_group_turn_resolves_from_npc_choices_without_auto_archiving() -> None:
     assert payload["completed"] is False
     active = payload["visible_state"]["active_group_conversation"]
     assert active["phase"] == "resolved"
+    assert active["followup_plan_id"] == "followup_d10_county_reporting"
     assert "max_turns" not in active
     assert all(
         item["status"] == "settled" for item in active["participant_states"]

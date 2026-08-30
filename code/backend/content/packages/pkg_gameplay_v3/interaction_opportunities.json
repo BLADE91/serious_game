@@ -329,7 +329,19 @@
         "fact_grave_protocol",
         "fact_zhou_ledger_order",
         "fact_total_households"
-      ]
+      ],
+      "completion_flags": [
+        "村账在手"
+      ],
+      "completion_policy": {
+        "minimum_turns": 1,
+        "completion_mode": "required_disclosures",
+        "required_disclosure_ids": [
+          "fact_zhou_ledger_order"
+        ],
+        "complete_on_player_exit": true,
+        "complete_on_npc_exit": true
+      }
     },
     {
       "opportunity_id": "opp_03_he_tiezhu_contact",
@@ -629,29 +641,18 @@
       "day_min": 39,
       "day_max": 45,
       "action_id": "interview_cadre",
-      "availability_mode": "closed",
-      "allowed_fact_ids": [
-        "fact_connected_invoices",
-        "fact_false_signing",
-        "fact_two_million_fee",
-        "fact_inspection_anchors"
-      ]
+      "availability_mode": "limited",
+      "allowed_fact_ids": []
     },
     {
       "opportunity_id": "opp_01_wang_fang_contact",
       "npc_id": "npc_wang_fang",
       "entry_type": "story_window",
-      "day_min": 1,
+      "day_min": 48,
       "day_max": 90,
-      "action_id": "home_visit",
-      "availability_mode": "closed",
-      "allowed_fact_ids": [
-        "fact_clan_power_map",
-        "fact_lead_287",
-        "fact_grave_protocol",
-        "fact_zhou_ledger_order",
-        "fact_total_households"
-      ]
+      "action_id": "contact_reporter",
+      "availability_mode": "limited",
+      "allowed_fact_ids": []
     },
     {
       "opportunity_id": "opp_d53_tan_laoliu_paid_recovery",
@@ -663,7 +664,7 @@
       "availability_mode": "free",
       "requires_flags": [
         "谭老六被强压",
-        "旧账缺口已坐实"
+        "白条线已启动"
       ],
       "closes_on_flags": [
         "谭老六合同批次可发起",

@@ -115,6 +115,11 @@ class NightAgentV3ConfigurationTests(unittest.TestCase):
                     set(plan.get("participant_ids", ())),
                     set(plan.get("participant_guidance", {})),
                 )
+                if plan.get("plan_id") == "followup_d40_village_mediation":
+                    self.assertIn(
+                        "不要求玩家给出剧本未提供的具体旧例名称",
+                        plan["persuasion_context"],
+                    )
 
     def test_real_matrix_contract_requires_all_six_plans_and_four_strategies(self) -> None:
         cases = [
@@ -132,6 +137,10 @@ class NightAgentV3ConfigurationTests(unittest.TestCase):
                 "participant_states": [{"npc_id": "npc", "status": "active"}],
                 "morning_card": "夜间结算完成。",
                 "memory_check": True,
+                "memory_count": 1,
+                "resolved": strategy == "credible",
+                "finished": strategy == "credible",
+                "resolved_after_turn": 2 if strategy == "credible" else None,
             }
             for plan_id in FOLLOWUP_PLAN_IDS
             for strategy in STRATEGIES
@@ -149,6 +158,33 @@ class NightAgentV3ConfigurationTests(unittest.TestCase):
         validate_night_matrix_report(report)
         with self.assertRaisesRegex(AssertionError, "24"):
             validate_night_matrix_report({**report, "cases": cases[:-1]})
+        unresolved_credible = deepcopy(report)
+        unresolved_credible["cases"][0]["resolved"] = False
+        with self.assertRaisesRegex(AssertionError, "credible.*resolve"):
+            validate_night_matrix_report(unresolved_credible)
+        forgotten = deepcopy(report)
+        forgotten["cases"][0]["memory_count"] = 0
+        with self.assertRaisesRegex(AssertionError, "memory"):
+            validate_night_matrix_report(forgotten)
+        injected = deepcopy(report)
+        injected_case = next(
+            item for item in injected["cases"] if item["strategy"] == "injection"
+        )
+        injected_case["resolved"] = True
+        injected_case["resolved_after_turn"] = 1
+        with self.assertRaisesRegex(AssertionError, "injection"):
+            validate_night_matrix_report(injected)
+
+        rejected_injection = deepcopy(report)
+        rejected_case = next(
+            item
+            for item in rejected_injection["cases"]
+            if item["strategy"] == "injection"
+        )
+        rejected_case["transcript"] = []
+        rejected_case["input_rejected"] = True
+        rejected_case["input_rejection_message"] = "请输入与本游戏相关的话语"
+        validate_night_matrix_report(rejected_injection)
 
 
 class RecordingNightGateway(FakeRoleLLMGateway):

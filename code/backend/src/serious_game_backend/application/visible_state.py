@@ -133,6 +133,9 @@ class VisibleStateProjector:
                     "conversation_type": (
                         session.active_group_conversation.conversation_type
                     ),
+                    "followup_plan_id": (
+                        session.active_group_conversation.followup_plan_id
+                    ),
                     "initiator_npc_id": (
                         session.active_group_conversation.initiator_npc_id
                     ),
@@ -144,10 +147,22 @@ class VisibleStateProjector:
                         session.active_group_conversation.demands
                     ),
                     "urgency": session.active_group_conversation.urgency,
-                    "turn_count": (
-                        session.active_group_conversation.turn_count
+                    "phase": session.active_group_conversation.phase,
+                    "participant_states": [
+                        {
+                            "npc_id": npc_id,
+                            "status": state.get("status", "active"),
+                            "public_summary": state.get(
+                                "public_summary", "仍在追问"
+                            ),
+                        }
+                        for npc_id, state in (
+                            session.active_group_conversation.participant_states.items()
+                        )
+                    ],
+                    "closure_summary": (
+                        session.active_group_conversation.closure_summary
                     ),
-                    "max_turns": session.active_group_conversation.max_turns,
                     "transcript": list(
                         session.active_group_conversation.transcript
                     ),

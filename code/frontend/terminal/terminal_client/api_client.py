@@ -168,6 +168,21 @@ class ApiClient:
             },
         )
 
+    def finish_group_conversation(
+        self,
+        session_id: str,
+        *,
+        state_version: int,
+    ) -> dict:
+        return self._request(
+            "POST",
+            f"{self._session_path(session_id)}/group-conversation/finish",
+            {
+                "client_action_id": self.new_key("group-finish"),
+                "state_version": state_version,
+            },
+        )
+
     def get_package_validation(self) -> dict:
         return self._request("GET", "/api/game/package/validation")
 

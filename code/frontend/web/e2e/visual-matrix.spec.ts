@@ -70,7 +70,7 @@ test.describe("authoritative visual matrix", () => {
         "archive-result", // visual:archive-result
         "clues", // visual:clues
         "map-8-locations", // visual:map-8-locations
-        "contract-4-stages", // visual:contract-4-stages
+        "contract-3-stages", // visual:contract-3-stages
         "leadership-meeting", // visual:leadership-meeting
         "morning-briefing", // visual:morning-briefing
         "save-load", // visual:save-load

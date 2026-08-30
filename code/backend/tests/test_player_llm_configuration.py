@@ -169,6 +169,9 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
 
         class RedirectHandler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+                content_length = int(self.headers.get("Content-Length", "0"))
+                if content_length:
+                    self.rfile.read(content_length)
                 if self.path == "/v1/chat/completions":
                     self.send_response(302)
                     self.send_header("Location", "/captured")
@@ -251,7 +254,7 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
                         self.wfile.write(bytes((byte,)))
                         self.wfile.flush()
                         time.sleep(0.03)
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     pass
 
             def log_message(self, _format: str, *_args) -> None:
@@ -262,6 +265,7 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
         thread = Thread(target=server.serve_forever, daemon=True)
         thread.start()
         started = time.perf_counter()
+        elapsed = float("inf")
         try:
             with self.assertRaises(RoleLLMUnavailableError):
                 OpenAICompatibleRoleLLMGateway._http_transport(
@@ -270,11 +274,12 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
                     {"model": "test"},
                     0.12,
                 )
+            elapsed = time.perf_counter() - started
         finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
-        self.assertLess(time.perf_counter() - started, 0.8)
+        self.assertLess(elapsed, 0.8)
 
     def test_personal_https_connection_uses_only_the_prevalidated_ip(self) -> None:
         raw_socket = object()
@@ -626,11 +631,11 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
             headers=headers,
             json={
                 "state_version": decided.json()["state_version"],
-                "action_kind": "household_visit",
-                "variant_id": "field_visit",
-                "location_id": "loc_liulin_village",
-                "target_ids": ["npc_zhou_dashan"],
-                "topic": "核实搬迁诉求",
+                "action_kind": "cadre_interview",
+                "variant_id": "interview_cadre",
+                "location_id": "loc_county_government",
+                "target_ids": ["npc_zhao_jianguo"],
+                "topic": "核实搬迁程序",
             },
         )
         self.assertEqual(201, started.status_code, started.text)
@@ -661,7 +666,13 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
         self.assertFalse(status.active)
 
     def test_real_failure_matrix_rejects_partial_commit_or_missing_faults(self) -> None:
-        from tools.run_real_failure_matrix import validate_failure_report
+        from tools.run_real_failure_matrix import (
+            is_semantically_unchanged,
+            validate_failure_report,
+        )
+
+        self.assertTrue(is_semantically_unchanged(["updated_at"]))
+        self.assertFalse(is_semantically_unchanged(["game_state.action_points"]))
 
         passing = {
             "provider": "openai_compatible",

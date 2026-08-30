@@ -67,6 +67,7 @@ class GameSession:
     next_feed_cursor: int = 1
     known_fact_ids: set[str] = field(default_factory=set)
     known_npc_ids: set[str] = field(default_factory=set)
+    encountered_npc_ids: set[str] = field(default_factory=set)
     contactable_npc_ids: set[str] = field(default_factory=set)
     relationship_edges: list[dict] = field(default_factory=list)
     night_logs: list[dict] = field(default_factory=list)

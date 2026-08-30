@@ -115,6 +115,25 @@ class GameplayV2Tests(unittest.TestCase):
         )
         self.assertEqual(fact.text, result.dialogue)
 
+    def test_night_turn_safety_allows_unverified_player_claim_only_in_private_memory(self) -> None:
+        package = self.container.packages.get("pkg_gameplay_v2")
+        fact = package.facts["fact_shi_usb"]
+        forbidden = forbidden_fact_signatures(package.facts, set())
+
+        result = validate_night_turn_result(
+            NightAgentResult(
+                npc_id="npc_shi_hongmei",
+                model_id="real-model",
+                dialogue="这件事我还要继续核实。",
+                memory_candidate=f"玩家声称：{fact.text}，尚未验证。",
+            ),
+            expected_npc_id="npc_shi_hongmei",
+            forbidden_fact_signatures=forbidden,
+            allow_unverified_memory_claims=True,
+        )
+
+        self.assertIn("尚未验证", result.memory_candidate or "")
+
     def setUp(self) -> None:
         settings = Settings(
             environment="test",
@@ -1377,7 +1396,6 @@ class GameplayV2Tests(unittest.TestCase):
             demands=("明确责任",),
             urgency="high",
             story_day=session.game_state.story_day,
-            max_turns=3,
             status="active",
         )
         self.container.sessions.save(session, expected_version=session.state_version)
@@ -1448,7 +1466,6 @@ class GameplayV2Tests(unittest.TestCase):
             demands=("明确责任",),
             urgency="high",
             story_day=session.game_state.story_day,
-            max_turns=3,
             status="active",
         )
         initial_version = session.state_version

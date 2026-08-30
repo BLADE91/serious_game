@@ -596,6 +596,22 @@ class FileScriptPackageLoader:
                 initiator_ids = tuple(
                     str(item) for item in plan.get("initiator_ids", ())
                 )
+                participant_guidance = plan.get("participant_guidance")
+                guidance_valid = (
+                    isinstance(participant_guidance, dict)
+                    and set(participant_guidance) == set(participant_ids)
+                    and all(
+                        isinstance(item, dict)
+                        and isinstance(item.get("core_concerns"), list)
+                        and bool(item["core_concerns"])
+                        and isinstance(item.get("convincing_signals"), list)
+                        and bool(item["convincing_signals"])
+                        and isinstance(item.get("suspicion_signals"), list)
+                        and bool(item["suspicion_signals"])
+                        and str(item.get("questioning_style", "")).strip()
+                        for item in participant_guidance.values()
+                    )
+                )
                 if (
                     not plan_id
                     or plan_id in followup_plan_ids
@@ -611,6 +627,14 @@ class FileScriptPackageLoader:
                 ):
                     raise ContentValidationError(
                         "夜间 follow-up 候选配置无效",
+                        details={"scene_id": scene_id, "plan_id": plan_id},
+                    )
+                if (
+                    not str(plan.get("persuasion_context", "")).strip()
+                    or not guidance_valid
+                ):
+                    raise ContentValidationError(
+                        "夜间 follow-up 劝服策略配置无效",
                         details={"scene_id": scene_id, "plan_id": plan_id},
                     )
                 followup_plan_ids.add(plan_id)
@@ -816,6 +840,7 @@ class FileScriptPackageLoader:
             result.append(LimitedHouseholdSignatory(
                 household_id=household_id,
                 name=name,
+                role_setting=str(item.get("role_setting", "")),
                 initial_position=str(item["initial_position"]),
                 core_concern=str(item["core_concern"]),
                 acceptance_condition=str(item["acceptance_condition"]),
@@ -1060,6 +1085,13 @@ class FileScriptPackageLoader:
                         "owner_npc_ids", item.get("related_npc_ids", [])
                     )
                 ),
+                acquisition_methods=tuple({
+                    "route_type": str(method["route_type"]),
+                    "source_id": str(method["source_id"]),
+                    "unlock_day": int(method["unlock_day"]),
+                    "label": str(method["label"]),
+                    "instructions": str(method["instructions"]),
+                } for method in item.get("acquisition_methods", [])),
             )
         return result
 
@@ -1521,6 +1553,9 @@ class FileScriptPackageLoader:
         decisions,
         events,
         profiles,
+        opportunities,
+        archive_investigations,
+        social_rules,
     ) -> None:
         required_fields = {
             "story_day",
@@ -1536,6 +1571,11 @@ class FileScriptPackageLoader:
             "decision_display_node_ids",
             "outcome_transition_ids",
             "free_action_prompt",
+            "required_story_entry_ids",
+            "decision_presentation_order",
+            "npc_discovery_transitions",
+            "archive_unlock_ids",
+            "forced_conversation_plan_ids",
         }
 
         def reject(day: int, node: str, field: str, reason: str) -> None:
@@ -1554,6 +1594,27 @@ class FileScriptPackageLoader:
             reject(1, "story_acceptance_matrix", "story_day", "矩阵必须按顺序且仅登记 D1-D90。")
 
         profile_by_name = {item.name: item.npc_id for item in profiles}
+        archive_ids_by_day: dict[int, list[str]] = {
+            day: [] for day in range(1, 91)
+        }
+        for archive in archive_investigations:
+            archive_ids_by_day[archive.unlock_day].append(archive.archive_id)
+        contactable_ids_by_day: dict[int, list[str]] = {
+            day: [] for day in range(1, 91)
+        }
+        for opportunity in opportunities:
+            contactable_ids_by_day[opportunity.day_min].append(
+                opportunity.npc_id
+            )
+        followup_ids_by_day: dict[int, list[str]] = {
+            day: [] for day in range(1, 91)
+        }
+        for scene in social_rules.get("night_agent_scenes", ()):
+            scene_day = int(scene["story_day"])
+            followup_ids_by_day[scene_day].extend(
+                str(plan["plan_id"])
+                for plan in scene.get("followup_plans", ())
+            )
         event_decisions_by_day: dict[int, list[str]] = {}
         for event in events:
             decision_id = event.event_id.lower().replace("-", "_")
@@ -1575,6 +1636,13 @@ class FileScriptPackageLoader:
             opening_ids = [item.block_id for item in beat.opening_blocks]
             if row["opening_block_ids"] != opening_ids:
                 reject(day, node, "opening_block_ids", "开场叙事必须逐块登记且保持顺序。")
+            if row["required_story_entry_ids"] != opening_ids:
+                reject(
+                    day,
+                    node,
+                    "required_story_entry_ids",
+                    "每日必读剧情必须逐块登记且保持顺序。",
+                )
             direct_ids = [
                 item
                 for item in (beat.opening_decision_id, *beat.decision_ids)
@@ -1595,6 +1663,22 @@ class FileScriptPackageLoader:
                 reject(day, node, "prerequisite_narrative_ids", "每个决策必须登记先读的铺垫叙事。")
             if row["decision_display_node_ids"] != display_ids:
                 reject(day, node, "decision_display_node_ids", "决策显示节点必须指向真实 presentation block。")
+            expected_presentation_order = [
+                {
+                    "decision_id": decision.decision_id,
+                    "presentation_entry_ids": [
+                        block.block_id for block in decision.presentation_blocks
+                    ],
+                }
+                for decision in day_decisions
+            ]
+            if row["decision_presentation_order"] != expected_presentation_order:
+                reject(
+                    day,
+                    node,
+                    "decision_presentation_order",
+                    "决策必须在对应铺垫节点之后按权威顺序呈现。",
+                )
             outcome_ids = [
                 block.block_id
                 for decision in day_decisions
@@ -1628,6 +1712,42 @@ class FileScriptPackageLoader:
             }
             if set(row["introduced_npc_ids"]) != introduced:
                 reject(day, node, "introduced_npc_ids", "人物介绍登记必须来自同日玩家可见开场。")
+            expected_transitions: list[dict[str, str]] = []
+            seen_transitions: set[tuple[str, str]] = set()
+
+            def add_transition(npc_id: str | None, state: str) -> None:
+                if not npc_id or (npc_id, state) in seen_transitions:
+                    return
+                seen_transitions.add((npc_id, state))
+                expected_transitions.append({"npc_id": npc_id, "state": state})
+
+            for npc_id in row["introduced_npc_ids"]:
+                add_transition(str(npc_id), "mentioned")
+            for speaker in row["visible_speakers"]:
+                add_transition(profile_by_name.get(str(speaker)), "encountered")
+            for npc_id in contactable_ids_by_day[day]:
+                add_transition(npc_id, "contactable")
+            if row["npc_discovery_transitions"] != expected_transitions:
+                reject(
+                    day,
+                    node,
+                    "npc_discovery_transitions",
+                    "人物发现转换必须来自可见剧情或当日开放机会。",
+                )
+            if row["archive_unlock_ids"] != archive_ids_by_day[day]:
+                reject(
+                    day,
+                    node,
+                    "archive_unlock_ids",
+                    "档案解锁必须与权威调查表的开放日一致。",
+                )
+            if row["forced_conversation_plan_ids"] != followup_ids_by_day[day]:
+                reject(
+                    day,
+                    node,
+                    "forced_conversation_plan_ids",
+                    "强制会谈必须与当夜夜间场景及 follow-up 方案一致。",
+                )
             dependencies = row["previous_settlement_dependency"]
             required_dependency = "session_start" if day == 1 else f"D{day - 1}:day_closed"
             if required_dependency not in dependencies:
@@ -1723,6 +1843,56 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(
                     "存在无事实时没有可选方案的决策",
                     details={"decision_ids": unreachable},
+                )
+            archive_by_id = {
+                item.archive_id: item for item in archive_investigations
+            }
+            opportunity_by_id = {
+                item.opportunity_id: item for item in opportunities
+            }
+            invalid_fact_routes: dict[str, list[str]] = {}
+            for fact in facts.values():
+                errors: list[str] = []
+                if not fact.acquisition_methods:
+                    errors.append("没有获取方式")
+                for method in fact.acquisition_methods:
+                    route_type = str(method.get("route_type", ""))
+                    source_id = str(method.get("source_id", ""))
+                    unlock_day = int(method.get("unlock_day", 0))
+                    if (
+                        not str(method.get("label", "")).strip()
+                        or not str(method.get("instructions", "")).strip()
+                        or not 1 <= unlock_day <= 90
+                    ):
+                        errors.append(f"获取方式字段无效：{source_id or '未命名'}")
+                        continue
+                    if route_type == "archive":
+                        archive = archive_by_id.get(source_id)
+                        if (
+                            archive is None
+                            or fact.fact_id not in archive.result_fact_ids
+                            or unlock_day != archive.unlock_day
+                        ):
+                            errors.append(f"档案路径不可达：{source_id}")
+                    elif route_type == "conversation":
+                        opportunity = opportunity_by_id.get(source_id)
+                        if (
+                            opportunity is None
+                            or fact.fact_id not in (
+                                set(opportunity.allowed_fact_ids)
+                                | opportunity.completion_fact_ids
+                            )
+                            or not opportunity.day_min <= unlock_day <= opportunity.day_max
+                        ):
+                            errors.append(f"会谈路径不可达：{source_id}")
+                    else:
+                        errors.append(f"未知获取类型：{route_type or '空'}")
+                if errors:
+                    invalid_fact_routes[fact.fact_id] = errors
+            if invalid_fact_routes:
+                raise ContentValidationError(
+                    "事实或线索存在不可达获取路径",
+                    details={"facts": invalid_fact_routes},
                 )
         if len(actions) != 31:
             raise ContentValidationError(f"行动规则必须正好 31 项，当前 {len(actions)}")
@@ -2057,10 +2227,20 @@ class FileScriptPackageLoader:
         deep_profiles = [item for item in profiles if item.state_tier.value == "deep"]
         limited_profiles = [item for item in profiles if item.state_tier.value == "limited"]
         ambient_profiles = [item for item in profiles if item.state_tier.value == "ambient"]
-        if (len(deep_profiles), len(limited_profiles), len(ambient_profiles)) != (19, 9, 1):
+        expected_profile_tiers = (
+            (19, 10, 0)
+            if package_id == "pkg_gameplay_v3" and gameplay_schema_version >= 4
+            else (19, 9, 1)
+        )
+        if (
+            len(deep_profiles),
+            len(limited_profiles),
+            len(ambient_profiles),
+        ) != expected_profile_tiers:
             raise ContentValidationError(
-                "最终剧本 7.4.1 固定要求 19/9/1 三档人物",
+                "人物深度分档与剧本版本契约不一致",
                 details={
+                    "expected": expected_profile_tiers,
                     "deep": len(deep_profiles),
                     "limited": len(limited_profiles),
                     "ambient": len(ambient_profiles),
@@ -2881,6 +3061,9 @@ class FileScriptPackageLoader:
                 decisions=decisions,
                 events=events,
                 profiles=profiles,
+                opportunities=opportunities,
+                archive_investigations=archive_investigations,
+                social_rules=social_rules,
             )
 
         for opportunity in opportunities:

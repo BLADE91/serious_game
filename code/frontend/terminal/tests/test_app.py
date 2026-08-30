@@ -253,10 +253,24 @@ class FakeApi:
         self, session_id: str, *, state_version: int, player_text: str
     ) -> dict:
         state = visible_state(version=state_version + 1, day=30, pending=None)
-        state["active_group_conversation"] = None
+        state["active_group_conversation"] = {
+            "conversation_id": "group_test",
+            "phase": "resolved",
+            "participant_states": {
+                "npc_zhao_jianguo": {
+                    "status": "settled",
+                    "public_summary": "暂时接受书面责任安排",
+                },
+                "npc_sun_qiang": {
+                    "status": "settled",
+                    "public_summary": "等待次日执行口径",
+                },
+            },
+            "closure_text": "今晚先谈到这里，明早按公开节点核对。",
+        }
         return {
             "state_version": state_version + 1,
-            "completed": True,
+            "phase": "resolved",
             "turn_dialogues": [
                 {
                     "npc_id": "npc_zhao_jianguo",
@@ -271,6 +285,16 @@ class FakeApi:
                     "text": "基层需要一份可以照着执行的书面口径。",
                 },
             ],
+            "visible_state": state,
+        }
+
+    def finish_group_conversation(
+        self, session_id: str, *, state_version: int
+    ) -> dict:
+        state = visible_state(version=state_version + 1, day=30, pending=None)
+        state["active_group_conversation"] = None
+        return {
+            "state_version": state_version + 1,
             "visible_state": state,
         }
 
@@ -318,8 +342,7 @@ class TerminalAppTests(unittest.TestCase):
             "participant_ids": ["npc_zhao_jianguo", "npc_sun_qiang"],
             "agenda": "汇报基层材料风险",
             "demands": ["明确责任"],
-            "turn_count": 2,
-            "max_turns": 3,
+            "phase": "active",
             "transcript": [],
         }
 
@@ -328,7 +351,54 @@ class TerminalAppTests(unittest.TestCase):
         text = "\n".join(output)
         self.assertIn("赵建国 [model-zhao]：这项责任需要", text)
         self.assertIn("孙强 [model-sun]：基层需要", text)
-        self.assertIn("强制群组会谈队列已经处理完毕", text)
+        self.assertIn("今晚先谈到这里", text)
+        self.assertIn("暂时接受书面责任安排", text)
+        self.assertNotIn("轮", text)
+
+    def test_resolved_group_conversation_requires_player_finish_confirmation(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(
+            FakeApi(),
+            input_fn=lambda _prompt: "1",
+            output_fn=output.append,
+        )
+        app.session_id = "game_m1_test"
+        app.state_version = 11
+        app.state = visible_state(version=11, day=30, pending=None)
+        app.state["active_group_conversation"] = {
+            "conversation_id": "group_test",
+            "conversation_type": "cadre_meeting",
+            "participant_ids": ["npc_zhao_jianguo", "npc_sun_qiang"],
+            "agenda": "汇报基层材料风险",
+            "phase": "resolved",
+            "participant_states": {},
+            "transcript": [],
+        }
+
+        app._menu_group_conversation(app.state["active_group_conversation"])
+
+        self.assertEqual(12, app.state_version)
+        self.assertIsNone(app.state["active_group_conversation"])
+        self.assertIn("夜间会谈已经归档", "\n".join(output))
+
+    def test_signed_review_result_does_not_call_a_second_sign_endpoint(self) -> None:
+        output: list[str] = []
+        app = TerminalApp(FakeApi(), output_fn=output.append)
+        app.state_version = 10
+
+        completed = app._handle_contract_review_result({
+            "state_version": 11,
+            "contract": {
+                "status": "signed",
+                "review_decision": "accept",
+                "review_reason": "条款已接受并正式签署。",
+                "resource_hold_status": "已签署并占用资源，尚未支付",
+            },
+        })
+
+        self.assertTrue(completed)
+        self.assertEqual(11, app.state_version)
+        self.assertIn("合同签署成功", "\n".join(output))
     def test_night_dialogue_debug_view_renders_contacts_transcript_and_action(self) -> None:
         output: list[str] = []
         app = TerminalApp(FakeApi(), output_fn=output.append)

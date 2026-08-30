@@ -68,6 +68,7 @@ class ExpressionTask:
     persona: str
     context: str
     forbidden_text_signatures: tuple[str, ...] = ()
+    forbidden_repeat_signatures: tuple[str, ...] = ()
     session_id: str = ""
     account_id: str = ""
     operation_id: str = ""
@@ -190,6 +191,13 @@ class NightAgentContext:
     max_contacts: int = 0
     minimum_contacts: int = 0
     player_text: str = ""
+    memory_items: tuple[str, ...] = ()
+    unresolved_commitments: tuple[str, ...] = ()
+    relationship_context: dict[str, str] = field(default_factory=dict)
+    public_expression_context: str = ""
+    participant_state: str = "active"
+    allowed_dialogue_acts: tuple[str, ...] = ()
+    all_other_participants_settled: bool = False
     allowed_followup_type: str = ""
     allowed_followup_plans: tuple[dict, ...] = ()
     followup_required: bool = False
@@ -215,6 +223,11 @@ class NightAgentResult:
     target_ids: tuple[str, ...] = ()
     topic_ids: tuple[str, ...] = ()
     rationale: str = ""
+    dialogue_act: str | None = None
+    stance: str | None = None
+    topic_settled: bool = False
+    memory_candidate: str | None = None
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

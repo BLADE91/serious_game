@@ -12,11 +12,18 @@ from pathlib import Path
 import sys
 import time
 
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 from fastapi.testclient import TestClient
 
 from serious_game_backend.api.app import create_app
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
+from serious_game_backend.infrastructure.llm.openai_compatible import Transport
+from serious_game_backend.infrastructure.llm.player_configuration import Resolver
 from serious_game_backend.infrastructure.script_packages.file_loader import (
     FileScriptPackageLoader,
 )
@@ -28,7 +35,6 @@ from tools.full_acceptance.ending_witnesses import (
 )
 
 
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
 PROFILE_PATH = PACKAGE_ROOT / "acceptance_route_profiles.json"
 
@@ -95,10 +101,121 @@ def validate_route_result(profile: EndingWitness, result: dict[str, object]) -> 
         ("template_fallback_count", "template fallback"),
         ("silent_fallback_count", "silent fallback"),
         ("partial_commit_count", "partial commit"),
-        ("direct_state_writes", "direct state"),
     ):
         if int(result.get(field, 0)) != 0:
             raise AssertionError(f"{label} evidence found for {profile.route_id}")
+    if result.get("mutation_interface") != "http_api_only":
+        raise AssertionError(f"direct state evidence found for {profile.route_id}")
+    if any(
+        not isinstance(item, dict) or item.get("state_restored") is not True
+        for item in result.get("failed_calls", ())
+    ):
+        raise AssertionError(
+            f"failed call has no state restoration evidence for {profile.route_id}"
+        )
+
+
+def build_ending_operation_record(
+    profile: EndingWitness,
+    result: dict[str, object],
+) -> dict[str, object]:
+    """Project one real route into an auditable, player-action operation guide."""
+
+    sources = (
+        ("decision", "decision_choices", "story_day"),
+        ("archive", "archive_reads", "story_day"),
+        ("conversation", "conversations", "story_day"),
+        ("governance_action", "governance_actions", "story_day"),
+        ("meeting", "meetings", "story_day"),
+        ("contract", "contracts", "signed_day"),
+        ("document", "administrative_documents", "story_day"),
+        ("forced_night_conversation", "group_conversations", "story_day"),
+    )
+    mechanism_order = {name: index for index, (name, _, _) in enumerate(sources)}
+    operation_sequence: list[dict[str, object]] = []
+    for mechanism, result_key, day_key in sources:
+        values = result.get(result_key, ())
+        if not isinstance(values, (list, tuple)):
+            continue
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            operation_sequence.append({
+                "story_day": int(value.get(day_key) or value.get("story_day") or 0),
+                "mechanism": mechanism,
+                "operation": dict(value),
+            })
+    operation_sequence.sort(key=lambda item: (
+        int(item["story_day"]), mechanism_order[str(item["mechanism"])]
+    ))
+
+    contracts = [
+        item for item in result.get("contracts", ()) if isinstance(item, dict)
+    ]
+    documents = [
+        item for item in result.get("administrative_documents", ())
+        if isinstance(item, dict)
+    ]
+    known_facts = sorted(map(str, result.get("known_fact_ids", ())))
+    return {
+        "route_id": profile.route_id,
+        "target_main_ending_ids": list(profile.target_main_ending_ids),
+        "target_sub_ending_ids": list(profile.target_sub_ending_ids),
+        "actual_main_ending_id": result.get("main_ending_id"),
+        "actual_sub_ending_id": result.get("sub_ending_id"),
+        "origin_id": profile.origin_id,
+        "operation_sequence": operation_sequence,
+        "mechanism_effects": {
+            "investigation": {
+                "known_fact_ids": known_facts,
+                "archive_read_count": len(result.get("archive_reads", ())),
+            },
+            "conversations": {
+                "completed_count": len(result.get("conversations", ())),
+                "forced_night_count": len(result.get("group_conversations", ())),
+            },
+            "governance": {
+                "action_count": len(result.get("governance_actions", ())),
+                "decision_count": len(result.get("decision_choices", ())),
+            },
+            "contracts": {
+                "signed_households": sorted(
+                    str(item.get("household_id"))
+                    for item in contracts if item.get("status") == "signed"
+                ),
+            },
+            "red_head_documents": {
+                "published_count": sum(
+                    item.get("status") == "published" for item in documents
+                ),
+                "documents": documents,
+            },
+            "night_followups": list(result.get("night_logs", ())),
+        },
+        "ending_state": {
+            "story_day": result.get("story_day"),
+            "axes": result.get("axes", {}),
+            "signed_households": result.get("ledger", {}),
+        },
+    }
+
+
+def _public_state_fingerprint(payload: dict) -> str:
+    state = payload.get("visible_state", payload.get("state", payload))
+    critical = {
+        "state_version": payload.get("state_version", state.get("state_version")),
+        "status": state.get("status"),
+        "story": state.get("story"),
+        "ledger": state.get("ledger"),
+        "pending_decision": state.get("pending_decision"),
+        "active_conversation": state.get("active_conversation"),
+        "active_governance_action": state.get("active_governance_action"),
+        "active_group_conversation": state.get("active_group_conversation"),
+        "ending": state.get("ending"),
+    }
+    return hashlib.sha256(
+        json.dumps(critical, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def _load_story_route_test_case():
@@ -129,14 +246,59 @@ EVIDENCE_ARCHIVE_IDS = {
 }
 
 
+def credible_group_replies(active: dict) -> tuple[str, ...]:
+    agenda = str(active.get("agenda", ""))
+    if any(marker in agenda for marker in ("巡察", "整改", "逾期", "自查", "终局")):
+        return (
+            "终局汇报按已完成、逾期、证据不足三类逐项列示，不把承诺写成结果；每项附责任人、原始记录和下一节点。",
+            "签约、环保、医疗和资金分别附原始依据，缺什么就如实写缺什么，巡察组可抽查底稿并保留更正前版本。",
+        )
+    if any(marker in agenda for marker in ("公开", "监督", "舆情", "记者")):
+        return (
+            "三日内公开台账版本、检测来源和更正记录，原始材料与对外口径并列保留，记者可依法查阅公开材料。",
+            "公开页面保留历史版本，未回答的问题进入公开待办并标明责任部门、纠正时间和依据。",
+        )
+    if any(marker in agenda for marker in ("环保", "治疗", "复检", "取样")):
+        return (
+            "明早由第三方检测机构和县医院分别进场，水样双份封存、编号盲检，儿童按原始名单逐人复检并建立转诊清单。",
+            "家属和村民代表可见证封样，检测结果不先交企业改写；漏一名儿童就重新复核并保留原始记录。",
+        )
+    if any(marker in agenda for marker in ("宗族", "迁坟", "安置")):
+        return (
+            "周氏和散姓各推一名代表共同见证，镇干部只记录，县搬迁专班按公开政策复核；争议户单列继续协商，绝不替住户签字。",
+            "迁坟礼序逐户确认，安置、医疗和就学逐户核权；确认表由住户、镇和县专班各留一份，更正保留原版本和经办人。",
+            "代表只能见证、不能替别人决定；签字只确认材料已记录，不代表放弃异议，政策没有依据的事项不写成承诺。",
+        )
+    if any(marker in agenda for marker in ("材料", "保护", "证据", "交代")):
+        return (
+            "原始材料今晚由两名经手人共同编号封存，制作只读副本并记录交接时间；明早交县纪委指定人员签收。",
+            "封存、复制、移交分别留痕，赵建国可在纪检人员在场时逐项说明，任何人不得私自删改。",
+        )
+    return (
+        "我承认当前记录里的差距，不把未完成写成完成；明早由县镇共同核对原始台账，三日内公开差额、责任人和可复核记录。",
+        "未完成事项继续标注逾期，原始表和更正表并列保留，任何人不得为达标补签或改口。",
+    )
+
+
 class RealRouteRunner(StoryRoutesV3Tests):
-    def __init__(self, base_settings: Settings, root: Path, *, stop_day: int = 90) -> None:
+    def __init__(
+        self,
+        base_settings: Settings,
+        root: Path,
+        *,
+        stop_day: int = 90,
+        player_llm_transport: Transport | None = None,
+        player_llm_resolver: Resolver | None = None,
+    ) -> None:
         super().__init__(methodName="test_three_distinct_fake_routes_reach_d90_without_semantic_leaks")
         self.base_settings = base_settings
         self.root = root
         self.stop_day = stop_day
+        self.player_llm_transport = player_llm_transport
+        self.player_llm_resolver = player_llm_resolver
         self.archive_reads_by_session: dict[str, list[dict]] = {}
         self.operation_retries_by_session: dict[str, list[dict]] = {}
+        self.visited_days_by_session: dict[str, list[int]] = {}
 
     def build_real_runner(
         self, route_index: int
@@ -154,7 +316,11 @@ class RealRouteRunner(StoryRoutesV3Tests):
             role_llm_fallback_to_fake=False,
         )
         settings.validate()
-        container = build_container(settings)
+        container = build_container(
+            settings,
+            player_llm_transport=self.player_llm_transport,
+            player_llm_resolver=self.player_llm_resolver,
+        )
         if route_index % 2 == 1:
             api_key = os.getenv(settings.role_llm_api_key_env, "").strip()
             container.player_llm_configs.use_personal(
@@ -183,7 +349,9 @@ class RealRouteRunner(StoryRoutesV3Tests):
             },
         )
         self.assertEqual(201, response.status_code, response.text)
-        return container, client, response.json()["session_id"], headers
+        session_id = response.json()["session_id"]
+        self.visited_days_by_session[session_id] = [1]
+        return container, client, session_id, headers
 
     def run_profile(
         self,
@@ -231,6 +399,8 @@ class RealRouteRunner(StoryRoutesV3Tests):
                     "map_entry_id": item.map_entry_id,
                     "status": item.status,
                     "cost_status": item.cost_status,
+                    "result_ids": list(item.result_ids),
+                    "hard_outcomes": list(item.hard_outcomes),
                 }
                 for item in stored.governance_actions.values()
             ]
@@ -265,12 +435,71 @@ class RealRouteRunner(StoryRoutesV3Tests):
                 }
                 for item in stored.night_logs
             ]
+            contracts = [
+                {
+                    "contract_id": item.contract_id,
+                    "batch_id": item.batch_id,
+                    "household_id": item.household_id,
+                    "signatory_npc_id": item.signatory_npc_id,
+                    "created_day": item.created_day,
+                    "signed_day": item.signed_day,
+                    "status": item.status,
+                    "review_decision": item.review_decision,
+                    "term_sheet": item.term_sheet,
+                }
+                for item in stored.household_contracts.values()
+            ]
+            meetings = [
+                {
+                    "meeting_id": item.meeting_id,
+                    "story_day": item.story_day,
+                    "topic": item.topic,
+                    "participant_ids": list(item.participant_ids),
+                    "lead_npc_id": item.lead_npc_id,
+                    "proposed_document_type": item.proposed_document_type,
+                    "status": item.status,
+                    "resolution": item.resolution,
+                }
+                for item in stored.meetings.values()
+            ]
+            administrative_documents = [
+                {
+                    "document_id": item.document_id,
+                    "document_type": item.document_type,
+                    "title": item.title,
+                    "story_day": item.story_day,
+                    "status": item.status,
+                    "version": item.version,
+                    "source_meeting_id": item.source_meeting_id,
+                    "resolution_snapshot": item.resolution_snapshot,
+                    "required_countersign_ids": list(item.required_countersign_ids),
+                    "countersigned_by": list(item.countersigned_by),
+                    "public_scope": list(item.public_scope),
+                    "review_status": item.review_status,
+                    "issued_day": item.issued_day,
+                    "archive_id": item.archive_id,
+                }
+                for item in stored.administrative_documents.values()
+            ]
+            group_conversations = [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "conversation_id", "followup_plan_id", "conversation_type",
+                        "initiator_npc_id", "participant_ids", "agenda", "phase",
+                        "participant_states", "closure_summary", "transcript",
+                        "story_day",
+                    )
+                    if key in item
+                }
+                for item in stored.completed_group_conversations
+            ]
             result: dict[str, object] = {
                 **witness,
                 "session_id": session_id,
                 "mode": "personal" if route_index % 2 == 1 else "server_default",
                 "status": stored.status.value,
-                "visited_days": list(range(1, stored.game_state.story_day + 1)),
+                "visited_days": self.visited_days_by_session.get(session_id, []),
                 "elapsed_seconds": round(time.perf_counter() - started, 3),
                 "llm_audits": len(audits),
                 "audit_statuses": dict(statuses),
@@ -285,19 +514,31 @@ class RealRouteRunner(StoryRoutesV3Tests):
                     for item in audits
                     if "template" in (item.error_code or "").casefold()
                 ),
-                "silent_fallback_count": 0,
-                "partial_commit_count": 0,
-                "direct_state_writes": 0,
+                "silent_fallback_count": sum(
+                    count for provider, count in providers.items()
+                    if provider != "openai_compatible"
+                ),
+                "partial_commit_count": sum(
+                    item.get("state_restored") is not True
+                    for item in self.operation_retries_by_session.get(session_id, ())
+                ),
+                "mutation_interface": "http_api_only",
+                "failed_calls": self.operation_retries_by_session.get(session_id, []),
                 "archive_reads": self.archive_reads_by_session.get(session_id, []),
                 "decision_choices": decisions,
                 "governance_actions": actions,
                 "conversations": conversations,
+                "meetings": meetings,
+                "contracts": contracts,
+                "administrative_documents": administrative_documents,
+                "group_conversations": group_conversations,
                 "known_fact_ids": sorted(stored.known_fact_ids),
                 "night_logs": night_logs,
                 "recovered_operation_retries": self.operation_retries_by_session.get(
                     session_id, []
                 ),
             }
+            result["operation_record"] = build_ending_operation_record(profile, result)
             validate_route_result(profile, result)
             return result
         finally:
@@ -316,15 +557,33 @@ class RealRouteRunner(StoryRoutesV3Tests):
                 },
             )
             if response.status_code == 200:
-                return response.json()
+                payload = response.json()
+                day = int(payload["visible_state"]["story"]["day"])
+                visited = self.visited_days_by_session.setdefault(session_id, [])
+                if not visited or visited[-1] != day:
+                    visited.append(day)
+                return payload
             error = response.json().get("error", {}) if response.content else {}
             if (
                 response.status_code == 503
                 and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
                 and attempt < 3
             ):
+                current = client.get(
+                    f"/api/game/session/{session_id}", headers=headers
+                )
+                state_restored = (
+                    current.status_code == 200
+                    and _public_state_fingerprint(current.json())
+                    == _public_state_fingerprint(result)
+                )
                 self.operation_retries_by_session.setdefault(session_id, []).append(
-                    {"operation": key, "attempt": attempt, "state_version": result["state_version"]}
+                    {
+                        "operation": key,
+                        "attempt": attempt,
+                        "state_version": result["state_version"],
+                        "state_restored": state_restored,
+                    }
                 )
                 print(
                     f"{key}: retryable real-model failure, retrying unchanged state",
@@ -346,6 +605,8 @@ class RealRouteRunner(StoryRoutesV3Tests):
         key: str,
     ) -> dict:
         """Read every newly available investigation archive, one transaction at a time."""
+        if result.get("visible_state", {}).get("pending_decision"):
+            return result
         while True:
             catalog = client.get(
                 f"/api/game/session/{session_id}/actions", headers=headers
@@ -516,18 +777,60 @@ class RealRouteRunner(StoryRoutesV3Tests):
                 break
             while result["visible_state"].get("active_group_conversation"):
                 group = dict(result["visible_state"]["active_group_conversation"])
-                response = client.post(
-                    f"/api/game/session/{session_id}/group-conversation/turn",
-                    headers=headers,
-                    json={
+                resolved = group.get("phase") == "resolved"
+                endpoint = (
+                    f"/api/game/session/{session_id}/group-conversation/"
+                    f"{'finish' if resolved else 'turn'}"
+                )
+                response = None
+                replies = (None,) if resolved else credible_group_replies(group)
+                for phrasing_index, player_text in enumerate(replies, start=1):
+                    payload = {
                         "state_version": result["state_version"],
-                        "player_text": "请各位逐项说明已经确认的责任、依据和完成期限。",
                         "client_action_id": (
                             f"real-route-{route_index}-group-{story_day:02d}-"
-                            f"{len(group_records) + 1:02d}"
+                            f"{len(group_records) + 1:02d}-p{phrasing_index}"
                         ),
-                    },
-                )
+                    }
+                    if player_text is not None:
+                        payload["player_text"] = player_text
+                    for attempt in range(3):
+                        payload["retry"] = attempt > 0
+                        response = client.post(endpoint, headers=headers, json=payload)
+                        if response.status_code == 200:
+                            break
+                        error = response.json().get("error", {}) if response.content else {}
+                        retryable = (
+                            response.status_code == 503
+                            and error.get("code") == "ROLE_LLM_RESPONSE_RETRYABLE"
+                        )
+                        if not retryable:
+                            break
+                        current = client.get(
+                            f"/api/game/session/{session_id}", headers=headers
+                        )
+                        state_restored = (
+                            current.status_code == 200
+                            and _public_state_fingerprint(current.json())
+                            == _public_state_fingerprint(result)
+                        )
+                        self.operation_retries_by_session.setdefault(
+                            session_id, []
+                        ).append(
+                            {
+                                "operation": payload["client_action_id"],
+                                "attempt": attempt + 1,
+                                "state_version": result["state_version"],
+                                "state_restored": state_restored,
+                            }
+                        )
+                        if attempt == 2:
+                            break
+                    if response is not None and response.status_code == 200:
+                        break
+                    if response is not None and response.status_code != 503:
+                        break
+                assert response is not None
                 self.assertEqual(200, response.status_code, response.text)
                 result = response.json()
                 group_records.append({
@@ -599,7 +902,7 @@ class RealRouteRunner(StoryRoutesV3Tests):
             "story_day": stored.game_state.story_day,
             "status": stored.status.value,
             "ending_id": (stored.ending_result or {}).get("main_ending_id"),
-            "visited_days": len(visited_days),
+            "visited_days": visited_days,
             "elapsed_seconds": round(time.perf_counter() - started, 3),
             "llm_audits": len(audits),
             "audit_statuses": dict(statuses),
@@ -641,6 +944,20 @@ def main() -> int:
         (route_root / f"{profile.route_id}.json").write_text(
             json.dumps(route, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+    no_archive_route = runner.run_route(10_000)
+    if (
+        no_archive_route["status"] != "ended"
+        or no_archive_route["story_day"] != 90
+        or no_archive_route["archive_reads"]
+        or no_archive_route["fake_calls"]
+    ):
+        raise AssertionError(
+            f"real no-archive route did not legally reach D90: {no_archive_route}"
+        )
+    (route_root / "no-archive-baseline.json").write_text(
+        json.dumps(no_archive_route, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     report = {
         "provider": "openai_compatible",
         "model": base_settings.role_llm_model,
@@ -648,6 +965,7 @@ def main() -> int:
         "main_ending_count": len({item["main_ending_id"] for item in routes}),
         "sub_ending_count": len({item["sub_ending_id"] for item in routes}),
         "fake_calls": sum(int(item["fake_calls"]) for item in routes),
+        "no_archive_route": no_archive_route,
         "routes": routes,
     }
     (root / "summary.json").write_text(

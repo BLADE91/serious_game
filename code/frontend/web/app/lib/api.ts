@@ -69,9 +69,12 @@ export class GameApi {
     return this.accountId;
   }
 
-  setCsrfToken(token: string) {
+  setCsrfToken(token: string, cookieName = "serious_game_session_csrf") {
     this.csrfToken = token;
     if (typeof sessionStorage !== "undefined") sessionStorage.setItem("qingjiang-csrf", token);
+    if (typeof document !== "undefined") {
+      document.cookie = `${cookieName}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+    }
   }
 
   restoreCsrf(cookieName: string) {

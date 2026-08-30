@@ -188,6 +188,7 @@ class LimitedHouseholdSignatory:
 
     household_id: str
     name: str
+    role_setting: str
     initial_position: str
     core_concern: str
     acceptance_condition: str
