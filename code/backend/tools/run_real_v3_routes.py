@@ -62,6 +62,27 @@ def prepare_output_run(output_dir: Path, *, run_id: str | None = None) -> Path:
     return run_root
 
 
+def load_completed_route_evidence(
+    route_root: Path,
+    profiles: tuple[EndingWitness, ...],
+) -> dict[str, dict[str, object]]:
+    """Load only route evidence that still passes the full route contract."""
+
+    completed: dict[str, dict[str, object]] = {}
+    profile_by_id = {profile.route_id: profile for profile in profiles}
+    if not route_root.exists():
+        return completed
+    for path in sorted(route_root.glob("route-*.json")):
+        route_id = path.stem
+        profile = profile_by_id.get(route_id)
+        if profile is None:
+            raise ValueError(f"resume evidence contains unknown route: {route_id}")
+        result = json.loads(path.read_text(encoding="utf-8"))
+        validate_route_result(profile, result)
+        completed[route_id] = result
+    return completed
+
+
 def validate_profile_catalog(profiles: tuple[EndingWitness, ...], package) -> None:
     coverage = validate_witnesses(profiles, package)
     if len(profiles) != 95:
@@ -267,6 +288,7 @@ class RealRouteRunner(StoryRoutesV3Tests):
         stop_day: int = 90,
         player_llm_transport: Transport | None = None,
         player_llm_resolver: Resolver | None = None,
+        retry_delays: tuple[float, ...] = (0, 0, 0, 0, 0),
     ) -> None:
         super().__init__(methodName="test_three_distinct_fake_routes_reach_d90_without_semantic_leaks")
         self.base_settings = base_settings
@@ -274,6 +296,7 @@ class RealRouteRunner(StoryRoutesV3Tests):
         self.stop_day = stop_day
         self.player_llm_transport = player_llm_transport
         self.player_llm_resolver = player_llm_resolver
+        self.retry_delays = retry_delays
         self.archive_reads_by_session: dict[str, list[dict]] = {}
         self.operation_retries_by_session: dict[str, list[dict]] = {}
         self.visited_days_by_session: dict[str, list[int]] = {}
@@ -300,7 +323,8 @@ class RealRouteRunner(StoryRoutesV3Tests):
             )
         baseline_payload = baseline.json()
         response = None
-        for attempt in range(1, 4):
+        max_attempts = len(self.retry_delays) + 1
+        for attempt in range(1, max_attempts + 1):
             attempt_payload = dict(payload)
             if supports_retry_field:
                 attempt_payload["retry"] = attempt > 1
@@ -309,7 +333,10 @@ class RealRouteRunner(StoryRoutesV3Tests):
             )
             if response.status_code == 200:
                 return response
-            if not _is_retryable_model_failure(response) or attempt >= 3:
+            if (
+                not _is_retryable_model_failure(response)
+                or attempt >= max_attempts
+            ):
                 return response
             current = client.get(
                 f"/api/game/session/{session_id}", headers=headers
@@ -336,6 +363,9 @@ class RealRouteRunner(StoryRoutesV3Tests):
                 file=sys.stderr,
                 flush=True,
             )
+            delay = self.retry_delays[attempt - 1]
+            if delay > 0:
+                time.sleep(delay)
         assert response is not None
         return response
 
@@ -1039,6 +1069,11 @@ def main() -> int:
     parser.add_argument("--profiles", type=Path, default=PROFILE_PATH)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--run-id")
+    parser.add_argument(
+        "--resume-run",
+        type=Path,
+        help="resume one existing evidence root after validating every completed route",
+    )
     args = parser.parse_args()
     base_settings = Settings.from_env()
     api_key = os.getenv(base_settings.role_llm_api_key_env, "").strip()
@@ -1047,13 +1082,32 @@ def main() -> int:
     profiles = load_witnesses(args.profiles)
     validate_profile_catalog(profiles, package)
     contract_terms = load_contract_terms(args.profiles)
-    root = prepare_output_run(args.output_dir, run_id=args.run_id)
+    if args.resume_run is not None:
+        root = args.resume_run.resolve()
+        if not root.is_dir():
+            raise SystemExit(f"resume evidence root does not exist: {root}")
+    else:
+        root = prepare_output_run(args.output_dir, run_id=args.run_id)
     print(f"evidence_dir={root}", file=sys.stderr, flush=True)
-    runner = RealRouteRunner(base_settings, root, stop_day=90)
+    runner = RealRouteRunner(
+        base_settings,
+        root,
+        stop_day=90,
+        retry_delays=(2, 5, 15, 30, 60),
+    )
     route_root = root / "routes"
-    route_root.mkdir()
+    route_root.mkdir(exist_ok=args.resume_run is not None)
+    completed = load_completed_route_evidence(route_root, profiles)
     routes: list[dict[str, object]] = []
     for index, profile in enumerate(profiles):
+        route = completed.get(profile.route_id)
+        if route is not None:
+            routes.append(route)
+            print(f"reused verified {profile.route_id}", file=sys.stderr, flush=True)
+            continue
+        database_path = root / f"route-{index}.sqlite"
+        if database_path.exists():
+            database_path.unlink()
         route = runner.run_profile(index, profile, contract_terms)
         routes.append(route)
         (route_root / f"{profile.route_id}.json").write_text(

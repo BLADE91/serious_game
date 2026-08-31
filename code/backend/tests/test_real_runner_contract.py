@@ -29,6 +29,7 @@ from tools.run_real_night_matrix import (
 from tools.run_real_v3_routes import (
     build_ending_operation_record,
     credible_group_replies,
+    load_completed_route_evidence,
     prepare_output_run,
     validate_profile_catalog,
     validate_real_runner_settings,
@@ -131,6 +132,65 @@ def test_contract_review_retries_unavailable_model_only_after_state_restoration(
         "state_restored": True,
         "error_code": "ROLE_LLM_UNAVAILABLE",
     }]
+
+
+def test_contract_review_survives_three_consecutive_transient_outages(
+    tmp_path: Path,
+) -> None:
+    state = {
+        "state_version": 17,
+        "visible_state": {"status": "active", "story": {"day": 67}},
+    }
+
+    class Response:
+        content = b"response"
+
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.post_count = 0
+
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, state)
+
+        def post(self, *_args, **_kwargs) -> Response:
+            self.post_count += 1
+            if self.post_count <= 3:
+                return Response(503, {
+                    "error": {"code": "ROLE_LLM_UNAVAILABLE"},
+                })
+            return Response(200, {
+                **state,
+                "contract": {"contract_id": "contract-1", "status": "accepted"},
+            })
+
+    runner = real_routes_module.RealRouteRunner(
+        Settings(environment="test"), tmp_path, retry_delays=(0, 0, 0, 0, 0)
+    )
+    client = Client()
+
+    response = runner.review_contract_for_route(
+        client,
+        "session-1",
+        {"X-Account-ID": "account-1"},
+        "contract-1",
+        state,
+    )
+
+    assert response.status_code == 200
+    assert client.post_count == 4
+    assert len(runner.operation_retries_by_session["session-1"]) == 3
+    assert all(
+        item["state_restored"] is True
+        for item in runner.operation_retries_by_session["session-1"]
+    )
 
 
 def test_governance_turn_retries_with_retry_flag_after_state_restoration(
@@ -485,6 +545,23 @@ def test_real_runner_requires_a_complete_profile_catalog() -> None:
 
     with pytest.raises(ValueError, match="95"):
         validate_profile_catalog(profiles[:-1], package)
+
+
+def test_resume_loads_only_route_evidence_that_still_passes_contract(
+    tmp_path: Path,
+) -> None:
+    profiles = load_witnesses(PROFILE_PATH)
+    profile = profiles[0]
+    route_root = tmp_path / "routes"
+    route_root.mkdir()
+    result = _passing_route_result(profile)
+    (route_root / f"{profile.route_id}.json").write_text(
+        __import__("json").dumps(result), encoding="utf-8"
+    )
+
+    completed = load_completed_route_evidence(route_root, profiles)
+
+    assert completed == {profile.route_id: result}
 
 
 def test_real_runner_refuses_reused_evidence_directories(tmp_path: Path) -> None:
