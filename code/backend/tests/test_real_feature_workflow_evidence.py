@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import pytest
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.llm import SelectionOption, SelectionTask
@@ -12,6 +14,8 @@ from serious_game_backend.infrastructure.repositories.memory import (
     InMemoryLLMCallAuditRepository,
 )
 from serious_game_backend.domain.llm_runtime import LLMCallAudit
+from serious_game_backend.domain.game_session import GameSession
+from serious_game_backend.domain.game_state import GameState
 from serious_game_backend.infrastructure.repositories.sqlite import (
     SqliteLLMCallAuditRepository,
     SqliteRuntimeStore,
@@ -23,9 +27,52 @@ from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
     _coverage_operation_records,
     _attach_authority_projections,
+    _business_semantic_projection,
     semantic_hash,
     validate_feature_workflow_report,
 )
+
+
+def _save_load_session() -> GameSession:
+    return GameSession(
+        session_id="session-save-load",
+        account_id="account-save-load",
+        package_id="pkg_gameplay_v3",
+        package_version="3",
+        package_content_hash="sha256:test",
+        random_seed="seed",
+        game_state=GameState.new_game(),
+        origin_id="integrity",
+        timeline_id="timeline-before",
+        logs=[{"type": "business_event", "visible_to_player": True}],
+    )
+
+
+def test_save_load_semantics_ignore_only_documented_restore_transaction_metadata() -> None:
+    saved = _save_load_session()
+    loaded = replace(
+        saved,
+        state_version=saved.state_version + 1,
+        timeline_id="timeline-after",
+        loaded_from_snapshot_id="snapshot-1",
+        logs=[
+            *saved.logs,
+            {
+                "type": "snapshot_loaded",
+                "source_snapshot_id": "snapshot-1",
+                "from_timeline_id": "timeline-before",
+                "visible_to_player": False,
+            },
+        ],
+    )
+
+    assert _business_semantic_projection(saved) == _business_semantic_projection(loaded)
+
+    changed = replace(
+        loaded,
+        logs=[*loaded.logs, {"type": "business_event", "visible_to_player": True}],
+    )
+    assert _business_semantic_projection(saved) != _business_semantic_projection(changed)
 
 
 def _built_evidence() -> tuple[dict[str, list[dict]], list[dict]]:

@@ -437,7 +437,7 @@ def _business_semantic_projection(session) -> dict[str, object]:
         # A load creates a new optimistic-concurrency revision and records its
         # source. These fields describe the restore transaction, not gameplay.
         "state_version", "processing_action_id", "loaded_from_snapshot_id",
-        "created_at", "updated_at",
+        "timeline_id", "created_at", "updated_at",
     }
     authoritative_fields = {item.name for item in fields(GameSession)}
     required_business_fields = authoritative_fields - excluded_technical_fields
@@ -447,10 +447,20 @@ def _business_semantic_projection(session) -> dict[str, object]:
             "save/load semantic projection is missing authoritative fields: "
             + ", ".join(sorted(missing))
         )
-    return {
+    projection = {
         name: plain(getattr(session, name))
         for name in sorted(required_business_fields)
     }
+    projection["logs"] = [
+        item for item in projection["logs"]
+        if not (
+            item.get("type") == "snapshot_loaded"
+            and item.get("visible_to_player") is False
+            and isinstance(item.get("source_snapshot_id"), str)
+            and isinstance(item.get("from_timeline_id"), str)
+        )
+    ]
+    return projection
 
 
 def assert_required_api_evidence_capabilities() -> None:
