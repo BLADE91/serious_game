@@ -61,9 +61,16 @@ def test_git_blob_materialization_loads_with_stable_legacy_identity(
     assert package.source_sha256 == expected_source_hash
 
 
-def test_v2_legacy_content_hash_baseline_is_unchanged() -> None:
+def test_v2_declared_content_hash_baseline_is_unchanged() -> None:
+    manifest = json.loads(
+        (PACKAGE_ROOT / "pkg_gameplay_v2" / "package_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert manifest["content_hash"] == EXPECTED_IDENTITIES["pkg_gameplay_v2"]
     assert (
-        FileScriptPackageLoader.compute_content_hash(PACKAGE_ROOT / "pkg_gameplay_v2")
+        FileScriptPackageLoader().load(PACKAGE_ROOT / "pkg_gameplay_v2").content_hash
         == EXPECTED_IDENTITIES["pkg_gameplay_v2"]
     )
 
