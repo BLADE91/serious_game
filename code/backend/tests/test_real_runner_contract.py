@@ -1018,31 +1018,9 @@ def test_ending_operation_record_preserves_player_actions_and_mechanism_effects(
 
 
 def test_feature_workflow_report_requires_every_published_system() -> None:
-    complete = {
-        "provider": "openai_compatible",
-        "fake_calls": 0,
-        "server_default_accounts": 1,
-        "personal_api_accounts": 1,
-        "account_gateway_isolation": True,
-        "archive_ids": [f"archive-{index}" for index in range(11)],
-        "fact_acquisition_path_ids": [f"fact-path-{index}" for index in range(27)],
-        "opportunity_ids": [f"opportunity-{index}" for index in range(32)],
-        "npc_ids": [f"npc-{index}" for index in range(29)],
-        "map_location_ids": [f"map-{index}" for index in range(8)],
-        "household_ids": [f"household-{index}" for index in range(36)],
-        "governance_action_families": [
-            "inspect_archives",
-            "household_visit",
-            "cadre_interview",
-            "leadership_meeting",
-        ],
-        "meeting_completed": True,
-        "contract_completed": True,
-        "document_completed": True,
-        "save_load_completed": True,
-        "review_completed": True,
-        "contract_review_statuses": ["signed"],
-    }
+    from tests.test_real_feature_workflow_evidence import passing_report
+
+    complete = passing_report()
 
     validate_feature_workflow_report(complete)
 
