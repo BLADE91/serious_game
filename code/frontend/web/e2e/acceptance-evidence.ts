@@ -16,11 +16,12 @@ export type EvidenceOperation = {
 type GitIdentity = Pick<EvidenceIdentity, "git_commit" | "workspace_fingerprint">;
 type GitIdentityReader = (repository: string, allowedEvidencePaths?: string[]) => Promise<GitIdentity>;
 type AuditRecord = {
-  audit_id: string; session_id: string; operation_id: string; provider: string; status: string;
-  error_code?: string | null;
+  audit_id: string; session_id: string; run_id: string; operation_id: string; provider: string; model: string;
+  endpoint_host: string; config_version: string; status: string; error_code: string | null; timestamp: string;
 };
+type AuditPage = { run_nonce: string; session_id: string; next_cursor: string; audits: AuditRecord[] };
 export type ValidatedServerAudit = {
-  source: { kind: "server_llm_audit_export"; artifact_sha256: string; exported_at: string };
+  source: { kind: "authenticated_session_audit_api"; endpoint: string; initial_cursor: string; final_cursor: string };
   counts: { fake_calls: number; template_fallback_count: number; silent_fallback_count: number };
   audits: AuditRecord[];
 };
@@ -93,20 +94,49 @@ export function assertStableIdentity(start: EvidenceIdentity, end: EvidenceIdent
   if (JSON.stringify(start) !== JSON.stringify(end)) throw new Error("identity changed during acceptance run");
 }
 
-export function validateServerAuditEvidence(value: unknown, sessionId: string, meetingId: string, documentId: string): ValidatedServerAudit {
-  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  const source = record.source && typeof record.source === "object" ? record.source as Record<string, unknown> : {};
-  if (source.kind !== "server_llm_audit_export" || !SHA256.test(String(source.artifact_sha256 || "")) || !String(source.exported_at || "")) {
-    throw new Error("formal server audit source proof is required");
+export async function collectAuditPages(
+  fetchPage: (cursor: string) => Promise<unknown>, initialCursor: string,
+): Promise<AuditPage[]> {
+  const pages: AuditPage[] = [];
+  let cursor = initialCursor;
+  for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
+    const value = await fetchPage(cursor) as AuditPage;
+    if (!value || !Array.isArray(value.audits) || typeof value.next_cursor !== "string") throw new Error("authenticated audit endpoint returned an invalid page");
+    pages.push(value);
+    if (!value.audits.length) return pages;
+    if (!value.next_cursor || value.next_cursor === cursor) throw new Error("authenticated audit cursor did not advance");
+    cursor = value.next_cursor;
   }
-  if (record.session_id !== sessionId || !Array.isArray(record.audits) || !record.audits.length) {
-    throw new Error("server audit export does not match the browser session");
+  throw new Error("authenticated audit pagination exceeded 100 pages");
+}
+
+export function validateLiveServerAuditEvidence(pages: AuditPage[], expected: {
+  session_id: string; meeting_id: string; document_id: string; started_at: string; ended_at: string;
+  endpoint_host: string; config_version: string; model: string; initial_cursor?: string;
+}): ValidatedServerAudit {
+  if (!pages.length || pages.some(page => page.session_id !== expected.session_id || page.run_nonce !== expected.session_id)) {
+    throw new Error("audit pages must belong to the same authenticated session");
   }
-  const audits = record.audits as AuditRecord[];
+  const audits = pages.flatMap(page => page.audits);
+  if (!audits.length) throw new Error("authenticated audit endpoint returned no current operations");
   const auditIds = new Set<string>();
+  const started = Date.parse(expected.started_at);
+  const ended = Date.parse(expected.ended_at);
+  if (!Number.isFinite(started) || !Number.isFinite(ended) || ended < started) throw new Error("invalid browser audit operation window");
   for (const audit of audits) {
-    if (!audit.audit_id || auditIds.has(audit.audit_id) || audit.session_id !== sessionId || !audit.operation_id || audit.status !== "success") {
-      throw new Error("server audit record identity/status is invalid");
+    const required = [audit.audit_id, audit.operation_id, audit.provider, audit.model, audit.endpoint_host,
+      audit.config_version, audit.status, audit.timestamp, audit.run_id, audit.session_id];
+    if (required.some(value => typeof value !== "string" || !value)) throw new Error("required audit fields are missing");
+    if (auditIds.has(audit.audit_id)) throw new Error("duplicate server audit id");
+    if (audit.session_id !== expected.session_id || audit.run_id !== expected.session_id) {
+      throw new Error("audits must belong to the same authenticated session");
+    }
+    if (audit.endpoint_host !== expected.endpoint_host || audit.config_version !== expected.config_version || audit.model !== expected.model) {
+      throw new Error("audit does not use the current AI configuration");
+    }
+    const timestamp = Date.parse(audit.timestamp);
+    if (!Number.isFinite(timestamp) || timestamp < started || timestamp > ended) {
+      throw new Error("audit is outside the current operation window");
     }
     auditIds.add(audit.audit_id);
   }
@@ -115,32 +145,27 @@ export function validateServerAuditEvidence(value: unknown, sessionId: string, m
     template_fallback_count: audits.filter(audit => String(audit.error_code || "").toLowerCase().includes("template")).length,
     silent_fallback_count: audits.filter(audit => audit.provider !== "openai_compatible").length,
   };
-  const declaredCounts = record.counts && typeof record.counts === "object" ? record.counts as Record<string, unknown> : {};
-  if (!["fake_calls", "template_fallback_count", "silent_fallback_count"].every(key => Number.isFinite(declaredCounts[key]))) {
-    throw new Error("server audit export requires explicit numeric fallback counts");
-  }
-  if (JSON.stringify(declaredCounts) !== JSON.stringify(derivedCounts)) throw new Error("server audit declared counts do not match raw audits");
   if (Object.values(derivedCounts).some(count => count !== 0)) throw new Error(`fallback audit count must be zero: ${JSON.stringify(derivedCounts)}`);
+  const failed = audits.find(audit => audit.status !== "success" || audit.error_code);
+  if (failed) throw new Error(`server audit operation failed: ${failed.audit_id}:${failed.error_code || failed.status}`);
   const operationIds = audits.map(audit => audit.operation_id);
   const coverage = [
-    operationIds.some(id => id.startsWith(`${meetingId}:`) && id.includes("turn")),
-    operationIds.includes(`${meetingId}:draft-document`),
-    operationIds.some(id => id.startsWith(`${documentId}:audit:`)),
-    operationIds.some(id => id.startsWith(`${documentId}:countersign:`)),
+    operationIds.some(id => new RegExp(`^${expected.meeting_id}:turn:\\d+:[^:]+$`).test(id)),
+    operationIds.includes(`${expected.meeting_id}:draft-document`),
+    operationIds.some(id => new RegExp(`^${expected.document_id}:audit:v\\d+:sha256:[0-9a-f]{64}$`).test(id)),
+    operationIds.some(id => new RegExp(`^${expected.document_id}:countersign:[^:]+:v\\d+$`).test(id)),
   ];
-  if (coverage.some(found => !found)) throw new Error("server audit export lacks meeting/document operation coverage");
-  return { source: source as ValidatedServerAudit["source"], counts: derivedCounts, audits: audits.map(audit => ({ ...audit })) };
-}
-
-export async function loadServerAuditEvidence(file: string, sessionId: string, meetingId: string, documentId: string) {
-  const raw = await readFile(file);
-  const value = JSON.parse(raw.toString("utf8")) as Record<string, unknown>;
-  value.source = {
-    kind: "server_llm_audit_export",
-    artifact_sha256: `sha256:${createHash("sha256").update(raw).digest("hex")}`,
-    exported_at: String(value.exported_at || ""),
+  if (coverage.some(found => !found)) throw new Error("live server audits lack exact meeting/document operation coverage");
+  return {
+    source: {
+      kind: "authenticated_session_audit_api",
+      endpoint: `/api/game/session/${encodeURIComponent(expected.session_id)}/ai/audits`,
+      initial_cursor: expected.initial_cursor || "",
+      final_cursor: pages.at(-1)?.next_cursor || expected.initial_cursor || "",
+    },
+    counts: derivedCounts,
+    audits: audits.map(audit => ({ ...audit })),
   };
-  return validateServerAuditEvidence(value, sessionId, meetingId, documentId);
 }
 
 export function buildAcceptanceEvidence(input: {

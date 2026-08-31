@@ -10,10 +10,11 @@ import { promisify } from "node:util";
 import {
   assertStableIdentity,
   buildAcceptanceEvidence,
+  collectAuditPages,
   collectEvidenceIdentity,
   computeV3ContentHash,
   currentGitIdentity,
-  validateServerAuditEvidence,
+  validateLiveServerAuditEvidence,
 } from "./acceptance-evidence.ts";
 
 const execFileAsync = promisify(execFile);
@@ -84,41 +85,54 @@ test("assertStableIdentity rejects a source or content change during the run", (
   assert.throws(() => assertStableIdentity(start, { ...start, v3_content_hash: `sha256:${"d".repeat(64)}` }), /identity changed during acceptance run/);
 });
 
-const validServerAudit = () => ({
-  source: {
-    kind: "server_llm_audit_export",
-    artifact_sha256: `sha256:${"e".repeat(64)}`,
-    exported_at: "2026-08-31T12:00:00Z",
-  },
+const validAuditPage = () => ({
+  run_nonce: "session-1",
   session_id: "session-1",
-  counts: { fake_calls: 0, template_fallback_count: 0, silent_fallback_count: 0 },
+  next_cursor: "2026-08-31T12:00:04Z|llm_sign",
   audits: [
-    { audit_id: "llm_turn", session_id: "session-1", operation_id: "m-1:turn:1", provider: "openai_compatible", status: "success", error_code: null },
-    { audit_id: "llm_draft", session_id: "session-1", operation_id: "m-1:draft-document", provider: "openai_compatible", status: "success", error_code: null },
-    { audit_id: "llm_review", session_id: "session-1", operation_id: "d-1:audit:v1:initial", provider: "openai_compatible", status: "success", error_code: null },
-    { audit_id: "llm_sign", session_id: "session-1", operation_id: "d-1:countersign:npc-1", provider: "openai_compatible", status: "success", error_code: null },
+    { audit_id: "llm_turn", session_id: "session-1", run_id: "session-1", operation_id: "m-1:turn:1:npc-1", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:01Z" },
+    { audit_id: "llm_draft", session_id: "session-1", run_id: "session-1", operation_id: "m-1:draft-document", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:02Z" },
+    { audit_id: "llm_review", session_id: "session-1", run_id: "session-1", operation_id: `d-1:audit:v1:sha256:${"a".repeat(64)}`, provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:03Z" },
+    { audit_id: "llm_sign", session_id: "session-1", run_id: "session-1", operation_id: "d-1:countersign:npc-1:v1", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:04Z" },
   ],
 });
 
-test("validateServerAuditEvidence rejects missing source and every non-zero fallback count", () => {
-  assert.throws(() => validateServerAuditEvidence({}, "session-1", "m-1", "d-1"), /formal server audit source/);
-  for (const [mutation, countKey] of [
-    [{ provider: "fake" }, "fake_calls"],
-    [{ error_code: "template_fallback" }, "template_fallback_count"],
-    [{ provider: "silent_fallback" }, "silent_fallback_count"],
-  ]) {
-    const evidence = validServerAudit();
-    Object.assign(evidence.audits[0], mutation);
-    evidence.counts[countKey] = 1;
-    if (mutation.provider === "fake") evidence.counts.silent_fallback_count = 1;
-    assert.throws(() => validateServerAuditEvidence(evidence, "session-1", "m-1", "d-1"), /fallback audit count must be zero/);
+const auditExpectation = () => ({
+  session_id: "session-1", meeting_id: "m-1", document_id: "d-1",
+  started_at: "2026-08-31T12:00:00Z", ended_at: "2026-08-31T12:00:05Z",
+  endpoint_host: "api.example.test", config_version: "cfg-1", model: "model-1",
+});
+
+test("collectAuditPages follows cursors until the authenticated endpoint returns an empty page", async () => {
+  const seen = [];
+  const pages = await collectAuditPages(async cursor => {
+    seen.push(cursor);
+    if (cursor === "baseline") return { ...validAuditPage(), audits: validAuditPage().audits.slice(0, 2), next_cursor: "cursor-2" };
+    if (cursor === "cursor-2") return { ...validAuditPage(), audits: validAuditPage().audits.slice(2), next_cursor: "cursor-4" };
+    return { run_nonce: "session-1", session_id: "session-1", next_cursor: cursor, audits: [] };
+  }, "baseline");
+  assert.deepEqual(seen, ["baseline", "cursor-2", "cursor-4"]);
+  assert.equal(pages.length, 3);
+});
+
+test("validateLiveServerAuditEvidence rejects cross-session, stale, missing, and mixed-config records", () => {
+  const cases = [
+    [page => { page.audits[0].session_id = "other"; }, /same authenticated session/],
+    [page => { page.audits[0].timestamp = "2026-08-30T12:00:00Z"; }, /current operation window/],
+    [page => { delete page.audits[0].audit_id; }, /required audit fields/],
+    [page => { page.audits[0].config_version = "cfg-other"; }, /current AI configuration/],
+    [page => { page.audits[0].endpoint_host = "other.example.test"; }, /current AI configuration/],
+  ];
+  for (const [mutate, pattern] of cases) {
+    const page = validAuditPage();
+    mutate(page);
+    assert.throws(() => validateLiveServerAuditEvidence([page], auditExpectation()), pattern);
   }
-  const missingCount = validServerAudit();
-  delete missingCount.counts.template_fallback_count;
-  assert.throws(() => validateServerAuditEvidence(missingCount, "session-1", "m-1", "d-1"), /explicit numeric fallback counts/);
-  const tamperedCount = validServerAudit();
-  tamperedCount.counts.fake_calls = 1;
-  assert.throws(() => validateServerAuditEvidence(tamperedCount, "session-1", "m-1", "d-1"), /declared counts do not match raw audits/);
+  for (const mutation of [{ provider: "fake" }, { error_code: "template_fallback" }, { provider: "silent_fallback" }]) {
+    const page = validAuditPage();
+    Object.assign(page.audits[0], mutation);
+    assert.throws(() => validateLiveServerAuditEvidence([page], auditExpectation()), /fallback audit count must be zero/);
+  }
 });
 
 test("buildAcceptanceEvidence emits client steps separately from formal server audits", () => {
@@ -143,7 +157,7 @@ test("buildAcceptanceEvidence emits client steps separately from formal server a
     resolution_snapshot: { decision: "依法形成决议" },
     document_status: "issued",
     client_steps: operations,
-    server_audit: validateServerAuditEvidence(validServerAudit(), "session-1", "m-1", "d-1"),
+    server_audit: validateLiveServerAuditEvidence([validAuditPage()], auditExpectation()),
     console_unattributed_errors: 0,
     network_unattributed_errors: 0,
   });

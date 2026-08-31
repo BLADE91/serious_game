@@ -4,9 +4,10 @@ import path from "node:path";
 import {
   assertStableIdentity,
   buildAcceptanceEvidence,
+  collectAuditPages,
   collectEvidenceIdentity,
   currentGitIdentity,
-  loadServerAuditEvidence,
+  validateLiveServerAuditEvidence,
   type EvidenceOperation,
 } from "./acceptance-evidence.js";
 
@@ -210,6 +211,25 @@ async function readGovernancePanel(page: Page, sessionId: string) {
     if (!response.ok) throw new Error(`governance panel read failed: ${response.status}`);
     return response.json();
   }, sessionId) as Promise<JsonMap>;
+}
+
+async function readAIConfiguration(page: Page) {
+  return page.evaluate(async () => {
+    const response = await fetch("/api/backend/api/ai/config", { credentials: "include" });
+    if (!response.ok) throw new Error(`AI configuration read failed: ${response.status}`);
+    return response.json();
+  }) as Promise<JsonMap>;
+}
+
+async function readAuditPage(page: Page, sessionId: string, cursor: string) {
+  return page.evaluate(async ({ id, after }) => {
+    const query = new URLSearchParams({ after, limit: "50" });
+    const response = await fetch(`/api/backend/api/game/session/${encodeURIComponent(id)}/ai/audits?${query}`, {
+      credentials: "include",
+    });
+    if (!response.ok) throw new Error(`authenticated session audit read failed: ${response.status}`);
+    return response.json();
+  }, { id: sessionId, after: cursor });
 }
 
 function playerStateVersion(payload: JsonMap) {
@@ -1124,14 +1144,37 @@ test.describe("full real browser routes", () => {
       () => exerciseMapAction(page, testInfo, "feature-leadership-meeting"),
     );
     await inspectAllAvailableArchives(page, testInfo, "feature-leadership-meeting", 1);
+    const aiConfiguration = await readAIConfiguration(page);
+    for (const field of ["endpoint", "model", "config_version"] as const) {
+      expect(String(aiConfiguration[field] || ""), `active AI configuration must expose ${field}`).not.toBe("");
+    }
+    const baselinePages = await collectAuditPages(
+      cursor => readAuditPage(page, sessionId, cursor), "",
+    );
+    const initialAuditCursor = baselinePages.at(-1)?.next_cursor || "";
+    const auditWindowStartedAt = new Date().toISOString();
     const meetingEvidence = await exerciseLeadershipMeeting(
       page, testInfo, "feature-leadership-meeting", sessionId,
     );
-    const auditFile = process.env.FULL_ACCEPTANCE_SERVER_AUDIT_FILE;
-    expect(auditFile, "a formal server LLM audit export is required; browser responses do not expose audit IDs").toBeTruthy();
-    const serverAudit = await loadServerAuditEvidence(
-      path.resolve(String(auditFile)), sessionId, meetingEvidence.meetingId, String(meetingEvidence.document.document_id),
+    const liveAuditPages = await collectAuditPages(
+      cursor => readAuditPage(page, sessionId, cursor), initialAuditCursor,
     );
+    const auditWindowEndedAt = new Date().toISOString();
+    const endingAIConfiguration = await readAIConfiguration(page);
+    expect(endingAIConfiguration.config_version, "AI configuration must remain frozen during the meeting workflow").toBe(
+      aiConfiguration.config_version,
+    );
+    const serverAudit = validateLiveServerAuditEvidence(liveAuditPages, {
+      session_id: sessionId,
+      meeting_id: meetingEvidence.meetingId,
+      document_id: String(meetingEvidence.document.document_id),
+      started_at: auditWindowStartedAt,
+      ended_at: auditWindowEndedAt,
+      endpoint_host: String(aiConfiguration.endpoint),
+      config_version: String(aiConfiguration.config_version),
+      model: String(aiConfiguration.model),
+      initial_cursor: initialAuditCursor,
+    });
     const endIdentity = await collectEvidenceIdentity(
       repositoryRoot, contentRoot, currentGitIdentity, [browserEvidenceRoot],
     );
