@@ -28,6 +28,7 @@ from tools.run_real_feature_workflows import (
     _coverage_operation_records,
     _attach_authority_projections,
     _business_semantic_projection,
+    _complete_map_action,
     semantic_hash,
     validate_feature_workflow_report,
 )
@@ -73,6 +74,63 @@ def test_save_load_semantics_ignore_only_documented_restore_transaction_metadata
         logs=[*loaded.logs, {"type": "business_event", "visible_to_player": True}],
     )
     assert _business_semantic_projection(saved) != _business_semantic_projection(changed)
+
+
+def test_map_inventory_completes_leadership_meeting_through_meeting_api() -> None:
+    calls: list[tuple[str, dict]] = []
+
+    class Response:
+        status_code = 200
+        text = "ok"
+
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def post(self, path, *, headers, json):
+            calls.append((path, json))
+            if path.endswith("/turn"):
+                return Response({
+                    "state_version": 12,
+                    "transcript": [{"speaker_type": "npc"}],
+                })
+            return Response({
+                "state_version": 13,
+                "meeting": {"status": "rejected"},
+                "passed": False,
+            })
+
+    completed = _complete_map_action(
+        Client(),
+        runner=None,
+        session_id="session-1",
+        headers={"X-Account-ID": "account-1"},
+        started={
+            "state_version": 11,
+            "visible_state": {"story": {"day": 51}},
+            "action": {
+                "action_kind": "leadership_meeting",
+                "action_instance_id": "action-1",
+            },
+            "meeting": {
+                "meeting_id": "meeting-1",
+                "participant_ids": ["npc-a", "npc-b"],
+            },
+        },
+        location_name="周氏宗祠",
+        location_id="loc_zhou_ancestral_hall",
+    )
+
+    assert completed["state_version"] == 13
+    assert [path for path, _payload in calls] == [
+        "/api/game/session/session-1/governance/meetings/meeting-1/turn",
+        "/api/game/session/session-1/governance/meetings/meeting-1/resolve",
+    ]
+    assert calls[1][1]["adopt"] is False
+    assert calls[1][1]["resolution"]["responsible_ids"] == ["npc-a"]
 
 
 def _built_evidence() -> tuple[dict[str, list[dict]], list[dict]]:

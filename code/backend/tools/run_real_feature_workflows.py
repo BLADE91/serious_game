@@ -1600,6 +1600,71 @@ def _personal_contract_workflow(
     return payload
 
 
+def _complete_map_action(
+    client: TestClient,
+    *,
+    runner: RealRouteRunner | None,
+    session_id: str,
+    headers: dict[str, str],
+    started: dict,
+    location_name: str,
+    location_id: str,
+) -> dict:
+    """Complete one map action through its published player-facing workflow."""
+
+    action = started["action"]
+    if action["action_kind"] == "leadership_meeting":
+        meeting = started["meeting"]
+        meeting_id = meeting["meeting_id"]
+        turned = _expect(client.post(
+            f"/api/game/session/{session_id}/governance/meetings/{meeting_id}/turn",
+            headers=headers,
+            json={
+                "state_version": started["state_version"],
+                "player_text": f"请逐项核实{location_name}公开事项、风险和办理进度。",
+                "client_action_id": f"feature-map-{location_id}",
+            },
+        ))
+        participants = list(meeting["participant_ids"])
+        resolved = _expect(client.post(
+            f"/api/game/session/{session_id}/governance/meetings/{meeting_id}/resolve",
+            headers=headers,
+            json={
+                "state_version": turned["state_version"],
+                "adopt": False,
+                "resolution": {
+                    "decision": f"完成{location_name}事项核实，本次不形成执行决议",
+                    "target_scope": location_name,
+                    "resources": {},
+                    "resource_mode": "authorization_ceiling",
+                    "responsible_ids": participants[:1],
+                    "deadline_day": started["visible_state"]["story"]["day"],
+                    "public_scope": [location_name],
+                    "document_title": f"{location_name}事项核实会议纪要",
+                },
+            },
+        ))
+        if resolved["meeting"]["status"] not in {"resolved", "rejected"}:
+            raise AssertionError(f"map meeting did not settle at {location_id}")
+        return resolved
+
+    if runner is None:
+        raise AssertionError("ordinary map actions require a real route runner")
+    action_id = action["action_instance_id"]
+    turned = _expect(runner.governance_turn_for_route(
+        client,
+        session_id,
+        headers,
+        action_id,
+        started,
+        player_text=f"请核实{location_name}当前公开事项并形成正式记录。",
+        client_action_id=f"feature-map-{location_id}",
+    ))
+    return _finish_action(
+        client, session_id, headers, action_id, turned["state_version"]
+    )
+
+
 def _exercise_all_available_map_locations(
     client: TestClient,
     container,
@@ -1645,18 +1710,14 @@ def _exercise_all_available_map_locations(
         )
         if started["action"]["location_id"] != location_id:
             raise AssertionError(f"map location lock failed for {location_id}")
-        action_id = started["action"]["action_instance_id"]
-        turned = _expect(runner.governance_turn_for_route(
+        finished = _complete_map_action(
             client,
-            session_id,
-            headers,
-            action_id,
-            started,
-            player_text=f"请核实{location['name']}当前公开事项并形成正式记录。",
-            client_action_id=f"feature-map-{location_id}",
-        ))
-        finished = _finish_action(
-            client, session_id, headers, action_id, turned["state_version"]
+            runner=runner,
+            session_id=session_id,
+            headers=headers,
+            started=started,
+            location_name=location["name"],
+            location_id=location_id,
         )
         if finished["state_version"] <= started["state_version"]:
             raise AssertionError(f"map action did not complete at {location_id}")
