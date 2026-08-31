@@ -22,15 +22,18 @@ from serious_game_backend.infrastructure.repositories.mysql import (
 from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
     _coverage_operation_records,
+    _attach_authority_projections,
     semantic_hash,
     validate_feature_workflow_report,
 )
 
 
-def _built_operation_records() -> dict[str, list[dict]]:
+def _built_evidence() -> tuple[dict[str, list[dict]], list[dict]]:
     coverage = {
         "archive_ids": [f"archive-{i:02d}" for i in range(11)],
-        "fact_acquisition_path_ids": [f"path-{i:02d}" for i in range(27)],
+        "fact_acquisition_path_ids": [
+            f"fact-{i:02d}:archive:source-{i:02d}" for i in range(27)
+        ],
         "opportunity_ids": [f"opportunity-{i:02d}" for i in range(32)],
         "npc_ids": [f"npc-{i:02d}" for i in range(29)],
         "map_location_ids": [f"location-{i:02d}" for i in range(8)],
@@ -61,17 +64,37 @@ def _built_operation_records() -> dict[str, list[dict]]:
             })
             version += 1
     workflow = {
+        "account": "server_default",
+        "story_day": 90,
         "session_id": "session-authority",
         "coverage": coverage,
         "coverage_effect_hash": semantic_hash(coverage),
         "api_traces": transitions,
         "audit": {"records": []},
     }
-    return _coverage_operation_records([workflow])
+    workflow["api_traces"].append({
+        "path": "/formal/reachability",
+        "status_code": 200,
+        "request_hash": semantic_hash({"read": "reachability"}),
+        "client_trace_id": None,
+        "server_state_version_before": version,
+        "server_state_version_after": version + 1,
+        "response": {
+            "npc_ids": coverage["npc_ids"],
+            "fact_ids": [f"fact-{i:02d}" for i in range(27)],
+            "source_ids": [f"source-{i:02d}" for i in range(27)],
+        },
+        "readback_effect_hash": semantic_hash(coverage),
+        "readback_state_version": version + 1,
+        "readbacks": [],
+    })
+    workflows = [workflow]
+    _attach_authority_projections(workflows)
+    return _coverage_operation_records(workflows), workflows
 
 
 def passing_report() -> dict[str, object]:
-    operation_records = _built_operation_records()
+    operation_records, workflows = _built_evidence()
     return {
         "provider": "openai_compatible",
         "fake_calls": 0,
@@ -82,7 +105,9 @@ def passing_report() -> dict[str, object]:
         "personal_api_accounts": 1,
         "account_gateway_isolation": True,
         "archive_ids": [f"archive-{i:02d}" for i in range(11)],
-        "fact_acquisition_path_ids": [f"path-{i:02d}" for i in range(27)],
+        "fact_acquisition_path_ids": [
+            f"fact-{i:02d}:archive:source-{i:02d}" for i in range(27)
+        ],
         "opportunity_ids": [f"opportunity-{i:02d}" for i in range(32)],
         "npc_ids": [f"npc-{i:02d}" for i in range(29)],
         "map_location_ids": [f"location-{i:02d}" for i in range(8)],
@@ -140,6 +165,7 @@ def passing_report() -> dict[str, object]:
             "save_operation_id": "save-1",
             "load_operation_id": "load-1",
         },
+        "workflows": workflows,
     }
 
 
@@ -207,6 +233,26 @@ def test_validator_rejects_tampered_entity_projection_and_illegal_downgrade() ->
     archive = report["operation_records"]["archives"][0]
     archive["entity_projection"].pop("archive_id")
     with pytest.raises(AssertionError, match="archives.*ID"):
+        validate_feature_workflow_report(report)
+
+
+def test_reachability_is_bound_to_workflow_authority_projection() -> None:
+    report = passing_report()
+    report["npc_ids"][0] = "npc-forged"
+    report["operation_records"]["npcs"][0]["evidence_id"] = "npc-forged"
+    with pytest.raises(AssertionError, match="selector|workflow projection"):
+        validate_feature_workflow_report(report)
+
+    report = passing_report()
+    projection = report["workflows"][0]["authority_projection"]
+    projection["items"]["npcs"][0]["evidence_id"] = "npc-tampered"
+    with pytest.raises(AssertionError, match="provenance"):
+        validate_feature_workflow_report(report)
+
+    report = passing_report()
+    record = report["operation_records"]["npcs"][0]
+    record["source_item_selector"] = "unknown-selector"
+    with pytest.raises(AssertionError, match="projection"):
         validate_feature_workflow_report(report)
 
     report = passing_report()

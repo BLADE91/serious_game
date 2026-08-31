@@ -123,6 +123,94 @@ _ALLOWED_EVIDENCE_KINDS = {
     "map_locations": {"server_entity_transition"},
     "households": {"server_entity_transition"},
 }
+_REACHABILITY_SELECTORS = {
+    "fact_acquisition_paths": "fact_acquisition_path_ids",
+    "npcs": "npc_ids",
+}
+
+
+def _response_id_whitelist(value: object) -> list[str]:
+    values: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key.endswith("_id") and isinstance(item, str):
+                values.add(item)
+            elif key.endswith("_ids") and isinstance(item, list):
+                values.update(str(entry) for entry in item if isinstance(entry, str))
+            else:
+                values.update(_response_id_whitelist(item))
+    elif isinstance(value, list):
+        for item in value:
+            values.update(_response_id_whitelist(item))
+    return sorted(values)
+
+
+def _reachability_supported(
+    selector: str, evidence_id: str, response_ids: set[str]
+) -> bool:
+    if selector == "npcs":
+        return evidence_id in response_ids
+    if selector == "fact_acquisition_paths":
+        parts = evidence_id.split(":", 2)
+        return len(parts) == 3 and parts[0] in response_ids and parts[2] in response_ids
+    return False
+
+
+def _attach_authority_projections(workflows: list[dict]) -> None:
+    for workflow in workflows:
+        workflow_key = f"{workflow['account']}:{workflow['session_id']}"
+        sources = []
+        for trace in workflow.get("api_traces", ()):
+            if int(trace.get("status_code", 0)) not in range(200, 300):
+                continue
+            if not isinstance(trace.get("server_state_version_before"), int):
+                continue
+            if not isinstance(trace.get("server_state_version_after"), int):
+                continue
+            sources.append({
+                "path": trace["path"],
+                "status_code": trace["status_code"],
+                "state_version_before": trace["server_state_version_before"],
+                "state_version_after": trace["server_state_version_after"],
+                "session_id": workflow["session_id"],
+                "response_ids": _response_id_whitelist(trace.get("response")),
+                "response_whitelist_hash": semantic_hash(
+                    _response_id_whitelist(trace.get("response"))
+                ),
+            })
+        projection = {
+            "workflow_key": workflow_key,
+            "session_id": workflow["session_id"],
+            "run_provenance": {
+                "account_mode": workflow["account"],
+                "story_day": workflow["story_day"],
+            },
+            "sources": sources,
+            "items": {
+                selector: [
+                    {"evidence_id": str(item), "status": "completed"}
+                    for item in workflow["coverage"].get(coverage_field, ())
+                ]
+                for selector, coverage_field in _REACHABILITY_SELECTORS.items()
+            },
+        }
+        source_ids = {
+            item for source in sources for item in source["response_ids"]
+        }
+        for selector, items in projection["items"].items():
+            missing = [
+                item["evidence_id"] for item in items
+                if not _reachability_supported(
+                    selector, item["evidence_id"], source_ids
+                )
+            ]
+            if missing:
+                raise AssertionError(
+                    f"{selector} lacks formal HTTP DTO reachability: {missing[:3]}"
+                )
+        workflow["workflow_key"] = workflow_key
+        workflow["authority_projection"] = projection
+        workflow["authority_projection_hash"] = semantic_hash(projection)
 
 
 def _find_entity_projection(value: object, evidence_id: str) -> dict | None:
@@ -330,19 +418,12 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                     item for item in workflows
                     if evidence_id in item["coverage"].get(coverage_field, ())
                 )
-                dto_projection = {
-                    "evidence_id": evidence_id,
-                    "status": "reachable",
-                    "source_session_id": workflow["session_id"],
-                }
                 records.append({
                     "evidence_id": evidence_id,
                     "evidence_kind": "authoritative_reachability",
-                    "authority": "persisted_session_coverage",
-                    "authority_session_id": workflow["session_id"],
-                    "authority_effect_hash": workflow["coverage_effect_hash"],
-                    "dto_projection": dto_projection,
-                    "dto_projection_hash": semantic_hash(dto_projection),
+                    "source_workflow_key": workflow["workflow_key"],
+                    "source_projection_hash": workflow["authority_projection_hash"],
+                    "source_item_selector": category,
                     "status": "succeeded",
                     "audit_ids": [],
                 })
@@ -458,6 +539,47 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
     records = report.get("operation_records")
     if not isinstance(records, dict):
         raise AssertionError("operation_records are missing")
+    workflow_values = report.get("workflows")
+    if not isinstance(workflow_values, list) or not workflow_values:
+        raise AssertionError("workflow authority projections are missing")
+    workflow_authorities: dict[str, dict] = {}
+    for workflow in workflow_values:
+        if not isinstance(workflow, dict):
+            raise AssertionError("workflow authority projection is malformed")
+        key = str(workflow.get("workflow_key", ""))
+        projection = workflow.get("authority_projection")
+        if (
+            not key
+            or not isinstance(projection, dict)
+            or projection.get("workflow_key") != key
+            or projection.get("session_id") != workflow.get("session_id")
+            or workflow.get("authority_projection_hash") != semantic_hash(projection)
+        ):
+            raise AssertionError("workflow authority projection provenance is invalid")
+        sources = projection.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise AssertionError("workflow authority HTTP sources are missing")
+        for source in sources:
+            if (
+                not str(source.get("path", "")).startswith("/api/game/session/")
+                and not str(source.get("path", "")).startswith("/formal/")
+            ):
+                raise AssertionError("workflow authority HTTP path is invalid")
+            if int(source.get("status_code", 0)) not in range(200, 300):
+                raise AssertionError("workflow authority HTTP status is invalid")
+            if (
+                not isinstance(source.get("state_version_before"), int)
+                or not isinstance(source.get("state_version_after"), int)
+                or source["state_version_after"] < source["state_version_before"]
+            ):
+                raise AssertionError("workflow authority HTTP state version is invalid")
+            if source.get("session_id") != workflow.get("session_id"):
+                raise AssertionError("workflow authority HTTP session is inconsistent")
+            if source.get("response_whitelist_hash") != semantic_hash(
+                source.get("response_ids", [])
+            ):
+                raise AssertionError("workflow authority response hash is invalid")
+        workflow_authorities[key] = projection
     record_requirements = {
         "archives": (11, "archive_ids"),
         "fact_acquisition_paths": (27, "fact_acquisition_path_ids"),
@@ -513,23 +635,28 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
                     raise AssertionError(f"{category} entity projection hash is invalid")
             elif item["evidence_kind"] == "authoritative_reachability":
                 reachability_fields = {
-                    "authority", "authority_session_id", "authority_effect_hash",
-                    "dto_projection", "dto_projection_hash",
+                    "source_workflow_key", "source_projection_hash",
+                    "source_item_selector",
                 }
-                if not reachability_fields <= item.keys() or not _SHA256.fullmatch(
-                    str(item.get("authority_effect_hash", ""))
-                ):
+                if not reachability_fields <= item.keys():
                     raise AssertionError(f"{category} reachability evidence is incomplete")
-                projection = item["dto_projection"]
+                selector = item["source_item_selector"]
+                projection = workflow_authorities.get(item["source_workflow_key"])
                 if (
                     not isinstance(projection, dict)
-                    or projection.get("evidence_id") != item["evidence_id"]
-                    or projection.get("status") != "reachable"
-                    or projection.get("source_session_id")
-                    != item["authority_session_id"]
-                    or item["dto_projection_hash"] != semantic_hash(projection)
+                    or selector != category
+                    or selector not in _REACHABILITY_SELECTORS
+                    or item["source_projection_hash"] != semantic_hash(projection)
                 ):
                     raise AssertionError(f"{category} reachability projection is invalid")
+                selected_items = projection.get("items", {}).get(selector)
+                if not isinstance(selected_items, list) or not any(
+                    candidate.get("evidence_id") == item["evidence_id"]
+                    and candidate.get("status") == "completed"
+                    for candidate in selected_items
+                    if isinstance(candidate, dict)
+                ):
+                    raise AssertionError(f"{category} reachability selector did not match")
             else:
                 raise AssertionError(f"{category} evidence kind is unsupported")
             evidence_ids.add(str(item["evidence_id"]))
@@ -537,6 +664,17 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
             raise AssertionError(f"{category} operation records are not unique")
         if evidence_ids != {str(item) for item in report[coverage_field]}:
             raise AssertionError(f"{category} operation records do not match coverage")
+        if category in _REACHABILITY_SELECTORS:
+            projected_ids = {
+                str(item.get("evidence_id"))
+                for projection in workflow_authorities.values()
+                for item in projection.get("items", {}).get(category, ())
+                if isinstance(item, dict) and item.get("status") == "completed"
+            }
+            if projected_ids != evidence_ids:
+                raise AssertionError(
+                    f"{category} workflow projection does not match coverage"
+                )
     meeting_record = report.get("meeting_document_record")
     if not isinstance(meeting_record, dict):
         raise AssertionError("meeting/document operation record is missing")
@@ -1781,6 +1919,7 @@ def main() -> int:
         _published_inventory_workflow(runner),
         _recovery_opportunity_workflow(runner),
     ]
+    _attach_authority_projections(workflows)
     coverage_fields = (
         "archive_ids",
         "fact_acquisition_path_ids",
