@@ -572,6 +572,7 @@ class ScriptPackageTests(unittest.TestCase):
             item.opportunity_id: item
             for item in package.interaction_opportunities
         }
+        actions = package.resource_actions
 
         self.assertEqual(18, len(package.facts))
         for fact in package.facts.values():
@@ -584,8 +585,7 @@ class ScriptPackageTests(unittest.TestCase):
                     archive = archives[str(method["source_id"])]
                     self.assertIn(fact.fact_id, archive.result_fact_ids)
                     self.assertEqual(archive.unlock_day, method["unlock_day"])
-                else:
-                    self.assertEqual("conversation", method["route_type"])
+                elif method["route_type"] == "conversation":
                     opportunity = opportunities[str(method["source_id"])]
                     self.assertIn(
                         fact.fact_id,
@@ -598,6 +598,12 @@ class ScriptPackageTests(unittest.TestCase):
                     self.assertLessEqual(
                         int(method["unlock_day"]), opportunity.day_max
                     )
+                else:
+                    self.assertEqual("action", method["route_type"])
+                    action = actions[str(method["source_id"])]
+                    self.assertTrue(action.enabled)
+                    self.assertIn(fact.fact_id, action.result_fact_ids)
+                    self.assertEqual(action.unlock_day, method["unlock_day"])
 
     def test_recording_days_d12_to_d26_have_complete_player_facing_flow(self) -> None:
         package = FileScriptPackageLoader().load(
