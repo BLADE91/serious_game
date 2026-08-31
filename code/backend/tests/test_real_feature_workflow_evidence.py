@@ -333,6 +333,53 @@ def test_completed_conversation_records_formal_get_for_all_opportunities() -> No
     } == set(opportunity_ids)
 
 
+@pytest.mark.parametrize("ended_by", ("player", "npc"))
+def test_every_legal_conversation_end_records_formal_get(ended_by: str) -> None:
+    class Response:
+        def __init__(self, payload: dict) -> None:
+            self.status_code = 200
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def request(self, method, url, **kwargs):
+            if method == "POST":
+                return Response({
+                    "state_version": 2,
+                    "completion_status": "incomplete",
+                    "conversation": {
+                        "conversation_id": "conversation-ended",
+                        "opportunity_id": "opportunity-ended",
+                        "status": "ended",
+                        "ended_by": ended_by,
+                    },
+                })
+            if "/conversations?limit=100" in str(url):
+                return Response({"items": [{
+                    "conversation_id": "conversation-ended",
+                    "opportunity_id": "opportunity-ended",
+                    "completion_status": "incomplete",
+                }]})
+            return Response({"state_version": 1})
+
+    recorder = _ApiEvidenceRecorder(
+        Client(), "session-1", {"X-Account-ID": "account-1"}
+    )
+    recorder.request(
+        "POST", "/api/game/session/session-1/action",
+        headers={"X-Account-ID": "account-1"},
+        json={"state_version": 1},
+    )
+
+    assert any(
+        "/conversations?limit=100" in item["endpoint"]
+        for item in recorder.records[0]["readbacks"]
+    )
+
+
 @pytest.mark.parametrize(
     ("category", "coverage_field", "evidence_id", "path", "invalid", "valid"),
     (
@@ -385,6 +432,52 @@ def test_operation_selector_skips_early_invalid_entity_readback(
     records = _coverage_operation_records([workflow])
 
     assert records[category][0]["request_hash"] == "late"
+
+
+def test_opportunity_selector_skips_incomplete_attempt_in_same_get_readback() -> None:
+    opportunity_id = "opp-available-after-retry"
+    trace = {
+        "path": "/action",
+        "status_code": 200,
+        "request_hash": "completed-attempt",
+        "client_trace_id": None,
+        "server_state_version_before": 3,
+        "server_state_version_after": 4,
+        "response": {
+            "opportunity_id": opportunity_id,
+            "completion_status": "completed",
+        },
+        "readback_effect_hash": "readback-hash",
+        "readback_state_version": 4,
+        "readbacks": [{
+            "endpoint": "/api/game/session/session-1/conversations?limit=100",
+            "payload": {"items": [
+                {
+                    "conversation_id": "conversation-incomplete",
+                    "opportunity_id": opportunity_id,
+                    "completion_status": "incomplete",
+                },
+                {
+                    "conversation_id": "conversation-completed",
+                    "opportunity_id": opportunity_id,
+                    "completion_status": "completed",
+                },
+            ]},
+        }],
+    }
+    workflow = {
+        "session_id": "session-1",
+        "coverage": {"opportunity_ids": [opportunity_id]},
+        "api_traces": [trace],
+        "audit": {"records": []},
+    }
+
+    records = _coverage_operation_records([workflow])
+
+    assert records["opportunities"][0]["entity_projection"] == {
+        "completion_status": "completed",
+        "opportunity_id": opportunity_id,
+    }
 
 
 def test_all_eight_map_locations_require_completed_action_readbacks() -> None:

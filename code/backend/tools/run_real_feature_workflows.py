@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from collections import Counter
 from dataclasses import asdict, fields, is_dataclass, replace
 import argparse
@@ -241,7 +242,9 @@ def _attach_authority_projections(workflows: list[dict]) -> None:
         workflow["authority_projection_hash"] = semantic_hash(projection)
 
 
-def _find_entity_projection(value: object, evidence_id: str) -> dict | None:
+def _find_entity_projections(
+    value: object, evidence_id: str
+) -> Iterator[dict[str, object]]:
     if isinstance(value, dict):
         if any(
             key.endswith("_id") and item == evidence_id
@@ -253,17 +256,12 @@ def _find_entity_projection(value: object, evidence_id: str) -> dict | None:
             }
             if "read_at_days" in value:
                 projection["read_at_days"] = list(value["read_at_days"])
-            return projection
+            yield projection
         for item in value.values():
-            found = _find_entity_projection(item, evidence_id)
-            if found is not None:
-                return found
+            yield from _find_entity_projections(item, evidence_id)
     elif isinstance(value, (list, tuple)):
         for item in value:
-            found = _find_entity_projection(item, evidence_id)
-            if found is not None:
-                return found
-    return None
+            yield from _find_entity_projections(item, evidence_id)
 
 
 def _validate_entity_projection(category: str, evidence_id: str, entity: dict) -> None:
@@ -283,16 +281,14 @@ def _validated_entity_projection(
     category: str, evidence_id: str, trace: dict
 ) -> dict | None:
     for readback in trace.get("readbacks", ()):
-        projection = _find_entity_projection(
+        for projection in _find_entity_projections(
             readback.get("payload"), evidence_id
-        )
-        if projection is None:
-            continue
-        try:
-            _validate_entity_projection(category, evidence_id, projection)
-        except AssertionError:
-            continue
-        return projection
+        ):
+            try:
+                _validate_entity_projection(category, evidence_id, projection)
+            except AssertionError:
+                continue
+            return projection
     return None
 
 
@@ -376,9 +372,16 @@ class _ApiEvidenceRecorder:
                 )
             if "/map" in path or "/governance/actions" in path:
                 readback_endpoints.append(f"/api/game/session/{self.session_id}/map")
+            conversation = (
+                response_body.get("conversation", {})
+                if isinstance(response_body, dict) else {}
+            )
             if (
                 isinstance(response_body, dict)
-                and response_body.get("completion_status") == "completed"
+                and (
+                    response_body.get("completion_status") == "completed"
+                    or conversation.get("status") == "ended"
+                )
             ):
                 readback_endpoints.append(
                     f"/api/game/session/{self.session_id}/conversations?limit=100"
