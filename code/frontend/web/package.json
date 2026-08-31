@@ -12,6 +12,10 @@
     "sync:assets": "node scripts/sync-scene-assets.mjs",
     "validate:assets": "node scripts/validate-scene-assets.mjs",
     "test": "npm run validate:assets && npm run build && node --test",
+    "typecheck:app": "tsc -p tsconfig.json --noEmit --pretty false",
+    "typecheck:worker": "tsc -p tsconfig.worker.json --noEmit --pretty false",
+    "typecheck": "npm run typecheck:app && npm run typecheck:worker",
+    "check": "npm run validate:assets && npm run lint && npm run typecheck && npm run build && node --test && playwright test --list",
     "test:e2e:full": "playwright test e2e/full-game.spec.ts e2e/visual-matrix.spec.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
@@ -24,6 +28,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/workers-types": "4.20260515.1",
     "@playwright/test": "1.62.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",

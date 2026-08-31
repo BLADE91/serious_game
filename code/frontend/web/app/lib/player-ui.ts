@@ -1,5 +1,13 @@
 export type PlayerRecord = Record<string, unknown>;
 
+export function speakerSelectionForTimelineEntry(
+  entry: PlayerRecord,
+  timelineLength: number,
+): { npcId: string; timelineLength: number } | null {
+  if (entry.speaker_type === "player") return null;
+  return { npcId: String(entry.npc_id || ""), timelineLength };
+}
+
 export function aiConfigurationView(value: PlayerRecord | null | undefined): {
   configured: boolean;
   mode: string;

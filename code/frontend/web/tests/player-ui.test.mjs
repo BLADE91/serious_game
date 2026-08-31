@@ -9,6 +9,19 @@ import * as playerUi from "../app/lib/player-ui.ts";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+test("selects a clicked NPC timeline entry through the existing speaker selection state", async () => {
+  assert.equal(typeof playerUi.speakerSelectionForTimelineEntry, "function");
+  assert.deepEqual(
+    playerUi.speakerSelectionForTimelineEntry({ speaker_type: "npc", npc_id: "npc_sun_qiang" }, 7),
+    { npcId: "npc_sun_qiang", timelineLength: 7 },
+  );
+  assert.equal(playerUi.speakerSelectionForTimelineEntry({ speaker_type: "player" }, 7), null);
+
+  const shell = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
+  assert.match(shell, /setSpeakerSelection\(speakerSelectionForTimelineEntry\(entry, timeline\.length\)!\)/);
+  assert.doesNotMatch(shell, /setSelectedNpcId/);
+});
+
 test("normalizes every supported action point cost shape including zero", () => {
   assert.equal(actionPointCost({ cost_action_points: 2 }), 2);
   assert.equal(actionPointCost({ action_point_cost: 3 }), 3);

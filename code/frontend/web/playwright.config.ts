@@ -33,7 +33,7 @@ export default defineConfig({
     locale: "zh-CN",
     timezoneId: "Asia/Shanghai",
     colorScheme: "dark",
-    reducedMotion: "reduce",
+    contextOptions: { reducedMotion: "reduce" },
     storageState: process.env.FULL_E2E_STORAGE_STATE,
   },
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],

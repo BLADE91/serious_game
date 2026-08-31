@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, activeInteractionMode, aiConfigurationErrorMessage, aiConfigurationMode, aiConfigurationView, archiveInvestigationGroups, archivePlayerSections, archiveReadGains, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, conversationContractWorkflow, conversationTimelineUpdate, createSingleFlight, decisionUnlockRequirements, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, investigationLeadView, meetingEvidenceArchives, peopleRelationshipView, personDiscoveryPresentation, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, resourceInventoryView, reviewEndingView, sessionEntry, submitGovernanceAction, toPlayerText, withAIActivity } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, activeInteractionMode, aiConfigurationErrorMessage, aiConfigurationMode, aiConfigurationView, archiveInvestigationGroups, archivePlayerSections, archiveReadGains, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, conversationContractWorkflow, conversationTimelineUpdate, createSingleFlight, decisionUnlockRequirements, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, investigationLeadView, meetingEvidenceArchives, peopleRelationshipView, personDiscoveryPresentation, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, resourceInventoryView, reviewEndingView, sessionEntry, speakerSelectionForTimelineEntry, submitGovernanceAction, toPlayerText, withAIActivity } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -63,7 +63,7 @@ const GOVERNANCE_ACTION_LABELS: Record<string, string> = {
   inspect_archives: "查阅档案",
 };
 
-const get = (obj: Dict | null, path: string, fallback: any = undefined) => path.split(".").reduce((value, key) => value?.[key], obj) ?? fallback;
+const get = (obj: Dict | null | undefined, path: string, fallback: any = undefined) => path.split(".").reduce((value, key) => value?.[key], obj) ?? fallback;
 const arr = (value: unknown): Dict[] => Array.isArray(value) ? value.filter(item => item && typeof item === "object") as Dict[] : [];
 const values = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const displayValue = (value: unknown, fallback: string | number = "待定"): string | number => {
@@ -984,7 +984,7 @@ export default function GameShell() {
               {stageSpeaker && <div className="gal-portrait" aria-label={`${stageSpeaker}立绘`}><CharacterPortrait character={stageCharacter} fallbackName={stageSpeaker} priority /></div>}
               <div className={stageSpeaker ? "gal-dialogue has-speaker" : "gal-dialogue narration"}>
                 <header><span>{decisionReady ? "当前必须作出决定" : stageSpeaker || (currentLine ? "县长手记" : "现场暂歇")}</span><small>{playerLines.length ? `今日 ${Math.max(1, narrative.currentIndex + 1)} / ${playerLines.length}` : "等待新消息"}</small></header>
-                {decisionReady && pending ? <div className="decision-stage-inline"><h3>{playerText(pending.title || pending.prompt || pending.situation, "当前事项需要你的决定")}</h3>{pending.description && <p>{playerText(pending.description)}</p>}{["sorting", "allocation"].includes(pending.input_kind) ? <StructuredDecision key={pending.decision_id} pending={pending} busy={busy} onSubmit={payload => perform(() => api.action(sessionId, { input_mode: "decision", client_action_id: api.key("decision"), state_version: state.state_version, decision_id: pending.decision_id, ...payload }), "决定已经记录，后续影响会在剧情和定性态势中体现")} /> : <div className="decision-options">{options.map((option, index) => {
+                {decisionReady && pending ? <div className="decision-stage-inline"><h3>{playerText(pending.title || pending.prompt || pending.situation, "当前事项需要你的决定")}</h3>{pending.description && <p>{playerText(pending.description)}</p>}{["sorting", "allocation"].includes(pending.input_kind) ? <StructuredDecision key={pending.decision_id} pending={pending} busy={busy} onSubmit={async payload => { await perform(() => api.action(sessionId, { input_mode: "decision", client_action_id: api.key("decision"), state_version: state.state_version, decision_id: pending.decision_id, ...payload }), "决定已经记录，后续影响会在剧情和定性态势中体现"); }} /> : <div className="decision-options">{options.map((option, index) => {
                   const requirements = decisionUnlockRequirements(option);
                   const locked = option.available === false;
                   return <section className={locked ? "decision-option locked" : "decision-option"} key={option.option_id || index}><button onClick={() => submitDecision(option)} disabled={busy || locked}><span>{chineseIndex(index)}</span><div><b>{playerText(option.text || option.label, `方案${chineseIndex(index)}`)}</b>{option.description && <small>{playerText(option.description)}</small>}</div><i>{locked ? playerText(option.unavailable_reason, "条件不足") : "采纳"}</i></button>{locked && requirements.length > 0 && <div className="decision-unlock-guidance"><b>证据条件尚未满足</b><ul>{requirements.map(requirement => <li key={`${requirement.archiveName}:${requirement.reason}`}>需先查阅《{requirement.archiveName}》{requirement.reason ? `：${requirement.reason}` : "，或通过正式接触取得相关事实。"}</li>)}</ul><button type="button" onClick={() => void loadPanel("actions")}>前往查档</button></div>}</section>;
@@ -1142,7 +1142,7 @@ function ForcedGroupConversationScene({ conversation, streamingReplies }: { conv
   const initiator = resolveCharacter(String(conversation.initiator_npc_id || ""));
   const transcript = arr(conversation.transcript);
   const liveEntries = streamingReplies.map(item => ({ ...item, speaker_type: "npc", live: true }));
-  const timeline = [...transcript, ...liveEntries];
+  const timeline: Dict[] = [...transcript, ...liveEntries];
   const latestNpcEntry = [...timeline].reverse().find(entry => entry.speaker_type !== "player");
   const [speakerSelection, setSpeakerSelection] = useState({
     npcId: String(latestNpcEntry?.npc_id || conversation.initiator_npc_id || ""),
@@ -1209,7 +1209,7 @@ function ForcedGroupConversationScene({ conversation, streamingReplies }: { conv
             const player = entry.speaker_type === "player";
             const character = player ? null : resolveCharacter(entry.npc_id, entry.npc_name);
             const name = player ? "你" : playerText(entry.npc_name, character?.name || "在场人物");
-            return <button type="button" className={`${player ? "player" : "npc"}${entry.live ? " live" : ""}`} key={`${entry.speaker_type}-${entry.npc_id || "player"}-${index}`} onClick={() => !player && setSelectedNpcId(String(entry.npc_id || ""))} disabled={player}><strong>{name}</strong><p>{playerText(entry.text, "……")}{entry.live && !entry.complete && <i className="stream-cursor" aria-hidden="true" />}</p>{!player && entry.dialogue_act && <small>{({ press: "继续追问", challenge: "指出矛盾", soften: "态度动摇", settle: "暂时接受", reopen: "重新追问", close: "确认收束" } as Record<string, string>)[String(entry.dialogue_act)] || "回应"}</small>}</button>;
+            return <button type="button" className={`${player ? "player" : "npc"}${entry.live ? " live" : ""}`} key={`${entry.speaker_type}-${entry.npc_id || "player"}-${index}`} onClick={() => !player && setSpeakerSelection(speakerSelectionForTimelineEntry(entry, timeline.length)!)} disabled={player}><strong>{name}</strong><p>{playerText(entry.text, "……")}{entry.live && !entry.complete && <i className="stream-cursor" aria-hidden="true" />}</p>{!player && entry.dialogue_act && <small>{({ press: "继续追问", challenge: "指出矛盾", soften: "态度动摇", settle: "暂时接受", reopen: "重新追问", close: "确认收束" } as Record<string, string>)[String(entry.dialogue_act)] || "回应"}</small>}</button>;
           })}
         </div>
         {hasNewDialogue && <button type="button" className="new-dialogue-button" onClick={jumpToLatest}>有新发言</button>}
@@ -1292,7 +1292,7 @@ function MeetingResolutionForm({ meeting, governance, state, busy, notice, onCan
   return <form className="stack-form meeting-resolution-form" data-testid="meeting-resolution-form" onSubmit={async event => {
     event.preventDefault();
     if (!valid) return;
-    const resources = Object.fromEntries(Object.entries(resourceLimits).map(([id, amount]) => [id, Number(amount)]).filter(([, amount]) => Number.isFinite(amount) && amount > 0));
+    const resources = Object.fromEntries(Object.entries(resourceLimits).map(([id, amount]) => [id, Number(amount)]).filter(([, amount]) => Number.isFinite(amount) && Number(amount) > 0));
     await onSubmit({
       decision: decision.trim(),
       target_scope: targetScope.trim(),
@@ -1378,7 +1378,7 @@ function AIConfigurationPanel({
   </form>;
 }
 
-function ConsentPanel({ info, aiSummary, granted, busy, error, onSign, onWithdraw }: { info: Dict | null; aiSummary: string; granted: boolean; busy: boolean; error: string; onSign: () => Promise<void>; onWithdraw: () => Promise<void> }) {
+function ConsentPanel({ info, aiSummary, granted, busy, error, onSign, onWithdraw }: { info: Dict | null; aiSummary: string; granted: boolean; busy: boolean; error: string; onSign: () => void | Promise<void>; onWithdraw: () => void | Promise<void> }) {
   if (!info) return <div className="consent-panel"><p>正在读取当前授权说明…</p>{error && <div className="notice">{error}</div>}</div>;
   return <div className="consent-panel">
     <p>NPC 会谈会把你输入的文字发送给已配置的角色模型，以生成符合人物设定的回应。不同意时仍可查看已有卷宗，但无法继续需要模型的会谈。</p>
@@ -1391,8 +1391,8 @@ function ConsentPanel({ info, aiSummary, granted, busy, error, onSign, onWithdra
 
 function StructuredDecision({ pending, busy, onSubmit }: { pending: Dict; busy: boolean; onSubmit: (payload: Dict) => Promise<void> }) {
   const schema = pending.input_schema || {};
-  const items = Array.isArray(schema.items) ? schema.items.map(String) : [];
-  const fields = Array.isArray(schema.fields) ? schema.fields.map(String) : [];
+  const items: string[] = Array.isArray(schema.items) ? (schema.items as unknown[]).map(String) : [];
+  const fields: string[] = Array.isArray(schema.fields) ? (schema.fields as unknown[]).map(String) : [];
   const total = Number(schema.total || 0);
   const [order, setOrder] = useState(items);
   const [allocations, setAllocations] = useState<Record<string, number>>(() => Object.fromEntries(fields.map((field, index) => [field, index === 0 ? total : 0])));
@@ -1642,13 +1642,13 @@ function ReviewPanel({ data, api, sessionId }: { data: Dict | null; api: GameApi
   }, [api, sessionId, npcFilter, dayFilter, historyRequestKey]);
   if (!data) return <Empty text="正在整理本局纪要…"/>;
   const ending = reviewEndingView(data);
-  const timelines = [
+  const timelines = ([
     ...arr(data.decision_timeline).map(item => ({ ...item, typeLabel: "你的决定" })),
     ...arr(data.action_timeline).map(item => ({ ...item, typeLabel: "治理行动" })),
     ...arr(data.conversation_timeline).map(item => ({ ...item, typeLabel: "人物会谈" })),
     ...arr(data.group_conversation_timeline).map(item => ({ ...item, typeLabel: "多人会谈" })),
     ...arr(data.visible_events).map(item => ({ ...item, typeLabel: "重要事件" })),
-  ].sort((a, b) => Number(a.story_day || a.day || 0) - Number(b.story_day || b.day || 0));
+  ] as Array<Dict & { typeLabel: string }>).sort((a, b) => Number(a.story_day || a.day || 0) - Number(b.story_day || b.day || 0));
   const timelineTitle = (item: Dict) => {
     if (item.typeLabel === "人物会谈") {
       if (item.event === "conversation_started") return `开始与${item.npc_name || "相关人员"}会谈`;
@@ -1674,9 +1674,9 @@ function SavePanel({ data, state, api, sessionId, busy, onPerform, onConfirm }: 
       <small>保留关键节点</small><h3>五个关键节点</h3><p>日常行动会自动保存。关键节点适合在重要抉择前保留一份独立进度。</p>
       <label>节点位置<select value={slot} onChange={event => setSlot(Number(event.target.value))}>{[1, 2, 3, 4, 5].map(value => <option key={value} value={value}>位置{chineseIndex(value - 1)}{saves.some(item => Number(item.slot_number) === value) ? "（已有节点）" : ""}</option>)}</select></label>
       <label>节点名称<input value={name} maxLength={40} onChange={event => setName(event.target.value)} /></label>
-      <button disabled={busy || !name.trim()} onClick={() => { const save = () => onPerform(() => api.manualSave(sessionId, { client_action_id: api.key("manual-save"), state_version: state.state_version, slot_number: slot, display_name: name.trim(), overwrite: occupied }), "关键节点已保存"); if (occupied) onConfirm({ title: "覆盖已有关键节点", message: "这个位置已有关键节点。覆盖后，原有节点将被新进度替换。", confirmLabel: "确认覆盖", danger: true, action: save }); else void save(); }}>{occupied ? "覆盖这个位置" : "保存关键节点"}</button>
+      <button disabled={busy || !name.trim()} onClick={() => { const save = async () => { await onPerform(() => api.manualSave(sessionId, { client_action_id: api.key("manual-save"), state_version: state.state_version, slot_number: slot, display_name: name.trim(), overwrite: occupied }), "关键节点已保存"); }; if (occupied) onConfirm({ title: "覆盖已有关键节点", message: "这个位置已有关键节点。覆盖后，原有节点将被新进度替换。", confirmLabel: "确认覆盖", danger: true, action: save }); else void save(); }}>{occupied ? "覆盖这个位置" : "保存关键节点"}</button>
     </section>
-    <PanelSection title="关键节点" items={saves} empty="还没有保留关键节点" render={(item, index) => <div className="save-row"><div><h4>{item.display_name || `关键节点${chineseIndex(index)}`}</h4><p>第 {item.story_day || 1} 日 · {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "已保存"}</p></div><button disabled={busy} onClick={() => onConfirm({ title: "载入关键节点", message: "载入后，当前未另存的进度会被所选节点覆盖。", confirmLabel: "确认载入", action: () => onPerform(() => api.loadSnapshot(sessionId, { client_action_id: api.key("load-save"), state_version: state.state_version, snapshot_id: item.snapshot_id, confirmed: true }), "已载入所选关键节点", true) })}>载入</button></div>} />
+    <PanelSection title="关键节点" items={saves} empty="还没有保留关键节点" render={(item, index) => <div className="save-row"><div><h4>{item.display_name || `关键节点${chineseIndex(index)}`}</h4><p>第 {item.story_day || 1} 日 · {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "已保存"}</p></div><button disabled={busy} onClick={() => onConfirm({ title: "载入关键节点", message: "载入后，当前未另存的进度会被所选节点覆盖。", confirmLabel: "确认载入", action: async () => { await onPerform(() => api.loadSnapshot(sessionId, { client_action_id: api.key("load-save"), state_version: state.state_version, snapshot_id: item.snapshot_id, confirmed: true }), "已载入所选关键节点", true); } })}>载入</button></div>} />
   </div>;
 }
 
@@ -1704,7 +1704,7 @@ function ResourceActionForm({ item, state, api, sessionId, notice, onPerform, on
   const actionId = String(item.action_id || item.submit?.action_id || "");
   const parameterSchema = item.parameter_schema || {};
   const properties = parameterSchema.properties || {};
-  const required = new Set(Array.isArray(parameterSchema.required) ? parameterSchema.required.map(String) : []);
+  const required = new Set<string>(Array.isArray(parameterSchema.required) ? (parameterSchema.required as unknown[]).map(String) : []);
   const targetSchema = item.target_schema || {};
   const minTargets = Number(targetSchema.min_items || 0);
   const maxTargets = Number(targetSchema.max_items ?? Math.max(minTargets, 8));

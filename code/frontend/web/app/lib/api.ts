@@ -156,13 +156,13 @@ export class GameApi {
     const decoder = new TextDecoder();
     let pending = "";
     let result: Record<string, unknown> | null = null;
-    let streamError: NpcStreamEvent | null = null;
+    const streamState: { error: NpcStreamEvent | null } = { error: null };
     const consume = (line: string) => {
       if (!line.trim()) return;
       const event = JSON.parse(line) as NpcStreamEvent;
       onEvent(event);
       if (event.type === "complete" && event.result) result = event.result;
-      if (event.type === "error") streamError = event;
+      if (event.type === "error") streamState.error = event;
     };
     while (true) {
       const { done, value } = await reader.read();
@@ -173,7 +173,7 @@ export class GameApi {
       if (done) break;
     }
     consume(pending);
-    if (streamError) throw new ApiError(streamError.message || "对方暂时无法回应，请稍后重试。", streamError.code || "NPC_RESPONSE_UNAVAILABLE", 503);
+    if (streamState.error) throw new ApiError(streamState.error.message || "对方暂时无法回应，请稍后重试。", streamState.error.code || "NPC_RESPONSE_UNAVAILABLE", 503);
     if (!result) throw new ApiError("NPC 回应流提前结束。", "CLIENT_STREAM_INCOMPLETE");
     return result;
   }
