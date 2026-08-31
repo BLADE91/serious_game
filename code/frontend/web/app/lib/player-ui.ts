@@ -747,14 +747,16 @@ export function submitGovernanceAction(
 
 export function primaryScenePlan(value: PlayerRecord): string[] {
   if (!value.has_session) return [];
-  if (value.active_group_conversation) return ["forced_group_conversation"];
+  const mode = activeInteractionMode(value, value.active_governance_action as PlayerRecord | null);
+  if (mode === "group") return ["forced_group_conversation"];
+  if (mode === "conversation") return ["conversation"];
   const action = value.active_governance_action as PlayerRecord | null;
-  if (action) {
+  if (mode === "governance" && action) {
     return value.active_meeting && action.action_kind === "leadership_meeting"
       ? ["leadership_meeting"]
       : ["governance_action"];
   }
-  return [value.active_conversation ? "conversation" : "narrative"];
+  return ["narrative"];
 }
 
 export function activeInteractionMode(

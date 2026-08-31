@@ -877,7 +877,7 @@ async function exerciseManualSaveLoad(
   await recordVisualState(page, testInfo, routeId, "save-load", "restored");
 }
 
-async function playRoute(page: Page, testInfo: TestInfo, sessionId: string, profile: RouteProfile, policy: Record<string, unknown>, decisions: Map<string, Decision>, contractTerms: Record<string, JsonMap>) {
+async function playRoute(page: Page, testInfo: TestInfo, sessionId: string, profile: RouteProfile, policy: Record<string, unknown>, decisions: Map<string, Decision>, contractTerms: Record<string, JsonMap>, stopAfterForcedGroup = false) {
   const visited = new Set<number>();
   const processedRepresentatives = new Set<string>();
   const targetSigned = Number(profile.daily_action_policy?.find(item => item.action_kind === "sign_households_through_contracts")?.target_signed_households || 0);
@@ -904,6 +904,7 @@ async function playRoute(page: Page, testInfo: TestInfo, sessionId: string, prof
     if (state.active_group_conversation) {
       const group = asMap(state.active_group_conversation);
       await finishForcedConversation(page, testInfo, profile.route_id, sessionId, group);
+      if (stopAfterForcedGroup) return state;
       continue;
     }
     if (state.active_conversation || state.active_governance_action) {
@@ -964,6 +965,15 @@ test.describe("full real browser routes", () => {
       await finishEvidence({ route_id: profile.route_id, session_id: sessionId, username, story_day: 90, status: "passed" });
     });
   }
+  if (process.env.RUN_P0_REAL_D2 === "1" && shardIndex === 0) test("P0 real API D2 checkpoint completes a forced group conversation", async ({ page }, testInfo) => {
+    const finishEvidence = await installEvidenceObservers(page, testInfo);
+    const profile = catalog.profiles.find(item => item.route_id === "route-ending-01d");
+    expect(profile, "route-ending-01d must remain available for the P0 checkpoint").toBeTruthy();
+    const { sessionId, username } = await configureAndStart(page, testInfo, "p0-real-d2-checkpoint", catalog.profiles.length + 2, profile!.origin_id);
+    const checkpointState = await playRoute(page, testInfo, sessionId, profile!, mergedPolicy(profile!, catalog), decisions, catalog.contract_terms, true);
+    expect(checkpointState.active_group_conversation, "checkpoint must stop only after a forced group conversation").toBeTruthy();
+    await finishEvidence({ route_id: "p0-real-d2-checkpoint", session_id: sessionId, username, status: "passed", checkpoint: "forced-group-completed" });
+  });
   if (shardIndex === 0) test("player-visible leadership meeting uses the real model and reaches a resolution", async ({ page }, testInfo) => {
     const finishEvidence = await installEvidenceObservers(page, testInfo);
     const profile = catalog.profiles[0];

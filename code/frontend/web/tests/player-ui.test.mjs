@@ -38,6 +38,20 @@ test("routes a forced group conversation before a stale governance action", asyn
   assert.match(shell, /onSubmit=\{interactionMode === "governance" \? submitGovernanceTurn : submitConversation\}/);
 });
 
+test("keeps scene and interaction priority aligned for overlapping player states", () => {
+  const overlapping = {
+    has_session: true,
+    active_group_conversation: { conversation_id: "group-priority" },
+    active_conversation: { conversation_id: "ordinary-priority" },
+    active_governance_action: { action_instance_id: "gov-priority", action_kind: "household_visit" },
+  };
+  assert.deepEqual(playerUi.primaryScenePlan(overlapping), ["forced_group_conversation"]);
+  assert.equal(playerUi.activeInteractionMode(overlapping, overlapping.active_governance_action), "group");
+  const conversationOnly = { ...overlapping, active_group_conversation: null };
+  assert.deepEqual(playerUi.primaryScenePlan(conversationOnly), ["conversation"]);
+  assert.equal(playerUi.activeInteractionMode(conversationOnly, conversationOnly.active_governance_action), "conversation");
+});
+
 test("shows unfinished contract work only during the matching representative conversation", () => {
   assert.equal(typeof playerUi.conversationContractWorkflow, "function");
   const batches = [
