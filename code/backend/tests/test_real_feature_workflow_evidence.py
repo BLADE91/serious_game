@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pathlib import Path
 
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.llm import SelectionOption, SelectionTask
@@ -9,6 +10,11 @@ from serious_game_backend.infrastructure.llm.openai_compatible import (
 )
 from serious_game_backend.infrastructure.repositories.memory import (
     InMemoryLLMCallAuditRepository,
+)
+from serious_game_backend.domain.llm_runtime import LLMCallAudit
+from serious_game_backend.infrastructure.repositories.sqlite import (
+    SqliteLLMCallAuditRepository,
+    SqliteRuntimeStore,
 )
 from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
@@ -96,11 +102,11 @@ def passing_report() -> dict[str, object]:
                 {"account_id": "account-server", "session_id": "session-a",
                  "mode": "server_default", "endpoint_host": "api.example.test",
                  "model": "model-a", "config_version": "cfg-a",
-                 "status": "succeeded"},
+                 "status": "succeeded", "audit_id": "audit-1"},
                 {"account_id": "account-personal", "session_id": "session-b",
                  "mode": "personal", "endpoint_host": "personal.example.test",
                  "model": "model-b", "config_version": "cfg-b",
-                 "status": "succeeded"},
+                 "status": "succeeded", "audit_id": "audit-2"},
             ],
         },
         "save_load_record": {
@@ -161,6 +167,13 @@ def test_validator_rejects_cross_account_gateway_mixup() -> None:
     records = report["gateway_audit"]["records"]
     records[1]["account_id"] = records[0]["account_id"]
     with pytest.raises(AssertionError, match="account gateway"):
+        validate_feature_workflow_report(report)
+
+
+def test_validator_rejects_meeting_audit_not_in_gateway_evidence() -> None:
+    report = passing_report()
+    report["meeting_document_record"]["llm_audit_ids"] = ["forged-audit"]
+    with pytest.raises(AssertionError, match="meeting.*gateway"):
         validate_feature_workflow_report(report)
 
 
@@ -292,3 +305,42 @@ def test_transport_failure_writes_secret_free_frozen_audit() -> None:
     assert audit.config_version == "cfg-failure"
     assert "sentinel-secret" not in repr(audit)
     assert "https://" not in repr(audit)
+
+
+@pytest.mark.parametrize("repository_kind", ["memory", "sqlite"])
+def test_owned_audit_pagination_handles_50_plus_same_timestamp(
+    repository_kind: str, tmp_path: Path,
+) -> None:
+    repository = (
+        InMemoryLLMCallAuditRepository()
+        if repository_kind == "memory"
+        else SqliteLLMCallAuditRepository(SqliteRuntimeStore(tmp_path / "audit.db"))
+    )
+    for index in range(55):
+        repository.save(LLMCallAudit(
+            audit_id=f"audit-{index:03d}", session_id="session-a",
+            account_id="account-a", operation_id=f"operation-{index:03d}",
+            story_day=1, npc_id="npc", provider="openai_compatible",
+            model_id="model", prompt_version="v1", request_hash=f"hash-{index}",
+            status="succeeded", endpoint_host="api.example.test",
+            config_version="cfg-a", created_at="2026-08-31T00:00:00+00:00",
+        ))
+    repository.save(LLMCallAudit(
+        audit_id="audit-intruder", session_id="session-a", account_id="account-b",
+        operation_id="operation-intruder", story_day=1, npc_id="npc",
+        provider="openai_compatible", model_id="model", prompt_version="v1",
+        request_hash="intruder", status="succeeded",
+    ))
+
+    first = repository.list_for_owned_session(
+        "account-a", "session-a", after="", limit=50
+    )
+    cursor = f"{first[-1].created_at}|{first[-1].audit_id}"
+    second = repository.list_for_owned_session(
+        "account-a", "session-a", after=cursor, limit=50
+    )
+
+    assert len(first) == 50
+    assert len(second) == 5
+    assert len({item.audit_id for item in (*first, *second)}) == 55
+    assert all(item.account_id == "account-a" for item in (*first, *second))

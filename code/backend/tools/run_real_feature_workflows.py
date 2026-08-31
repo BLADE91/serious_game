@@ -28,6 +28,7 @@ from tools.full_acceptance.ending_witnesses import load_contract_terms, load_wit
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.llm_runtime import LLMCallAudit
+from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.infrastructure.script_packages.file_loader import (
     FileScriptPackageLoader,
 )
@@ -113,16 +114,23 @@ def _business_semantic_projection(session) -> dict[str, object]:
             return [plain(item) for item in value]
         return value
 
-    fields_to_compare = (
-        "game_state", "flags", "completed_conversations", "archive_records",
-        "household_contracts", "governance_actions", "meetings",
-        "administrative_documents", "npc_memories", "pending_decision",
-        "pending_group_conversation", "known_fact_ids",
-    )
+    excluded_technical_fields = {
+        # A load creates a new optimistic-concurrency revision and records its
+        # source. These fields describe the restore transaction, not gameplay.
+        "state_version", "processing_action_id", "loaded_from_snapshot_id",
+        "created_at", "updated_at",
+    }
+    authoritative_fields = {item.name for item in fields(GameSession)}
+    required_business_fields = authoritative_fields - excluded_technical_fields
+    missing = required_business_fields - set(asdict(session))
+    if missing:
+        raise AssertionError(
+            "save/load semantic projection is missing authoritative fields: "
+            + ", ".join(sorted(missing))
+        )
     return {
         name: plain(getattr(session, name))
-        for name in fields_to_compare
-        if hasattr(session, name)
+        for name in sorted(required_business_fields)
     }
 
 
@@ -318,6 +326,11 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
         )
     ):
         raise AssertionError("account gateway isolation evidence is inconsistent")
+    gateway_audit_ids = {
+        str(item.get("audit_id")) for item in gateway_records if item.get("audit_id")
+    }
+    if not set(map(str, meeting_record["llm_audit_ids"])) <= gateway_audit_ids:
+        raise AssertionError("meeting audit IDs are absent from gateway evidence")
     save_load = report.get("save_load_record")
     if not isinstance(save_load, dict) or not {
         "before_semantic_hash", "after_semantic_hash", "save_operation_id",
