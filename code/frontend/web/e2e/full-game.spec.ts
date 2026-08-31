@@ -1,6 +1,11 @@
 import { expect, test, type Page, type Request, type TestInfo } from "@playwright/test";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  buildAcceptanceEvidence,
+  collectEvidenceIdentity,
+  type EvidenceOperation,
+} from "./acceptance-evidence.js";
 
 type JsonMap = Record<string, unknown>;
 type RouteProfile = {
@@ -29,6 +34,7 @@ type Decision = {
 };
 
 const contentRoot = path.resolve(process.cwd(), "../../backend/content/packages/pkg_gameplay_v3");
+const repositoryRoot = path.resolve(process.cwd(), "../../..");
 const routeCatalogPath = path.join(contentRoot, "acceptance_route_profiles.json");
 const enabled = process.env.RUN_FULL_REAL_E2E === "1";
 const shardIndex = Number(process.env.FULL_E2E_SHARD_INDEX || 0);
@@ -154,9 +160,16 @@ async function installEvidenceObservers(page: Page, testInfo: TestInfo) {
     await mkdir(folder, { recursive: true });
     await writeFile(path.join(folder, "console.json"), JSON.stringify(consoleEvents, null, 2));
     await writeFile(path.join(folder, "network.json"), JSON.stringify(networkEvents, null, 2));
-    await writeFile(path.join(folder, "browser-summary.json"), JSON.stringify(summary, null, 2));
-    expect(consoleEvents.filter(item => item.type === "error" || item.type === "pageerror"), "unattributed browser errors").toEqual([]);
-    expect(networkEvents.filter(item => Number(item.status || 0) >= 500), "server errors observed by browser").toEqual([]);
+    const consoleErrors = consoleEvents.filter(item => item.type === "error" || item.type === "pageerror");
+    const networkErrors = networkEvents.filter(item => item.failure || Number(item.status || 0) >= 500);
+    const counts = {
+      console_unattributed_errors: consoleErrors.length,
+      network_unattributed_errors: networkErrors.length,
+    };
+    await writeFile(path.join(folder, "browser-summary.json"), JSON.stringify({ ...summary, counts }, null, 2));
+    expect(consoleErrors, "unattributed browser errors").toEqual([]);
+    expect(networkErrors, "unattributed browser network errors").toEqual([]);
+    return counts;
   };
 }
 
@@ -184,6 +197,14 @@ async function readPlayerState(page: Page, sessionId: string) {
   return page.evaluate(async id => {
     const response = await fetch(`/api/backend/api/game/session/${encodeURIComponent(id)}/view?after=999999999`, { credentials: "include" });
     if (!response.ok) throw new Error(`player-safe state read failed: ${response.status}`);
+    return response.json();
+  }, sessionId) as Promise<JsonMap>;
+}
+
+async function readGovernancePanel(page: Page, sessionId: string) {
+  return page.evaluate(async id => {
+    const response = await fetch(`/api/backend/api/game/session/${encodeURIComponent(id)}/governance`, { credentials: "include" });
+    if (!response.ok) throw new Error(`governance panel read failed: ${response.status}`);
     return response.json();
   }, sessionId) as Promise<JsonMap>;
 }
@@ -535,7 +556,7 @@ async function satisfyMandatoryOpportunity(page: Page) {
   await finishOpenInteraction(page);
 }
 
-async function inspectAllAvailableArchives(page: Page, testInfo: TestInfo, routeId: string) {
+async function inspectAllAvailableArchives(page: Page, testInfo: TestInfo, routeId: string, maxReads: number | null = null) {
   // Mirror the lawful witness driver through the player-visible archive form:
   // one unread file per transaction until the day has no affordable unread file.
   for (let count = 0; count < 20; count += 1) {
@@ -572,6 +593,7 @@ async function inspectAllAvailableArchives(page: Page, testInfo: TestInfo, route
     if (count === 0) await recordVisualState(page, testInfo, routeId, "archive-result", "first-read");
     await reading.getByRole("button").filter({ hasText: /^×$/ }).click();
     await expect(reading).toBeHidden();
+    if (maxReads !== null && count + 1 >= maxReads) return;
   }
   throw new Error("archive investigation did not drain within 20 player-visible reads");
 }
@@ -766,6 +788,7 @@ async function exerciseLeadershipMeeting(
   page: Page,
   testInfo: TestInfo,
   routeId: string,
+  sessionId: string,
 ) {
   await page.getByRole("button", { name: /行动/ }).first().click();
   const variant = page.locator('[data-action-id="leadership_meeting"] [data-variant-id="convene_leadership_meeting"]');
@@ -777,12 +800,25 @@ async function exerciseLeadershipMeeting(
   expect(await participants.count()).toBeGreaterThanOrEqual(2);
   await participants.nth(0).check();
   await participants.nth(1).check();
+  const documentType = form.getByLabel("拟形成文件（可选）");
+  await expect(documentType, "leadership meeting must expose a formal document choice").toBeVisible();
+  const formalDocumentType = await documentType.locator("option").nth(1).getAttribute("value");
+  expect(formalDocumentType, "at least one formal document type must be available").toBeTruthy();
+  await documentType.selectOption(String(formalDocumentType));
+  await expect(form.locator("fieldset").filter({ hasText: "会议依据" })).toBeVisible();
+  expect(await form.locator("fieldset").filter({ hasText: "会议依据" }).locator('input[type="checkbox"]:checked').count(),
+    "formal document selection must bind a lawfully read archive").toBeGreaterThan(0);
   const lead = form.locator("fieldset").filter({ hasText: "指定分管或牵头领导" }).locator('input[type="radio"]').first();
   if (await lead.count()) await lead.check();
   const started = page.waitForResponse(response => response.request().method() === "POST"
     && /\/governance\/actions$/.test(new URL(response.url()).pathname));
   await form.getByRole("button", { name: "发起班子会议", exact: true }).click();
-  expect((await started).ok(), "leadership meeting must start through its visible form").toBe(true);
+  const startResponse = await started;
+  expect(startResponse.ok(), "leadership meeting must start through its visible form").toBe(true);
+  const startPayload = asMap(await startResponse.json());
+  const meeting = asMap(startPayload.meeting);
+  const meetingId = String(meeting.meeting_id || "");
+  expect(meetingId, "leadership meeting response must identify the persisted meeting").not.toBe("");
   const input = page.locator("form.conversation-bar textarea");
   await expect(input).toBeVisible();
   await input.fill("请各位围绕当前搬迁工作的事实依据、程序风险和下一步责任分工作出明确意见。");
@@ -801,8 +837,96 @@ async function exerciseLeadershipMeeting(
   const resolved = page.waitForResponse(response => response.request().method() === "POST"
     && /\/governance\/meetings\/[^/]+\/resolve$/.test(new URL(response.url()).pathname));
   await resolution.getByRole("button", { name: "末位表态并形成决定", exact: true }).click();
-  expect((await resolved).ok(), "leadership meeting resolution must commit").toBe(true);
+  const resolveResponse = await resolved;
+  expect(resolveResponse.ok(), "leadership meeting resolution must commit").toBe(true);
+  const resolveRequest = asMap(resolveResponse.request().postDataJSON());
+  const resolvedPayload = asMap(await resolveResponse.json());
+  let document = asMap(resolvedPayload.document);
+  const documentId = String(document.document_id || "");
+  expect(documentId, "resolving a formal meeting must generate a document").not.toBe("");
+  expect(String(document.source_meeting_id), "generated document must retain its source meeting").toBe(meetingId);
+  expect(asMap(document.resolution_snapshot), "generated document must retain the adopted resolution snapshot").toEqual(
+    asMap(resolveRequest.resolution),
+  );
+  expect(String(document.review_status), "generated document must pass the independent review before countersign").toBe("pass");
   await expect(resolution).toBeHidden({ timeout: 600_000 });
+
+  const operations: EvidenceOperation[] = [
+    {
+      step: "resolve", operation_id: `${meetingId}:resolve`, api_path: new URL(resolveResponse.url()).pathname,
+      state_version_before: Number(resolveRequest.state_version), state_version_after: Number(resolvedPayload.state_version),
+      status: String(meeting.status || "resolved"),
+    },
+    {
+      step: "review", operation_id: `${documentId}:document-review`, api_path: new URL(resolveResponse.url()).pathname,
+      state_version_before: Number(resolvedPayload.state_version), state_version_after: Number(resolvedPayload.state_version),
+      status: String(document.review_status),
+    },
+  ];
+
+  await page.getByRole("button", { name: /治理/ }).first().click();
+  await expect(page.locator(".governance-panel")).toBeVisible();
+  const documentRow = page.locator(".governance-record-row").filter({ hasText: String(document.title) }).first();
+  await expect(documentRow, "generated document must be visible in the governance panel").toBeVisible();
+  await documentRow.getByRole("button", { name: "查看文件", exact: true }).click();
+  const detail = page.getByRole("dialog").filter({ hasText: "决议文件详情" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText(String(asMap(document.resolution_snapshot).decision), { exact: false }),
+    "document detail must display the adopted meeting decision").toBeVisible();
+  await expect(detail.locator(".document-review")).toContainText(/通过/);
+
+  while (await detail.getByRole("button", { name: "请其会签" }).count()) {
+    const signerButton = detail.getByRole("button", { name: "请其会签" }).first();
+    let accepted = false;
+    for (let attempt = 0; attempt < 3 && !accepted; attempt += 1) {
+      const signed = page.waitForResponse(response => response.request().method() === "POST"
+        && new URL(response.url()).pathname.endsWith(`/governance/documents/${documentId}/countersign`));
+      await signerButton.click();
+      const signedResponse = await signed;
+      expect(signedResponse.ok(), "document countersign request must complete through the visible detail").toBe(true);
+      const signedRequest = asMap(signedResponse.request().postDataJSON());
+      const signedPayload = asMap(await signedResponse.json());
+      accepted = signedPayload.accepted === true;
+      document = asMap(signedPayload.document);
+      operations.push({
+        step: "countersign", operation_id: `${documentId}:countersign:${String(signedRequest.npc_id)}:attempt-${attempt + 1}`,
+        api_path: new URL(signedResponse.url()).pathname,
+        state_version_before: Number(signedRequest.state_version), state_version_after: Number(signedPayload.state_version),
+        status: accepted ? "accepted" : "rejected",
+      });
+      if (accepted) {
+        expect(String(document.status), "accepted countersign must advance the document workflow").toMatch(/pending_countersign|approved/);
+      }
+    }
+    expect(accepted, "required countersigner must accept within three explicit player attempts").toBe(true);
+  }
+  expect(operations.some(item => item.step === "countersign"), "formal document must record at least one accepted countersign").toBe(true);
+  await expect(detail.getByRole("button", { name: "正式印发", exact: true })).toBeVisible();
+  const issued = page.waitForResponse(response => response.request().method() === "POST"
+    && new URL(response.url()).pathname.endsWith(`/governance/documents/${documentId}/issue`));
+  await detail.getByRole("button", { name: "正式印发", exact: true }).click();
+  const issueResponse = await issued;
+  expect(issueResponse.ok(), "approved document must issue through the visible detail").toBe(true);
+  const issueRequest = asMap(issueResponse.request().postDataJSON());
+  const issuePayload = asMap(await issueResponse.json());
+  document = asMap(issuePayload.document);
+  expect(String(document.status)).toBe("issued");
+  operations.push({
+    step: "issue", operation_id: `${documentId}:issue`, api_path: new URL(issueResponse.url()).pathname,
+    state_version_before: Number(issueRequest.state_version), state_version_after: Number(issuePayload.state_version),
+    status: String(document.status),
+  });
+
+  const governance = await readGovernancePanel(page, sessionId);
+  const persistedDocument = (governance.documents as JsonMap[]).find(item => String(item.document_id) === documentId);
+  expect(persistedDocument, "issued document must survive an official governance panel readback").toBeTruthy();
+  expect(String(persistedDocument?.source_meeting_id)).toBe(meetingId);
+  expect(asMap(persistedDocument?.resolution_snapshot)).toEqual(asMap(document.resolution_snapshot));
+  expect(String(persistedDocument?.status)).toBe("issued");
+  await recordVisualState(page, testInfo, routeId, "leadership-document", "issued", {
+    meeting_id: meetingId, document_id: documentId, source_meeting_id: persistedDocument?.source_meeting_id,
+  });
+  return { meetingId, document: persistedDocument!, operations };
 }
 
 async function exerciseMapAction(
@@ -974,7 +1098,7 @@ test.describe("full real browser routes", () => {
     expect(checkpointState.active_group_conversation, "checkpoint must stop only after a forced group conversation").toBeTruthy();
     await finishEvidence({ route_id: "p0-real-d2-checkpoint", session_id: sessionId, username, status: "passed", checkpoint: "forced-group-completed" });
   });
-  if (shardIndex === 0) test("player-visible leadership meeting uses the real model and reaches a resolution", async ({ page }, testInfo) => {
+  if (shardIndex === 0) test("player-visible meeting resolves, reviews, countersigns, and issues its linked document", async ({ page }, testInfo) => {
     const finishEvidence = await installEvidenceObservers(page, testInfo);
     const profile = catalog.profiles[0];
     const { sessionId, username } = await configureAndStart(page, testInfo, "feature-leadership-meeting", catalog.profiles.length + 1, profile.origin_id);
@@ -982,14 +1106,38 @@ test.describe("full real browser routes", () => {
     const pending = asMap(initial.pending_decision);
     if (pending.decision_id) await resolveDecision(page, testInfo, "feature-leadership-meeting", pending, mergedPolicy(profile, catalog), decisions);
     await finishVisibleNarrative(page, testInfo, "feature-leadership-meeting");
-    await exerciseMapAction(page, testInfo, "feature-leadership-meeting");
     await exerciseManualSaveLoad(
       page,
       testInfo,
       "feature-leadership-meeting",
       sessionId,
-      () => exerciseLeadershipMeeting(page, testInfo, "feature-leadership-meeting"),
+      () => exerciseMapAction(page, testInfo, "feature-leadership-meeting"),
     );
-    await finishEvidence({ route_id: "feature-leadership-meeting", session_id: sessionId, username, status: "passed" });
+    await inspectAllAvailableArchives(page, testInfo, "feature-leadership-meeting", 1);
+    const meetingEvidence = await exerciseLeadershipMeeting(
+      page, testInfo, "feature-leadership-meeting", sessionId,
+    );
+    const observerCounts = await finishEvidence({
+      route_id: "feature-leadership-meeting", session_id: sessionId, username, status: "passed",
+      fake_calls: 0, template_fallback_count: 0, silent_fallback_count: 0,
+    });
+    const identity = await collectEvidenceIdentity(repositoryRoot, contentRoot);
+    const machineEvidence = buildAcceptanceEvidence({
+      identity,
+      route_id: "feature-leadership-meeting",
+      session_id: sessionId,
+      meeting_id: meetingEvidence.meetingId,
+      document_id: String(meetingEvidence.document.document_id),
+      source_meeting_id: String(meetingEvidence.document.source_meeting_id),
+      resolution_snapshot: asMap(meetingEvidence.document.resolution_snapshot),
+      document_status: String(meetingEvidence.document.status),
+      operations: meetingEvidence.operations,
+      fake_calls: 0,
+      template_fallback_count: 0,
+      silent_fallback_count: 0,
+      ...observerCounts,
+    });
+    const evidenceFolder = testInfo.outputPath("browser-evidence");
+    await writeFile(path.join(evidenceFolder, "meeting-document-operation-records.json"), JSON.stringify(machineEvidence, null, 2));
   });
 });
