@@ -1,3 +1,4 @@
 *.bat text eol=crlf
 code/backend/content/packages/**/*.json text eol=lf
 code/backend/content/packages/**/*.md text eol=lf
+最终剧本.md text eol=lf
