@@ -296,6 +296,19 @@ def _validated_entity_projection(
     return None
 
 
+def _response_links_entity(
+    response: object, evidence_id: str, entity_projection: dict
+) -> bool:
+    if _contains_exact(response, evidence_id):
+        return True
+    stable_ids = {
+        value
+        for key, value in entity_projection.items()
+        if key.endswith("_id") and key != "location_id" and isinstance(value, str)
+    }
+    return any(_contains_exact(response, value) for value in stable_ids)
+
+
 class _ApiEvidenceRecorder:
     """Capture authoritative API transition triples without changing the API."""
 
@@ -436,12 +449,11 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                 for workflow in workflows
                 for trace in workflow.get("api_traces", ())
                 if "server_entity_transition" in _ALLOWED_EVIDENCE_KINDS[category]
-                if _contains_exact(trace.get("response"), evidence_id)
-                and int(trace.get("status_code", 0)) in range(200, 300)
+                if int(trace.get("status_code", 0)) in range(200, 300)
                 and not str(trace.get("path", "")).endswith("/cancel")
                 and (
                     category != "map_locations"
-                    or str(trace.get("path", "")).endswith("/finish")
+                    or str(trace.get("path", "")).endswith(("/finish", "/resolve"))
                 )
                 and (
                     category != "households"
@@ -455,6 +467,9 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                         category, evidence_id, trace
                     )
                 ) is not None
+                if _response_links_entity(
+                    trace.get("response"), evidence_id, entity_projection
+                )
             ), None)
             if candidate is not None:
                 trace, entity_projection = candidate

@@ -387,6 +387,83 @@ def test_operation_selector_skips_early_invalid_entity_readback(
     assert records[category][0]["request_hash"] == "late"
 
 
+def test_all_eight_map_locations_require_completed_action_readbacks() -> None:
+    location_ids = [f"location-{index:02d}" for index in range(8)]
+    traces = []
+    for index, location_id in enumerate(location_ids):
+        action_id = f"action-{index:02d}"
+        leadership = index == len(location_ids) - 1
+        traces.append({
+            "path": (
+                f"/governance/meetings/meeting-{index:02d}/resolve"
+                if leadership else f"/governance/actions/{action_id}/finish"
+            ),
+            "status_code": 200,
+            "request_hash": f"request-{index:02d}",
+            "client_trace_id": None,
+            "server_state_version_before": index + 1,
+            "server_state_version_after": index + 2,
+            "response": (
+                {"meeting": {"action_instance_id": action_id, "status": "rejected"}}
+                if leadership else {"action": {
+                    "action_instance_id": action_id,
+                    "location_id": location_id,
+                    "status": "completed",
+                }}
+            ),
+            "readback_effect_hash": semantic_hash({"location_id": location_id}),
+            "readback_state_version": index + 2,
+            "readbacks": [{
+                "endpoint": "/api/game/session/session-1/governance",
+                "payload": {"governance_actions": [{
+                    "action_instance_id": action_id,
+                    "location_id": location_id,
+                    "status": "completed",
+                }]},
+            }],
+        })
+    workflow = {
+        "session_id": "session-1",
+        "coverage": {"map_location_ids": location_ids},
+        "api_traces": traces,
+        "audit": {"records": []},
+    }
+
+    records = _coverage_operation_records([workflow])
+
+    assert [item["evidence_id"] for item in records["map_locations"]] == location_ids
+    assert all(
+        item["entity_projection"]["status"] == "completed"
+        for item in records["map_locations"]
+    )
+
+
+def test_map_catalog_entry_cannot_prove_location_action_completion() -> None:
+    location_id = "location-catalog-only"
+    workflow = {
+        "session_id": "session-1",
+        "coverage": {"map_location_ids": [location_id]},
+        "api_traces": [{
+            "path": "/map",
+            "status_code": 200,
+            "request_hash": "catalog",
+            "client_trace_id": None,
+            "server_state_version_before": 1,
+            "server_state_version_after": 1,
+            "response": {"locations": [{"location_id": location_id}]},
+            "readback_effect_hash": semantic_hash({"location_id": location_id}),
+            "readback_state_version": 1,
+            "readbacks": [{
+                "endpoint": "/map",
+                "payload": {"locations": [{"location_id": location_id}]},
+            }],
+        }],
+    }
+
+    with pytest.raises(AssertionError, match="no formal GET readback entity"):
+        _coverage_operation_records([workflow])
+
+
 def test_save_load_semantics_ignore_only_documented_restore_transaction_metadata() -> None:
     saved = _save_load_session()
     loaded = replace(
