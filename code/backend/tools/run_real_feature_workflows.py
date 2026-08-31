@@ -279,6 +279,23 @@ def _validate_entity_projection(category: str, evidence_id: str, entity: dict) -
         raise AssertionError("map location action is not completed")
 
 
+def _validated_entity_projection(
+    category: str, evidence_id: str, trace: dict
+) -> dict | None:
+    for readback in trace.get("readbacks", ()):
+        projection = _find_entity_projection(
+            readback.get("payload"), evidence_id
+        )
+        if projection is None:
+            continue
+        try:
+            _validate_entity_projection(category, evidence_id, projection)
+        except AssertionError:
+            continue
+        return projection
+    return None
+
+
 class _ApiEvidenceRecorder:
     """Capture authoritative API transition triples without changing the API."""
 
@@ -305,16 +322,16 @@ class _ApiEvidenceRecorder:
             if response.status_code == 200:
                 before = response.json()
         result = self._request(method, url, **kwargs)
+        try:
+            response_body = result.json()
+        except Exception:
+            response_body = None
         if (
             not mutation
             and belongs
             and path.endswith("/knowledge")
             and result.status_code in range(200, 300)
         ):
-            try:
-                response_body = result.json()
-            except Exception:
-                response_body = None
             state_version = (
                 response_body.get("state_version")
                 if isinstance(response_body, dict) else None
@@ -346,6 +363,13 @@ class _ApiEvidenceRecorder:
                 )
             if "/map" in path or "/governance/actions" in path:
                 readback_endpoints.append(f"/api/game/session/{self.session_id}/map")
+            if (
+                isinstance(response_body, dict)
+                and response_body.get("completion_status") == "completed"
+            ):
+                readback_endpoints.append(
+                    f"/api/game/session/{self.session_id}/conversations?limit=100"
+                )
             for archive_id in request_body.get("archive_ids", ()):
                 readback_endpoints.append(
                     f"/api/game/session/{self.session_id}/governance/archives/"
@@ -357,10 +381,6 @@ class _ApiEvidenceRecorder:
                 if candidate.status_code == 200:
                     readbacks.append({"endpoint": endpoint, "payload": candidate.json()})
             readback = readbacks[0]["payload"] if readbacks else None
-            try:
-                response_body = result.json()
-            except Exception:
-                response_body = None
             self.records.append({
                 "method": method_upper,
                 "path": path,
@@ -411,8 +431,8 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
             for value in workflow["coverage"].get(coverage_field, ())
         })
         for evidence_id in all_ids:
-            trace = next((
-                trace
+            candidate = next((
+                (trace, entity_projection)
                 for workflow in workflows
                 for trace in workflow.get("api_traces", ())
                 if "server_entity_transition" in _ALLOWED_EVIDENCE_KINDS[category]
@@ -430,23 +450,14 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                 and isinstance(trace.get("server_state_version_before"), int)
                 and isinstance(trace.get("server_state_version_after"), int)
                 and trace.get("readback_effect_hash")
-            ), None)
-            if trace is not None:
-                entity_projection = next((
-                    projection
-                    for readback in trace.get("readbacks", ())
-                    if (
-                        projection := _find_entity_projection(
-                            readback.get("payload"), evidence_id
-                        )
-                    ) is not None
-                ), None)
-                if entity_projection is None:
-                    raise AssertionError(
-                        f"{category} transition has no formal GET readback entity: "
-                        f"{evidence_id}"
+                if (
+                    entity_projection := _validated_entity_projection(
+                        category, evidence_id, trace
                     )
-                _validate_entity_projection(category, evidence_id, entity_projection)
+                ) is not None
+            ), None)
+            if candidate is not None:
+                trace, entity_projection = candidate
                 audit_ids = [
                     audit["audit_id"]
                     for workflow in workflows
@@ -473,6 +484,17 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                 })
             else:
                 if "authoritative_reachability" not in _ALLOWED_EVIDENCE_KINDS[category]:
+                    response_mentions_id = any(
+                        _contains_exact(trace.get("response"), evidence_id)
+                        and int(trace.get("status_code", 0)) in range(200, 300)
+                        for workflow in workflows
+                        for trace in workflow.get("api_traces", ())
+                    )
+                    if response_mentions_id:
+                        raise AssertionError(
+                            f"{category} transition has no formal GET readback "
+                            f"entity in valid state: {evidence_id}"
+                        )
                     raise AssertionError(
                         f"{category} requires a server entity transition trace: {evidence_id}"
                     )

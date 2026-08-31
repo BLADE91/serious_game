@@ -281,6 +281,112 @@ def test_archive_operation_rejects_failed_formal_detail_readback() -> None:
         _coverage_operation_records([workflow])
 
 
+def test_completed_conversation_records_formal_get_for_all_opportunities() -> None:
+    opportunity_ids = [f"opportunity-{index:02d}" for index in range(32)]
+
+    class Response:
+        def __init__(self, payload: dict) -> None:
+            self.status_code = 200
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def request(self, method, url, **kwargs):
+            if method == "POST":
+                return Response({
+                    "state_version": 2,
+                    "completion_status": "completed",
+                    "opportunity_id": opportunity_ids[-1],
+                })
+            if "/conversations?limit=100" in str(url):
+                return Response({
+                    "items": [
+                        {
+                            "conversation_id": f"conversation-{index:02d}",
+                            "opportunity_id": opportunity_id,
+                            "completion_status": "completed",
+                        }
+                        for index, opportunity_id in enumerate(opportunity_ids)
+                    ],
+                    "next_cursor": None,
+                })
+            return Response({"state_version": 1})
+
+    recorder = _ApiEvidenceRecorder(
+        Client(), "session-1", {"X-Account-ID": "account-1"}
+    )
+    recorder.request(
+        "POST", "/api/game/session/session-1/action",
+        headers={"X-Account-ID": "account-1"},
+        json={"state_version": 1},
+    )
+
+    conversations = next(
+        item for item in recorder.records[0]["readbacks"]
+        if "/conversations?limit=100" in item["endpoint"]
+    )
+    assert {
+        item["opportunity_id"] for item in conversations["payload"]["items"]
+    } == set(opportunity_ids)
+
+
+@pytest.mark.parametrize(
+    ("category", "coverage_field", "evidence_id", "path", "invalid", "valid"),
+    (
+        (
+            "archives", "archive_ids", "archive-a", "/governance/actions",
+            {"archive_id": "archive-a", "read_at_days": []},
+            {"archive_id": "archive-a", "read_at_days": [45]},
+        ),
+        (
+            "opportunities", "opportunity_ids", "opportunity-a", "/action",
+            {"opportunity_id": "opportunity-a", "completion_status": "incomplete"},
+            {"opportunity_id": "opportunity-a", "completion_status": "completed"},
+        ),
+        (
+            "map_locations", "map_location_ids", "location-a", "/finish",
+            {"location_id": "location-a", "status": "active"},
+            {"location_id": "location-a", "status": "completed"},
+        ),
+        (
+            "households", "household_ids", "household-a", "/review",
+            {"household_id": "household-a", "status": "draft"},
+            {"household_id": "household-a", "status": "signed"},
+        ),
+    ),
+)
+def test_operation_selector_skips_early_invalid_entity_readback(
+    category, coverage_field, evidence_id, path, invalid, valid
+) -> None:
+    def trace(request_hash: str, entity: dict) -> dict:
+        return {
+            "path": path,
+            "status_code": 200,
+            "request_hash": request_hash,
+            "client_trace_id": None,
+            "server_state_version_before": 1,
+            "server_state_version_after": 2,
+            "response": {"source_id": evidence_id},
+            "readback_effect_hash": semantic_hash(entity),
+            "readback_state_version": 2,
+            "readbacks": [{"endpoint": "/formal/get", "payload": entity}],
+        }
+
+    workflow = {
+        "session_id": "session-1",
+        "coverage": {coverage_field: [evidence_id]},
+        "api_traces": [trace("early", invalid), trace("late", valid)],
+        "audit": {"records": []},
+    }
+
+    records = _coverage_operation_records([workflow])
+
+    assert records[category][0]["request_hash"] == "late"
+
+
 def test_save_load_semantics_ignore_only_documented_restore_transaction_metadata() -> None:
     saved = _save_load_session()
     loaded = replace(
