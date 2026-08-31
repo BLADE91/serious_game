@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -101,6 +102,58 @@ class PlayerLLMConfigurationApiTests(unittest.TestCase):
         )
         self.assertEqual(201, registered.status_code, registered.text)
         self.csrf = registered.json()["csrf_token"]
+        self.account_id = registered.json()["account_id"]
+
+    def test_session_llm_audit_endpoint_is_owned_and_secret_free(self) -> None:
+        created = self.client.post(
+            "/api/game/session",
+            headers={"X-CSRF-Token": self.csrf},
+            json={"client_request_id": "audit-export-session"},
+        )
+        self.assertEqual(201, created.status_code, created.text)
+        session_id = created.json()["session_id"]
+        gateway = OpenAICompatibleRoleLLMGateway(
+            replace(
+                self.settings, role_llm_provider="openai_compatible",
+                role_llm_base_url="https://api.example.test/v1?private=never-export",
+                role_llm_model="model-safe", role_llm_max_retries=0,
+            ),
+            "sentinel-secret-key", self.runtime.llm_audits,
+            config_version="cfg_safe",
+            transport=lambda *_args: {
+                "choices": [{"message": {"content": '{"choice_id":"a"}'}}],
+                "usage": {},
+            },
+        )
+        from serious_game_backend.domain.llm import SelectionOption, SelectionTask
+        gateway.select(SelectionTask(
+            task_id="audit-safe", role_id="npc-safe", role_name="NPC",
+            instruction="select", options=(SelectionOption("a", "A"),),
+            selection_mode="single", minimum_choices=1, maximum_choices=1,
+            session_id=session_id, account_id=self.account_id,
+            operation_id="operation-safe", story_day=1,
+        ))
+
+        response = self.client.get(
+            f"/api/game/session/{session_id}/ai/audits?limit=50"
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual({
+            "audit_id", "operation_id", "provider", "model", "endpoint_host",
+            "config_version", "status", "error_code", "timestamp", "run_id",
+            "session_id",
+        }, set(response.json()["audits"][0]))
+        self.assertNotIn("sentinel-secret-key", response.text)
+        self.assertNotIn("never-export", response.text)
+
+        other = TestClient(create_app(self.settings, self.runtime), base_url="http://testserver")
+        registered = other.post(
+            "/api/auth/register",
+            json={"username": "audit-intruder", "password": "pass1234"},
+        )
+        self.assertEqual(201, registered.status_code, registered.text)
+        forbidden = other.get(f"/api/game/session/{session_id}/ai/audits")
+        self.assertEqual(404, forbidden.status_code, forbidden.text)
 
     def test_authenticated_player_can_select_explicit_server_default(self) -> None:
         before = self.client.get("/api/ai/config")

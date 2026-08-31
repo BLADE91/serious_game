@@ -998,6 +998,25 @@ class MySQLLLMCallAuditRepository:
             row["validated_result_json"], purpose="llm_audit"
         )) for row in rows)
 
+    def list_for_owned_session(
+        self, account_id: str, session_id: str, *, after: str, limit: int
+    ) -> tuple[LLMCallAudit, ...]:
+        with self._store.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select validated_result_json from llm_call_audits
+                where account_id=%s and session_id=%s
+                  and concat(date_format(created_at, '%%Y-%%m-%%dT%%H:%%i:%%s.%%f+00:00'),
+                             '|', model_audit_id) > %s
+                order by created_at, model_audit_id limit %s
+                """,
+                (account_id, session_id, after, limit),
+            )
+            rows = cursor.fetchall()
+        return tuple(LLMCallAudit(**self._store.unprotect_json(
+            row["validated_result_json"], purpose="llm_audit"
+        )) for row in rows)
+
 
 class MySQLNPCMemoryRepository:
     def __init__(self, store: MySQLRuntimeStore) -> None:

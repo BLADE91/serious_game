@@ -469,6 +469,23 @@ class SqliteLLMCallAuditRepository:
             ).fetchall()
         return tuple(LLMCallAudit(**json.loads(row["payload_json"])) for row in rows)
 
+    def list_for_owned_session(
+        self, account_id: str, session_id: str, *, after: str, limit: int
+    ) -> tuple[LLMCallAudit, ...]:
+        with self._store.connect() as connection:
+            rows = connection.execute(
+                """
+                select payload_json from runtime_llm_call_audits
+                where session_id = ?
+                  and json_extract(payload_json, '$.account_id') = ?
+                  and (json_extract(payload_json, '$.created_at') || '|' || audit_id) > ?
+                order by json_extract(payload_json, '$.created_at'), audit_id
+                limit ?
+                """,
+                (session_id, account_id, after, limit),
+            ).fetchall()
+        return tuple(LLMCallAudit(**json.loads(row["payload_json"])) for row in rows)
+
 
 class SqliteNPCMemoryRepository:
     def __init__(self, store: SqliteRuntimeStore) -> None:

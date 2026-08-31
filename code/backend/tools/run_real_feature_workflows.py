@@ -103,7 +103,7 @@ def assert_required_api_evidence_capabilities() -> None:
     """Stop instead of synthesizing per-call gateway provenance."""
 
     available = {item.name for item in fields(LLMCallAudit)}
-    required = {"endpoint", "config_version"}
+    required = {"endpoint_host", "config_version"}
     missing = sorted(required - available)
     if missing:
         raise RuntimeError(
@@ -225,7 +225,10 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
     modes = {item.get("mode") for item in gateway_records if isinstance(item, dict)}
     accounts = {item.get("account_id") for item in gateway_records if isinstance(item, dict)}
     sessions = {item.get("session_id") for item in gateway_records if isinstance(item, dict)}
-    required_gateway = {"account_id", "session_id", "mode", "endpoint", "model", "config_version"}
+    required_gateway = {
+        "account_id", "session_id", "mode", "endpoint_host", "model",
+        "config_version",
+    }
     if (
         modes != {"server_default", "personal"}
         or len(accounts) != 2 or len(sessions) != 2
@@ -420,6 +423,25 @@ def _audit_summary(container, session_id: str) -> dict:
             count for provider, count in providers.items()
             if "fake" in provider.casefold()
         ),
+        "template_fallback_count": sum(
+            "template" in str(item.error_code or "").casefold() for item in audits
+        ),
+        "silent_fallback_count": sum(
+            item.provider != "openai_compatible" for item in audits
+        ),
+        "records": [{
+            "audit_id": item.audit_id,
+            "operation_id": item.operation_id,
+            "account_id": item.account_id,
+            "session_id": item.session_id,
+            "provider": item.provider,
+            "model": item.model_id,
+            "endpoint_host": item.endpoint_host,
+            "config_version": item.config_version,
+            "status": item.status,
+            "error_code": item.error_code,
+            "timestamp": item.created_at,
+        } for item in audits],
     }
 
 
@@ -1239,7 +1261,7 @@ def main() -> int:
     # Both gates deliberately run before settings validation, output creation, or
     # any TestClient/real-model call.  A failed run therefore cannot be confused
     # with partial feature evidence.
-    capture_run_provenance(repository)
+    provenance = capture_run_provenance(repository)
     assert_required_api_evidence_capabilities()
     settings = Settings.from_env()
     if settings.role_llm_provider != "openai_compatible":
@@ -1272,6 +1294,18 @@ def main() -> int:
         "model": settings.role_llm_model,
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "fake_calls": sum(item["audit"]["fake_calls"] for item in workflows),
+        "template_fallback_count": sum(
+            item["audit"]["template_fallback_count"] for item in workflows
+        ),
+        "silent_fallback_count": sum(
+            item["audit"]["silent_fallback_count"] for item in workflows
+        ),
+        "partial_commit_count": sum(
+            record.get("state_restored") is not True
+            for records in runner.operation_retries_by_session.values()
+            for record in records
+        ),
+        "provenance": provenance,
         "server_default_accounts": sum(
             item["account"] == "server_default" for item in workflows
         ),

@@ -169,6 +169,10 @@ class LLMCallAuditRepository(Protocol):
         self, operation_id: str, request_hash: str
     ) -> LLMCallAudit | None: ...
 
+    def list_for_owned_session(
+        self, account_id: str, session_id: str, *, after: str, limit: int
+    ) -> tuple[LLMCallAudit, ...]: ...
+
     def list_for_session(self, session_id: str) -> tuple[LLMCallAudit, ...]: ...
 
 

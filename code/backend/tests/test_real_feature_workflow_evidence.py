@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import pytest
 
+from serious_game_backend.config import Settings
+from serious_game_backend.domain.llm import SelectionOption, SelectionTask
+from serious_game_backend.infrastructure.llm.openai_compatible import (
+    OpenAICompatibleRoleLLMGateway,
+)
+from serious_game_backend.infrastructure.repositories.memory import (
+    InMemoryLLMCallAuditRepository,
+)
 from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
     validate_feature_workflow_report,
@@ -82,10 +90,10 @@ def passing_report() -> dict[str, object]:
             "interleaved": True,
             "records": [
                 {"account_id": "account-server", "session_id": "session-a",
-                 "mode": "server_default", "endpoint": "api.example.test",
+                 "mode": "server_default", "endpoint_host": "api.example.test",
                  "model": "model-a", "config_version": "cfg-a"},
                 {"account_id": "account-personal", "session_id": "session-b",
-                 "mode": "personal", "endpoint": "personal.example.test",
+                 "mode": "personal", "endpoint_host": "personal.example.test",
                  "model": "model-b", "config_version": "cfg-b"},
             ],
         },
@@ -144,5 +152,39 @@ def test_validator_accepts_complete_real_feature_evidence_contract() -> None:
 
 
 def test_preflight_stops_when_per_call_gateway_provenance_is_unavailable() -> None:
-    with pytest.raises(RuntimeError, match="config_version.*endpoint"):
-        assert_required_api_evidence_capabilities()
+    assert_required_api_evidence_capabilities()
+
+
+def test_gateway_audit_freezes_redacted_host_and_opaque_config_version() -> None:
+    sentinel = "sentinel-secret-key-never-serialize"
+    audits = InMemoryLLMCallAuditRepository()
+    settings = Settings(
+        environment="test",
+        role_llm_provider="openai_compatible",
+        role_llm_base_url="https://user:password@api.example.test/v1?token=forbidden",
+        role_llm_model="model-a",
+        role_llm_max_retries=0,
+    )
+    gateway = OpenAICompatibleRoleLLMGateway(
+        settings, sentinel, audits,
+        audit_endpoint_host="api.example.test",
+        config_version="cfg_test_version",
+        transport=lambda *_args: {
+            "choices": [{"message": {"content": '{"choice_id":"a"}'}}],
+            "usage": {},
+        },
+    )
+    gateway.select(SelectionTask(
+        task_id="task", role_id="npc", role_name="NPC", instruction="select",
+        options=(SelectionOption("a", "A"),), selection_mode="single",
+        minimum_choices=1, maximum_choices=1, session_id="session-a",
+        account_id="account-a", operation_id="operation-a", story_day=1,
+    ))
+
+    audit = audits.list_for_session("session-a")[0]
+    assert audit.endpoint_host == "api.example.test"
+    assert audit.config_version == "cfg_test_version"
+    serialized = repr(audit)
+    assert sentinel not in serialized
+    assert "password" not in serialized
+    assert "token=forbidden" not in serialized

@@ -29,6 +29,8 @@ class LLMCallAudit:
     validated_result: dict | None = None
     error_code: str | None = None
     created_at: str = field(default_factory=runtime_now_iso)
+    endpoint_host: str | None = None
+    config_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

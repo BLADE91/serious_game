@@ -513,6 +513,24 @@ class InMemoryLLMCallAuditRepository:
                 [item for item in self._items if item.session_id == session_id]
             ))
 
+    def list_for_owned_session(
+        self, account_id: str, session_id: str, *, after: str, limit: int
+    ) -> tuple[LLMCallAudit, ...]:
+        with self._lock:
+            ordered = sorted(
+                (
+                    item for item in self._items
+                    if item.account_id == account_id and item.session_id == session_id
+                ),
+                key=lambda item: (item.created_at, item.audit_id),
+            )
+            if after:
+                ordered = [
+                    item for item in ordered
+                    if f"{item.created_at}|{item.audit_id}" > after
+                ]
+            return tuple(deepcopy(ordered[:limit]))
+
 
 class InMemoryNPCMemoryRepository:
     def __init__(self) -> None:

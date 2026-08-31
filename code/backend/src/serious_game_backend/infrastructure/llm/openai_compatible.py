@@ -8,6 +8,7 @@ from dataclasses import replace
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -76,6 +77,8 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         audits: LLMCallAuditRepository,
         *,
         transport: Transport | None = None,
+        audit_endpoint_host: str | None = None,
+        config_version: str | None = None,
     ) -> None:
         if not api_key.strip():
             raise ValueError(f"missing API key in {settings.role_llm_api_key_env}")
@@ -83,6 +86,20 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         self._api_key = api_key.strip()
         self._audits = audits
         self._transport = transport or self._http_transport
+        parsed = urlsplit(settings.role_llm_base_url)
+        host = parsed.hostname or ""
+        if parsed.port is not None:
+            host = f"{host}:{parsed.port}"
+        self._audit_endpoint_host = audit_endpoint_host or host
+        self._config_version = config_version or f"cfg_{secrets.token_hex(16)}"
+
+    @property
+    def audit_endpoint_host(self) -> str:
+        return self._audit_endpoint_host
+
+    @property
+    def config_version(self) -> str:
+        return self._config_version
 
     def select(self, task: SelectionTask) -> SelectionResult:
         allowed = {option.choice_id for option in task.options}
@@ -266,6 +283,8 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                         if isinstance(result, SelectionResult)
                         else {"text": result.text}
                     ),
+                    endpoint_host=self._audit_endpoint_host,
+                    config_version=self._config_version,
                 ))
                 return result
             except (KeyError, IndexError, TypeError, RoleLLMResponseError) as exc:
@@ -288,6 +307,8 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                     latency_ms=int((time.perf_counter() - started) * 1000),
                     retry_count=attempt,
                     error_code=exc.code,
+                    endpoint_host=self._audit_endpoint_host,
+                    config_version=self._config_version,
                 ))
                 if attempt < self._settings.role_llm_max_retries:
                     request_document["messages"] = [

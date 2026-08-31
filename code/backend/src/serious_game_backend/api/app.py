@@ -1082,6 +1082,47 @@ def create_app(settings: Settings | None = None, container: Container | None = N
         package = require_locked_package(runtime.packages, session)
         return runtime.projector.project(session, package)
 
+    @app.get("/api/game/session/{session_id}/ai/audits")
+    async def get_session_llm_audits(
+        session_id: str,
+        after: str = Query(default="", max_length=160),
+        limit: int = Query(default=50, ge=1, le=50),
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        """Return a strict, secret-free audit projection for the owned run."""
+
+        account_id = current_account_id(x_account_id)
+        session = runtime.game_sessions.get_owned(session_id, account_id)
+        if session is None:
+            raise NotFoundError("活动存档不存在")
+        audits = runtime.llm_audits.list_for_owned_session(
+            account_id, session_id, after=after, limit=limit
+        )
+        next_cursor = (
+            f"{audits[-1].created_at}|{audits[-1].audit_id}" if audits else after
+        )
+        return {
+            "run_nonce": session_id,
+            "session_id": session_id,
+            "next_cursor": next_cursor,
+            "audits": [
+                {
+                    "audit_id": audit.audit_id,
+                    "operation_id": audit.operation_id,
+                    "provider": audit.provider,
+                    "model": audit.model_id,
+                    "endpoint_host": audit.endpoint_host,
+                    "config_version": audit.config_version,
+                    "status": audit.status,
+                    "error_code": audit.error_code,
+                    "timestamp": audit.created_at,
+                    "run_id": session_id,
+                    "session_id": session_id,
+                }
+                for audit in audits
+            ],
+        }
+
     @app.get("/api/game/session/{session_id}/view")
     async def get_terminal_view(
         session_id: str,

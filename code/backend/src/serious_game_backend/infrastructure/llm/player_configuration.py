@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import http.client
 import ipaddress
 import json
+import secrets
 import socket
 import ssl
 from threading import RLock
@@ -164,6 +165,7 @@ class PlayerLLMStatus:
     capabilities: dict[str, str]
     compatibility_status: str
     tested_at: str | None
+    config_version: str | None = None
     expires_with_login: bool = True
 
     def public_dict(self) -> dict:
@@ -176,6 +178,7 @@ class PlayerLLMStatus:
             "capabilities": dict(self.capabilities),
             "compatibility_status": self.compatibility_status,
             "tested_at": self.tested_at,
+            "config_version": self.config_version,
             "expires_with_login": self.expires_with_login,
         }
 
@@ -189,6 +192,7 @@ class _Selection:
     expires_at: datetime
     capabilities: dict[str, str]
     tested_at: str
+    config_version: str
 
 
 class _NullAuditRepository:
@@ -273,6 +277,7 @@ class PlayerLLMConfigurationRegistry:
                 capabilities=self._empty_capabilities(),
                 compatibility_status="unconfigured",
                 tested_at=None,
+                config_version=None,
             )
         return PlayerLLMStatus(
             mode=selection.mode,
@@ -283,6 +288,7 @@ class PlayerLLMConfigurationRegistry:
             capabilities=selection.capabilities,
             compatibility_status="compatible",
             tested_at=selection.tested_at,
+            config_version=selection.config_version,
         )
 
     def use_server_default(
@@ -304,6 +310,9 @@ class PlayerLLMConfigurationRegistry:
             expires_at=expires_at or self._default_expiry(),
             capabilities=capabilities,
             tested_at=tested_at,
+            config_version=getattr(
+                self._server_default, "config_version", f"cfg_{secrets.token_hex(16)}"
+            ),
         ))
         return self.status(scope_id)
 
@@ -355,6 +364,7 @@ class PlayerLLMConfigurationRegistry:
             normalized_key,
             _NullAuditRepository(),
             transport=validated_transport,
+            audit_endpoint_host=self._public_endpoint(normalized_url),
         )
         try:
             capabilities, tested_at = self._probe_capabilities(probe)
@@ -375,6 +385,7 @@ class PlayerLLMConfigurationRegistry:
             normalized_key,
             self._audits,
             transport=validated_transport,
+            audit_endpoint_host=self._public_endpoint(normalized_url),
         )
         self._set(scope_id, _Selection(
             mode="personal",
@@ -384,6 +395,7 @@ class PlayerLLMConfigurationRegistry:
             expires_at=expires_at or self._default_expiry(),
             capabilities=capabilities,
             tested_at=tested_at,
+            config_version=active.config_version,
         ))
         return self.status(scope_id)
 
