@@ -43,7 +43,13 @@ try {
     Push-Location (Join-Path $RepoRoot "code\backend")
     try {
         $env:PYTHONPATH = "src"
-        Invoke-FullGateStage "backend" { python -m pytest -q }
+        $StoryRoutesSummary = Join-Path $GateRoot "$RunStamp-backend-story-routes-v3.json"
+        $env:STORY_ROUTES_V3_SUMMARY = $StoryRoutesSummary
+        try {
+            Invoke-FullGateStage "backend" { python -m pytest -q }
+        } finally {
+            Remove-Item Env:STORY_ROUTES_V3_SUMMARY -ErrorAction SilentlyContinue
+        }
         Invoke-FullGateStage "v2-bytes" {
             python tools/hash_content_tree.py content/packages/pkg_gameplay_v2 --compare ../../docs/testing/baselines/pkg_gameplay_v2.sha256.json
         }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
+import os
 from pathlib import Path
 import unittest
 
@@ -1075,46 +1075,16 @@ class StoryRoutesV3Tests(unittest.TestCase):
         return witness
 
     def test_every_published_ending_witness_replays_through_formal_api(self) -> None:
-        profiles = load_witnesses(WITNESS_PROFILE_PATH)
-        contract_terms = load_contract_terms(WITNESS_PROFILE_PATH)
-        witnesses: list[dict] = []
-        failures: list[str] = []
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {
-                executor.submit(
-                    self.replay_published_witness,
-                    route_index,
-                    profile,
-                    contract_terms,
-                ): profile.route_id
-                for route_index, profile in enumerate(profiles, start=100)
-            }
-            for future in as_completed(futures):
-                route_id = futures[future]
-                try:
-                    witness = future.result()
-                except Exception as exc:  # noqa: BLE001 - aggregate all route failures
-                    failures.append(f"{route_id}: {type(exc).__name__}: {exc}")
-                    continue
-                witnesses.append(witness)
-                if witness["story_day"] != 90:
-                    failures.append(f"{route_id}: ended on D{witness['story_day']}")
-                if witness["main_ending_id"] != witness["expected_main"]:
-                    failures.append(
-                        f"{route_id}: main {witness['main_ending_id']} != "
-                        f"{witness['expected_main']}; axes={witness['axes']}"
-                    )
-                if witness["sub_ending_id"] != witness["expected_sub"]:
-                    failures.append(
-                        f"{route_id}: sub {witness['sub_ending_id']} != "
-                        f"{witness['expected_sub']}; ledger={witness['ledger']}; "
-                        f"axes={witness['axes']}; signed={witness['signed_contracts']}; "
-                        f"demands={witness['demand_status_counts']}; "
-                        f"people_flags={witness['people_flags']}"
-                    )
-        self.assertFalse(failures, "\n".join(failures))
-        self.assertEqual(24, len({item["main_ending_id"] for item in witnesses}))
-        self.assertEqual(95, len({item["sub_ending_id"] for item in witnesses}))
+        from tools.run_story_routes_v3_isolated import run_isolated
+
+        output = os.environ.get("STORY_ROUTES_V3_SUMMARY")
+        summary = run_isolated(
+            worker_count=8,
+            output_path=Path(output) if output else None,
+        )
+        self.assertEqual(95, summary["route_count"])
+        self.assertEqual(24, summary["main_ending_count"])
+        self.assertEqual(95, summary["sub_ending_count"])
 
 
 if __name__ == "__main__":
