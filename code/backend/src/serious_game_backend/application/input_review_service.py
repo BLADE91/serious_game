@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from serious_game_backend.application.ports import RoleLLMGateway
+from serious_game_backend.domain.errors import RoleLLMResponseError
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.llm import GovernanceLLMContext
 
@@ -18,6 +19,12 @@ def input_rejection_message(review_reason: str) -> str:
 SOCIAL_OPENINGS = frozenset({
     "你好", "您好", "大家好", "在吗", "打扰了", "辛苦了", "请坐",
 })
+
+RELEVANT_CLASSIFICATIONS = frozenset({
+    "relevant_specific",
+    "relevant_low_information",
+})
+IRRELEVANT_CLASSIFICATION = "irrelevant_or_meta_instruction"
 
 
 class InputReviewService:
@@ -63,4 +70,11 @@ class InputReviewService:
                 },
             )
         )
+        classification = str(result.data.get("classification", "")).strip()
+        if classification:
+            if classification in RELEVANT_CLASSIFICATIONS:
+                return True, str(result.data["reason"])
+            if classification == IRRELEVANT_CLASSIFICATION:
+                return False, str(result.data["reason"])
+            raise RoleLLMResponseError("输入审查返回了未知语义分类")
         return bool(result.data["relevant"]), str(result.data["reason"])

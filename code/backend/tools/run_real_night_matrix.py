@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import replace
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,6 @@ from tools.full_acceptance.ending_witnesses import load_witnesses
 from tools.run_real_v3_routes import (
     PROFILE_PATH,
     RealRouteRunner,
-    _public_state_fingerprint,
     prepare_output_run,
     validate_real_runner_settings,
 )
@@ -120,6 +120,52 @@ def _strategy_texts(plan_id: str, strategy: str) -> tuple[str, ...]:
     return STRATEGIES[strategy]
 
 
+RECOVERY_AUDIT_FIELDS = (
+    "error_code",
+    "state_restored",
+    "before_public_state_sha256",
+    "after_public_state_sha256",
+)
+
+
+def aggregate_night_matrix_summary(
+    cases: list[dict[str, object]], settings: Settings
+) -> dict[str, object]:
+    """Build the serializable report solely from completed case evidence."""
+    error_codes = Counter()
+    for item in cases:
+        error_codes.update({
+            str(error_code): int(count)
+            for error_code, count in dict(
+                item.get("failed_model_audit_error_codes", {})
+            ).items()
+        })
+    return {
+        "provider": "openai_compatible",
+        "model": settings.role_llm_model,
+        "fake_calls": sum(int(item["fake_calls"]) for item in cases),
+        "failed_model_audit_count": sum(
+            int(item["failed_model_audit_count"]) for item in cases
+        ),
+        "failed_model_audit_error_codes": dict(error_codes),
+        "cases": cases,
+        "ordinary_contact_combinations": sorted({
+            combination
+            for item in cases
+            for combination in item["ordinary_contact_combinations"]
+        }),
+        "legal_no_contact_count": sum(
+            int(item["legal_no_contact_count"]) for item in cases
+        ),
+        "technical_failure_count": sum(
+            int(item["technical_failure_count"]) for item in cases
+        ),
+        "technical_failure_partial_commits": sum(
+            int(item["partial_commit_count"]) for item in cases
+        ),
+    }
+
+
 def validate_night_matrix_report(report: dict[str, object]) -> None:
     if report.get("provider") != "openai_compatible":
         raise AssertionError("night matrix did not use the real provider")
@@ -154,6 +200,36 @@ def validate_night_matrix_report(report: dict[str, object]) -> None:
             raise AssertionError(f"{label} did not reach its trigger legally")
         if int(item.get("model_audits", 0)) < 1:
             raise AssertionError(f"{label} has no model audit")
+        for field in (
+            "failed_model_audit_count",
+            "failed_model_audit_error_codes",
+            "failed_calls",
+        ):
+            if field not in item:
+                raise AssertionError(f"{label} is missing {field}")
+        error_counts = {
+            str(error_code): int(count)
+            for error_code, count in dict(
+                item["failed_model_audit_error_codes"]
+            ).items()
+        }
+        if int(item["failed_model_audit_count"]) != sum(error_counts.values()):
+            raise AssertionError(f"{label} failed audit count is inconsistent")
+        failed_calls = list(item["failed_calls"])
+        for recovery in failed_calls:
+            if not all(field in recovery for field in RECOVERY_AUDIT_FIELDS):
+                raise AssertionError(f"{label} recovery audit is incomplete")
+            if not recovery["error_code"]:
+                raise AssertionError(f"{label} recovery audit lacks error code")
+            if not isinstance(recovery["state_restored"], bool):
+                raise AssertionError(f"{label} recovery audit lacks restoration verdict")
+            for field in (
+                "before_public_state_sha256", "after_public_state_sha256",
+            ):
+                if len(str(recovery[field])) != 64:
+                    raise AssertionError(f"{label} recovery audit lacks public-state hash")
+        if item.get("strategy") == "vague" and item.get("input_rejected") is True:
+            raise AssertionError(f"{label} vague must enter NPC judgment")
         injection_was_visibly_rejected = (
             item.get("strategy") == "injection"
             and item.get("input_rejected") is True
@@ -186,8 +262,36 @@ def validate_night_matrix_report(report: dict[str, object]) -> None:
             )
     if not report.get("ordinary_contact_combinations"):
         raise AssertionError("ordinary night contact evidence is missing")
-    if int(report.get("technical_failure_partial_commits", 0)) != 0:
+    expected_partial_commits = sum(
+        int(item["partial_commit_count"]) for item in cases
+    )
+    if int(report.get("technical_failure_partial_commits", 0)) != expected_partial_commits:
+        raise AssertionError("technical failure partial-commit count is inconsistent")
+    if expected_partial_commits != 0:
         raise AssertionError("technical night failures partially committed state")
+    required_summary_fields = (
+        "failed_model_audit_count", "failed_model_audit_error_codes",
+    )
+    for field in required_summary_fields:
+        if field not in report:
+            raise AssertionError(f"night matrix summary is missing {field}")
+    expected_failed_count = sum(
+        int(item["failed_model_audit_count"]) for item in cases
+    )
+    expected_error_codes = Counter()
+    for item in cases:
+        expected_error_codes.update({
+            str(code): int(count)
+            for code, count in dict(item["failed_model_audit_error_codes"]).items()
+        })
+    if int(report["failed_model_audit_count"]) != expected_failed_count:
+        raise AssertionError("night matrix failed audit count is inconsistent")
+    actual_error_codes = {
+        str(code): int(count)
+        for code, count in dict(report["failed_model_audit_error_codes"]).items()
+    }
+    if actual_error_codes != dict(expected_error_codes):
+        raise AssertionError("night matrix failed audit error codes are inconsistent")
 
 
 def _post_group(
@@ -198,7 +302,20 @@ def _post_group(
     *,
     player_text: str,
     action_id: str,
+    recovery_log: list[dict[str, object]] | None = None,
 ) -> dict:
+    def public_state_hash(payload: dict) -> str:
+        # The session GET endpoint is deliberately player-safe.  Hash the whole
+        # canonical DTO: a version number or a reduced diagnostic fingerprint
+        # cannot prove that public indicators/events were restored.
+        document = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(document.encode("utf-8")).hexdigest()
+
     for attempt in range(1, 4):
         response = client.post(
             f"/api/game/session/{session_id}/group-conversation/turn",
@@ -224,11 +341,23 @@ def _post_group(
             current = client.get(
                 f"/api/game/session/{session_id}", headers=headers
             )
-            if (
-                current.status_code != 200
-                or _public_state_fingerprint(current.json())
-                != _public_state_fingerprint(result)
-            ):
+            before_hash = public_state_hash(result)
+            after_hash = (
+                public_state_hash(current.json())
+                if current.status_code == 200 else ""
+            )
+            state_restored = current.status_code == 200 and before_hash == after_hash
+            if recovery_log is not None:
+                recovery_log.append({
+                    "operation": action_id,
+                    "attempt": attempt,
+                    "state_version": result["state_version"],
+                    "error_code": error.get("code"),
+                    "state_restored": state_restored,
+                    "before_public_state_sha256": before_hash,
+                    "after_public_state_sha256": after_hash,
+                })
+            if not state_restored:
                 raise AssertionError(
                     "retryable night failure changed the authoritative state"
                 )
@@ -255,7 +384,10 @@ def _finish_group(client, session_id: str, headers: dict[str, str], result: dict
     return response.json()
 
 
-def _resolve_prior_group(client, session_id: str, headers: dict[str, str], result: dict, key: str) -> dict:
+def _resolve_prior_group(
+    client, session_id: str, headers: dict[str, str], result: dict, key: str,
+    *, recovery_log: list[dict[str, object]],
+) -> dict:
     for round_index in range(1, 49):
         active = result["visible_state"].get("active_group_conversation")
         if not active:
@@ -280,6 +412,7 @@ def _resolve_prior_group(client, session_id: str, headers: dict[str, str], resul
                 str(active.get("followup_plan_id")), "credible"
             ))],
             action_id=f"{key}-turn-{round_index:02d}",
+            recovery_log=recovery_log,
         )
     raise AssertionError(f"prior forced conversation queue did not settle: {key}")
 
@@ -324,6 +457,9 @@ class RealNightMatrixRunner:
                     headers,
                     result,
                     f"night-matrix-{plan_id}-{strategy}-prior-d{story_day:02d}",
+                    recovery_log=self.route_runner.operation_retries_by_session.setdefault(
+                        session_id, []
+                    ),
                 )
                 result = self.route_runner.inspect_available_evidence(
                     client,
@@ -394,6 +530,9 @@ class RealNightMatrixRunner:
                     player_text=strategy_texts[(round_index - 1) % len(strategy_texts)],
                     action_id=(
                         f"night-matrix-{plan_id}-{strategy}-turn-{round_index:02d}"
+                    ),
+                    recovery_log=self.route_runner.operation_retries_by_session.setdefault(
+                        session_id, []
                     ),
                 )
                 if result.get("input_rejected") is True:
@@ -469,6 +608,14 @@ class RealNightMatrixRunner:
                 "elapsed_seconds": round(time.perf_counter() - started, 3),
                 "model_audits": len(audits),
                 "audit_statuses": dict(Counter(item.status for item in audits)),
+                "failed_model_audit_count": sum(
+                    item.status == "failed" for item in audits
+                ),
+                "failed_model_audit_error_codes": dict(Counter(
+                    item.error_code or "unknown"
+                    for item in audits
+                    if item.status == "failed"
+                )),
                 "providers": dict(providers),
                 "fake_calls": sum(
                     count for provider, count in providers.items()
@@ -487,6 +634,9 @@ class RealNightMatrixRunner:
                     for item in self.route_runner.operation_retries_by_session.get(
                         session_id, ()
                     )
+                ),
+                "failed_calls": self.route_runner.operation_retries_by_session.get(
+                    session_id, []
                 ),
                 "ordinary_contact_combinations": sorted(combinations),
                 "legal_no_contact_count": no_contact,
@@ -520,26 +670,7 @@ def main() -> int:
             (plan_root / f"{strategy}.json").write_text(
                 json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-    report = {
-        "provider": "openai_compatible",
-        "model": settings.role_llm_model,
-        "fake_calls": sum(int(item["fake_calls"]) for item in cases),
-        "cases": cases,
-        "ordinary_contact_combinations": sorted({
-            combination
-            for item in cases
-            for combination in item["ordinary_contact_combinations"]
-        }),
-        "legal_no_contact_count": sum(
-            int(item["legal_no_contact_count"]) for item in cases
-        ),
-        "technical_failure_count": sum(
-            int(item["technical_failure_count"]) for item in cases
-        ),
-        "technical_failure_partial_commits": sum(
-            int(item["partial_commit_count"]) for item in cases
-        ),
-    }
+    report = aggregate_night_matrix_summary(cases, settings)
     validate_night_matrix_report(report)
     (root / "summary.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

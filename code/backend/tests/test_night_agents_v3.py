@@ -136,6 +136,9 @@ class NightAgentV3ConfigurationTests(unittest.TestCase):
                 "partial_commit_count": 0,
                 "triggered_legally": True,
                 "model_audits": 1,
+                "failed_model_audit_count": 0,
+                "failed_model_audit_error_codes": {},
+                "failed_calls": [],
                 "transcript": [{"speaker_type": "npc", "text": "已记录。"}],
                 "participant_states": [{"npc_id": "npc", "status": "active"}],
                 "morning_card": "夜间结算完成。",
@@ -151,6 +154,8 @@ class NightAgentV3ConfigurationTests(unittest.TestCase):
         report = {
             "provider": "openai_compatible",
             "fake_calls": 0,
+            "failed_model_audit_count": 0,
+            "failed_model_audit_error_codes": {},
             "cases": cases,
             "ordinary_contact_combinations": ["scene:a->b"],
             "legal_no_contact_count": 1,
@@ -188,6 +193,16 @@ class NightAgentV3ConfigurationTests(unittest.TestCase):
         rejected_case["input_rejected"] = True
         rejected_case["input_rejection_message"] = "请输入与本游戏相关的话语"
         validate_night_matrix_report(rejected_injection)
+
+        rejected_vague = deepcopy(report)
+        vague_case = next(
+            item for item in rejected_vague["cases"] if item["strategy"] == "vague"
+        )
+        vague_case["transcript"] = []
+        vague_case["input_rejected"] = True
+        vague_case["input_rejection_message"] = "请输入与本游戏相关的话语"
+        with self.assertRaisesRegex(AssertionError, "vague.*must enter NPC judgment"):
+            validate_night_matrix_report(rejected_vague)
 
 
 class RecordingNightGateway(FakeRoleLLMGateway):

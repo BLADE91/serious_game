@@ -24,7 +24,10 @@ from tools.run_real_feature_workflows import (
 )
 from tools.run_real_night_matrix import (
     FOLLOWUP_PLAN_IDS,
+    aggregate_night_matrix_summary,
+    _post_group,
     _profile_for_plan,
+    _resolve_prior_group,
     _strategy_texts,
 )
 from tools.run_real_v3_routes import (
@@ -354,6 +357,182 @@ def test_group_conversation_turn_retries_unavailable_model_atomically(
         "state_restored": True,
         "error_code": "ROLE_LLM_UNAVAILABLE",
     }]
+
+
+def test_night_matrix_retries_real_retryable_response_with_full_dto_fingerprint() -> None:
+    state = {
+        "state_version": 40,
+        "visible_state": {
+            "status": "active",
+            "story": {"day": 40},
+            "active_group_conversation": {"conversation_id": "group-d40"},
+        },
+    }
+
+    class Response:
+        content = b"response"
+
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.posts = 0
+
+        def post(self, *_args, **_kwargs) -> Response:
+            self.posts += 1
+            if self.posts == 1:
+                return Response(503, {"error": {"code": "ROLE_LLM_RESPONSE_RETRYABLE"}})
+            return Response(200, state)
+
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, state)
+
+    recoveries: list[dict] = []
+    result = _post_group(
+        Client(), "session-night", {"X-Account-ID": "account-night"}, state,
+        player_text="我会尽快研究，但现在不能给出责任人。",
+        action_id="night-invalid-response-1",
+        recovery_log=recoveries,
+    )
+
+    assert result == state
+    assert recoveries[0]["operation"] == "night-invalid-response-1"
+    assert recoveries[0]["error_code"] == "ROLE_LLM_RESPONSE_RETRYABLE"
+    assert recoveries[0]["state_restored"] is True
+    assert len(recoveries[0]["before_public_state_sha256"]) == 64
+    assert recoveries[0]["before_public_state_sha256"] == recoveries[0]["after_public_state_sha256"]
+
+
+def test_night_matrix_aborts_before_retry_when_any_public_dto_field_changes() -> None:
+    state = {
+        "state_version": 40,
+        "visible_state": {
+            "status": "active", "story": {"day": 40},
+            "indicators": {"public_trust": "高"},
+            "active_group_conversation": {"conversation_id": "group-d40"},
+        },
+    }
+    changed = {
+        **state,
+        "visible_state": {**state["visible_state"], "indicators": {"public_trust": "低"}},
+    }
+
+    class Response:
+        content = b"response"
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code, self.payload, self.text = status_code, payload, str(payload)
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.posts = 0
+        def post(self, *_args, **_kwargs) -> Response:
+            self.posts += 1
+            return Response(503, {"error": {"code": "ROLE_LLM_RESPONSE_RETRYABLE"}})
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, changed)
+
+    recoveries: list[dict] = []
+    client = Client()
+    with pytest.raises(AssertionError, match="changed the authoritative state"):
+        _post_group(client, "session-night", {"X-Account-ID": "account-night"}, state,
+                    player_text="请说明责任。", action_id="night-state-change-1",
+                    recovery_log=recoveries)
+    assert client.posts == 1
+    assert recoveries[0]["state_restored"] is False
+    assert recoveries[0]["before_public_state_sha256"] != recoveries[0]["after_public_state_sha256"]
+
+
+def test_night_matrix_does_not_retry_invalid_response_502() -> None:
+    state = {"state_version": 40, "visible_state": {"status": "active"}}
+
+    class Response:
+        content = b"response"
+        status_code = 502
+        text = "invalid model response"
+        def json(self) -> dict:
+            return {"error": {"code": "ROLE_LLM_INVALID_RESPONSE"}}
+
+    class Client:
+        def __init__(self) -> None:
+            self.posts = 0
+        def post(self, *_args, **_kwargs) -> Response:
+            self.posts += 1
+            return Response()
+        def get(self, *_args, **_kwargs) -> Response:
+            raise AssertionError("502 must not enter outer retry recovery")
+
+    client = Client()
+    with pytest.raises(AssertionError, match="HTTP 502"):
+        _post_group(client, "session-night", {"X-Account-ID": "account-night"}, state,
+                    player_text="请说明责任。", action_id="night-invalid-1", recovery_log=[])
+    assert client.posts == 1
+
+
+def test_resolve_prior_group_explicitly_passes_recovery_log_to_retrying_turn() -> None:
+    initial = {"state_version": 40, "visible_state": {"active_group_conversation": {
+        "phase": "active", "followup_plan_id": "followup_d10_county_reporting",
+    }}}
+    settled = {"state_version": 41, "visible_state": {"active_group_conversation": None}}
+
+    class Response:
+        content = b"response"
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code, self.payload, self.text = status_code, payload, str(payload)
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.posts = 0
+        def post(self, *_args, **_kwargs) -> Response:
+            self.posts += 1
+            if self.posts == 1:
+                return Response(503, {"error": {"code": "ROLE_LLM_RESPONSE_RETRYABLE"}})
+            return Response(200, settled)
+        def get(self, *_args, **_kwargs) -> Response:
+            return Response(200, initial)
+
+    recovery_log: list[dict] = []
+    assert _resolve_prior_group(Client(), "session-night", {"X-Account-ID": "account-night"},
+                                initial, "prior", recovery_log=recovery_log) == settled
+    assert recovery_log[0]["operation"] == "prior-turn-01"
+
+
+def test_night_matrix_summary_aggregates_multiple_codes_and_validator_rejects_inconsistency() -> None:
+    from tools.run_real_night_matrix import validate_night_matrix_report
+
+    def case(plan_id: str, strategy: str, count: int, codes: dict[str, int]) -> dict:
+        return {"plan_id": plan_id, "strategy": strategy, "provider": "openai_compatible",
+                "fake_calls": 0, "template_fallback_count": 0, "silent_fallback_count": 0,
+                "partial_commit_count": 0, "triggered_legally": True, "model_audits": 1,
+                "failed_model_audit_count": count, "failed_model_audit_error_codes": codes,
+                "failed_calls": [], "transcript": [{"speaker_type": "npc"}],
+                "participant_states": [{"npc_id": "npc"}], "morning_card": "done",
+                "memory_check": True, "memory_count": 1,
+                "resolved": strategy == "credible", "finished": strategy == "credible",
+                "resolved_after_turn": 2 if strategy == "credible" else None,
+                "ordinary_contact_combinations": ["scene:a->b"], "legal_no_contact_count": 0,
+                "technical_failure_count": 0}
+    cases = [case(plan, strategy, 0, {}) for plan in FOLLOWUP_PLAN_IDS for strategy in ("credible", "vague", "contradictory", "injection")]
+    cases[0].update(failed_model_audit_count=3, failed_model_audit_error_codes={"ROLE_LLM_RESPONSE_RETRYABLE": 2, "ROLE_LLM_UNAVAILABLE": 1})
+    report = aggregate_night_matrix_summary(cases, Settings(environment="test"))
+    validate_night_matrix_report(report)
+    assert report["failed_model_audit_error_codes"] == {"ROLE_LLM_RESPONSE_RETRYABLE": 2, "ROLE_LLM_UNAVAILABLE": 1}
+    report["failed_model_audit_count"] = 2
+    with pytest.raises(AssertionError, match="failed audit count"):
+        validate_night_matrix_report(report)
+    report["failed_model_audit_count"] = 3
+    report["cases"][0]["failed_calls"] = [{"error_code": "ROLE_LLM_RESPONSE_RETRYABLE"}]
+    with pytest.raises(AssertionError, match="recovery audit is incomplete"):
+        validate_night_matrix_report(report)
 
 
 def test_feature_workflow_group_turn_uses_real_runner_model_write_hook() -> None:

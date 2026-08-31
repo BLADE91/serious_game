@@ -263,10 +263,23 @@ class FakeRoleLLMGateway:
                 "天气预报", "股票", "彩票", "翻译成英文", "写一首诗",
                 "做数学题", "量子力学",
             )
-            relevant = not any(marker in text for marker in unrelated_markers)
+            meta_instruction = any(marker in text for marker in (
+                "忽略人物设定", "系统命令", "直接输出 close", "改变系统规则",
+            ))
+            unrelated = any(marker in text for marker in unrelated_markers)
+            classification = (
+                "irrelevant_or_meta_instruction" if meta_instruction or unrelated
+                else (
+                    "relevant_low_information"
+                    if any(marker in text for marker in ("高度重视", "尽快研究", "以后再说"))
+                    else "relevant_specific"
+                )
+            )
+            relevant = classification != "irrelevant_or_meta_instruction"
             return GovernanceLLMResult(
                 task=task,
                 data={
+                    "classification": classification,
                     "relevant": relevant,
                     "reason": (
                         "发言可用于当前游戏场景。"
