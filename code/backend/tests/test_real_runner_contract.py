@@ -9,6 +9,7 @@ import pytest
 
 import tools.run_real_v3_routes as real_routes_module
 from serious_game_backend.config import Settings
+from serious_game_backend.domain.errors import RoleLLMUnavailableError
 from serious_game_backend.infrastructure.script_packages.file_loader import (
     FileScriptPackageLoader,
 )
@@ -191,6 +192,39 @@ def test_contract_review_survives_three_consecutive_transient_outages(
         item["state_restored"] is True
         for item in runner.operation_retries_by_session["session-1"]
     )
+
+
+def test_route_start_retries_transient_capability_probe_outages(
+    tmp_path: Path,
+) -> None:
+    expected = (object(), object(), "session-1", {"X-Account-ID": "account-1"})
+
+    class Runner(real_routes_module.RealRouteRunner):
+        def __init__(self) -> None:
+            super().__init__(
+                Settings(environment="test"),
+                tmp_path,
+                retry_delays=(0, 0, 0, 0, 0),
+            )
+            self.build_attempts = 0
+
+        def build_real_runner(self, route_index: int):
+            self.build_attempts += 1
+            if self.build_attempts <= 3:
+                raise RoleLLMUnavailableError("HTTP 503")
+            return expected
+
+    runner = Runner()
+
+    result = runner.build_real_runner_with_retry(56)
+
+    assert result == expected
+    assert runner.build_attempts == 4
+    assert runner.capability_probe_retries == [
+        {"route_index": 56, "attempt": 1, "error_code": "ROLE_LLM_UNAVAILABLE"},
+        {"route_index": 56, "attempt": 2, "error_code": "ROLE_LLM_UNAVAILABLE"},
+        {"route_index": 56, "attempt": 3, "error_code": "ROLE_LLM_UNAVAILABLE"},
+    ]
 
 
 def test_governance_turn_retries_with_retry_flag_after_state_restoration(

@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from serious_game_backend.api.app import create_app
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
+from serious_game_backend.domain.errors import RoleLLMUnavailableError
 from serious_game_backend.infrastructure.llm.openai_compatible import Transport
 from serious_game_backend.infrastructure.llm.player_configuration import Resolver
 from serious_game_backend.infrastructure.script_packages.file_loader import (
@@ -300,6 +301,33 @@ class RealRouteRunner(StoryRoutesV3Tests):
         self.archive_reads_by_session: dict[str, list[dict]] = {}
         self.operation_retries_by_session: dict[str, list[dict]] = {}
         self.visited_days_by_session: dict[str, list[int]] = {}
+        self.capability_probe_retries: list[dict[str, object]] = []
+
+    def build_real_runner_with_retry(self, route_index: int):
+        """Retry transient provider outages while probing a fresh account."""
+
+        max_attempts = len(self.retry_delays) + 1
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self.build_real_runner(route_index)
+            except RoleLLMUnavailableError:
+                if attempt >= max_attempts:
+                    raise
+                self.capability_probe_retries.append({
+                    "route_index": route_index,
+                    "attempt": attempt,
+                    "error_code": "ROLE_LLM_UNAVAILABLE",
+                })
+                print(
+                    f"route-{route_index}-capability-probe: transient real-model "
+                    "failure, retrying fresh configuration",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                delay = self.retry_delays[attempt - 1]
+                if delay > 0:
+                    time.sleep(delay)
+        raise AssertionError("unreachable capability-probe retry loop")
 
     def _request_model_write(
         self,
@@ -537,7 +565,9 @@ class RealRouteRunner(StoryRoutesV3Tests):
     ) -> dict[str, object]:
         """Replay one published witness against a fresh real-model session."""
 
-        container, client, session_id, headers = self.build_real_runner(route_index)
+        container, client, session_id, headers = self.build_real_runner_with_retry(
+            route_index
+        )
         started = time.perf_counter()
         try:
             witness = self._replay_published_witness(
