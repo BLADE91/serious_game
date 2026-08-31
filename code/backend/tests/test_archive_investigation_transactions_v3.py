@@ -129,7 +129,9 @@ class TestArchiveInvestigationTransactionsV3:
             for method in item["methods"]
         )
         assert all(
-            "source_id" not in method
+            method["fact_id"] == item["fact_id"]
+            and method["source_id"]
+            and method["route_type"] in {"archive", "conversation"}
             for item in leads.values()
             for method in item["methods"]
         )
@@ -148,6 +150,11 @@ class TestArchiveInvestigationTransactionsV3:
         assert [item["fact_id"] for item in payload["newly_learned_facts"]] == [
             "fact_two_million_fee"
         ]
+        assert payload["fact_acquisition_bindings"] == [{
+            "fact_id": "fact_two_million_fee",
+            "route_type": "archive",
+            "source_id": "archive_coordination_fee_index",
+        }]
         assert payload["archives"][0]["read_status"] == "read"
         assert payload["archives"][0]["player_sections"]
 

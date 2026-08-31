@@ -258,7 +258,7 @@ class TestEveryClueAcquisitionPath:
             restored = decode_session(encode_session(committed))
             assert fact_id in restored.known_fact_ids
 
-    def test_every_fact_lead_appears_at_its_first_reachable_day_without_ids(self) -> None:
+    def test_every_fact_lead_exposes_structured_current_route_without_future_ids(self) -> None:
         opportunities = {
             item.opportunity_id: item
             for item in self.package.interaction_opportunities
@@ -306,8 +306,14 @@ class TestEveryClueAcquisitionPath:
                 for item in response.json()["investigation_leads"]
                 if item["fact_id"] == fact.fact_id
             )
+            assert {
+                (method["fact_id"], method["route_type"], method["source_id"])
+                for method in lead["methods"]
+            } == {
+                (fact.fact_id, str(method["route_type"]), str(method["source_id"]))
+                for method in first_methods
+            }
             serialized = json.dumps(lead, ensure_ascii=False)
-            assert "source_id" not in serialized
             assert "requires_flags" not in serialized
             assert "requires_events" not in serialized
             assert all(

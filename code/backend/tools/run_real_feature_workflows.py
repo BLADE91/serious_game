@@ -133,14 +133,48 @@ def _response_id_whitelist(value: object) -> list[str]:
     return sorted(values)
 
 
+def _fact_acquisition_bindings(value: object) -> list[str]:
+    """Extract only explicit fact/route/source triples from one formal DTO."""
+
+    bindings: set[str] = set()
+    if isinstance(value, dict):
+        for item in value.get("fact_acquisition_bindings", ()):
+            if not isinstance(item, dict):
+                continue
+            parts = (item.get("fact_id"), item.get("route_type"), item.get("source_id"))
+            if all(isinstance(part, str) and part for part in parts):
+                bindings.add(":".join(parts))
+        for lead in value.get("investigation_leads", ()):
+            if not isinstance(lead, dict):
+                continue
+            for method in lead.get("methods", ()):
+                if not isinstance(method, dict):
+                    continue
+                parts = (
+                    method.get("fact_id"), method.get("route_type"),
+                    method.get("source_id"),
+                )
+                if method.get("fact_id") != lead.get("fact_id"):
+                    continue
+                if all(isinstance(part, str) and part for part in parts):
+                    bindings.add(":".join(parts))
+        for key, item in value.items():
+            if key not in {"fact_acquisition_bindings", "investigation_leads"}:
+                bindings.update(_fact_acquisition_bindings(item))
+    elif isinstance(value, list):
+        for item in value:
+            bindings.update(_fact_acquisition_bindings(item))
+    return sorted(bindings)
+
+
 def _reachability_supported(
-    selector: str, evidence_id: str, response_ids: set[str]
+    selector: str, evidence_id: str, response_ids: set[str],
+    fact_bindings: set[str],
 ) -> bool:
     if selector == "npcs":
         return evidence_id in response_ids
     if selector == "fact_acquisition_paths":
-        parts = evidence_id.split(":", 2)
-        return len(parts) == 3 and parts[0] in response_ids and parts[2] in response_ids
+        return evidence_id in fact_bindings
     return False
 
 
@@ -155,13 +189,15 @@ def _attach_authority_projections(workflows: list[dict]) -> None:
                 continue
             if not isinstance(trace.get("server_state_version_after"), int):
                 continue
+            response = trace.get("response")
             sources.append({
                 "path": trace["path"],
                 "status_code": trace["status_code"],
                 "state_version_before": trace["server_state_version_before"],
                 "state_version_after": trace["server_state_version_after"],
                 "session_id": workflow["session_id"],
-                "response_ids": _response_id_whitelist(trace.get("response")),
+                "response_ids": _response_id_whitelist(response),
+                "fact_acquisition_bindings": _fact_acquisition_bindings(response),
                 "response_whitelist_hash": semantic_hash(
                     _response_id_whitelist(trace.get("response"))
                 ),
@@ -185,11 +221,15 @@ def _attach_authority_projections(workflows: list[dict]) -> None:
         source_ids = {
             item for source in sources for item in source["response_ids"]
         }
+        fact_bindings = {
+            item for source in sources
+            for item in source["fact_acquisition_bindings"]
+        }
         for selector, items in projection["items"].items():
             missing = [
                 item["evidence_id"] for item in items
                 if not _reachability_supported(
-                    selector, item["evidence_id"], source_ids
+                    selector, item["evidence_id"], source_ids, fact_bindings
                 )
             ]
             if missing:
@@ -1772,6 +1812,9 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     profiles = load_witnesses(PROFILE_PATH)
     profile = _with_recovery_decision_policy(profiles[0])
     contract_terms = load_contract_terms(PROFILE_PATH)
+    _expect(client.get(
+        f"/api/game/session/{session_id}/knowledge", headers=headers
+    ))
     result, serial = runner.reach_day_three_with_profile(
         container, client, session_id, headers, profile
     )
@@ -1784,6 +1827,85 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     for story_day in range(3, 91):
         if result["visible_state"]["status"] == "ended":
             break
+        _expect(client.get(
+            f"/api/game/session/{session_id}/knowledge", headers=headers
+        ))
+        exclusive_by_source: dict[str, list[str]] = {}
+        for fact_id, fact in package.facts.items():
+            if fact_id == "fact_wu_independent_voice":
+                continue
+            methods = tuple(fact.acquisition_methods)
+            if {str(method["route_type"]) for method in methods} != {"conversation"}:
+                continue
+            method = methods[0]
+            if int(method["unlock_day"]) <= story_day:
+                exclusive_by_source.setdefault(str(method["source_id"]), []).append(fact_id)
+        known = set(_expect(client.get(
+            f"/api/game/session/{session_id}/knowledge", headers=headers
+        ))["known_fact_ids"])
+        available = {
+            item["opportunity_id"]: item
+            for item in _expect(client.get(
+                f"/api/game/session/{session_id}/opportunities", headers=headers
+            ))["opportunities"]
+        }
+        for opportunity_id, fact_ids in exclusive_by_source.items():
+            missing = [fact_id for fact_id in fact_ids if fact_id not in known]
+            opportunity = available.get(opportunity_id)
+            if not missing or opportunity is None:
+                continue
+            started = runner.action(client, session_id, headers, {
+                "input_mode": "conversation_start",
+                "client_action_id": f"feature-exclusive-{serial:04d}-start",
+                "state_version": result["state_version"],
+                "opportunity_id": opportunity_id,
+                "target_npc_id": opportunity["npc_id"],
+            })
+            serial += 1
+            result = started
+            conversation_id = started["conversation"]["conversation_id"]
+            for fact_id in missing:
+                fact = package.facts[fact_id]
+                for attempt in range(1, 4):
+                    if result["conversation"]["status"] != "active":
+                        break
+                    before_known = set(_expect(client.get(
+                        f"/api/game/session/{session_id}/knowledge", headers=headers
+                    ))["known_fact_ids"])
+                    result = runner.action(client, session_id, headers, {
+                        "input_mode": "free_text",
+                        "client_action_id": (
+                            f"feature-exclusive-{serial:04d}-{attempt}"
+                        ),
+                        "state_version": result["state_version"],
+                        "conversation_id": conversation_id,
+                        "opportunity_id": opportunity_id,
+                        "target_npc_id": opportunity["npc_id"],
+                        "player_text": (
+                            f"请只围绕“{fact.title}”给出你亲自掌握的具体事实、"
+                            "时间、地点和可核验细节；在说清前先不要结束谈话。"
+                        ),
+                    })
+                    serial += 1
+                    after_known = set(_expect(client.get(
+                        f"/api/game/session/{session_id}/knowledge", headers=headers
+                    ))["known_fact_ids"])
+                    if fact_id in after_known - before_known:
+                        known.update(after_known)
+                        break
+                if fact_id not in known:
+                    raise AssertionError(
+                        "conversation-only fact did not make a formal known-fact "
+                        f"transition: {fact_id}:{opportunity_id}"
+                    )
+            if result["conversation"]["status"] == "active":
+                result = runner.action(client, session_id, headers, {
+                    "input_mode": "conversation_end",
+                    "client_action_id": f"feature-exclusive-{serial:04d}-end",
+                    "state_version": result["state_version"],
+                    "conversation_id": conversation_id,
+                })
+                serial += 1
         result = _drain_group_conversations(
             client,
             session_id,
@@ -1870,6 +1992,25 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
     if stored is None:
         raise AssertionError("inventory workflow session disappeared")
+    conversation_only_fact_ids = {
+        fact_id for fact_id, fact in package.facts.items()
+        if {str(method["route_type"]) for method in fact.acquisition_methods}
+        == {"conversation"}
+    }
+    learned_conversation_fact_ids = {
+        binding.split(":", 2)[0]
+        for trace in recorder.records
+        for binding in _fact_acquisition_bindings(trace.get("response"))
+        if ":conversation:" in binding
+    }
+    missing_conversation_transitions = (
+        conversation_only_fact_ids - learned_conversation_fact_ids
+    )
+    if missing_conversation_transitions:
+        raise AssertionError(
+            "conversation-only facts lack formal known-fact transitions: "
+            f"{sorted(missing_conversation_transitions)}"
+        )
     review = _expect(client.get(f"/api/game/session/{session_id}/review", headers=headers))
     audit = _audit_summary(container, session_id)
     coverage = collect_session_coverage(

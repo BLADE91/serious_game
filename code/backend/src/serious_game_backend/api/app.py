@@ -712,9 +712,14 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             and item.npc_id in visible_npc_ids
         ]
 
-    def public_acquisition_method(method: dict[str, object]) -> dict:
+    def public_acquisition_method(
+        method: dict[str, object], *, fact_id: str | None = None,
+        include_binding: bool = False,
+    ) -> dict:
         return {
+            **({"fact_id": fact_id} if include_binding and fact_id is not None else {}),
             "route_type": str(method["route_type"]),
+            **({"source_id": str(method["source_id"])} if include_binding else {}),
             "unlock_day": int(method["unlock_day"]),
             "label": str(method["label"]),
             "instructions": str(method["instructions"]),
@@ -730,7 +735,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "related_npc_ids": list(item.related_npc_ids),
             "use_hint": item.use_hint,
             "acquisition_methods": [
-                public_acquisition_method(method)
+                public_acquisition_method(method, fact_id=item.fact_id)
                 for method in item.acquisition_methods
             ],
         }
@@ -1202,7 +1207,9 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                         continue
                 elif source_id not in available_opportunity_ids:
                     continue
-                methods.append(public_acquisition_method(method))
+                methods.append(public_acquisition_method(
+                    method, fact_id=fact.fact_id, include_binding=True
+                ))
             if methods:
                 investigation_leads.append({
                     "fact_id": fact.fact_id,

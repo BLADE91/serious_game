@@ -641,6 +641,24 @@ class ApiTests(unittest.TestCase):
             ["云溪县柳林村整体搬迁补偿安置方案"],
             [item["title"] for item in first_opportunity["related_materials"]],
         )
+        knowledge = self.client.get(
+            f"/api/game/session/{session_id}/knowledge", headers=self.headers
+        ).json()
+        wu_lead = next(
+            item for item in knowledge["investigation_leads"]
+            if item["fact_id"] == "fact_wu_independent_voice"
+        )
+        self.assertEqual(
+            {
+                "fact_id": "fact_wu_independent_voice",
+                "route_type": "conversation",
+                "source_id": "opp_d02_wu_xiuying_first_talk",
+            },
+            {
+                key: wu_lead["methods"][0][key]
+                for key in ("fact_id", "route_type", "source_id")
+            },
+        )
 
         started = self.client.post(
             f"/api/game/session/{session_id}/action",
@@ -711,6 +729,14 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(
             7,
             second_talk.json()["visible_state"]["ledger"]["action_points"]["remaining"],
+        )
+        self.assertIn(
+            {
+                "fact_id": "fact_wu_independent_voice",
+                "route_type": "conversation",
+                "source_id": "opp_d02_wu_xiuying_first_talk",
+            },
+            second_talk.json()["fact_acquisition_bindings"],
         )
         ended_feed = self.client.get(
             f"/api/game/session/{session_id}/feed?after=0", headers=self.headers

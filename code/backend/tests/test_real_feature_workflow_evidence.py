@@ -134,24 +134,7 @@ def test_map_inventory_completes_leadership_meeting_through_meeting_api() -> Non
     assert calls[1][1]["resolution"]["responsible_ids"] == ["npc-a"]
 
 
-def test_authority_projection_captures_fact_reachability_from_knowledge_dto() -> None:
-    class Response:
-        status_code = 200
-
-        def json(self) -> dict:
-            return {
-                "state_version": 10,
-                "known_fact_ids": ["fact_wu_independent_voice"],
-            }
-
-    class Client:
-        def request(self, _method, _url, **_kwargs):
-            return Response()
-
-    recorder = _ApiEvidenceRecorder(
-        Client(), "session-1", {"X-Account-ID": "account-1"}
-    )
-    recorder.request("GET", "/api/game/session/session-1/knowledge")
+def _fact_workflow(*responses: dict) -> dict:
     workflow = {
         "account": "server_default",
         "session_id": "session-1",
@@ -169,20 +152,85 @@ def test_authority_projection_captures_fact_reachability_from_knowledge_dto() ->
                 "status_code": 200,
                 "server_state_version_before": 9,
                 "server_state_version_after": 10,
-                "response": {
-                    "opportunity_id": "opp_d02_wu_xiuying_first_talk",
-                },
-            },
-            *recorder.records,
+                "response": response,
+            }
+            for response in responses
         ],
     }
+    return workflow
+
+
+def test_authority_projection_rejects_cross_response_fact_source_pairing() -> None:
+    workflow = _fact_workflow(
+        {"known_fact_ids": ["fact_wu_independent_voice"]},
+        {"opportunity_id": "opp_d02_wu_xiuying_first_talk"},
+    )
+
+    with pytest.raises(AssertionError, match="lacks formal HTTP DTO"):
+        _attach_authority_projections([workflow])
+
+
+def test_authority_projection_rejects_archive_conversation_cross_route_pairing() -> None:
+    workflow = _fact_workflow(
+        {
+            "fact_acquisition_bindings": [{
+                "fact_id": "fact_wu_independent_voice",
+                "route_type": "archive",
+                "source_id": "archive_unrelated",
+            }],
+        },
+        {"conversation": {"opportunity_id": "opp_d02_wu_xiuying_first_talk"}},
+    )
+
+    with pytest.raises(AssertionError, match="lacks formal HTTP DTO"):
+        _attach_authority_projections([workflow])
+
+
+def test_authority_projection_accepts_same_dto_structured_fact_binding() -> None:
+    workflow = _fact_workflow({
+        "fact_acquisition_bindings": [{
+            "fact_id": "fact_wu_independent_voice",
+            "route_type": "conversation",
+            "source_id": "opp_d02_wu_xiuying_first_talk",
+        }],
+    })
 
     _attach_authority_projections([workflow])
 
-    assert recorder.records[0]["path"].endswith("/knowledge")
-    assert workflow["authority_projection"]["sources"][-1]["response_ids"] == [
-        "fact_wu_independent_voice"
+    assert workflow["authority_projection"]["sources"][0]["fact_acquisition_bindings"] == [
+        "fact_wu_independent_voice:conversation:opp_d02_wu_xiuying_first_talk"
     ]
+
+
+def test_authority_projection_accepts_structured_investigation_lead_method() -> None:
+    workflow = _fact_workflow({
+        "investigation_leads": [{
+            "fact_id": "fact_wu_independent_voice",
+            "methods": [{
+                "fact_id": "fact_wu_independent_voice",
+                "route_type": "conversation",
+                "source_id": "opp_d02_wu_xiuying_first_talk",
+            }],
+        }],
+    })
+
+    _attach_authority_projections([workflow])
+
+
+def test_authority_projection_rejects_known_fact_catalog_method_as_acquisition() -> None:
+    workflow = _fact_workflow({
+        "facts": [{
+            "fact_id": "fact_wu_independent_voice",
+            "acquisition_methods": [{
+                "fact_id": "fact_wu_independent_voice",
+                "route_type": "conversation",
+                "source_id": "opp_d02_wu_xiuying_first_talk",
+            }],
+        }],
+    })
+
+    with pytest.raises(AssertionError, match="lacks formal HTTP DTO"):
+        _attach_authority_projections([workflow])
 
 
 def _built_evidence() -> tuple[dict[str, list[dict]], list[dict]]:
@@ -238,8 +286,14 @@ def _built_evidence() -> tuple[dict[str, list[dict]], list[dict]]:
         "server_state_version_after": version + 1,
         "response": {
             "npc_ids": coverage["npc_ids"],
-            "fact_ids": [f"fact-{i:02d}" for i in range(27)],
-            "source_ids": [f"source-{i:02d}" for i in range(27)],
+            "fact_acquisition_bindings": [
+                {
+                    "fact_id": f"fact-{i:02d}",
+                    "route_type": "archive",
+                    "source_id": f"source-{i:02d}",
+                }
+                for i in range(27)
+            ],
         },
         "readback_effect_hash": semantic_hash(coverage),
         "readback_state_version": version + 1,

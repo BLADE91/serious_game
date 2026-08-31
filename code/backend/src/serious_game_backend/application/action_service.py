@@ -212,6 +212,7 @@ class ActionService:
                 raise SessionBusyError("当前动作预留已失效")
             if current.state_version != command.state_version:
                 raise StateVersionConflictError("状态版本已变化，请刷新后重试")
+            known_fact_ids_before = set(current.known_fact_ids)
             self._apply_draft(
                 current,
                 package,
@@ -231,6 +232,19 @@ class ActionService:
                 "narrative": draft["narrative"],
                 "visible_state": self._projector.project(current, package),
             }
+            if draft["kind"] in {
+                "conversation_start", "free_text", "conversation_end"
+            } and draft.get("opportunity") is not None:
+                response["fact_acquisition_bindings"] = [
+                    {
+                        "fact_id": fact_id,
+                        "route_type": "conversation",
+                        "source_id": draft["opportunity"].opportunity_id,
+                    }
+                    for fact_id in sorted(
+                        set(current.known_fact_ids) - known_fact_ids_before
+                    )
+                ]
             if draft.get("npc_reply") is not None:
                 response["npc_reply"] = draft["npc_reply"]
             if draft["kind"] in {

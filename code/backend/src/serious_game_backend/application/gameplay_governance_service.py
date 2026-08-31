@@ -637,6 +637,20 @@ class GameplayGovernanceService:
                 self._public_fact(package.facts[fact_id])
                 for fact_id in newly_learned_fact_ids
             ]
+            result["fact_acquisition_bindings"] = [
+                {
+                    "fact_id": fact_id,
+                    "route_type": "archive",
+                    "source_id": archive_id,
+                }
+                for archive_id in archive_ids
+                for fact_id in newly_learned_fact_ids
+                if (
+                    archive_definition(package, archive_id) is not None
+                    and fact_id
+                    in archive_definition(package, archive_id).result_fact_ids
+                )
+            ]
             result["strategic_uses"] = list(dict.fromkeys(strategic_uses))
             result["read_status"] = "read"
         elif action_kind == "leadership_meeting":
