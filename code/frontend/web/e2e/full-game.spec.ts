@@ -2,8 +2,11 @@ import { expect, test, type Page, type Request, type TestInfo } from "@playwrigh
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  assertStableIdentity,
   buildAcceptanceEvidence,
   collectEvidenceIdentity,
+  currentGitIdentity,
+  loadServerAuditEvidence,
   type EvidenceOperation,
 } from "./acceptance-evidence.js";
 
@@ -858,7 +861,7 @@ async function exerciseLeadershipMeeting(
       status: String(meeting.status || "resolved"),
     },
     {
-      step: "review", operation_id: `${documentId}:document-review`, api_path: new URL(resolveResponse.url()).pathname,
+      step: "observe_review", operation_id: `${documentId}:review-observed-in-resolve-response`, api_path: new URL(resolveResponse.url()).pathname,
       state_version_before: Number(resolvedPayload.state_version), state_version_after: Number(resolvedPayload.state_version),
       status: String(document.review_status),
     },
@@ -923,6 +926,10 @@ async function exerciseLeadershipMeeting(
   expect(String(persistedDocument?.source_meeting_id)).toBe(meetingId);
   expect(asMap(persistedDocument?.resolution_snapshot)).toEqual(asMap(document.resolution_snapshot));
   expect(String(persistedDocument?.status)).toBe("issued");
+  expect([...((persistedDocument?.countersigned_by as string[]) || [])].sort(),
+    "every required signer must be present in the persisted issued document").toEqual(
+    [...((persistedDocument?.required_countersign_ids as string[]) || [])].sort(),
+  );
   await recordVisualState(page, testInfo, routeId, "leadership-document", "issued", {
     meeting_id: meetingId, document_id: documentId, source_meeting_id: persistedDocument?.source_meeting_id,
   });
@@ -1099,6 +1106,9 @@ test.describe("full real browser routes", () => {
     await finishEvidence({ route_id: "p0-real-d2-checkpoint", session_id: sessionId, username, status: "passed", checkpoint: "forced-group-completed" });
   });
   if (shardIndex === 0) test("player-visible meeting resolves, reviews, countersigns, and issues its linked document", async ({ page }, testInfo) => {
+    const startIdentity = await collectEvidenceIdentity(
+      repositoryRoot, contentRoot, currentGitIdentity, [browserEvidenceRoot],
+    );
     const finishEvidence = await installEvidenceObservers(page, testInfo);
     const profile = catalog.profiles[0];
     const { sessionId, username } = await configureAndStart(page, testInfo, "feature-leadership-meeting", catalog.profiles.length + 1, profile.origin_id);
@@ -1117,13 +1127,22 @@ test.describe("full real browser routes", () => {
     const meetingEvidence = await exerciseLeadershipMeeting(
       page, testInfo, "feature-leadership-meeting", sessionId,
     );
+    const auditFile = process.env.FULL_ACCEPTANCE_SERVER_AUDIT_FILE;
+    expect(auditFile, "a formal server LLM audit export is required; browser responses do not expose audit IDs").toBeTruthy();
+    const serverAudit = await loadServerAuditEvidence(
+      path.resolve(String(auditFile)), sessionId, meetingEvidence.meetingId, String(meetingEvidence.document.document_id),
+    );
+    const endIdentity = await collectEvidenceIdentity(
+      repositoryRoot, contentRoot, currentGitIdentity, [browserEvidenceRoot],
+    );
+    assertStableIdentity(startIdentity, endIdentity);
     const observerCounts = await finishEvidence({
       route_id: "feature-leadership-meeting", session_id: sessionId, username, status: "passed",
-      fake_calls: 0, template_fallback_count: 0, silent_fallback_count: 0,
+      ...serverAudit.counts,
+      server_audit_source: serverAudit.source,
     });
-    const identity = await collectEvidenceIdentity(repositoryRoot, contentRoot);
     const machineEvidence = buildAcceptanceEvidence({
-      identity,
+      identity: startIdentity,
       route_id: "feature-leadership-meeting",
       session_id: sessionId,
       meeting_id: meetingEvidence.meetingId,
@@ -1131,10 +1150,8 @@ test.describe("full real browser routes", () => {
       source_meeting_id: String(meetingEvidence.document.source_meeting_id),
       resolution_snapshot: asMap(meetingEvidence.document.resolution_snapshot),
       document_status: String(meetingEvidence.document.status),
-      operations: meetingEvidence.operations,
-      fake_calls: 0,
-      template_fallback_count: 0,
-      silent_fallback_count: 0,
+      client_steps: meetingEvidence.operations,
+      server_audit: serverAudit,
       ...observerCounts,
     });
     const evidenceFolder = testInfo.outputPath("browser-evidence");
