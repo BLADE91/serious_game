@@ -1,4 +1,3 @@
 *.bat text eol=crlf
-code/backend/content/packages/**/*.json text eol=lf
-code/backend/content/packages/**/*.md text eol=lf
+code/backend/content/packages/pkg_gameplay_v2/** -text
 最终剧本.md text eol=lf
