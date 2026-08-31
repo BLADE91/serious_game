@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import replace
+from dataclasses import fields, replace
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import sys
 import time
 
@@ -24,6 +27,10 @@ from tools.run_real_v3_routes import PROFILE_PATH
 from tools.full_acceptance.ending_witnesses import load_contract_terms, load_witnesses
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.script_package import ScriptPackage
+from serious_game_backend.domain.llm_runtime import LLMCallAudit
+from serious_game_backend.infrastructure.script_packages.file_loader import (
+    FileScriptPackageLoader,
+)
 
 
 EXPECTED_GOVERNANCE_FAMILIES = {
@@ -32,6 +39,78 @@ EXPECTED_GOVERNANCE_FAMILIES = {
     "cadre_interview",
     "leadership_meeting",
 }
+PACKAGE_DIR = BACKEND_ROOT / "content" / "packages" / "pkg_gameplay_v3"
+_SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
+_GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _git(repository: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args], cwd=repository, check=True, capture_output=True, text=True,
+        encoding="utf-8",
+    )
+    return result.stdout.strip()
+
+
+def capture_run_provenance(repository: Path) -> dict[str, object]:
+    """Bind a run to clean tracked bytes and the published v3 manifest."""
+
+    commit = _git(repository, "rev-parse", "HEAD")
+    tracked_changes = _git(
+        repository, "status", "--porcelain", "--untracked-files=no",
+    ).splitlines()
+    if tracked_changes:
+        raise RuntimeError(
+            "real feature evidence refuses a dirty tracked workspace: "
+            + ", ".join(line[:200] for line in tracked_changes)
+        )
+    digest = hashlib.sha256()
+    for relative in _git(repository, "ls-files").splitlines():
+        path = repository / relative
+        if not path.is_file():
+            continue
+        digest.update(relative.replace("\\", "/").encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    manifest = json.loads(
+        (PACKAGE_DIR / "package_manifest.json").read_text(encoding="utf-8")
+    )
+    declared = str(manifest.get("content_hash", ""))
+    computed = FileScriptPackageLoader.compute_content_hash(PACKAGE_DIR)
+    if declared != computed:
+        raise RuntimeError(
+            f"published v3 content hash mismatch: manifest={declared}, computed={computed}"
+        )
+    return {
+        "git_commit": commit,
+        "tracked_workspace_clean": True,
+        "workspace_fingerprint": digest.hexdigest(),
+        "v3_manifest_hash": declared,
+        "v3_computed_hash": computed,
+    }
+
+
+def semantic_hash(value: object) -> str:
+    encoded = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        default=lambda item: getattr(item, "__dict__", repr(item)),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def assert_required_api_evidence_capabilities() -> None:
+    """Stop instead of synthesizing per-call gateway provenance."""
+
+    available = {item.name for item in fields(LLMCallAudit)}
+    required = {"endpoint", "config_version"}
+    missing = sorted(required - available)
+    if missing:
+        raise RuntimeError(
+            "final real feature evidence gap: LLMCallAudit does not expose per-call "
+            + " and ".join(missing)
+            + "; refusing to infer or fabricate gateway isolation evidence"
+        )
 
 
 def _with_recovery_decision_policy(profile):
@@ -52,8 +131,27 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
 
     if report.get("provider") != "openai_compatible":
         raise AssertionError("feature workflow did not use openai_compatible")
-    if int(report.get("fake_calls", 0)) != 0:
-        raise AssertionError("feature workflow contains Fake calls")
+    for field in (
+        "fake_calls", "template_fallback_count", "silent_fallback_count",
+        "partial_commit_count",
+    ):
+        if field not in report or int(report[field]) != 0:
+            raise AssertionError(f"{field} must be present and equal zero")
+    provenance = report.get("provenance")
+    if not isinstance(provenance, dict):
+        raise AssertionError("provenance is missing")
+    if not _GIT_SHA.fullmatch(str(provenance.get("git_commit", ""))):
+        raise AssertionError("provenance git_commit is not a full Git SHA")
+    if provenance.get("tracked_workspace_clean") is not True:
+        raise AssertionError("tracked workspace was not clean")
+    if not re.fullmatch(
+        r"[0-9a-f]{64}", str(provenance.get("workspace_fingerprint", ""))
+    ):
+        raise AssertionError("workspace fingerprint is missing or malformed")
+    declared = str(provenance.get("v3_manifest_hash", ""))
+    computed = str(provenance.get("v3_computed_hash", ""))
+    if not _SHA256.fullmatch(declared) or declared != computed:
+        raise AssertionError("v3 content hash does not match the published manifest")
     if int(report.get("server_default_accounts", 0)) < 1:
         raise AssertionError("server-default account evidence is missing")
     if int(report.get("personal_api_accounts", 0)) < 1:
@@ -72,6 +170,80 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
         values = {str(item) for item in report.get(field, ())}
         if len(values) != expected:
             raise AssertionError(f"expected {label}, got {len(values)}")
+    records = report.get("operation_records")
+    if not isinstance(records, dict):
+        raise AssertionError("operation_records are missing")
+    record_requirements = {
+        "archives": 11, "fact_acquisition_paths": 27, "opportunities": 32,
+        "npcs": 29, "map_locations": 8, "households": 36,
+    }
+    for category, expected in record_requirements.items():
+        items = records.get(category)
+        if not isinstance(items, list) or len(items) != expected:
+            raise AssertionError(
+                f"expected {expected} {category} operation records"
+            )
+        evidence_ids = set()
+        for item in items:
+            required = {
+                "evidence_id", "operation_id", "before_version",
+                "after_version", "status",
+            }
+            if not isinstance(item, dict) or not required <= item.keys():
+                raise AssertionError(f"{category} operation record is incomplete")
+            if int(item["after_version"]) < int(item["before_version"]):
+                raise AssertionError(f"{category} operation version regressed")
+            evidence_ids.add(str(item["evidence_id"]))
+        if len(evidence_ids) != expected:
+            raise AssertionError(f"{category} operation records are not unique")
+    meeting_record = report.get("meeting_document_record")
+    if not isinstance(meeting_record, dict):
+        raise AssertionError("meeting/document operation record is missing")
+    if meeting_record.get("source_meeting_id") != meeting_record.get("meeting_id"):
+        raise AssertionError("document source_meeting_id does not match its meeting")
+    if not meeting_record.get("resolution_snapshot"):
+        raise AssertionError("document resolution_snapshot is missing")
+    if meeting_record.get("document_status") != "issued":
+        raise AssertionError("meeting document was not issued")
+    steps = meeting_record.get("steps")
+    expected_steps = ("meeting", "turn", "resolve", "countersign", "issue")
+    if not isinstance(steps, list) or tuple(
+        item.get("name") for item in steps if isinstance(item, dict)
+    ) != expected_steps:
+        raise AssertionError("meeting/document step records are incomplete")
+    for item in steps:
+        if not item.get("operation_id") or not {
+            "before_version", "after_version",
+        } <= item.keys():
+            raise AssertionError("meeting/document operation identity is missing")
+    if not meeting_record.get("llm_audit_ids"):
+        raise AssertionError("meeting LLM audit IDs are missing")
+    gateway = report.get("gateway_audit")
+    gateway_records = gateway.get("records") if isinstance(gateway, dict) else None
+    if not isinstance(gateway_records, list) or gateway.get("interleaved") is not True:
+        raise AssertionError("account gateway interleaving evidence is missing")
+    modes = {item.get("mode") for item in gateway_records if isinstance(item, dict)}
+    accounts = {item.get("account_id") for item in gateway_records if isinstance(item, dict)}
+    sessions = {item.get("session_id") for item in gateway_records if isinstance(item, dict)}
+    required_gateway = {"account_id", "session_id", "mode", "endpoint", "model", "config_version"}
+    if (
+        modes != {"server_default", "personal"}
+        or len(accounts) != 2 or len(sessions) != 2
+        or any(not required_gateway <= item.keys() for item in gateway_records)
+        or any("key" in str(item).casefold() for item in gateway_records)
+    ):
+        raise AssertionError("account gateway isolation evidence is inconsistent")
+    save_load = report.get("save_load_record")
+    if not isinstance(save_load, dict) or not {
+        "before_semantic_hash", "after_semantic_hash", "save_operation_id",
+        "load_operation_id",
+    } <= save_load.keys():
+        raise AssertionError("save/load semantic record is missing")
+    if (
+        save_load["before_semantic_hash"] != save_load["after_semantic_hash"]
+        or not _SHA256.fullmatch(str(save_load["before_semantic_hash"]))
+    ):
+        raise AssertionError("save/load semantic hashes do not match")
     families = {str(item) for item in report.get("governance_action_families", ())}
     if families != EXPECTED_GOVERNANCE_FAMILIES:
         raise AssertionError(
@@ -1063,6 +1235,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
+    repository = BACKEND_ROOT.parents[1]
+    # Both gates deliberately run before settings validation, output creation, or
+    # any TestClient/real-model call.  A failed run therefore cannot be confused
+    # with partial feature evidence.
+    capture_run_provenance(repository)
+    assert_required_api_evidence_capabilities()
     settings = Settings.from_env()
     if settings.role_llm_provider != "openai_compatible":
         raise SystemExit("real feature workflow requires openai_compatible")
