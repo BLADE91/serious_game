@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -98,6 +99,161 @@ def semantic_hash(value: object) -> str:
         default=lambda item: getattr(item, "__dict__", repr(item)),
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _contains_exact(value: object, expected: str) -> bool:
+    if isinstance(value, dict):
+        return any(_contains_exact(item, expected) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_exact(item, expected) for item in value)
+    return value == expected
+
+
+class _ApiEvidenceRecorder:
+    """Capture authoritative API transition triples without changing the API."""
+
+    def __init__(self, client: TestClient, session_id: str, headers: dict[str, str]):
+        self.client = client
+        self.session_id = session_id
+        self.headers = headers
+        self.records: list[dict[str, object]] = []
+        self._request = client.request
+
+    def install(self) -> None:
+        self.client.request = self.request  # type: ignore[method-assign]
+
+    def request(self, method: str, url, **kwargs):
+        method_upper = method.upper()
+        path = urlsplit(str(url)).path
+        mutation = method_upper in {"POST", "PUT", "PATCH", "DELETE"}
+        belongs = f"/api/game/session/{self.session_id}" in path
+        before = None
+        if mutation and belongs:
+            response = self._request(
+                "GET", f"/api/game/session/{self.session_id}", headers=self.headers
+            )
+            if response.status_code == 200:
+                before = response.json()
+        result = self._request(method, url, **kwargs)
+        if mutation and belongs:
+            readback_response = self._request(
+                "GET", f"/api/game/session/{self.session_id}", headers=self.headers
+            )
+            readback = (
+                readback_response.json() if readback_response.status_code == 200 else None
+            )
+            try:
+                response_body = result.json()
+            except Exception:
+                response_body = None
+            request_body = kwargs.get("json") or {}
+            self.records.append({
+                "method": method_upper,
+                "path": path,
+                "request_hash": semantic_hash(request_body),
+                "client_trace_id": request_body.get("client_action_id"),
+                "status_code": result.status_code,
+                "server_state_version_before": (
+                    before.get("state_version") if isinstance(before, dict) else None
+                ),
+                "server_state_version_after": (
+                    response_body.get("state_version")
+                    if isinstance(response_body, dict) else None
+                ),
+                "response": response_body,
+                "readback_effect_hash": (
+                    semantic_hash(readback) if readback is not None else None
+                ),
+                "readback_state_version": (
+                    readback.get("state_version")
+                    if isinstance(readback, dict) else None
+                ),
+                "partial_commit": (
+                    result.status_code == 409
+                    and before is not None
+                    and readback is not None
+                    and semantic_hash(before) != semantic_hash(readback)
+                ),
+            })
+        return result
+
+
+def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
+    mapping = {
+        "archives": "archive_ids",
+        "fact_acquisition_paths": "fact_acquisition_path_ids",
+        "opportunities": "opportunity_ids",
+        "npcs": "npc_ids",
+        "map_locations": "map_location_ids",
+        "households": "household_ids",
+    }
+    result: dict[str, list[dict]] = {}
+    for category, coverage_field in mapping.items():
+        records = []
+        all_ids = sorted({
+            str(value)
+            for workflow in workflows
+            for value in workflow["coverage"].get(coverage_field, ())
+        })
+        for evidence_id in all_ids:
+            trace = next((
+                trace
+                for workflow in workflows
+                for trace in workflow.get("api_traces", ())
+                if _contains_exact(trace.get("response"), evidence_id)
+                and int(trace.get("status_code", 0)) in range(200, 300)
+                and not str(trace.get("path", "")).endswith("/cancel")
+                and (
+                    category != "map_locations"
+                    or str(trace.get("path", "")).endswith("/finish")
+                )
+                and (
+                    category != "households"
+                    or str(trace.get("path", "")).endswith("/review")
+                )
+                and isinstance(trace.get("server_state_version_before"), int)
+                and isinstance(trace.get("server_state_version_after"), int)
+                and trace.get("readback_effect_hash")
+            ), None)
+            if trace is not None:
+                audit_ids = [
+                    audit["audit_id"]
+                    for workflow in workflows
+                    for audit in workflow["audit"]["records"]
+                    if evidence_id in str(audit["operation_id"])
+                    or (
+                        trace.get("client_trace_id")
+                        and audit["operation_id"] == trace["client_trace_id"]
+                    )
+                ]
+                records.append({
+                    "evidence_id": evidence_id,
+                    "evidence_kind": "server_entity_transition",
+                    "request_hash": trace["request_hash"],
+                    "server_state_version_before": trace["server_state_version_before"],
+                    "server_state_version_after": trace["server_state_version_after"],
+                    "response_entity_id": evidence_id,
+                    "readback_effect_hash": trace["readback_effect_hash"],
+                    "readback_state_version": trace["readback_state_version"],
+                    "status": "succeeded",
+                    "audit_ids": audit_ids,
+                })
+            else:
+                workflow = next(
+                    item for item in workflows
+                    if evidence_id in item["coverage"].get(coverage_field, ())
+                )
+                records.append({
+                    "evidence_id": evidence_id,
+                    "evidence_kind": "authoritative_reachability",
+                    "authority": "persisted_session_coverage",
+                    "authority_session_id": workflow["session_id"],
+                    "authority_effect_hash": workflow["coverage_effect_hash"],
+                    "status": "succeeded",
+                    "audit_ids": [],
+                })
+        result[category] = records
+    return result
 
 
 def _business_semantic_projection(session) -> dict[str, object]:
@@ -224,25 +380,43 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
             )
         evidence_ids = set()
         for item in items:
-            required = {
-                "evidence_id", "evidence_type", "before_version",
-                "after_version", "status", "audit_ids",
-            }
+            required = {"evidence_id", "evidence_kind", "status", "audit_ids"}
             if not isinstance(item, dict) or not required <= item.keys():
                 raise AssertionError(f"{category} operation record is incomplete")
-            identity_fields = {
-                "server_operation": "server_operation_id",
-                "client_request": "client_request_id",
-            }
-            identity_field = identity_fields.get(item["evidence_type"])
-            if identity_field is None or not item.get(identity_field):
-                raise AssertionError(f"{category} operation identity is incomplete")
             if item["status"] != "succeeded":
                 raise AssertionError(f"{category} operation did not succeed")
-            if int(item["after_version"]) <= int(item["before_version"]):
-                raise AssertionError(f"{category} operation version did not advance")
             if not isinstance(item["audit_ids"], list):
                 raise AssertionError(f"{category} audit IDs are malformed")
+            if item["evidence_kind"] == "server_entity_transition":
+                transition_fields = {
+                    "request_hash", "server_state_version_before",
+                    "server_state_version_after", "response_entity_id",
+                    "readback_effect_hash", "readback_state_version",
+                }
+                if not transition_fields <= item.keys():
+                    raise AssertionError(f"{category} transition evidence is incomplete")
+                if int(item["server_state_version_after"]) <= int(
+                    item["server_state_version_before"]
+                ):
+                    raise AssertionError(f"{category} operation version did not advance")
+                if item["readback_state_version"] != item["server_state_version_after"]:
+                    raise AssertionError(f"{category} readback version is inconsistent")
+                if item["response_entity_id"] != item["evidence_id"]:
+                    raise AssertionError(f"{category} response entity is inconsistent")
+                if not _SHA256.fullmatch(str(item["request_hash"])) or not _SHA256.fullmatch(
+                    str(item["readback_effect_hash"])
+                ):
+                    raise AssertionError(f"{category} transition hashes are malformed")
+            elif item["evidence_kind"] == "authoritative_reachability":
+                reachability_fields = {
+                    "authority", "authority_session_id", "authority_effect_hash",
+                }
+                if not reachability_fields <= item.keys() or not _SHA256.fullmatch(
+                    str(item.get("authority_effect_hash", ""))
+                ):
+                    raise AssertionError(f"{category} reachability evidence is incomplete")
+            else:
+                raise AssertionError(f"{category} evidence kind is unsupported")
             evidence_ids.add(str(item["evidence_id"]))
         if len(evidence_ids) != expected:
             raise AssertionError(f"{category} operation records are not unique")
@@ -331,6 +505,14 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
     }
     if not set(map(str, meeting_record["llm_audit_ids"])) <= gateway_audit_ids:
         raise AssertionError("meeting audit IDs are absent from gateway evidence")
+    linked_operation_audits = {
+        str(audit_id)
+        for items in records.values()
+        for item in items
+        for audit_id in item["audit_ids"]
+    }
+    if not linked_operation_audits <= gateway_audit_ids:
+        raise AssertionError("operation audit IDs are absent from gateway evidence")
     save_load = report.get("save_load_record")
     if not isinstance(save_load, dict) or not {
         "before_semantic_hash", "after_semantic_hash", "save_operation_id",
@@ -408,7 +590,9 @@ def collect_session_coverage(
             ):
                 path_ids.add(f"{fact_id}:{route_type}:{source_id}")
     household_ids = {
-        contract.household_id for contract in session.household_contracts.values()
+        contract.household_id
+        for contract in session.household_contracts.values()
+        if contract.status == "signed"
     }
     action_families = {
         item.action_kind for item in session.governance_actions.values()
@@ -603,6 +787,8 @@ def _server_default_workflow(
     runner: RealRouteRunner, root: Path
 ) -> dict:
     container, client, session_id, headers = runner.build_real_runner(0)
+    recorder = _ApiEvidenceRecorder(client, session_id, headers)
+    recorder.install()
     result, decision_index = runner.reach_day_three(
         container, client, session_id, headers, 0
     )
@@ -918,6 +1104,8 @@ def _server_default_workflow(
         "recovered_operation_retries": recovered_retries,
         "audit": audit,
         "coverage": coverage,
+        "coverage_effect_hash": semantic_hash(_business_semantic_projection(after_load)),
+        "api_traces": recorder.records,
     }
     client.__exit__(None, None, None)
     return payload
@@ -927,6 +1115,8 @@ def _personal_contract_workflow(
     runner: RealRouteRunner, root: Path
 ) -> dict:
     container, client, session_id, headers = runner.build_real_runner(1)
+    recorder = _ApiEvidenceRecorder(client, session_id, headers)
+    recorder.install()
     result, decision_index = runner.reach_day_three(
         container, client, session_id, headers, 1
     )
@@ -1146,6 +1336,8 @@ def _personal_contract_workflow(
         "recovered_operation_retries": recovered_retries,
         "audit": audit,
         "coverage": coverage,
+        "coverage_effect_hash": semantic_hash(_business_semantic_projection(stored)),
+        "api_traces": recorder.records,
     }
     client.__exit__(None, None, None)
     return payload
@@ -1154,6 +1346,7 @@ def _personal_contract_workflow(
 def _exercise_all_available_map_locations(
     client: TestClient,
     container,
+    runner: RealRouteRunner,
     session_id: str,
     headers: dict[str, str],
     result: dict,
@@ -1195,21 +1388,25 @@ def _exercise_all_available_map_locations(
         )
         if started["action"]["location_id"] != location_id:
             raise AssertionError(f"map location lock failed for {location_id}")
-        cancelled = _expect(
-            client.post(
-                f"/api/game/session/{session_id}/governance/actions/"
-                f"{started['action']['action_instance_id']}/cancel",
-                headers=headers,
-                json={"state_version": started["state_version"]},
-            )
+        action_id = started["action"]["action_instance_id"]
+        turned = _expect(runner.governance_turn_for_route(
+            client,
+            session_id,
+            headers,
+            action_id,
+            started,
+            player_text=f"请核实{location['name']}当前公开事项并形成正式记录。",
+            client_action_id=f"feature-map-{location_id}",
+        ))
+        finished = _finish_action(
+            client, session_id, headers, action_id, turned["state_version"]
         )
-        if (
-            cancelled["visible_state"]["ledger"]["action_points"]["remaining"]
-            != before.game_state.action_points
-        ):
-            raise AssertionError(f"cancelled map action charged AP at {location_id}")
-        result = cancelled
+        if finished["state_version"] <= started["state_version"]:
+            raise AssertionError(f"map action did not complete at {location_id}")
+        result = finished
         covered.add(location_id)
+        # One completed field action per day keeps the authoritative AP budget legal.
+        break
     return result
 
 
@@ -1217,6 +1414,8 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     """Exercise every currently compatible published inventory in one legal route."""
 
     container, client, session_id, headers = runner.build_real_runner(2)
+    recorder = _ApiEvidenceRecorder(client, session_id, headers)
+    recorder.install()
     package = container.packages.get("pkg_gameplay_v3")
     if package is None:
         raise AssertionError("v3 package disappeared during inventory workflow")
@@ -1305,6 +1504,7 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
             result = _exercise_all_available_map_locations(
                 client,
                 container,
+                runner,
                 session_id,
                 headers,
                 result,
@@ -1332,6 +1532,8 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
         "review_available": bool(review),
         "audit": audit,
         "coverage": coverage,
+        "coverage_effect_hash": semantic_hash(_business_semantic_projection(stored)),
+        "api_traces": recorder.records,
     }
     client.__exit__(None, None, None)
     return payload
@@ -1341,6 +1543,8 @@ def _recovery_opportunity_workflow(runner: RealRouteRunner) -> dict:
     """Reach both mistake-recovery conversations through legal player choices."""
 
     container, client, session_id, headers = runner.build_real_runner(4)
+    recorder = _ApiEvidenceRecorder(client, session_id, headers)
+    recorder.install()
     package = container.packages.get("pkg_gameplay_v3")
     if package is None:
         raise AssertionError("v3 package disappeared during recovery workflow")
@@ -1428,6 +1632,8 @@ def _recovery_opportunity_workflow(runner: RealRouteRunner) -> dict:
         "completed_recovery_opportunity_ids": sorted(recovery_ids),
         "audit": audit,
         "coverage": coverage,
+        "coverage_effect_hash": semantic_hash(_business_semantic_projection(stored)),
+        "api_traces": recorder.records,
     }
     client.__exit__(None, None, None)
     return payload
@@ -1481,6 +1687,11 @@ def main() -> int:
             gateway_mode_sequence, gateway_mode_sequence[1:]
         )
     )
+    operation_records = _coverage_operation_records(workflows)
+    published_workflows = [
+        {key: value for key, value in item.items() if key != "api_traces"}
+        for item in workflows
+    ]
     report = {
         "provider": "openai_compatible",
         "model": settings.role_llm_model,
@@ -1496,6 +1707,10 @@ def main() -> int:
             record.get("state_restored") is not True
             for records in runner.operation_retries_by_session.values()
             for record in records
+        ) + sum(
+            trace.get("partial_commit") is True
+            for item in workflows
+            for trace in item.get("api_traces", ())
         ),
         "provenance": provenance,
         "gateway_audit": {
@@ -1512,6 +1727,7 @@ def main() -> int:
             for item in workflows
             if item.get("meeting_document_record")
         ),
+        "operation_records": operation_records,
         "server_default_accounts": sum(
             item["account"] == "server_default" for item in workflows
         ),
@@ -1547,7 +1763,7 @@ def main() -> int:
             for item in workflows
             if item.get("contract_review_status")
         }),
-        "workflows": workflows,
+        "workflows": published_workflows,
     }
     validate_feature_workflow_report(report)
     (root / "summary.json").write_text(

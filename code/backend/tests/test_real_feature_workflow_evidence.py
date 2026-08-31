@@ -16,6 +16,9 @@ from serious_game_backend.infrastructure.repositories.sqlite import (
     SqliteLLMCallAuditRepository,
     SqliteRuntimeStore,
 )
+from serious_game_backend.infrastructure.repositories.mysql import (
+    MySQLLLMCallAuditRepository,
+)
 from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
     semantic_hash,
@@ -27,10 +30,10 @@ def _records(prefix: str, count: int) -> list[dict[str, object]]:
     return [
         {
             "evidence_id": f"{prefix}-{index:02d}",
-            "evidence_type": "client_request",
-            "client_request_id": f"request-{prefix}-{index:02d}",
-            "before_version": index,
-            "after_version": index + 1,
+            "evidence_kind": "authoritative_reachability",
+            "authority": "persisted_session_coverage",
+            "authority_session_id": "session-authority",
+            "authority_effect_hash": "sha256:" + "a" * 64,
             "status": "succeeded",
             "audit_ids": [],
         }
@@ -344,3 +347,31 @@ def test_owned_audit_pagination_handles_50_plus_same_timestamp(
     assert len(second) == 5
     assert len({item.audit_id for item in (*first, *second)}) == 55
     assert all(item.account_id == "account-a" for item in (*first, *second))
+
+
+def test_mysql_owned_pagination_sql_binds_owner_cursor_and_limit() -> None:
+    calls = []
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def execute(self, sql, params): calls.append((sql, params))
+        def fetchall(self): return []
+
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def cursor(self): return Cursor()
+
+    class Store:
+        def connect(self): return Connection()
+
+    result = MySQLLLMCallAuditRepository(Store()).list_for_owned_session(
+        "account-a", "session-a", after="cursor-a", limit=50
+    )
+
+    assert result == ()
+    sql, params = calls[0]
+    assert "account_id=%s and session_id=%s" in " ".join(sql.split())
+    assert "limit %s" in " ".join(sql.split()).casefold()
+    assert params == ("account-a", "session-a", "cursor-a", 50)
