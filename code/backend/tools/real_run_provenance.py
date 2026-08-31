@@ -35,3 +35,12 @@ def validate_published_package_identity(package_dir: Path) -> dict[str, object]:
         ),
         "v3_package_identity_verified": True,
     }
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package-dir", type=Path, required=True)
+    arguments = parser.parse_args()
+    print(json.dumps(validate_published_package_identity(arguments.package_dir)))

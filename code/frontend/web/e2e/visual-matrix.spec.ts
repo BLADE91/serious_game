@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { expectedMainEndingIds } from "./acceptance-evidence.js";
 
 const viewports = [
   { name: "desktop-1920", width: 1920, height: 1080 },
@@ -11,6 +12,9 @@ const enabled = process.env.RUN_FULL_REAL_E2E === "1";
 const evidenceRoot = process.env.FULL_ACCEPTANCE_BROWSER_DIR
   ? path.resolve(process.env.FULL_ACCEPTANCE_BROWSER_DIR)
   : path.resolve(process.cwd(), "../../../output/full-acceptance/playwright");
+const routeCatalogPath = path.resolve(process.cwd(), "../../backend/content/packages/pkg_gameplay_v3/acceptance_route_profiles.json");
+const shardIndex = Number(process.env.FULL_E2E_SHARD_INDEX || 0);
+const shardTotal = Math.max(1, Number(process.env.FULL_E2E_SHARD_TOTAL || 1));
 
 async function assertNoHorizontalOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
@@ -61,6 +65,8 @@ test.describe("authoritative visual matrix", () => {
       await capture(page, testInfo, "login-api"); // visual:login-api
       const manifestPath = path.join(evidenceRoot, "browser-state-manifest.jsonl");
       const records = (await readFile(manifestPath, "utf8")).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+      const routeCatalog = JSON.parse(await readFile(routeCatalogPath, "utf8"));
+      const expectedEndings = expectedMainEndingIds(routeCatalog.profiles, shardIndex, shardTotal);
       const forViewport = records.filter(item => item.viewport === viewport.name);
       const states = new Set(forViewport.map(item => item.state));
       for (const state of [
@@ -79,7 +85,7 @@ test.describe("authoritative visual matrix", () => {
       const forcedPlans = new Set(forViewport.filter(item => item.state === "forced-conversation").map(item => item.plan_id)); // visual:forced-conversation-6
       expect(forcedPlans.size).toBe(6);
       const mainEndings = new Set(forViewport.filter(item => item.state === "main-ending").flatMap(item => item.main_ending_ids || [])); // visual:main-endings-24
-      expect(mainEndings.size).toBe(24);
+      expect([...mainEndings].sort()).toEqual(expectedEndings);
       expect(forViewport.filter(item => item.state === "map-8-locations").every(item => item.location_count === 8)).toBe(true);
       await Promise.all(forViewport.map(item => access(item.screenshot)));
       await writeBrowserEvidence(testInfo, consoleEvents, networkEvents, {

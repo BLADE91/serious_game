@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
 
@@ -14,10 +15,51 @@ import {
   collectEvidenceIdentity,
   computeV3ContentHash,
   currentGitIdentity,
+  expectedMainEndingIds,
   validateLiveServerAuditEvidence,
 } from "./acceptance-evidence.ts";
 
 const execFileAsync = promisify(execFile);
+const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("visual inventory scopes expected endings to the selected route shard", () => {
+  const profiles = [
+    { target_main_ending_ids: ["ending-a"] },
+    { target_main_ending_ids: ["ending-b"] },
+    { target_main_ending_ids: ["ending-c"] },
+  ];
+  assert.deepEqual(expectedMainEndingIds(profiles, 0, 3), ["ending-a"]);
+  assert.deepEqual(expectedMainEndingIds(profiles, 0, 1), ["ending-a", "ending-b", "ending-c"]);
+});
+
+test("collectEvidenceIdentity accepts the authoritative portable identity of this Windows checkout", async () => {
+  const source = path.resolve(webRoot, "../../backend/content/packages/pkg_gameplay_v3");
+  const root = await mkdtemp(path.join(os.tmpdir(), "browser-evidence-portable-"));
+  const content = path.join(root, "pkg_gameplay_v3");
+  await cp(source, content, { recursive: true });
+  for (const relative of await readdir(content, { recursive: true })) {
+    const target = path.join(content, relative);
+    if (![".json", ".md"].includes(path.extname(target).toLowerCase())) continue;
+    const value = await readFile(target, "utf8");
+    await writeFile(target, value.replace(/\r\n|\r|\n/g, "\r\n"));
+  }
+  const manifest = JSON.parse(await readFile(path.join(content, "package_manifest.json"), "utf8"));
+
+  const repository = path.resolve(webRoot, "../../..");
+  const identity = await collectEvidenceIdentity(repository, content, async () => ({
+    git_commit: "0123456789abcdef0123456789abcdef01234567",
+    workspace_fingerprint: "f".repeat(64),
+  }));
+
+  assert.equal(identity.v3_content_hash, manifest.content_hash);
+
+  const tampered = path.join(content, "story_calendar.json");
+  await writeFile(tampered, `${await readFile(tampered, "utf8")} `);
+  await assert.rejects(() => collectEvidenceIdentity(repository, content, async () => ({
+    git_commit: "0123456789abcdef0123456789abcdef01234567",
+    workspace_fingerprint: "f".repeat(64),
+  })));
+});
 
 test("collectEvidenceIdentity recomputes and verifies the declared v3 hash", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "browser-evidence-identity-"));
@@ -35,7 +77,7 @@ test("collectEvidenceIdentity recomputes and verifies the declared v3 hash", asy
   const identity = await collectEvidenceIdentity(root, content, async () => ({
     git_commit: "0123456789abcdef0123456789abcdef01234567",
     workspace_fingerprint: "f".repeat(64),
-  }));
+  }), [], async () => ({ v3_manifest_hash: computed, v3_package_identity_verified: true }));
 
   assert.deepEqual(identity, {
     git_commit: "0123456789abcdef0123456789abcdef01234567",
@@ -47,7 +89,7 @@ test("collectEvidenceIdentity recomputes and verifies the declared v3 hash", asy
   await assert.rejects(() => collectEvidenceIdentity(root, content, async () => ({
     git_commit: "0123456789abcdef0123456789abcdef01234567",
     workspace_fingerprint: "f".repeat(64),
-  })), /v3 content hash mismatch/);
+  }), [], async () => ({ v3_manifest_hash: computed, v3_package_identity_verified: true })), /authoritative package loader/);
 });
 
 test("currentGitIdentity rejects a dirty tracked worktree", async () => {

@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, activeInteractionMode, aiConfigurationErrorMessage, aiConfigurationMode, aiConfigurationView, archiveInvestigationGroups, archivePlayerSections, archiveReadGains, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, conversationContractWorkflow, conversationTimelineUpdate, createSingleFlight, decisionUnlockRequirements, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, investigationLeadView, meetingEvidenceArchives, peopleRelationshipView, personDiscoveryPresentation, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, resourceInventoryView, reviewEndingView, sessionEntry, speakerSelectionForTimelineEntry, submitGovernanceAction, toPlayerText, withAIActivity } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, activeInteractionMode, aiConfigurationErrorMessage, aiConfigurationMode, aiConfigurationView, archiveInvestigationGroups, archivePlayerSections, archiveReadGains, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, conversationContractWorkflow, conversationTimelineUpdate, createActivityLatch, createSingleFlight, decisionUnlockRequirements, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, investigationLeadView, meetingEvidenceArchives, peopleRelationshipView, personDiscoveryPresentation, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, resourceInventoryView, reviewEndingView, sessionEntry, speakerSelectionForTimelineEntry, submitGovernanceAction, toPlayerText, withAIActivity } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -240,6 +240,7 @@ export default function GameShell() {
   const performSingleFlightRef = useRef(createSingleFlight(
     async (operation: () => Promise<boolean>) => operation(),
   ));
+  const activityLatchRef = useRef(createActivityLatch(setBusy));
   const contextRef = useRef<HTMLElement>(null);
   const progressBroadcast = state.progress_broadcast as Dict | null;
   const progressBroadcastId = String(progressBroadcast?.broadcast_id || "");
@@ -516,7 +517,7 @@ export default function GameShell() {
 
   async function refresh(after = narrative.feedCursor, targetSession = sessionId, clearNotice = true, rebuild = false, rebuildPosition: "start" | "latest" = "start") {
     if (!targetSession) return;
-    setBusy(true);
+    const releaseActivity = activityLatchRef.current.acquire();
     if (clearNotice) setNotice("");
     try {
       const [view, governanceOverview] = await Promise.all([
@@ -545,7 +546,7 @@ export default function GameShell() {
       }
       setPanelData(nextState); setPanel("scene");
     } catch (error) { fail(error); }
-    finally { setBusy(false); }
+    finally { releaseActivity(); }
   }
 
   async function openSession(kind: "new" | "load" | "review", value?: string) {
@@ -602,7 +603,8 @@ export default function GameShell() {
 
   async function perform(action: () => Promise<Dict>, success: string | ((result: Dict) => string) = "安排已落实", rebuildNarrative = false, onResult?: (result: Dict) => void, aiLabel = "") {
     return performSingleFlightRef.current(async () => {
-      setBusy(true); setNotice("");
+      const releaseActivity = activityLatchRef.current.acquire();
+      setNotice("");
       try {
         const result = await (aiLabel ? withAIActivity(setAiActivity, aiLabel, action) : action());
         onResult?.(result);
@@ -627,7 +629,7 @@ export default function GameShell() {
           setNotice("已有一项治理行动正在进行，已为你切换到当前现场。");
         } else fail(error);
       }
-      finally { setBusy(false); }
+      finally { releaseActivity(); }
       return false;
     });
   }

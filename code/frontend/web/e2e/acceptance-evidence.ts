@@ -15,6 +15,7 @@ export type EvidenceOperation = {
 };
 type GitIdentity = Pick<EvidenceIdentity, "git_commit" | "workspace_fingerprint">;
 type GitIdentityReader = (repository: string, allowedEvidencePaths?: string[]) => Promise<GitIdentity>;
+type PackageIdentityReader = (repository: string, contentRoot: string) => Promise<{ v3_manifest_hash: string; v3_package_identity_verified: boolean }>;
 type AuditRecord = {
   audit_id: string; session_id: string; run_id: string; operation_id: string; provider: string; model: string;
   endpoint_host: string; config_version: string; status: string; error_code: string | null; timestamp: string;
@@ -78,20 +79,55 @@ export async function computeV3ContentHash(contentRoot: string): Promise<string>
   return `sha256:${digest.digest("hex")}`;
 }
 
+async function authoritativePackageIdentity(repository: string, contentRoot: string) {
+  const backendRoot = path.join(path.resolve(repository), "code", "backend");
+  const pythonPath = path.join(backendRoot, "src");
+  const environment = { ...process.env, PYTHONPATH: process.env.PYTHONPATH ? `${pythonPath}${path.delimiter}${process.env.PYTHONPATH}` : pythonPath };
+  const executableName = process.platform === "win32" ? "python.exe" : "python";
+  const candidates = [...new Set([
+    process.env.FULL_E2E_PYTHON,
+    "python",
+    ...(process.env.PATH || "").split(path.delimiter).filter(Boolean).map(folder => path.join(folder, executableName)),
+  ].filter((item): item is string => Boolean(item)))];
+  let lastError: unknown = null;
+  for (const python of candidates) {
+    try {
+      const { stdout } = await execFileAsync(python, [
+        path.join(backendRoot, "tools", "real_run_provenance.py"),
+        "--package-dir", contentRoot,
+      ], { cwd: repository, env: environment, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      return JSON.parse(stdout) as { v3_manifest_hash: string; v3_package_identity_verified: boolean };
+    } catch (error) { lastError = error; }
+  }
+  throw lastError || new Error("no Python interpreter is available for authoritative package validation");
+}
+
 export async function collectEvidenceIdentity(
   repository: string, contentRoot: string,
   gitIdentity: GitIdentityReader = currentGitIdentity,
   allowedEvidencePaths: string[] = [],
+  packageIdentity: PackageIdentityReader = authoritativePackageIdentity,
 ): Promise<EvidenceIdentity> {
   const manifest = JSON.parse(await readFile(path.join(contentRoot, "package_manifest.json"), "utf8")) as Record<string, unknown>;
   const declared = String(manifest.content_hash || "");
-  const computed = await computeV3ContentHash(contentRoot);
-  if (!SHA256.test(declared) || declared !== computed) throw new Error(`v3 content hash mismatch: declared=${declared} computed=${computed}`);
-  return { ...await gitIdentity(repository, allowedEvidencePaths), v3_content_hash: computed };
+  const validated = await packageIdentity(repository, contentRoot);
+  if (!SHA256.test(declared) || validated.v3_package_identity_verified !== true || validated.v3_manifest_hash !== declared) {
+    throw new Error("v3 content identity was rejected by the authoritative package loader");
+  }
+  return { ...await gitIdentity(repository, allowedEvidencePaths), v3_content_hash: declared };
 }
 
 export function assertStableIdentity(start: EvidenceIdentity, end: EvidenceIdentity) {
   if (JSON.stringify(start) !== JSON.stringify(end)) throw new Error("identity changed during acceptance run");
+}
+
+export function expectedMainEndingIds(
+  profiles: Array<{ target_main_ending_ids: string[] }>, shardIndex: number, shardTotal: number,
+) {
+  const total = Math.max(1, shardTotal);
+  return [...new Set(profiles
+    .filter((_, index) => index % total === shardIndex)
+    .flatMap(profile => profile.target_main_ending_ids))].sort();
 }
 
 export async function collectAuditPages(

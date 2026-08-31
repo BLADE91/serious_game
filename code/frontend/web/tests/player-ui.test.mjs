@@ -567,6 +567,19 @@ test("prevents overlapping confirmation submissions while preserving retries aft
   assert.equal(calls, 2);
 });
 
+test("keeps player actions busy until every nested refresh scope finishes", async () => {
+  assert.equal(typeof playerUi.createActivityLatch, "function");
+  const busyStates = [];
+  const activity = playerUi.createActivityLatch(value => busyStates.push(value));
+  const releaseAction = activity.acquire();
+  const releaseRefresh = activity.acquire();
+
+  releaseRefresh();
+  assert.deepEqual(busyStates, [true]);
+  releaseAction();
+  assert.deepEqual(busyStates, [true, false]);
+});
+
 test("routes people and map entries through the same canonical governance request", async () => {
   assert.equal(typeof playerUi.canonicalActionEntry, "function");
   assert.equal(typeof playerUi.submitGovernanceAction, "function");

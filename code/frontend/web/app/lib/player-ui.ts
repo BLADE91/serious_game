@@ -680,6 +680,23 @@ export function createSingleFlight<Args extends unknown[], Result>(fn: (...args:
   };
 }
 
+export function createActivityLatch(setActive: (active: boolean) => void) {
+  let activeScopes = 0;
+  return {
+    acquire() {
+      activeScopes += 1;
+      if (activeScopes === 1) setActive(true);
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        activeScopes -= 1;
+        if (activeScopes === 0) setActive(false);
+      };
+    },
+  };
+}
+
 export function canonicalActionEntry(value: PlayerRecord): PlayerRecord | null {
   const raw = value.canonical_action_descriptor;
   const descriptor = raw && typeof raw === "object" && !Array.isArray(raw)

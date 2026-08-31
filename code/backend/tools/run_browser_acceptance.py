@@ -74,6 +74,7 @@ def main() -> int:
             ),
             "FULL_E2E_SHARD_INDEX": str(shard_index),
             "FULL_E2E_SHARD_TOTAL": str(shard_count),
+            "FULL_E2E_PYTHON": os.sys.executable,
         })
         completed = subprocess.run(
             ["npx.cmd", "playwright", "test", "e2e/full-game.spec.ts"],
@@ -113,6 +114,7 @@ def main() -> int:
         "FULL_E2E_STORAGE_STATE": str(
             Path(tempfile.gettempdir()) / f"qingjiang-e2e-auth-{os.getpid()}-visual.json"
         ),
+        "FULL_E2E_PYTHON": os.sys.executable,
     })
     visual = subprocess.run(
         ["npx.cmd", "playwright", "test", "e2e/visual-matrix.spec.ts"],
