@@ -335,6 +335,7 @@ class _ApiEvidenceRecorder:
                     "partial_commit": False,
                 })
         if mutation and belongs:
+            request_body = kwargs.get("json") or {}
             readback_endpoints = [f"/api/game/session/{self.session_id}"]
             readback_endpoints.append(
                 f"/api/game/session/{self.session_id}/review"
@@ -345,6 +346,11 @@ class _ApiEvidenceRecorder:
                 )
             if "/map" in path or "/governance/actions" in path:
                 readback_endpoints.append(f"/api/game/session/{self.session_id}/map")
+            for archive_id in request_body.get("archive_ids", ()):
+                readback_endpoints.append(
+                    f"/api/game/session/{self.session_id}/governance/archives/"
+                    f"{archive_id}"
+                )
             readbacks = []
             for endpoint in readback_endpoints:
                 candidate = self._request("GET", endpoint, headers=self.headers)
@@ -355,7 +361,6 @@ class _ApiEvidenceRecorder:
                 response_body = result.json()
             except Exception:
                 response_body = None
-            request_body = kwargs.get("json") or {}
             self.records.append({
                 "method": method_upper,
                 "path": path,

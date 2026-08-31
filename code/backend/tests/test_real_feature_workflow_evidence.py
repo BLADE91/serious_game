@@ -185,6 +185,102 @@ def test_targeted_conversation_rejects_already_known_fact_without_new_binding() 
         )
 
 
+def test_archive_mutation_records_formal_detail_readback_for_every_archive() -> None:
+    archive_ids = [f"archive-{index:02d}" for index in range(11)]
+
+    class Response:
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def request(self, method, url, **kwargs):
+            path = str(url)
+            if method == "POST":
+                return Response(201, {
+                    "state_version": 2,
+                    "fact_acquisition_bindings": [
+                        {
+                            "fact_id": f"fact-{index:02d}",
+                            "route_type": "archive",
+                            "source_id": archive_id,
+                        }
+                        for index, archive_id in enumerate(archive_ids)
+                    ],
+                })
+            if "/governance/archives/" in path:
+                archive_id = path.rsplit("/", 1)[-1]
+                return Response(200, {
+                    "state_version": 2,
+                    "archive": {"archive_id": archive_id, "read_at_days": [45]},
+                })
+            return Response(200, {"state_version": 1})
+
+    recorder = _ApiEvidenceRecorder(
+        Client(), "session-1", {"X-Account-ID": "account-1"}
+    )
+    recorder.request(
+        "POST", "/api/game/session/session-1/governance/actions",
+        headers={"X-Account-ID": "account-1"},
+        json={"state_version": 1, "archive_ids": archive_ids},
+    )
+
+    endpoints = {item["endpoint"] for item in recorder.records[0]["readbacks"]}
+    assert {
+        f"/api/game/session/session-1/governance/archives/{archive_id}"
+        for archive_id in archive_ids
+    }.issubset(endpoints)
+
+
+def test_archive_operation_rejects_failed_formal_detail_readback() -> None:
+    archive_id = "archive-eia"
+
+    class Response:
+        def __init__(self, status_code: int, payload: dict) -> None:
+            self.status_code = status_code
+            self.payload = payload
+            self.text = str(payload)
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def request(self, method, url, **kwargs):
+            if method == "POST":
+                return Response(201, {
+                    "state_version": 2,
+                    "fact_acquisition_bindings": [{
+                        "fact_id": "fact-eia",
+                        "route_type": "archive",
+                        "source_id": archive_id,
+                    }],
+                })
+            if "/governance/archives/" in str(url):
+                return Response(404, {"detail": "missing"})
+            return Response(200, {"state_version": 1})
+
+    recorder = _ApiEvidenceRecorder(
+        Client(), "session-1", {"X-Account-ID": "account-1"}
+    )
+    recorder.request(
+        "POST", "/api/game/session/session-1/governance/actions",
+        headers={"X-Account-ID": "account-1"},
+        json={"state_version": 1, "archive_ids": [archive_id]},
+    )
+    workflow = {
+        "session_id": "session-1",
+        "coverage": {"archive_ids": [archive_id]},
+        "api_traces": recorder.records,
+    }
+
+    with pytest.raises(AssertionError, match="no formal GET readback entity"):
+        _coverage_operation_records([workflow])
+
+
 def test_save_load_semantics_ignore_only_documented_restore_transaction_metadata() -> None:
     saved = _save_load_session()
     loaded = replace(
