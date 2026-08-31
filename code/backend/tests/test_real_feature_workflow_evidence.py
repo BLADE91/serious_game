@@ -30,7 +30,9 @@ from tools.run_real_feature_workflows import (
     _ApiEvidenceRecorder,
     _business_semantic_projection,
     _complete_map_action,
+    _acquire_targeted_conversation_facts,
     semantic_hash,
+    collect_session_coverage,
     validate_feature_workflow_report,
 )
 
@@ -48,6 +50,139 @@ def _save_load_session() -> GameSession:
         timeline_id="timeline-before",
         logs=[{"type": "business_event", "visible_to_player": True}],
     )
+
+
+def test_coverage_does_not_infer_fact_path_from_completed_conversation() -> None:
+    from serious_game_backend.domain.game_session import CompletedConversation
+    from serious_game_backend.infrastructure.script_packages.file_loader import (
+        FileScriptPackageLoader,
+    )
+
+    session = _save_load_session()
+    session.known_fact_ids.add("fact_clan_power_map")
+    session.completed_conversations.append(CompletedConversation(
+        conversation_id="conv-known-repeat",
+        opportunity_id="opp_d02_wu_xiuying_first_talk",
+        npc_id="npc_wu_xiuying",
+        story_day=2,
+        start_reason="story_window",
+        completion_status="completed",
+        end_reason="player",
+        transcript=(),
+        started_at="2026-01-01T00:00:00+00:00",
+    ))
+    package = FileScriptPackageLoader().load(
+        Path(__file__).resolve().parents[1]
+        / "content" / "packages" / "pkg_gameplay_v3"
+    )
+
+    coverage = collect_session_coverage(session, package, api_traces=[])
+
+    assert "fact_clan_power_map:conversation:opp_d02_wu_xiuying_first_talk" not in (
+        coverage["fact_acquisition_path_ids"]
+    )
+
+
+def test_coverage_accepts_first_acquisition_structured_binding() -> None:
+    from serious_game_backend.infrastructure.script_packages.file_loader import (
+        FileScriptPackageLoader,
+    )
+
+    session = _save_load_session()
+    package = FileScriptPackageLoader().load(
+        Path(__file__).resolve().parents[1]
+        / "content" / "packages" / "pkg_gameplay_v3"
+    )
+    binding = "fact_clan_power_map:conversation:opp_d02_wu_xiuying_first_talk"
+
+    coverage = collect_session_coverage(session, package, api_traces=[{
+        "response": {"fact_acquisition_bindings": [{
+            "fact_id": "fact_clan_power_map",
+            "route_type": "conversation",
+            "source_id": "opp_d02_wu_xiuying_first_talk",
+        }]},
+    }])
+
+    assert binding in coverage["fact_acquisition_path_ids"]
+
+
+def test_targeted_conversation_requires_new_known_fact_transition_and_exact_binding() -> None:
+    class Response:
+        status_code = 200
+        text = "ok"
+
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def __init__(self) -> None:
+            self.known: list[str] = []
+            self.version = 1
+
+        def get(self, _path, *, headers):
+            return Response({"known_fact_ids": list(self.known)})
+
+        def post(self, _path, *, headers, json):
+            self.version += 1
+            if json["input_mode"] == "conversation_start":
+                return Response({
+                    "state_version": self.version,
+                    "conversation": {"conversation_id": "conv-1"},
+                })
+            if json["input_mode"] == "free_text":
+                self.known.append("fact-a")
+                return Response({
+                    "state_version": self.version,
+                    "fact_acquisition_bindings": [{
+                        "fact_id": "fact-a",
+                        "route_type": "conversation",
+                        "source_id": "opp-a",
+                    }],
+                    "visible_state": {"active_conversation": {"id": "conv-1"}},
+                })
+            return Response({"state_version": self.version})
+
+    result = _acquire_targeted_conversation_facts(
+        Client(), "session-1", {"X-Account-ID": "account-1"},
+        {"state_version": 1}, opportunity_id="opp-a", npc_id="npc-a",
+        prompts=(("fact-a", "targeted prompt"),), key="dual-a",
+    )
+
+    assert result["state_version"] == 4
+
+
+def test_targeted_conversation_rejects_already_known_fact_without_new_binding() -> None:
+    class Response:
+        status_code = 200
+        text = "ok"
+
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+
+        def json(self) -> dict:
+            return self.payload
+
+    class Client:
+        def get(self, _path, *, headers):
+            return Response({"known_fact_ids": ["fact-a"]})
+
+        def post(self, _path, *, headers, json):
+            if json["input_mode"] == "conversation_start":
+                return Response({
+                    "state_version": 2,
+                    "conversation": {"conversation_id": "conv-1"},
+                })
+            raise AssertionError("known fact must be rejected before a real turn")
+
+    with pytest.raises(AssertionError, match="already known before conversation"):
+        _acquire_targeted_conversation_facts(
+            Client(), "session-1", {"X-Account-ID": "account-1"},
+            {"state_version": 1}, opportunity_id="opp-a", npc_id="npc-a",
+            prompts=(("fact-a", "targeted prompt"),), key="dual-a",
+        )
 
 
 def test_save_load_semantics_ignore_only_documented_restore_transaction_metadata() -> None:

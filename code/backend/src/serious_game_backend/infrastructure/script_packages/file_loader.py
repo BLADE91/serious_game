@@ -161,6 +161,13 @@ class FileScriptPackageLoader:
         ): (
             "sha256:6d54956d6990e62099ea19d510b45bcf9dfa81e1df8322a13d6d8d32794ba6af"
         ),
+        (
+            "published",
+            "pkg_gameplay_v3",
+            "sha256:008d3dfaef84a7f5314a648832e344ff11e25949a8f7d8f1758f5d8e4425318c",
+        ): (
+            "sha256:008d3dfaef84a7f5314a648832e344ff11e25949a8f7d8f1758f5d8e4425318c"
+        ),
     }
 
     def load_all(self, root: Path) -> list[ScriptPackage]:

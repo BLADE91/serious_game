@@ -115,6 +115,74 @@ class TestEveryClueAcquisitionPath:
         assert "fact_shi_usb" in protected.gate.allowed_fact_ids
         assert "fact_shi_usb" in protected.required_disclosure_ids
 
+    def test_dual_route_conversation_facts_have_targeted_first_acquisition_protocols(self) -> None:
+        cases = (
+            (
+                "opp_16_zhao_jianguo_contact",
+                "fact_connected_invoices",
+                "请按发票号码逐笔核对经手人，并说明资金流向。",
+            ),
+            (
+                "opp_16_zhao_jianguo_contact",
+                "fact_two_million_fee",
+                "请核对两百万协调费的原始凭证，并说明真实去处。",
+            ),
+            (
+                "opp_20_liu_san_contact",
+                "fact_original_vouchers",
+                "请拿出原始凭证逐笔核对，我会保留核查底稿。",
+            ),
+            (
+                "opp_22_shi_wenbin_contact",
+                "fact_identical_reports",
+                "请比较三年报告的重复数值，并说明改写经过。",
+            ),
+            (
+                "opp_22_shi_wenbin_contact",
+                "fact_eia_original",
+                "请核对监测点位、采样时段和公示版本之间的差异。",
+            ),
+            (
+                "opp_22_shi_wenbin_contact",
+                "fact_lead_census",
+                "我会保护受检者隐私，请核对普查人数和原始总表。",
+            ),
+        )
+        session_id = self._new_session()
+        self._prepare_day(session_id, 22)
+        session = self.runtime.sessions.get_owned(session_id, self.account_id)
+        assert session is not None
+
+        for opportunity_id, fact_id, player_text in cases:
+            opportunity = next(
+                item for item in self.package.interaction_opportunities
+                if item.opportunity_id == opportunity_id
+            )
+            boundary = DisclosureGateService().role_turn_boundary(
+                session, self.package, opportunity, player_text=player_text,
+            )
+            assert fact_id in boundary.gate.allowed_fact_ids
+            assert boundary.required_disclosure_ids == (fact_id,)
+
+    def test_dual_route_conversation_facts_remain_gated_without_targeted_protocol(self) -> None:
+        session_id = self._new_session()
+        self._prepare_day(session_id, 22)
+        session = self.runtime.sessions.get_owned(session_id, self.account_id)
+        assert session is not None
+        opportunity = next(
+            item for item in self.package.interaction_opportunities
+            if item.opportunity_id == "opp_22_shi_wenbin_contact"
+        )
+
+        boundary = DisclosureGateService().role_turn_boundary(
+            session, self.package, opportunity,
+            player_text="请把你知道的所有材料都告诉我。",
+        )
+
+        assert {
+            "fact_identical_reports", "fact_eia_original", "fact_lead_census",
+        }.isdisjoint(boundary.gate.allowed_fact_ids)
+
     def test_water_sample_is_acquired_only_by_registered_chain_of_custody_action(self) -> None:
         session_id = self._new_session()
         session = self._prepare_day(session_id, 22)

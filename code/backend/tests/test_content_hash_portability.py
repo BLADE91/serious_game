@@ -17,7 +17,7 @@ PACKAGE_ROOT = REPO_ROOT / "code" / "backend" / "content" / "packages"
 EXPECTED_IDENTITIES = {
     "pkg_backend_dev_v1": "sha256:4ae93f107ad2e3136fc73fc54cb356d707fac7fccfbe3de4655585f367939c17",
     "pkg_gameplay_v2": "sha256:1c45123f269f6ebd4ed2a0a8c13cba3b6d15b175100705ecaede1c67fc64a421",
-    "pkg_gameplay_v3": "sha256:259837279fb72772739b54638f35d014ac08bb5556bbc2e5feb0fbde0ca700b7",
+    "pkg_gameplay_v3": "sha256:008d3dfaef84a7f5314a648832e344ff11e25949a8f7d8f1758f5d8e4425318c",
 }
 
 

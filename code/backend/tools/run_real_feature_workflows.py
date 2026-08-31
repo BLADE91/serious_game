@@ -879,6 +879,7 @@ def collect_session_coverage(
     package: ScriptPackage,
     *,
     map_location_ids: set[str] | None = None,
+    api_traces: list[dict] | None = None,
 ) -> dict[str, list[str]]:
     """Derive coverage only from persisted, player-reachable transaction records."""
 
@@ -904,25 +905,11 @@ def collect_session_coverage(
         for item in session.completed_conversations
         if item.completion_status == "completed"
     }
-    path_ids: set[str] = set()
-    learned_action_pairs = {
-        (str(item.get("fact_id")), str(item.get("source_id")))
-        for item in session.logs
-        if item.get("type") == "fact_learned"
+    path_ids = {
+        binding
+        for trace in (api_traces or ())
+        for binding in _fact_acquisition_bindings(trace.get("response"))
     }
-    for fact_id, fact in package.facts.items():
-        for method in fact.acquisition_methods:
-            route_type = str(method["route_type"])
-            source_id = str(method["source_id"])
-            if (
-                route_type == "archive" and source_id in archive_ids
-            ) or (
-                route_type == "conversation" and source_id in opportunity_ids
-            ) or (
-                route_type == "action"
-                and (fact_id, source_id) in learned_action_pairs
-            ):
-                path_ids.add(f"{fact_id}:{route_type}:{source_id}")
     household_ids = {
         contract.household_id
         for contract in session.household_contracts.values()
@@ -1115,6 +1102,88 @@ def _start_and_talk(
         "turn": turn,
         "action_id": action_id,
     }
+
+
+def _acquire_targeted_conversation_facts(
+    client: TestClient,
+    session_id: str,
+    headers: dict[str, str],
+    result: dict,
+    *,
+    opportunity_id: str,
+    npc_id: str,
+    prompts: tuple[tuple[str, str], ...],
+    key: str,
+) -> dict:
+    """Prove first acquisition from one formal conversation, fact by fact."""
+
+    initial_knowledge = _expect(
+        client.get(f"/api/game/session/{session_id}/knowledge", headers=headers)
+    )
+    already_known = set(initial_knowledge.get("known_fact_ids", ()))
+    requested_ids = {fact_id for fact_id, _player_text in prompts}
+    collision = requested_ids & already_known
+    if collision:
+        raise AssertionError(
+            "target fact already known before conversation: "
+            f"{sorted(collision)}"
+        )
+    started = _expect(client.post(
+        f"/api/game/session/{session_id}/action",
+        headers=headers,
+        json={
+            "input_mode": "conversation_start",
+            "client_action_id": f"{key}-start",
+            "state_version": result["state_version"],
+            "opportunity_id": opportunity_id,
+            "target_npc_id": npc_id,
+        },
+    ))
+    conversation_id = started["conversation"]["conversation_id"]
+    current = started
+    for index, (fact_id, player_text) in enumerate(prompts, start=1):
+        before = set(_expect(client.get(
+            f"/api/game/session/{session_id}/knowledge", headers=headers
+        )).get("known_fact_ids", ()))
+        if fact_id in before:
+            raise AssertionError(
+                f"target fact already known before conversation turn: {fact_id}"
+            )
+        current = _expect(client.post(
+            f"/api/game/session/{session_id}/action",
+            headers=headers,
+            json={
+                "input_mode": "free_text",
+                "client_action_id": f"{key}-turn-{index:02d}",
+                "state_version": current["state_version"],
+                "conversation_id": conversation_id,
+                "opportunity_id": opportunity_id,
+                "target_npc_id": npc_id,
+                "player_text": player_text,
+            },
+        ))
+        expected_binding = f"{fact_id}:conversation:{opportunity_id}"
+        bindings = set(_fact_acquisition_bindings(current))
+        after = set(_expect(client.get(
+            f"/api/game/session/{session_id}/knowledge", headers=headers
+        )).get("known_fact_ids", ()))
+        if fact_id not in after - before or expected_binding not in bindings:
+            raise AssertionError(
+                "targeted conversation lacked first-acquisition transition and exact "
+                f"binding: {expected_binding}"
+            )
+    if current.get("visible_state", {}).get("active_conversation") is not None:
+        current = _expect(client.post(
+            f"/api/game/session/{session_id}/action",
+            headers=headers,
+            json={
+                "input_mode": "conversation_end",
+                "client_action_id": f"{key}-end",
+                "state_version": current["state_version"],
+                "conversation_id": conversation_id,
+            },
+        ))
+    return current
 
 
 def _server_default_workflow(
@@ -1334,7 +1403,9 @@ def _server_default_workflow(
     package = container.packages.get("pkg_gameplay_v3")
     if package is None:
         raise AssertionError("v3 package disappeared during server workflow")
-    coverage = collect_session_coverage(after_load, package)
+    coverage = collect_session_coverage(
+        after_load, package, api_traces=recorder.records
+    )
     save_operation = _expect(client.get(
         f"/api/game/session/{session_id}/operations/{save_client_action_id}",
         headers=headers,
@@ -1659,6 +1730,7 @@ def _personal_contract_workflow(
         stored,
         package,
         map_location_ids={item["location_id"] for item in map_records},
+        api_traces=recorder.records,
     )
     payload = {
         "account": "personal",
@@ -2051,7 +2123,8 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
     review = _expect(client.get(f"/api/game/session/{session_id}/review", headers=headers))
     audit = _audit_summary(container, session_id)
     coverage = collect_session_coverage(
-        stored, package, map_location_ids=map_location_ids
+        stored, package, map_location_ids=map_location_ids,
+        api_traces=recorder.records,
     )
     payload = {
         "account": "server_default",
@@ -2152,12 +2225,143 @@ def _recovery_opportunity_workflow(runner: RealRouteRunner) -> dict:
         )
     ):
         raise AssertionError(f"real recovery workflow audit failed: {audit}")
-    coverage = collect_session_coverage(stored, package)
+    coverage = collect_session_coverage(
+        stored, package, api_traces=recorder.records
+    )
     payload = {
         "account": "server_default",
         "session_id": session_id,
         "story_day": stored.game_state.story_day,
         "completed_recovery_opportunity_ids": sorted(recovery_ids),
+        "audit": audit,
+        "coverage": coverage,
+        "coverage_effect_hash": semantic_hash(_business_semantic_projection(stored)),
+        "api_traces": recorder.records,
+    }
+    client.__exit__(None, None, None)
+    return payload
+
+
+def _dual_route_conversation_workflow(runner: RealRouteRunner) -> dict:
+    """Acquire dual-route facts by conversation before any archive read."""
+
+    container, client, session_id, headers = runner.build_real_runner(5)
+    recorder = _ApiEvidenceRecorder(client, session_id, headers)
+    recorder.install()
+    package = container.packages.get("pkg_gameplay_v3")
+    if package is None:
+        raise AssertionError("v3 package disappeared during dual-route workflow")
+    base_profile = load_witnesses(PROFILE_PATH)[0]
+    profile = replace(base_profile, route_id="feature-dual-conversation-first")
+    session = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+    if session is None or session.pending_decision is None:
+        raise AssertionError("dual-route workflow lacks initial decision")
+    pending = session.pending_decision
+    result = {
+        "state_version": session.state_version,
+        "visible_state": {"pending_decision": {
+            "decision_id": pending.decision_id,
+            "input_kind": pending.input_kind,
+            "input_schema": pending.input_schema,
+            "options": [
+                {"option_id": item.option_id, "available": item.available}
+                for item in pending.options
+            ],
+        }},
+    }
+    result, serial = runner.drain_profile_decisions(
+        container, client, session_id, headers, result, profile, 0
+    )
+    result = runner.end_day(
+        client, session_id, headers, result, "feature-dual-end-d01"
+    )
+    result, serial = runner.drain_profile_decisions(
+        container, client, session_id, headers, result, profile, serial
+    )
+    result = _acquire_targeted_conversation_facts(
+        client, session_id, headers, result,
+        opportunity_id="opp_d02_wu_xiuying_first_talk",
+        npc_id="npc_wu_xiuying",
+        prompts=((
+            "fact_clan_power_map",
+            "请把柳林村各户真正担心的事和宗族关系告诉我。",
+        ),),
+        key="feature-dual-wu",
+    )
+    result = runner.end_day(
+        client, session_id, headers, result, "feature-dual-end-d02"
+    )
+    targets = {
+        16: (
+            "opp_16_zhao_jianguo_contact", "npc_zhao_jianguo", (
+                ("fact_connected_invoices", "请按发票号码逐笔核对经手人，并说明资金流向。"),
+                ("fact_two_million_fee", "请核对两百万协调费的原始凭证，并说明真实去处。"),
+            ),
+        ),
+        20: (
+            "opp_20_liu_san_contact", "npc_liu_san", (
+                ("fact_original_vouchers", "请拿出原始凭证逐笔核对，我会保留核查底稿。"),
+            ),
+        ),
+        22: (
+            "opp_22_shi_wenbin_contact", "npc_shi_wenbin", (
+                ("fact_identical_reports", "请比较三年报告的重复数值，并说明改写经过。"),
+                ("fact_eia_original", "请核对监测点位、采样时段和公示版本之间的差异。"),
+                ("fact_lead_census", "我会保护受检者隐私，请核对普查人数和原始总表。"),
+            ),
+        ),
+    }
+    for story_day in range(3, 23):
+        result = _drain_group_conversations(
+            client, session_id, headers, result,
+            f"feature-dual-group-d{story_day:02d}", runner,
+        )
+        result, serial = runner.drain_profile_decisions(
+            container, client, session_id, headers, result, profile, serial
+        )
+        if story_day in targets:
+            opportunity_id, npc_id, prompts = targets[story_day]
+            result = _acquire_targeted_conversation_facts(
+                client, session_id, headers, result,
+                opportunity_id=opportunity_id,
+                npc_id=npc_id,
+                prompts=prompts,
+                key=f"feature-dual-d{story_day:02d}",
+            )
+        if story_day < 22:
+            result = runner.end_day(
+                client, session_id, headers, result,
+                f"feature-dual-end-d{story_day:02d}",
+            )
+    stored = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+    if stored is None:
+        raise AssertionError("dual-route workflow session disappeared")
+    if any(item.read_at_days for item in stored.archive_records.values()):
+        raise AssertionError("dual-route conversation-first workflow read an archive")
+    coverage = collect_session_coverage(
+        stored, package, api_traces=recorder.records
+    )
+    expected = {
+        f"{fact_id}:conversation:{opportunity_id}"
+        for opportunity_id, _npc_id, prompts in targets.values()
+        for fact_id, _player_text in prompts
+    }
+    missing = expected - set(coverage["fact_acquisition_path_ids"])
+    if missing:
+        raise AssertionError(
+            f"dual-route conversation-first evidence missing: {sorted(missing)}"
+        )
+    audit = _audit_summary(container, session_id)
+    if audit["fake_calls"]:
+        raise AssertionError(f"real dual-route workflow audit failed: {audit}")
+    payload = {
+        "account": "server_default",
+        "session_id": session_id,
+        "story_day": stored.game_state.story_day,
+        "conversation_first_fact_ids": sorted(
+            fact_id for _opportunity_id, _npc_id, prompts in targets.values()
+            for fact_id, _player_text in prompts
+        ),
         "audit": audit,
         "coverage": coverage,
         "coverage_effect_hash": semantic_hash(_business_semantic_projection(stored)),
@@ -2193,6 +2397,7 @@ def main() -> int:
         _personal_contract_workflow(runner, root),
         _published_inventory_workflow(runner),
         _recovery_opportunity_workflow(runner),
+        _dual_route_conversation_workflow(runner),
     ]
     _attach_authority_projections(workflows)
     coverage_fields = (
