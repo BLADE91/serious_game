@@ -109,6 +109,60 @@ def _contains_exact(value: object, expected: str) -> bool:
     return value == expected
 
 
+_ENTITY_FIELDS = {
+    "action_instance_id", "archive_id", "audit_status", "batch_id",
+    "completion_status", "contract_id", "current_version", "document_id",
+    "evidence_id", "household_id", "location_id", "meeting_id", "npc_id",
+    "opportunity_id", "read_at_days", "signed_day", "state_version", "status",
+}
+_ALLOWED_EVIDENCE_KINDS = {
+    "archives": {"server_entity_transition"},
+    "fact_acquisition_paths": {"authoritative_reachability"},
+    "opportunities": {"server_entity_transition"},
+    "npcs": {"authoritative_reachability"},
+    "map_locations": {"server_entity_transition"},
+    "households": {"server_entity_transition"},
+}
+
+
+def _find_entity_projection(value: object, evidence_id: str) -> dict | None:
+    if isinstance(value, dict):
+        if any(
+            key.endswith("_id") and item == evidence_id
+            for key, item in value.items()
+        ):
+            projection = {
+                key: item for key, item in value.items()
+                if key in _ENTITY_FIELDS and not isinstance(item, (dict, list))
+            }
+            if "read_at_days" in value:
+                projection["read_at_days"] = list(value["read_at_days"])
+            return projection
+        for item in value.values():
+            found = _find_entity_projection(item, evidence_id)
+            if found is not None:
+                return found
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            found = _find_entity_projection(item, evidence_id)
+            if found is not None:
+                return found
+    return None
+
+
+def _validate_entity_projection(category: str, evidence_id: str, entity: dict) -> None:
+    if not _contains_exact(entity, evidence_id):
+        raise AssertionError(f"{category} readback entity ID is missing")
+    if category == "households" and entity.get("status") != "signed":
+        raise AssertionError("households readback entity is not signed")
+    if category == "archives" and not entity.get("read_at_days"):
+        raise AssertionError("archives readback entity was not read")
+    if category == "opportunities" and entity.get("completion_status") != "completed":
+        raise AssertionError("opportunities readback entity is not completed")
+    if category == "map_locations" and entity.get("status") != "completed":
+        raise AssertionError("map location action is not completed")
+
+
 class _ApiEvidenceRecorder:
     """Capture authoritative API transition triples without changing the API."""
 
@@ -136,12 +190,22 @@ class _ApiEvidenceRecorder:
                 before = response.json()
         result = self._request(method, url, **kwargs)
         if mutation and belongs:
-            readback_response = self._request(
-                "GET", f"/api/game/session/{self.session_id}", headers=self.headers
+            readback_endpoints = [f"/api/game/session/{self.session_id}"]
+            readback_endpoints.append(
+                f"/api/game/session/{self.session_id}/review"
             )
-            readback = (
-                readback_response.json() if readback_response.status_code == 200 else None
-            )
+            if "/governance" in path:
+                readback_endpoints.append(
+                    f"/api/game/session/{self.session_id}/governance"
+                )
+            if "/map" in path or "/governance/actions" in path:
+                readback_endpoints.append(f"/api/game/session/{self.session_id}/map")
+            readbacks = []
+            for endpoint in readback_endpoints:
+                candidate = self._request("GET", endpoint, headers=self.headers)
+                if candidate.status_code == 200:
+                    readbacks.append({"endpoint": endpoint, "payload": candidate.json()})
+            readback = readbacks[0]["payload"] if readbacks else None
             try:
                 response_body = result.json()
             except Exception:
@@ -168,6 +232,7 @@ class _ApiEvidenceRecorder:
                     readback.get("state_version")
                     if isinstance(readback, dict) else None
                 ),
+                "readbacks": readbacks,
                 "partial_commit": (
                     result.status_code == 409
                     and before is not None
@@ -200,6 +265,7 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                 trace
                 for workflow in workflows
                 for trace in workflow.get("api_traces", ())
+                if "server_entity_transition" in _ALLOWED_EVIDENCE_KINDS[category]
                 if _contains_exact(trace.get("response"), evidence_id)
                 and int(trace.get("status_code", 0)) in range(200, 300)
                 and not str(trace.get("path", "")).endswith("/cancel")
@@ -216,6 +282,21 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                 and trace.get("readback_effect_hash")
             ), None)
             if trace is not None:
+                entity_projection = next((
+                    projection
+                    for readback in trace.get("readbacks", ())
+                    if (
+                        projection := _find_entity_projection(
+                            readback.get("payload"), evidence_id
+                        )
+                    ) is not None
+                ), None)
+                if entity_projection is None:
+                    raise AssertionError(
+                        f"{category} transition has no formal GET readback entity: "
+                        f"{evidence_id}"
+                    )
+                _validate_entity_projection(category, evidence_id, entity_projection)
                 audit_ids = [
                     audit["audit_id"]
                     for workflow in workflows
@@ -235,20 +316,33 @@ def _coverage_operation_records(workflows: list[dict]) -> dict[str, list[dict]]:
                     "response_entity_id": evidence_id,
                     "readback_effect_hash": trace["readback_effect_hash"],
                     "readback_state_version": trace["readback_state_version"],
+                    "entity_projection": entity_projection,
+                    "entity_projection_hash": semantic_hash(entity_projection),
                     "status": "succeeded",
                     "audit_ids": audit_ids,
                 })
             else:
+                if "authoritative_reachability" not in _ALLOWED_EVIDENCE_KINDS[category]:
+                    raise AssertionError(
+                        f"{category} requires a server entity transition trace: {evidence_id}"
+                    )
                 workflow = next(
                     item for item in workflows
                     if evidence_id in item["coverage"].get(coverage_field, ())
                 )
+                dto_projection = {
+                    "evidence_id": evidence_id,
+                    "status": "reachable",
+                    "source_session_id": workflow["session_id"],
+                }
                 records.append({
                     "evidence_id": evidence_id,
                     "evidence_kind": "authoritative_reachability",
                     "authority": "persisted_session_coverage",
                     "authority_session_id": workflow["session_id"],
                     "authority_effect_hash": workflow["coverage_effect_hash"],
+                    "dto_projection": dto_projection,
+                    "dto_projection_hash": semantic_hash(dto_projection),
                     "status": "succeeded",
                     "audit_ids": [],
                 })
@@ -387,11 +481,14 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
                 raise AssertionError(f"{category} operation did not succeed")
             if not isinstance(item["audit_ids"], list):
                 raise AssertionError(f"{category} audit IDs are malformed")
+            if item["evidence_kind"] not in _ALLOWED_EVIDENCE_KINDS[category]:
+                raise AssertionError(f"{category} evidence kind is not allowed")
             if item["evidence_kind"] == "server_entity_transition":
                 transition_fields = {
                     "request_hash", "server_state_version_before",
                     "server_state_version_after", "response_entity_id",
                     "readback_effect_hash", "readback_state_version",
+                    "entity_projection", "entity_projection_hash",
                 }
                 if not transition_fields <= item.keys():
                     raise AssertionError(f"{category} transition evidence is incomplete")
@@ -407,14 +504,32 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
                     str(item["readback_effect_hash"])
                 ):
                     raise AssertionError(f"{category} transition hashes are malformed")
+                _validate_entity_projection(
+                    category, item["evidence_id"], item["entity_projection"]
+                )
+                if item["entity_projection_hash"] != semantic_hash(
+                    item["entity_projection"]
+                ):
+                    raise AssertionError(f"{category} entity projection hash is invalid")
             elif item["evidence_kind"] == "authoritative_reachability":
                 reachability_fields = {
                     "authority", "authority_session_id", "authority_effect_hash",
+                    "dto_projection", "dto_projection_hash",
                 }
                 if not reachability_fields <= item.keys() or not _SHA256.fullmatch(
                     str(item.get("authority_effect_hash", ""))
                 ):
                     raise AssertionError(f"{category} reachability evidence is incomplete")
+                projection = item["dto_projection"]
+                if (
+                    not isinstance(projection, dict)
+                    or projection.get("evidence_id") != item["evidence_id"]
+                    or projection.get("status") != "reachable"
+                    or projection.get("source_session_id")
+                    != item["authority_session_id"]
+                    or item["dto_projection_hash"] != semantic_hash(projection)
+                ):
+                    raise AssertionError(f"{category} reachability projection is invalid")
             else:
                 raise AssertionError(f"{category} evidence kind is unsupported")
             evidence_ids.add(str(item["evidence_id"]))

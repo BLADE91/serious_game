@@ -21,35 +21,57 @@ from serious_game_backend.infrastructure.repositories.mysql import (
 )
 from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
+    _coverage_operation_records,
     semantic_hash,
     validate_feature_workflow_report,
 )
 
 
-def _records(prefix: str, count: int) -> list[dict[str, object]]:
-    return [
-        {
-            "evidence_id": f"{prefix}-{index:02d}",
-            "evidence_kind": "authoritative_reachability",
-            "authority": "persisted_session_coverage",
-            "authority_session_id": "session-authority",
-            "authority_effect_hash": "sha256:" + "a" * 64,
-            "status": "succeeded",
-            "audit_ids": [],
-        }
-        for index in range(count)
-    ]
+def _built_operation_records() -> dict[str, list[dict]]:
+    coverage = {
+        "archive_ids": [f"archive-{i:02d}" for i in range(11)],
+        "fact_acquisition_path_ids": [f"path-{i:02d}" for i in range(27)],
+        "opportunity_ids": [f"opportunity-{i:02d}" for i in range(32)],
+        "npc_ids": [f"npc-{i:02d}" for i in range(29)],
+        "map_location_ids": [f"location-{i:02d}" for i in range(8)],
+        "household_ids": [f"household-{i:02d}" for i in range(36)],
+    }
+    transitions = []
+    specs = (
+        ("archive_ids", "archive", "/formal/archive", {"status": "available", "read_at_days": [1]}),
+        ("opportunity_ids", "opportunity", "/formal/opportunity", {"completion_status": "completed"}),
+        ("map_location_ids", "location", "/formal/finish", {"status": "completed"}),
+        ("household_ids", "household", "/formal/review", {"status": "signed"}),
+    )
+    version = 1
+    for field, id_field, path, state in specs:
+        for evidence_id in coverage[field]:
+            entity = {f"{id_field}_id": evidence_id, **state}
+            transitions.append({
+                "path": path,
+                "status_code": 200,
+                "request_hash": semantic_hash({"id": evidence_id}),
+                "client_trace_id": None,
+                "server_state_version_before": version,
+                "server_state_version_after": version + 1,
+                "response": entity,
+                "readback_effect_hash": semantic_hash({"entity": entity}),
+                "readback_state_version": version + 1,
+                "readbacks": [{"endpoint": "/formal/get", "payload": entity}],
+            })
+            version += 1
+    workflow = {
+        "session_id": "session-authority",
+        "coverage": coverage,
+        "coverage_effect_hash": semantic_hash(coverage),
+        "api_traces": transitions,
+        "audit": {"records": []},
+    }
+    return _coverage_operation_records([workflow])
 
 
 def passing_report() -> dict[str, object]:
-    operation_records = {
-        "households": _records("household", 36),
-        "archives": _records("archive", 11),
-        "fact_acquisition_paths": _records("path", 27),
-        "opportunities": _records("opportunity", 32),
-        "npcs": _records("npc", 29),
-        "map_locations": _records("location", 8),
-    }
+    operation_records = _built_operation_records()
     return {
         "provider": "openai_compatible",
         "fake_calls": 0,
@@ -157,7 +179,7 @@ def test_validator_rejects_missing_item_operation_record() -> None:
 def test_validator_rejects_forged_or_noncommitted_item_record() -> None:
     report = passing_report()
     report["operation_records"]["archives"][0]["evidence_id"] = "forged"
-    with pytest.raises(AssertionError, match="archives.*coverage"):
+    with pytest.raises(AssertionError, match="archives.*inconsistent"):
         validate_feature_workflow_report(report)
     report = passing_report()
     report["operation_records"]["archives"][0]["status"] = "failed"
@@ -177,6 +199,35 @@ def test_validator_rejects_meeting_audit_not_in_gateway_evidence() -> None:
     report = passing_report()
     report["meeting_document_record"]["llm_audit_ids"] = ["forged-audit"]
     with pytest.raises(AssertionError, match="meeting.*gateway"):
+        validate_feature_workflow_report(report)
+
+
+def test_validator_rejects_tampered_entity_projection_and_illegal_downgrade() -> None:
+    report = passing_report()
+    archive = report["operation_records"]["archives"][0]
+    archive["entity_projection"].pop("archive_id")
+    with pytest.raises(AssertionError, match="archives.*ID"):
+        validate_feature_workflow_report(report)
+
+    report = passing_report()
+    archive = report["operation_records"]["archives"][0]
+    archive["entity_projection"]["read_at_days"] = []
+    archive["entity_projection_hash"] = semantic_hash(archive["entity_projection"])
+    with pytest.raises(AssertionError, match="not read"):
+        validate_feature_workflow_report(report)
+
+    report = passing_report()
+    report["operation_records"]["archives"][0]["entity_projection_hash"] = (
+        "sha256:" + "f" * 64
+    )
+    with pytest.raises(AssertionError, match="projection hash"):
+        validate_feature_workflow_report(report)
+
+    report = passing_report()
+    report["operation_records"]["archives"][0]["evidence_kind"] = (
+        "authoritative_reachability"
+    )
+    with pytest.raises(AssertionError, match="kind is not allowed"):
         validate_feature_workflow_report(report)
 
 
