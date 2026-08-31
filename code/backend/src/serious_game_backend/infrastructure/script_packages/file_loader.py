@@ -131,6 +131,19 @@ STORY_AUTHORITY_CONTRACT = (
 
 
 class FileScriptPackageLoader:
+    PORTABLE_CONTENT_HASH_VERSION = "text-eol-v1"
+    _TEXT_EOL_V1_HASH_BY_LEGACY_HASH = {
+        "sha256:4ae93f107ad2e3136fc73fc54cb356d707fac7fccfbe3de4655585f367939c17": (
+            "sha256:b8d883339b83071272f7f664020e13699fff7fa1f25001059d7024fbd9b6725a"
+        ),
+        "sha256:1c45123f269f6ebd4ed2a0a8c13cba3b6d15b175100705ecaede1c67fc64a421": (
+            "sha256:c57a16d21db0be1101cb5782efec2179acf80cb7c8e2077328da2472dec91020"
+        ),
+        "sha256:259837279fb72772739b54638f35d014ac08bb5556bbc2e5feb0fbde0ca700b7": (
+            "sha256:465ef0114817949ef321fc98a0241c32a298524809edc6f18054c1d553bec539"
+        ),
+    }
+
     def load_all(self, root: Path) -> list[ScriptPackage]:
         if not root.exists():
             raise ContentValidationError(f"剧本包目录不存在：{root}")
@@ -150,10 +163,21 @@ class FileScriptPackageLoader:
         gameplay_schema_version = int(manifest.get("gameplay_schema_version", 1))
         computed_hash = self.compute_content_hash(package_dir)
         declared_hash = str(manifest.get("content_hash", ""))
-        if manifest.get("status") == "published" and declared_hash != computed_hash:
+        hash_verified = declared_hash == computed_hash
+        portable_hash = None
+        expected_portable_hash = self._TEXT_EOL_V1_HASH_BY_LEGACY_HASH.get(declared_hash)
+        if not hash_verified and expected_portable_hash is not None:
+            portable_hash = self.compute_portable_content_hash(package_dir)
+            hash_verified = portable_hash == expected_portable_hash
+        if manifest.get("status") == "published" and not hash_verified:
             raise ContentValidationError(
                 "published 剧本包内容哈希不匹配",
-                details={"declared": declared_hash, "computed": computed_hash},
+                details={
+                    "declared": declared_hash,
+                    "computed": computed_hash,
+                    "portable": portable_hash,
+                    "portable_version": self.PORTABLE_CONTENT_HASH_VERSION,
+                },
             )
 
         numbers = self._json(package_dir / "numbers.json")
@@ -292,7 +316,7 @@ class FileScriptPackageLoader:
         return ScriptPackage(
             package_id=str(manifest["package_id"]),
             package_version=str(manifest["package_version"]),
-            content_hash=computed_hash,
+            content_hash=declared_hash if hash_verified else computed_hash,
             status=str(manifest["status"]),
             title=str(manifest["title"]),
             action_rules=actions,
@@ -691,6 +715,14 @@ class FileScriptPackageLoader:
 
     @staticmethod
     def compute_content_hash(package_dir: Path) -> str:
+        return FileScriptPackageLoader._compute_content_hash(package_dir, portable=False)
+
+    @staticmethod
+    def compute_portable_content_hash(package_dir: Path) -> str:
+        return FileScriptPackageLoader._compute_content_hash(package_dir, portable=True)
+
+    @staticmethod
+    def _compute_content_hash(package_dir: Path, *, portable: bool) -> str:
         digest = hashlib.sha256()
         for path in sorted(item for item in package_dir.rglob("*") if item.is_file()):
             relative = path.relative_to(package_dir).as_posix()
@@ -706,6 +738,8 @@ class FileScriptPackageLoader:
                 ).encode("utf-8")
             else:
                 data = path.read_bytes()
+                if portable and path.suffix.lower() in {".json", ".md"}:
+                    data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
             digest.update(b"\0")
             digest.update(data)
             digest.update(b"\0")

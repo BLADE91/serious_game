@@ -1,1 +1,3 @@
 *.bat text eol=crlf
+code/backend/content/packages/**/*.json text eol=lf
+code/backend/content/packages/**/*.md text eol=lf
