@@ -757,6 +757,15 @@ export function primaryScenePlan(value: PlayerRecord): string[] {
   return [value.active_conversation ? "conversation" : "narrative"];
 }
 
+export function activeInteractionMode(
+  state: PlayerRecord,
+  governanceAction: PlayerRecord | null,
+): "group" | "conversation" | "governance" | null {
+  if (state.active_group_conversation) return "group";
+  if (state.active_conversation) return "conversation";
+  return governanceAction ? "governance" : null;
+}
+
 export function sessionEntry(value: PlayerRecord): {
   session_id: string;
   mode: "review" | "continue" | "unavailable";

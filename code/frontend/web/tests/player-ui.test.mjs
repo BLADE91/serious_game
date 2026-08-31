@@ -28,6 +28,16 @@ test("restores the configured AI mode from the authoritative response", () => {
   assert.equal(playerUi.aiConfigurationMode({ active: false }), "personal");
 });
 
+test("routes a forced group conversation before a stale governance action", async () => {
+  assert.equal(typeof playerUi.activeInteractionMode, "function");
+  assert.equal(playerUi.activeInteractionMode({
+    active_group_conversation: { conversation_id: "group-d2" },
+    active_conversation: null,
+  }, { action_instance_id: "gov-d2", status: "active" }), "group");
+  const shell = await readFile(path.join(projectRoot, "app", "GameShell.tsx"), "utf8");
+  assert.match(shell, /onSubmit=\{interactionMode === "governance" \? submitGovernanceTurn : submitConversation\}/);
+});
+
 test("shows unfinished contract work only during the matching representative conversation", () => {
   assert.equal(typeof playerUi.conversationContractWorkflow, "function");
   const batches = [

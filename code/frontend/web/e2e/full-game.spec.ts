@@ -1,4 +1,4 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type Request, type TestInfo } from "@playwright/test";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -386,6 +386,8 @@ async function finishForcedConversation(page: Page, testInfo: TestInfo, routeId:
     const history = await page.locator('[aria-label="夜间会谈完整记录"] article').count();
     expect(history).toBeGreaterThanOrEqual(priorHistory);
     priorHistory = history;
+    await expect(page.getByTestId("forced-group-conversation")).toBeVisible();
+    await expect(page.locator("form.conversation-bar.governance-bar")).toHaveCount(0);
     const input = page.locator("form.conversation-bar textarea");
     await expect(input).toBeVisible();
     const selectedReply = credibleReplies[(priorPlayerTurns + turn) % credibleReplies.length];
@@ -393,6 +395,13 @@ async function finishForcedConversation(page: Page, testInfo: TestInfo, routeId:
     await expect(input).toHaveValue(selectedReply);
     const beforePayload = await readPlayerState(page, sessionId);
     const beforeVersion = playerStateVersion(beforePayload);
+    let governanceTurnRequests = 0;
+    const observeGovernanceTurn = (request: Request) => {
+      if (request.method() === "POST" && /\/governance\/(?:actions|meetings)\/.*\/turn\/stream$/.test(new URL(request.url()).pathname)) {
+        governanceTurnRequests += 1;
+      }
+    };
+    page.on("request", observeGovernanceTurn);
     const answered = page.waitForResponse(response =>
       response.request().method() === "POST"
         && /\/group-conversation\/turn\/stream$/.test(new URL(response.url()).pathname),
@@ -400,6 +409,8 @@ async function finishForcedConversation(page: Page, testInfo: TestInfo, routeId:
     await page.getByRole("button", { name: "送出回应" }).click();
     await expect(input).toBeDisabled({ timeout: 15_000 });
     const answerResponse = await answered;
+    page.off("request", observeGovernanceTurn);
+    expect(governanceTurnRequests, "forced group input must not submit a governance stream").toBe(0);
     expect(answerResponse.ok(), `${planId} turn ${turn + 1} must start a real-model stream`).toBe(true);
     await expect(page.getByRole("status").filter({ hasText: "正在" })).toBeVisible({ timeout: 15_000 });
     expect(await answerResponse.finished(), `${planId} turn ${turn + 1} stream must finish cleanly`).toBeNull();
