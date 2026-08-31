@@ -30,9 +30,7 @@ from serious_game_backend.config import Settings
 from serious_game_backend.domain.script_package import ScriptPackage
 from serious_game_backend.domain.llm_runtime import LLMCallAudit
 from serious_game_backend.domain.game_session import GameSession
-from serious_game_backend.infrastructure.script_packages.file_loader import (
-    FileScriptPackageLoader,
-)
+from tools.real_run_provenance import validate_published_package_identity
 
 
 EXPECTED_GOVERNANCE_FAMILIES = {
@@ -75,21 +73,11 @@ def capture_run_provenance(repository: Path) -> dict[str, object]:
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
-    manifest = json.loads(
-        (PACKAGE_DIR / "package_manifest.json").read_text(encoding="utf-8")
-    )
-    declared = str(manifest.get("content_hash", ""))
-    computed = FileScriptPackageLoader.compute_content_hash(PACKAGE_DIR)
-    if declared != computed:
-        raise RuntimeError(
-            f"published v3 content hash mismatch: manifest={declared}, computed={computed}"
-        )
     return {
         "git_commit": commit,
         "tracked_workspace_clean": True,
         "workspace_fingerprint": digest.hexdigest(),
-        "v3_manifest_hash": declared,
-        "v3_computed_hash": computed,
+        **validate_published_package_identity(PACKAGE_DIR),
     }
 
 
@@ -515,9 +503,15 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
     ):
         raise AssertionError("workspace fingerprint is missing or malformed")
     declared = str(provenance.get("v3_manifest_hash", ""))
-    computed = str(provenance.get("v3_computed_hash", ""))
-    if not _SHA256.fullmatch(declared) or declared != computed:
-        raise AssertionError("v3 content hash does not match the published manifest")
+    raw = str(provenance.get("v3_raw_hash", ""))
+    portable = str(provenance.get("v3_portable_hash", ""))
+    if (
+        not _SHA256.fullmatch(declared)
+        or not _SHA256.fullmatch(raw)
+        or not _SHA256.fullmatch(portable)
+        or provenance.get("v3_package_identity_verified") is not True
+    ):
+        raise AssertionError("v3 published package identity is not verified")
     if int(report.get("server_default_accounts", 0)) < 1:
         raise AssertionError("server-default account evidence is missing")
     if int(report.get("personal_api_accounts", 0)) < 1:

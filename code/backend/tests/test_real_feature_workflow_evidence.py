@@ -127,7 +127,10 @@ def passing_report() -> dict[str, object]:
             "tracked_workspace_clean": True,
             "workspace_fingerprint": "b" * 64,
             "v3_manifest_hash": "sha256:" + "c" * 64,
-            "v3_computed_hash": "sha256:" + "c" * 64,
+            "v3_computed_hash": "sha256:" + "d" * 64,
+            "v3_raw_hash": "sha256:" + "d" * 64,
+            "v3_portable_hash": "sha256:" + "c" * 64,
+            "v3_package_identity_verified": True,
         },
         "meeting_document_record": {
             "source_meeting_id": "meeting-1",
@@ -184,14 +187,14 @@ def test_validator_rejects_nonzero_or_missing_source_counts(field: str) -> None:
         validate_feature_workflow_report(report)
 
 
-def test_validator_rejects_tampered_sha_or_package_hash() -> None:
+def test_validator_rejects_tampered_sha_or_unverified_package_identity() -> None:
     report = passing_report()
     report["provenance"]["git_commit"] = "not-a-sha"
     with pytest.raises(AssertionError, match="git_commit"):
         validate_feature_workflow_report(report)
     report = passing_report()
-    report["provenance"]["v3_computed_hash"] = "sha256:" + "f" * 64
-    with pytest.raises(AssertionError, match="v3 content hash"):
+    report["provenance"]["v3_package_identity_verified"] = False
+    with pytest.raises(AssertionError, match="package identity"):
         validate_feature_workflow_report(report)
 
 

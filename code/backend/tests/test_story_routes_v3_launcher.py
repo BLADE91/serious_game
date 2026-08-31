@@ -3,9 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import shutil
 
 import pytest
 
+from serious_game_backend.infrastructure.script_packages.file_loader import (
+    FileScriptPackageLoader,
+)
 from tools.run_story_routes_v3_isolated import (
     build_run_metadata,
     ensure_backend_import_path,
@@ -102,10 +106,15 @@ def test_finalize_summary_rejects_worker_failure_even_with_complete_routes() -> 
 def test_build_run_metadata_binds_git_workspace_v3_and_test_collection(tmp_path: Path) -> None:
     backend_root = tmp_path / "code" / "backend"
     v3_root = backend_root / "content" / "packages" / "pkg_gameplay_v3"
+    source_v3_root = (
+        Path(__file__).resolve().parents[1]
+        / "content"
+        / "packages"
+        / "pkg_gameplay_v3"
+    )
     test_file = backend_root / "tests" / "test_story_routes_v3.py"
-    v3_root.mkdir(parents=True)
+    shutil.copytree(source_v3_root, v3_root)
     test_file.parent.mkdir(parents=True)
-    (v3_root / "story.json").write_text('{"version":3}', encoding="utf-8")
     test_file.write_bytes(b"# formal replay\n")
     route_ids = ["route-b", "route-a"]
 
@@ -117,9 +126,9 @@ def test_build_run_metadata_binds_git_workspace_v3_and_test_collection(tmp_path:
         workspace_fingerprint="workspace123",
     )
 
-    expected_v3_hash = hashlib.sha256(
-        b"story.json\0" + b'{"version":3}'
-    ).hexdigest()
+    expected_v3_hash = json.loads(
+        (v3_root / "package_manifest.json").read_text(encoding="utf-8")
+    )["content_hash"]
     expected_collection_hash = hashlib.sha256(
         b"route-b\nroute-a\n\0# formal replay\n"
     ).hexdigest()
@@ -127,6 +136,11 @@ def test_build_run_metadata_binds_git_workspace_v3_and_test_collection(tmp_path:
         "git_sha": "deadbeef",
         "workspace_fingerprint": "workspace123",
         "v3_hash": expected_v3_hash,
+        "v3_raw_hash": FileScriptPackageLoader.compute_content_hash(v3_root),
+        "v3_portable_hash": FileScriptPackageLoader.compute_portable_content_hash(
+            v3_root
+        ),
+        "v3_package_identity_verified": True,
         "test_collection_hash": expected_collection_hash,
         "route_count": 2,
     }

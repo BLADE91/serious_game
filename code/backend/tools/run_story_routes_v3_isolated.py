@@ -15,6 +15,8 @@ import time
 import traceback
 from typing import Any, Sequence
 
+from tools.real_run_provenance import validate_published_package_identity
+
 
 DEFAULT_WORKER_COUNT = 8
 EXPECTED_ROUTE_COUNT = 95
@@ -40,16 +42,6 @@ def static_route_shards(route_ids: Sequence[str], worker_count: int) -> list[lis
     for index, route_id in enumerate(route_ids):
         shards[index % worker_count].append(route_id)
     return shards
-
-
-def _hash_files(root: Path) -> str:
-    digest = hashlib.sha256()
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
-        relative = path.relative_to(root).as_posix().encode("utf-8")
-        digest.update(relative)
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
 
 
 def _git_output(repo_root: Path, *args: str) -> bytes:
@@ -106,13 +98,17 @@ def build_run_metadata(
     collection_digest.update(("\n".join(route_ids) + "\n").encode("utf-8"))
     collection_digest.update(b"\0")
     collection_digest.update(test_file.read_bytes())
+    package_identity = validate_published_package_identity(
+        backend_root / "content" / "packages" / "pkg_gameplay_v3"
+    )
     return {
         "git_sha": git_sha or current_git_sha(repo_root),
         "workspace_fingerprint": workspace_fingerprint
         or current_workspace_fingerprint(repo_root, backend_root),
-        "v3_hash": _hash_files(
-            backend_root / "content" / "packages" / "pkg_gameplay_v3"
-        ),
+        "v3_hash": package_identity["v3_manifest_hash"],
+        "v3_raw_hash": package_identity["v3_raw_hash"],
+        "v3_portable_hash": package_identity["v3_portable_hash"],
+        "v3_package_identity_verified": True,
         "test_collection_hash": collection_digest.hexdigest(),
         "route_count": len(route_ids),
     }
