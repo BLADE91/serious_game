@@ -27,6 +27,7 @@ from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
     _coverage_operation_records,
     _attach_authority_projections,
+    _ApiEvidenceRecorder,
     _business_semantic_projection,
     _complete_map_action,
     semantic_hash,
@@ -131,6 +132,57 @@ def test_map_inventory_completes_leadership_meeting_through_meeting_api() -> Non
     ]
     assert calls[1][1]["adopt"] is False
     assert calls[1][1]["resolution"]["responsible_ids"] == ["npc-a"]
+
+
+def test_authority_projection_captures_fact_reachability_from_knowledge_dto() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {
+                "state_version": 10,
+                "known_fact_ids": ["fact_wu_independent_voice"],
+            }
+
+    class Client:
+        def request(self, _method, _url, **_kwargs):
+            return Response()
+
+    recorder = _ApiEvidenceRecorder(
+        Client(), "session-1", {"X-Account-ID": "account-1"}
+    )
+    recorder.request("GET", "/api/game/session/session-1/knowledge")
+    workflow = {
+        "account": "server_default",
+        "session_id": "session-1",
+        "story_day": 2,
+        "coverage": {
+            "fact_acquisition_path_ids": [
+                "fact_wu_independent_voice:conversation:"
+                "opp_d02_wu_xiuying_first_talk"
+            ],
+            "npc_ids": [],
+        },
+        "api_traces": [
+            {
+                "path": "/api/game/session/session-1/action",
+                "status_code": 200,
+                "server_state_version_before": 9,
+                "server_state_version_after": 10,
+                "response": {
+                    "opportunity_id": "opp_d02_wu_xiuying_first_talk",
+                },
+            },
+            *recorder.records,
+        ],
+    }
+
+    _attach_authority_projections([workflow])
+
+    assert recorder.records[0]["path"].endswith("/knowledge")
+    assert workflow["authority_projection"]["sources"][-1]["response_ids"] == [
+        "fact_wu_independent_voice"
+    ]
 
 
 def _built_evidence() -> tuple[dict[str, list[dict]], list[dict]]:

@@ -265,6 +265,35 @@ class _ApiEvidenceRecorder:
             if response.status_code == 200:
                 before = response.json()
         result = self._request(method, url, **kwargs)
+        if (
+            not mutation
+            and belongs
+            and path.endswith("/knowledge")
+            and result.status_code in range(200, 300)
+        ):
+            try:
+                response_body = result.json()
+            except Exception:
+                response_body = None
+            state_version = (
+                response_body.get("state_version")
+                if isinstance(response_body, dict) else None
+            )
+            if isinstance(state_version, int):
+                self.records.append({
+                    "method": method_upper,
+                    "path": path,
+                    "request_hash": semantic_hash({}),
+                    "client_trace_id": None,
+                    "status_code": result.status_code,
+                    "server_state_version_before": state_version,
+                    "server_state_version_after": state_version,
+                    "response": response_body,
+                    "readback_effect_hash": semantic_hash(response_body),
+                    "readback_state_version": state_version,
+                    "readbacks": [],
+                    "partial_commit": False,
+                })
         if mutation and belongs:
             readback_endpoints = [f"/api/game/session/{self.session_id}"]
             readback_endpoints.append(
@@ -1241,6 +1270,9 @@ def _server_default_workflow(
     semantic_equal = before_semantic_hash == after_semantic_hash
     if not semantic_equal:
         raise AssertionError("manual load did not restore the saved business state")
+    _expect(client.get(
+        f"/api/game/session/{session_id}/knowledge", headers=headers
+    ))
     audit = _audit_summary(container, session_id)
     recovered_retries = len(runner.operation_retries_by_session.get(session_id, ()))
     if (
