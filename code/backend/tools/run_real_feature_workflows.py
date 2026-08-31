@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import fields, replace
+from dataclasses import asdict, fields, is_dataclass, replace
 import argparse
 import hashlib
 import json
@@ -99,6 +99,33 @@ def semantic_hash(value: object) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _business_semantic_projection(session) -> dict[str, object]:
+    """Stable business state restored by manual save/load; excludes lease metadata."""
+
+    def plain(value):
+        if is_dataclass(value):
+            return {key: plain(item) for key, item in asdict(value).items()}
+        if isinstance(value, dict):
+            return {str(key): plain(item) for key, item in value.items()}
+        if isinstance(value, (set, frozenset)):
+            return sorted((plain(item) for item in value), key=repr)
+        if isinstance(value, (list, tuple)):
+            return [plain(item) for item in value]
+        return value
+
+    fields_to_compare = (
+        "game_state", "flags", "completed_conversations", "archive_records",
+        "household_contracts", "governance_actions", "meetings",
+        "administrative_documents", "npc_memories", "pending_decision",
+        "pending_group_conversation", "known_fact_ids",
+    )
+    return {
+        name: plain(getattr(session, name))
+        for name in fields_to_compare
+        if hasattr(session, name)
+    }
+
+
 def assert_required_api_evidence_capabilities() -> None:
     """Stop instead of synthesizing per-call gateway provenance."""
 
@@ -174,10 +201,14 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
     if not isinstance(records, dict):
         raise AssertionError("operation_records are missing")
     record_requirements = {
-        "archives": 11, "fact_acquisition_paths": 27, "opportunities": 32,
-        "npcs": 29, "map_locations": 8, "households": 36,
+        "archives": (11, "archive_ids"),
+        "fact_acquisition_paths": (27, "fact_acquisition_path_ids"),
+        "opportunities": (32, "opportunity_ids"),
+        "npcs": (29, "npc_ids"),
+        "map_locations": (8, "map_location_ids"),
+        "households": (36, "household_ids"),
     }
-    for category, expected in record_requirements.items():
+    for category, (expected, coverage_field) in record_requirements.items():
         items = records.get(category)
         if not isinstance(items, list) or len(items) != expected:
             raise AssertionError(
@@ -186,16 +217,29 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
         evidence_ids = set()
         for item in items:
             required = {
-                "evidence_id", "operation_id", "before_version",
-                "after_version", "status",
+                "evidence_id", "evidence_type", "before_version",
+                "after_version", "status", "audit_ids",
             }
             if not isinstance(item, dict) or not required <= item.keys():
                 raise AssertionError(f"{category} operation record is incomplete")
-            if int(item["after_version"]) < int(item["before_version"]):
-                raise AssertionError(f"{category} operation version regressed")
+            identity_fields = {
+                "server_operation": "server_operation_id",
+                "client_request": "client_request_id",
+            }
+            identity_field = identity_fields.get(item["evidence_type"])
+            if identity_field is None or not item.get(identity_field):
+                raise AssertionError(f"{category} operation identity is incomplete")
+            if item["status"] != "succeeded":
+                raise AssertionError(f"{category} operation did not succeed")
+            if int(item["after_version"]) <= int(item["before_version"]):
+                raise AssertionError(f"{category} operation version did not advance")
+            if not isinstance(item["audit_ids"], list):
+                raise AssertionError(f"{category} audit IDs are malformed")
             evidence_ids.add(str(item["evidence_id"]))
         if len(evidence_ids) != expected:
             raise AssertionError(f"{category} operation records are not unique")
+        if evidence_ids != {str(item) for item in report[coverage_field]}:
+            raise AssertionError(f"{category} operation records do not match coverage")
     meeting_record = report.get("meeting_document_record")
     if not isinstance(meeting_record, dict):
         raise AssertionError("meeting/document operation record is missing")
@@ -212,10 +256,25 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
     ) != expected_steps:
         raise AssertionError("meeting/document step records are incomplete")
     for item in steps:
-        if not item.get("operation_id") or not {
+        identity_fields = {
+            "server_operation": "server_operation_id",
+            "client_request": "client_request_id",
+            "persistent_entity": "persistent_entity_id",
+        }
+        identity_field = identity_fields.get(item.get("evidence_type"))
+        if not identity_field or not item.get(identity_field) or not {
             "before_version", "after_version",
         } <= item.keys():
             raise AssertionError("meeting/document operation identity is missing")
+        if int(item["after_version"]) <= int(item["before_version"]):
+            raise AssertionError("meeting/document state version did not advance")
+    for previous, current in zip(steps, steps[1:]):
+        if previous["after_version"] != current["before_version"]:
+            raise AssertionError("meeting/document state version chain is broken")
+    if meeting_record.get("resolution_hash") != semantic_hash(
+        meeting_record["resolution_snapshot"]
+    ):
+        raise AssertionError("meeting resolution hash does not match snapshot")
     if not meeting_record.get("llm_audit_ids"):
         raise AssertionError("meeting LLM audit IDs are missing")
     gateway = report.get("gateway_audit")
@@ -229,11 +288,34 @@ def validate_feature_workflow_report(report: dict[str, object]) -> None:
         "account_id", "session_id", "mode", "endpoint_host", "model",
         "config_version",
     }
+    account_modes: dict[str, set[str]] = {}
+    session_accounts: dict[str, set[str]] = {}
+    for item in gateway_records:
+        account_modes.setdefault(str(item.get("account_id")), set()).add(
+            str(item.get("mode"))
+        )
+        session_accounts.setdefault(str(item.get("session_id")), set()).add(
+            str(item.get("account_id"))
+        )
     if (
         modes != {"server_default", "personal"}
-        or len(accounts) != 2 or len(sessions) != 2
+        or len(accounts) < 2 or len(sessions) < 2
+        or any(len(value) != 1 for value in account_modes.values())
+        or any(len(value) != 1 for value in session_accounts.values())
         or any(not required_gateway <= item.keys() for item in gateway_records)
-        or any("key" in str(item).casefold() for item in gateway_records)
+        or any(
+            not item.get("endpoint_host")
+            or not item.get("model")
+            or not item.get("config_version")
+            for item in gateway_records
+        )
+        or any(
+            not any(
+                item.get("mode") == mode and item.get("status") in {"succeeded", "cached"}
+                for item in gateway_records
+            )
+            for mode in modes
+        )
     ):
         raise AssertionError("account gateway isolation evidence is inconsistent")
     save_load = report.get("save_load_record")
@@ -637,6 +719,7 @@ def _server_default_workflow(
     document = resolved["document"]
     countersigned = resolved
     countersign_attempts = 0
+    countersign_before_version = resolved["state_version"]
     while countersign_attempts < 3:
         countersign_attempts += 1
         countersigned = _expect(
@@ -663,12 +746,17 @@ def _server_default_workflow(
         )
     )
 
+    pre_save = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+    if pre_save is None:
+        raise AssertionError("session disappeared before manual save")
+    before_semantic_hash = semantic_hash(_business_semantic_projection(pre_save))
+    save_client_action_id = "feature-server-manual-save"
     saved = _expect(
         client.post(
             f"/api/game/session/{session_id}/manual-saves",
             headers=headers,
             json={
-                "client_action_id": "feature-server-manual-save",
+                "client_action_id": save_client_action_id,
                 "state_version": issued["state_version"],
                 "slot_number": 1,
                 "display_name": "真实接口全功能节点",
@@ -677,12 +765,13 @@ def _server_default_workflow(
         )
     )
     before_load = container.sessions.get_owned(session_id, headers["X-Account-ID"])
+    load_client_action_id = "feature-server-manual-load"
     loaded = _expect(
         client.post(
             f"/api/game/session/{session_id}/load-snapshot",
             headers=headers,
             json={
-                "client_action_id": "feature-server-manual-load",
+                "client_action_id": load_client_action_id,
                 "state_version": saved["state_version"],
                 "snapshot_id": saved["snapshot_id"],
                 "confirmed": True,
@@ -692,13 +781,8 @@ def _server_default_workflow(
     after_load = container.sessions.get_owned(session_id, headers["X-Account-ID"])
     if before_load is None or after_load is None:
         raise AssertionError("session disappeared during save/load workflow")
-    semantic_equal = (
-        before_load.game_state.action_points == after_load.game_state.action_points
-        and before_load.flags == after_load.flags
-        and before_load.completed_conversations == after_load.completed_conversations
-        and set(before_load.administrative_documents)
-        == set(after_load.administrative_documents)
-    )
+    after_semantic_hash = semantic_hash(_business_semantic_projection(after_load))
+    semantic_equal = before_semantic_hash == after_semantic_hash
     if not semantic_equal:
         raise AssertionError("manual load did not restore the saved business state")
     audit = _audit_summary(container, session_id)
@@ -715,6 +799,19 @@ def _server_default_workflow(
     if package is None:
         raise AssertionError("v3 package disappeared during server workflow")
     coverage = collect_session_coverage(after_load, package)
+    save_operation = _expect(client.get(
+        f"/api/game/session/{session_id}/operations/{save_client_action_id}",
+        headers=headers,
+    ))
+    load_operation = _expect(client.get(
+        f"/api/game/session/{session_id}/operations/{load_client_action_id}",
+        headers=headers,
+    ))
+    meeting_audits = [
+        item for item in audit["records"]
+        if meeting_id in item["operation_id"]
+        or document["document_id"] in item["operation_id"]
+    ]
     payload = {
         "account": "server_default",
         "session_id": session_id,
@@ -735,6 +832,76 @@ def _server_default_workflow(
         "document_status": issued["document"]["status"],
         "countersign_attempts": countersign_attempts,
         "manual_save_load_semantic_equal": semantic_equal,
+        "save_load_record": {
+            "before_semantic_hash": before_semantic_hash,
+            "after_semantic_hash": after_semantic_hash,
+            "save_client_request_id": save_client_action_id,
+            "load_client_request_id": load_client_action_id,
+            "save_operation_id": save_operation["operation_id"],
+            "load_operation_id": load_operation["operation_id"],
+            "save_status": save_operation["status"],
+            "load_status": load_operation["status"],
+            "save_state_version_before": issued["state_version"],
+            "save_state_version_after": saved["state_version"],
+            "load_state_version_before": saved["state_version"],
+            "load_state_version_after": loaded["state_version"],
+        },
+        "meeting_document_record": {
+            "meeting_id": meeting_id,
+            "source_meeting_id": issued["document"]["source_meeting_id"],
+            "resolution_snapshot": issued["document"]["resolution_snapshot"],
+            "resolution_hash": semantic_hash(
+                issued["document"]["resolution_snapshot"]
+            ),
+            "document_id": document["document_id"],
+            "document_status": issued["document"]["status"],
+            "llm_audit_ids": [item["audit_id"] for item in meeting_audits],
+            "steps": [
+                {
+                    "name": "meeting",
+                    "evidence_type": "persistent_entity",
+                    "persistent_entity_id": meeting["action"]["action_instance_id"],
+                    "before_version": finished_cadre["state_version"],
+                    "after_version": meeting["state_version"],
+                    "audit_ids": [],
+                },
+                {
+                    "name": "turn",
+                    "evidence_type": "client_request",
+                    "client_request_id": f"feature-meeting-turn-{meeting_id}",
+                    "before_version": meeting["state_version"],
+                    "after_version": meeting_turn["state_version"],
+                    "audit_ids": [item["audit_id"] for item in meeting_audits],
+                },
+                {
+                    "name": "resolve",
+                    "evidence_type": "persistent_entity",
+                    "persistent_entity_id": meeting_id,
+                    "before_version": meeting_turn["state_version"],
+                    "after_version": resolved["state_version"],
+                    "audit_ids": [],
+                },
+                {
+                    "name": "countersign",
+                    "evidence_type": "persistent_entity",
+                    "persistent_entity_id": document["document_id"],
+                    "before_version": countersign_before_version,
+                    "after_version": countersigned["state_version"],
+                    "audit_ids": [
+                        item["audit_id"] for item in meeting_audits
+                        if "countersign" in item["operation_id"]
+                    ],
+                },
+                {
+                    "name": "issue",
+                    "evidence_type": "persistent_entity",
+                    "persistent_entity_id": document["document_id"],
+                    "before_version": countersigned["state_version"],
+                    "after_version": issued["state_version"],
+                    "audit_ids": [],
+                },
+            ],
+        },
         "recovered_operation_retries": recovered_retries,
         "audit": audit,
         "coverage": coverage,
@@ -1289,6 +1456,18 @@ def main() -> int:
         "household_ids",
         "governance_action_families",
     )
+    gateway_records = [
+        {**record, "mode": item["account"]}
+        for item in workflows
+        for record in item["audit"]["records"]
+    ]
+    gateway_mode_sequence = [item["mode"] for item in gateway_records]
+    gateway_mode_transitions = sum(
+        current != previous
+        for previous, current in zip(
+            gateway_mode_sequence, gateway_mode_sequence[1:]
+        )
+    )
     report = {
         "provider": "openai_compatible",
         "model": settings.role_llm_model,
@@ -1306,6 +1485,20 @@ def main() -> int:
             for record in records
         ),
         "provenance": provenance,
+        "gateway_audit": {
+            "interleaved": gateway_mode_transitions >= 2,
+            "records": gateway_records,
+        },
+        "save_load_record": next(
+            item["save_load_record"]
+            for item in workflows
+            if item.get("save_load_record")
+        ),
+        "meeting_document_record": next(
+            item["meeting_document_record"]
+            for item in workflows
+            if item.get("meeting_document_record")
+        ),
         "server_default_accounts": sum(
             item["account"] == "server_default" for item in workflows
         ),

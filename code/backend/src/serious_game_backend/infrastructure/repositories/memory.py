@@ -496,13 +496,18 @@ class InMemoryLLMCallAuditRepository:
             self._items.append(deepcopy(audit))
 
     def successful_for_operation(
-        self, operation_id: str, request_hash: str
+        self, *, account_id: str, session_id: str, operation_id: str,
+        request_hash: str, config_version: str, endpoint_host: str,
     ) -> LLMCallAudit | None:
         with self._lock:
             matches = [
                 item for item in self._items
                 if item.operation_id == operation_id
                 and item.request_hash == request_hash
+                and item.account_id == account_id
+                and item.session_id == session_id
+                and item.config_version == config_version
+                and item.endpoint_host == endpoint_host
                 and item.status == "succeeded"
             ]
             return deepcopy(matches[-1]) if matches else None

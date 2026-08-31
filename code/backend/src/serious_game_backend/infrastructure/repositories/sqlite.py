@@ -445,16 +445,24 @@ class SqliteLLMCallAuditRepository:
             )
 
     def successful_for_operation(
-        self, operation_id: str, request_hash: str
+        self, *, account_id: str, session_id: str, operation_id: str,
+        request_hash: str, config_version: str, endpoint_host: str,
     ) -> LLMCallAudit | None:
         with self._store.connect() as connection:
             row = connection.execute(
                 """
                 select payload_json from runtime_llm_call_audits
                 where operation_id = ? and request_hash = ? and status = 'succeeded'
+                  and session_id = ?
+                  and json_extract(payload_json, '$.account_id') = ?
+                  and json_extract(payload_json, '$.config_version') = ?
+                  and json_extract(payload_json, '$.endpoint_host') = ?
                 order by rowid desc limit 1
                 """,
-                (operation_id, request_hash),
+                (
+                    operation_id, request_hash, session_id, account_id,
+                    config_version, endpoint_host,
+                ),
             ).fetchone()
         return LLMCallAudit(**json.loads(row["payload_json"])) if row else None
 

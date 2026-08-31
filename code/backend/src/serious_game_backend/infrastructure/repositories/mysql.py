@@ -969,20 +969,31 @@ class MySQLLLMCallAuditRepository:
                 ),
             )
 
-    def successful_for_operation(self, operation_id: str, request_hash: str) -> LLMCallAudit | None:
+    def successful_for_operation(
+        self, *, account_id: str, session_id: str, operation_id: str,
+        request_hash: str, config_version: str, endpoint_host: str,
+    ) -> LLMCallAudit | None:
         with self._store.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
                 select validated_result_json from llm_call_audits
-                where operation_id=%s and request_hash=%s and validation_status='succeeded'
-                order by created_at desc limit 1
+                where account_id=%s and session_id=%s and operation_id=%s
+                  and request_hash=%s and validation_status='succeeded'
+                order by created_at desc
                 """,
-                (operation_id, request_hash),
+                (account_id, session_id, operation_id, request_hash),
             )
-            row = cursor.fetchone()
-        return LLMCallAudit(**self._store.unprotect_json(
-            row["validated_result_json"], purpose="llm_audit"
-        )) if row else None
+            rows = cursor.fetchall()
+        for row in rows:
+            audit = LLMCallAudit(**self._store.unprotect_json(
+                row["validated_result_json"], purpose="llm_audit"
+            ))
+            if (
+                audit.config_version == config_version
+                and audit.endpoint_host == endpoint_host
+            ):
+                return audit
+        return None
 
     def list_for_session(self, session_id: str) -> tuple[LLMCallAudit, ...]:
         with self._store.connect() as connection, connection.cursor() as cursor:

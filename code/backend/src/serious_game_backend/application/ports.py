@@ -166,7 +166,8 @@ class LLMCallAuditRepository(Protocol):
     def save(self, audit: LLMCallAudit) -> None: ...
 
     def successful_for_operation(
-        self, operation_id: str, request_hash: str
+        self, *, account_id: str, session_id: str, operation_id: str,
+        request_hash: str, config_version: str, endpoint_host: str,
     ) -> LLMCallAudit | None: ...
 
     def list_for_owned_session(

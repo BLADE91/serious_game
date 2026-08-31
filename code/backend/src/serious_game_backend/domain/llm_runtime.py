@@ -31,6 +31,7 @@ class LLMCallAudit:
     created_at: str = field(default_factory=runtime_now_iso)
     endpoint_host: str | None = None
     config_version: str | None = None
+    source_audit_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

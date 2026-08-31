@@ -12,6 +12,7 @@ from serious_game_backend.infrastructure.repositories.memory import (
 )
 from tools.run_real_feature_workflows import (
     assert_required_api_evidence_capabilities,
+    semantic_hash,
     validate_feature_workflow_report,
 )
 
@@ -20,10 +21,12 @@ def _records(prefix: str, count: int) -> list[dict[str, object]]:
     return [
         {
             "evidence_id": f"{prefix}-{index:02d}",
-            "operation_id": f"op-{prefix}-{index:02d}",
+            "evidence_type": "client_request",
+            "client_request_id": f"request-{prefix}-{index:02d}",
             "before_version": index,
             "after_version": index + 1,
             "status": "succeeded",
+            "audit_ids": [],
         }
         for index in range(count)
     ]
@@ -74,10 +77,11 @@ def passing_report() -> dict[str, object]:
             "source_meeting_id": "meeting-1",
             "meeting_id": "meeting-1",
             "resolution_snapshot": {"decision": "adopted"},
-            "resolution_hash": "sha256:" + "d" * 64,
+            "resolution_hash": semantic_hash({"decision": "adopted"}),
             "document_status": "issued",
             "steps": [
-                {"name": name, "operation_id": f"op-{name}",
+                {"name": name, "evidence_type": "persistent_entity",
+                 "persistent_entity_id": f"entity-{name}",
                  "before_version": i, "after_version": i + 1}
                 for i, name in enumerate(
                     ("meeting", "turn", "resolve", "countersign", "issue")
@@ -91,10 +95,12 @@ def passing_report() -> dict[str, object]:
             "records": [
                 {"account_id": "account-server", "session_id": "session-a",
                  "mode": "server_default", "endpoint_host": "api.example.test",
-                 "model": "model-a", "config_version": "cfg-a"},
+                 "model": "model-a", "config_version": "cfg-a",
+                 "status": "succeeded"},
                 {"account_id": "account-personal", "session_id": "session-b",
                  "mode": "personal", "endpoint_host": "personal.example.test",
-                 "model": "model-b", "config_version": "cfg-b"},
+                 "model": "model-b", "config_version": "cfg-b",
+                 "status": "succeeded"},
             ],
         },
         "save_load_record": {
@@ -136,6 +142,17 @@ def test_validator_rejects_missing_item_operation_record() -> None:
     report = passing_report()
     report["operation_records"]["households"].pop()
     with pytest.raises(AssertionError, match="households operation records"):
+        validate_feature_workflow_report(report)
+
+
+def test_validator_rejects_forged_or_noncommitted_item_record() -> None:
+    report = passing_report()
+    report["operation_records"]["archives"][0]["evidence_id"] = "forged"
+    with pytest.raises(AssertionError, match="archives.*coverage"):
+        validate_feature_workflow_report(report)
+    report = passing_report()
+    report["operation_records"]["archives"][0]["status"] = "failed"
+    with pytest.raises(AssertionError, match="archives.*succeed"):
         validate_feature_workflow_report(report)
 
 
@@ -188,3 +205,90 @@ def test_gateway_audit_freezes_redacted_host_and_opaque_config_version() -> None
     assert sentinel not in serialized
     assert "password" not in serialized
     assert "token=forbidden" not in serialized
+
+
+def _cache_task(*, account: str, session: str) -> SelectionTask:
+    return SelectionTask(
+        task_id="cache", role_id="npc", role_name="NPC", instruction="select",
+        options=(SelectionOption("a", "A"),), selection_mode="single",
+        minimum_choices=1, maximum_choices=1, session_id=session,
+        account_id=account, operation_id="same-operation", story_day=1,
+    )
+
+
+def test_success_cache_never_crosses_account_or_session_boundary() -> None:
+    audits = InMemoryLLMCallAuditRepository()
+    settings = Settings(environment="test", role_llm_provider="openai_compatible")
+    calls = []
+    transport = lambda *_args: (
+        calls.append(1) or {
+            "choices": [{"message": {"content": '{"choice_id":"a"}'}}],
+            "usage": {},
+        }
+    )
+    gateway = OpenAICompatibleRoleLLMGateway(
+        settings, "secret", audits, config_version="cfg-a", transport=transport,
+    )
+    gateway.select(_cache_task(account="account-a", session="session-a"))
+    gateway.select(_cache_task(account="account-b", session="session-b"))
+
+    assert len(calls) == 2
+    assert {item.account_id for item in audits.list_for_session("session-a")} == {"account-a"}
+    assert {item.account_id for item in audits.list_for_session("session-b")} == {"account-b"}
+
+
+def test_success_cache_never_crosses_config_version_after_reconfiguration() -> None:
+    audits = InMemoryLLMCallAuditRepository()
+    settings = Settings(environment="test", role_llm_provider="openai_compatible")
+    calls = []
+    transport = lambda *_args: (
+        calls.append(1) or {
+            "choices": [{"message": {"content": '{"choice_id":"a"}'}}],
+            "usage": {},
+        }
+    )
+    old = OpenAICompatibleRoleLLMGateway(
+        settings, "old-secret", audits, config_version="cfg-old", transport=transport,
+    )
+    new = OpenAICompatibleRoleLLMGateway(
+        settings, "new-secret", audits, config_version="cfg-new", transport=transport,
+    )
+    task = _cache_task(account="account-a", session="session-a")
+    old.select(task)
+    new.select(task)
+    old.select(task)
+
+    assert len(calls) == 2
+    saved = audits.list_for_session("session-a")
+    assert [item.config_version for item in saved] == [
+        "cfg-old", "cfg-new", "cfg-old",
+    ]
+    assert saved[-1].status == "cached"
+    assert saved[-1].source_audit_id == saved[0].audit_id
+
+
+def test_transport_failure_writes_secret_free_frozen_audit() -> None:
+    from serious_game_backend.domain.errors import RoleLLMUnavailableError
+
+    audits = InMemoryLLMCallAuditRepository()
+    settings = Settings(
+        environment="test", role_llm_provider="openai_compatible",
+        role_llm_max_retries=0,
+    )
+    gateway = OpenAICompatibleRoleLLMGateway(
+        settings, "sentinel-secret", audits,
+        audit_endpoint_host="api.example.test", config_version="cfg-failure",
+        transport=lambda *_args: (_ for _ in ()).throw(
+            RoleLLMUnavailableError("sentinel-secret full-url https://bad/path?key=x")
+        ),
+    )
+    with pytest.raises(RoleLLMUnavailableError):
+        gateway.select(_cache_task(account="account-a", session="session-a"))
+
+    audit = audits.list_for_session("session-a")[0]
+    assert audit.status == "failed"
+    assert audit.error_code == "ROLE_LLM_UNAVAILABLE"
+    assert audit.endpoint_host == "api.example.test"
+    assert audit.config_version == "cfg-failure"
+    assert "sentinel-secret" not in repr(audit)
+    assert "https://" not in repr(audit)

@@ -229,7 +229,14 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         }
         request_hash = self._hash(request_document)
         estimated_input = self._estimate_tokens(json.dumps(messages, ensure_ascii=False))
-        cached = self._audits.successful_for_operation(task.operation_id, request_hash)
+        cached = self._audits.successful_for_operation(
+            account_id=task.account_id,
+            session_id=task.session_id,
+            operation_id=task.operation_id,
+            request_hash=request_hash,
+            config_version=self._config_version,
+            endpoint_host=self._audit_endpoint_host,
+        )
         if cached is not None and cached.validated_result is not None:
             cached_value = dict(cached.validated_result)
             if protocol_name == "selection":
@@ -241,7 +248,25 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
             else:
                 cached_document = {"text": cached_value.get("text", "")}
             try:
-                return parse(json.dumps(cached_document, ensure_ascii=False))
+                result = parse(json.dumps(cached_document, ensure_ascii=False))
+                self._audits.save(LLMCallAudit(
+                    audit_id=f"llm_{secrets.token_hex(12)}",
+                    session_id=task.session_id,
+                    account_id=task.account_id,
+                    operation_id=task.operation_id,
+                    story_day=task.story_day,
+                    npc_id=task.role_id,
+                    provider="openai_compatible",
+                    model_id=self._settings.role_llm_model,
+                    prompt_version=task.prompt_version,
+                    request_hash=request_hash,
+                    status="cached",
+                    validated_result=cached.validated_result,
+                    endpoint_host=self._audit_endpoint_host,
+                    config_version=self._config_version,
+                    source_audit_id=cached.audit_id,
+                ))
+                return result
             except RoleLLMResponseError:
                 # A stale/invalid cache is ignored and replaced by a fresh,
                 # strictly validated real-model result.
@@ -325,10 +350,46 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                     continue
             except RoleLLMUnavailableError as exc:
                 last_error = exc
+                self._audits.save(LLMCallAudit(
+                    audit_id=f"llm_{secrets.token_hex(12)}",
+                    session_id=task.session_id,
+                    account_id=task.account_id,
+                    operation_id=task.operation_id,
+                    story_day=task.story_day,
+                    npc_id=task.role_id,
+                    provider="openai_compatible",
+                    model_id=self._settings.role_llm_model,
+                    prompt_version=task.prompt_version,
+                    request_hash=request_hash,
+                    status="failed",
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    retry_count=attempt,
+                    error_code=exc.code,
+                    endpoint_host=self._audit_endpoint_host,
+                    config_version=self._config_version,
+                ))
                 if attempt < self._settings.role_llm_max_retries:
                     continue
                 raise
-            except RoleLLMConfigurationError:
+            except RoleLLMConfigurationError as exc:
+                self._audits.save(LLMCallAudit(
+                    audit_id=f"llm_{secrets.token_hex(12)}",
+                    session_id=task.session_id,
+                    account_id=task.account_id,
+                    operation_id=task.operation_id,
+                    story_day=task.story_day,
+                    npc_id=task.role_id,
+                    provider="openai_compatible",
+                    model_id=self._settings.role_llm_model,
+                    prompt_version=task.prompt_version,
+                    request_hash=request_hash,
+                    status="failed",
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    retry_count=attempt,
+                    error_code=exc.code,
+                    endpoint_host=self._audit_endpoint_host,
+                    config_version=self._config_version,
+                ))
                 raise
         raise RoleLLMResponseRetryableError(
             "真实模型连续返回无效结果，请重试或重新配置接口",

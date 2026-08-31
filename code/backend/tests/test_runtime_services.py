@@ -660,6 +660,8 @@ class RuntimeServiceTests(unittest.TestCase):
                 request_hash="sha256:restart",
                 status="succeeded",
                 validated_result={"choice_id": "communication_cooperative"},
+                endpoint_host="api.example.test",
+                config_version="cfg-restart",
             ))
             memories.save(NPCMemory(
                 memory_id="memory_restart",
@@ -677,7 +679,11 @@ class RuntimeServiceTests(unittest.TestCase):
             restarted = SqliteRuntimeStore(path)
             saved_audit = SqliteLLMCallAuditRepository(
                 restarted
-            ).successful_for_operation("operation_memory", "sha256:restart")
+            ).successful_for_operation(
+                account_id="account_memory", session_id="session_memory",
+                operation_id="operation_memory", request_hash="sha256:restart",
+                config_version="cfg-restart", endpoint_host="api.example.test",
+            )
             saved_memory = SqliteNPCMemoryRepository(
                 restarted
             ).active_for_npc("session_memory", "npc_wu_xiuying", 3)

@@ -199,7 +199,7 @@ class _NullAuditRepository:
     def save(self, _audit) -> None:
         return None
 
-    def successful_for_operation(self, _operation_id: str, _request_hash: str):
+    def successful_for_operation(self, **_identity):
         return None
 
     def list_for_session(self, _session_id: str) -> tuple:
