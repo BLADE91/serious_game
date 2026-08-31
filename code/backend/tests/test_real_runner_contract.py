@@ -522,7 +522,22 @@ def test_night_matrix_summary_aggregates_multiple_codes_and_validator_rejects_in
                 "ordinary_contact_combinations": ["scene:a->b"], "legal_no_contact_count": 0,
                 "technical_failure_count": 0}
     cases = [case(plan, strategy, 0, {}) for plan in FOLLOWUP_PLAN_IDS for strategy in ("credible", "vague", "contradictory", "injection")]
-    cases[0].update(failed_model_audit_count=3, failed_model_audit_error_codes={"ROLE_LLM_RESPONSE_RETRYABLE": 2, "ROLE_LLM_UNAVAILABLE": 1})
+    def recovery(code: str = "ROLE_LLM_RESPONSE_RETRYABLE") -> dict:
+        return {
+            "error_code": code,
+            "state_restored": True,
+            "before_public_state_sha256": "a" * 64,
+            "after_public_state_sha256": "a" * 64,
+        }
+
+    cases[0].update(
+        failed_model_audit_count=3,
+        failed_model_audit_error_codes={
+            "ROLE_LLM_RESPONSE_RETRYABLE": 2,
+            "ROLE_LLM_UNAVAILABLE": 1,
+        },
+        failed_calls=[recovery(), recovery()],
+    )
     report = aggregate_night_matrix_summary(cases, Settings(environment="test"))
     validate_night_matrix_report(report)
     assert report["failed_model_audit_error_codes"] == {"ROLE_LLM_RESPONSE_RETRYABLE": 2, "ROLE_LLM_UNAVAILABLE": 1}
@@ -532,6 +547,19 @@ def test_night_matrix_summary_aggregates_multiple_codes_and_validator_rejects_in
     report["failed_model_audit_count"] = 3
     report["cases"][0]["failed_calls"] = [{"error_code": "ROLE_LLM_RESPONSE_RETRYABLE"}]
     with pytest.raises(AssertionError, match="recovery audit is incomplete"):
+        validate_night_matrix_report(report)
+    report["cases"][0]["failed_calls"] = []
+    with pytest.raises(AssertionError, match="retryable.*recovery"):
+        validate_night_matrix_report(report)
+    report["cases"][0]["failed_calls"] = [
+        {**recovery(), "state_restored": False}, recovery(),
+    ]
+    with pytest.raises(AssertionError, match="was not restored"):
+        validate_night_matrix_report(report)
+    report["cases"][0]["failed_calls"] = [
+        {**recovery(), "after_public_state_sha256": "b" * 64}, recovery(),
+    ]
+    with pytest.raises(AssertionError, match="hashes disagree"):
         validate_night_matrix_report(report)
 
 

@@ -126,6 +126,9 @@ RECOVERY_AUDIT_FIELDS = (
     "before_public_state_sha256",
     "after_public_state_sha256",
 )
+RECOVERY_REQUIRED_ERROR_CODES = frozenset({
+    "ROLE_LLM_RESPONSE_RETRYABLE",
+})
 
 
 def aggregate_night_matrix_summary(
@@ -216,6 +219,7 @@ def validate_night_matrix_report(report: dict[str, object]) -> None:
         if int(item["failed_model_audit_count"]) != sum(error_counts.values()):
             raise AssertionError(f"{label} failed audit count is inconsistent")
         failed_calls = list(item["failed_calls"])
+        recovery_error_counts = Counter()
         for recovery in failed_calls:
             if not all(field in recovery for field in RECOVERY_AUDIT_FIELDS):
                 raise AssertionError(f"{label} recovery audit is incomplete")
@@ -223,11 +227,29 @@ def validate_night_matrix_report(report: dict[str, object]) -> None:
                 raise AssertionError(f"{label} recovery audit lacks error code")
             if not isinstance(recovery["state_restored"], bool):
                 raise AssertionError(f"{label} recovery audit lacks restoration verdict")
+            if recovery["state_restored"] is not True:
+                raise AssertionError(f"{label} recovery audit was not restored")
             for field in (
                 "before_public_state_sha256", "after_public_state_sha256",
             ):
                 if len(str(recovery[field])) != 64:
                     raise AssertionError(f"{label} recovery audit lacks public-state hash")
+            if (
+                recovery["before_public_state_sha256"]
+                != recovery["after_public_state_sha256"]
+            ):
+                raise AssertionError(f"{label} recovery audit hashes disagree")
+            recovery_error_counts[str(recovery["error_code"])] += 1
+        for error_code, recovery_count in recovery_error_counts.items():
+            if recovery_count > error_counts.get(error_code, 0):
+                raise AssertionError(
+                    f"{label} recovery audit error code is not represented by failed audits"
+                )
+        for error_code in RECOVERY_REQUIRED_ERROR_CODES:
+            if error_counts.get(error_code, 0) != recovery_error_counts.get(error_code, 0):
+                raise AssertionError(
+                    f"{label} retryable failed audits lack matching recovery evidence"
+                )
         if item.get("strategy") == "vague" and item.get("input_rejected") is True:
             raise AssertionError(f"{label} vague must enter NPC judgment")
         injection_was_visibly_rejected = (
