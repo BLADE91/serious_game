@@ -476,9 +476,12 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
         )).choice_id or "communication_guarded"
         disclosure_id: str | None = None
         if context.allowed_fact_ids:
-            disclosure_options = [SelectionOption(
-                "no_disclosure", "本轮不披露新事实"
-            )]
+            required = set(context.required_disclosure_ids)
+            disclosure_options = (
+                [] if required else [SelectionOption(
+                    "no_disclosure", "本轮不披露新事实"
+                )]
+            )
             disclosure_options.extend(
                 SelectionOption(
                     f"disclose:{fact_id}",
@@ -486,6 +489,7 @@ class OpenAICompatibleRoleLLMGateway(RoleLLMGateway):
                     context.allowed_fact_texts.get(fact_id, ""),
                 )
                 for fact_id in context.allowed_fact_ids
+                if not required or fact_id in required
             )
             selected = self.select(SelectionTask(
                 task_id=f"{context.opportunity_id}:fact_disclosure",

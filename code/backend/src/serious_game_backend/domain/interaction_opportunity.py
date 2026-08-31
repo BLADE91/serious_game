@@ -29,6 +29,7 @@ class InteractionOpportunity:
     minimum_turns: int = 1
     completion_mode: str = "minimum_turns"
     required_disclosure_ids: frozenset[str] = frozenset()
+    disclosure_protocols: tuple[dict[str, object], ...] = ()
     complete_on_player_exit: bool = True
     complete_on_npc_exit: bool = True
 

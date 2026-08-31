@@ -75,6 +75,7 @@ class DisclosureGateService:
         opportunity: InteractionOpportunity,
         *,
         repeat_count: int = 0,
+        player_text: str = "",
     ) -> RoleTurnFactBoundary:
         gate = (
             self.build(session, package, opportunity, repeat_count=repeat_count)
@@ -112,6 +113,17 @@ class DisclosureGateService:
                 return False
             return archive_unlock_days.get(fact_id, 1) <= session.game_state.story_day
 
+        protocol_fact_ids: set[str] = set()
+        normalized_player_text = player_text.casefold()
+        for protocol in opportunity.disclosure_protocols:
+            groups = tuple(protocol.get("required_term_groups", ()))
+            if groups and all(
+                any(str(term).casefold() in normalized_player_text for term in group)
+                for group in groups
+            ):
+                protocol_fact_ids.update(
+                    str(item) for item in protocol.get("fact_ids", ())
+                )
         gate = DisclosureGate(
             gate.trust_tier,
             gate.trust_label,
@@ -121,6 +133,16 @@ class DisclosureGateService:
                 if fact_id in session.known_fact_ids
                 or available_through_this_conversation(fact_id)
             ),
+        )
+        scoped_protocol_ids = tuple(
+            fact_id for fact_id in opportunity.allowed_fact_ids
+            if fact_id in protocol_fact_ids
+            and available_through_this_conversation(fact_id)
+        )
+        gate = DisclosureGate(
+            gate.trust_tier,
+            gate.trust_label,
+            tuple(dict.fromkeys((*gate.allowed_fact_ids, *scoped_protocol_ids))),
         )
         permitted = set(gate.allowed_fact_ids) | session.known_fact_ids
         return RoleTurnFactBoundary(
@@ -132,9 +154,8 @@ class DisclosureGateService:
             },
             allowed_fact_markers=disclosure_markers_for(gate.allowed_fact_ids),
             required_disclosure_ids=tuple(sorted(
-                opportunity.required_disclosure_ids.intersection(
-                    gate.allowed_fact_ids
-                )
+                opportunity.required_disclosure_ids.intersection(gate.allowed_fact_ids)
+                | set(scoped_protocol_ids)
             )),
             forbidden_fact_markers=tuple(
                 fact.title

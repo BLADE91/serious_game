@@ -421,6 +421,10 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
 
         self.assertEqual("fact_clan_power_map", result.disclosure_id)
         self.assertTrue(any("周氏宗族和散姓住户的关系" in item for item in prompts))
+        disclosure_prompt = next(
+            item for item in prompts if "选择本轮主要披露" in item
+        )
+        self.assertNotIn("no_disclosure", disclosure_prompt)
 
     def test_governance_position_selection_receives_the_confirmed_resolution(self) -> None:
         prompts: list[str] = []

@@ -803,7 +803,8 @@ class GameplayGovernanceService:
                 for item in action.transcript
             )
             fact_boundary = self._disclosure_gate.role_turn_boundary(
-                session, package, opportunity, repeat_count=repeat_count
+                session, package, opportunity, repeat_count=repeat_count,
+                player_text=text,
             )
         else:
             fact_boundary = self._disclosure_gate.session_boundary(session, package)

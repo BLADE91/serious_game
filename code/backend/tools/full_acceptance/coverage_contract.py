@@ -86,6 +86,7 @@ def build_coverage_contract(package: ScriptPackage) -> CoverageContract:
     opportunities = {
         item.opportunity_id: item for item in package.interaction_opportunities
     }
+    actions = dict(package.resource_actions)
     acquisition_method_count = 0
     for fact_id, fact in sorted(package.facts.items()):
         add("fact", fact_id, "knowledge")
@@ -124,6 +125,14 @@ def build_coverage_contract(package: ScriptPackage) -> CoverageContract:
                     invalid.append(
                         f"fact:{fact_id}:opportunity_day_mismatch:{source_id}"
                     )
+            elif route_type == "action":
+                action = actions.get(source_id)
+                if action is None or not action.enabled:
+                    invalid.append(f"fact:{fact_id}:unknown_action:{source_id}")
+                elif fact_id not in action.result_fact_ids:
+                    invalid.append(f"fact:{fact_id}:action_does_not_grant:{source_id}")
+                elif action.unlock_day != unlock_day:
+                    invalid.append(f"fact:{fact_id}:action_day_mismatch:{source_id}")
             else:
                 invalid.append(f"fact:{fact_id}:unsupported_route_type:{route_type}")
 

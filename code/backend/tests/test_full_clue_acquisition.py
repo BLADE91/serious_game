@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from serious_game_backend.api.app import create_app
+from serious_game_backend.application.disclosure_gate_service import DisclosureGateService
 from serious_game_backend.bootstrap import build_container
 from serious_game_backend.config import Settings
 from serious_game_backend.domain.llm import RoleTurnContext, RoleTurnResult
@@ -87,6 +88,69 @@ class TestEveryClueAcquisitionPath:
                 )
         self.runtime.sessions.save(session, expected_version=session.state_version)
         return session
+
+    def test_shi_usb_requires_and_accepts_the_registered_protection_protocol(self) -> None:
+        session_id = self._new_session()
+        self._prepare_day(session_id, 22)
+        session = self.runtime.sessions.get_owned(session_id, self.account_id)
+        assert session is not None
+        opportunity = next(
+            item for item in self.package.interaction_opportunities
+            if item.opportunity_id == "opp_22_shi_wenbin_contact"
+        )
+
+        generic = DisclosureGateService().role_turn_boundary(
+            session, self.package, opportunity,
+            player_text="请把优盘交给我。",
+        )
+        protected = DisclosureGateService().role_turn_boundary(
+            session, self.package, opportunity,
+            player_text=(
+                "我们换到保密安全地点谈；材料匿名登记，保护你和家人；"
+                "优盘复制留痕并按正式交接清单封存。"
+            ),
+        )
+
+        assert "fact_shi_usb" not in generic.gate.allowed_fact_ids
+        assert "fact_shi_usb" in protected.gate.allowed_fact_ids
+        assert "fact_shi_usb" in protected.required_disclosure_ids
+
+    def test_water_sample_is_acquired_only_by_registered_chain_of_custody_action(self) -> None:
+        session_id = self._new_session()
+        session = self._prepare_day(session_id, 22)
+        parameters = {"sampling_protocol": "第三方见证并编号封存"}
+        quote = self.client.post(
+            f"/api/game/session/{session_id}/actions/quote",
+            headers=self.headers,
+            json={
+                "state_version": session.state_version,
+                "action_id": "third_party_water_test",
+                "target_ids": [],
+                "parameters": parameters,
+            },
+        )
+        assert quote.status_code == 200, quote.text
+        quotation = quote.json()
+        response = self.client.post(
+            f"/api/game/session/{session_id}/action",
+            headers=self.headers,
+            json={
+                "input_mode": "resource_action",
+                "client_action_id": "water-chain-of-custody",
+                "state_version": quotation["state_version"],
+                "action_id": "third_party_water_test",
+                "target_ids": [],
+                "parameters": parameters,
+                "quote_id": quotation["quote_id"],
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["fact_acquisition_bindings"] == [{
+            "fact_id": "fact_water_sample",
+            "route_type": "action",
+            "source_id": "third_party_water_test",
+        }]
 
     def _archive_descriptor(self, session_id: str) -> dict:
         response = self.client.get(
@@ -169,7 +233,7 @@ class TestEveryClueAcquisitionPath:
             assert after_repeat is not None
             assert encode_session(after_repeat) == frozen
 
-    def test_all_sixteen_conversation_paths_bind_npc_and_commit_disclosure(self) -> None:
+    def test_all_fifteen_conversation_paths_bind_npc_and_commit_disclosure(self) -> None:
         opportunities = {
             item.opportunity_id: item
             for item in self.package.interaction_opportunities
@@ -180,7 +244,7 @@ class TestEveryClueAcquisitionPath:
             for method in fact.acquisition_methods
             if method["route_type"] == "conversation"
         ]
-        assert len(methods) == 16
+        assert len(methods) == 15
 
         for fact_id, method in methods:
             opportunity = opportunities[str(method["source_id"])]

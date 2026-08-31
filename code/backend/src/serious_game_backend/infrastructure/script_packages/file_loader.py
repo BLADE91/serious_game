@@ -154,6 +154,13 @@ class FileScriptPackageLoader:
         ): (
             "sha256:465ef0114817949ef321fc98a0241c32a298524809edc6f18054c1d553bec539"
         ),
+        (
+            "published",
+            "pkg_gameplay_v3",
+            "sha256:6d54956d6990e62099ea19d510b45bcf9dfa81e1df8322a13d6d8d32794ba6af",
+        ): (
+            "sha256:6d54956d6990e62099ea19d510b45bcf9dfa81e1df8322a13d6d8d32794ba6af"
+        ),
     }
 
     def load_all(self, root: Path) -> list[ScriptPackage]:
@@ -1066,6 +1073,7 @@ class FileScriptPackageLoader:
             required_disclosure_ids=frozenset(
                 item.get("completion_policy", {}).get("required_disclosure_ids", [])
             ),
+            disclosure_protocols=tuple(item.get("disclosure_protocols", [])),
             complete_on_player_exit=bool(
                 item.get("completion_policy", {}).get("complete_on_player_exit", True)
             ),
@@ -1901,6 +1909,7 @@ class FileScriptPackageLoader:
             opportunity_by_id = {
                 item.opportunity_id: item for item in opportunities
             }
+            action_by_id = dict(resource_actions)
             invalid_fact_routes: dict[str, list[str]] = {}
             for fact in facts.values():
                 errors: list[str] = []
@@ -1936,6 +1945,15 @@ class FileScriptPackageLoader:
                             or not opportunity.day_min <= unlock_day <= opportunity.day_max
                         ):
                             errors.append(f"会谈路径不可达：{source_id}")
+                    elif route_type == "action":
+                        action = action_by_id.get(source_id)
+                        if (
+                            action is None
+                            or not action.enabled
+                            or fact.fact_id not in action.result_fact_ids
+                            or unlock_day != action.unlock_day
+                        ):
+                            errors.append(f"行动路径不可达：{source_id}")
                     else:
                         errors.append(f"未知获取类型：{route_type or '空'}")
                 if errors:
@@ -3118,6 +3136,20 @@ class FileScriptPackageLoader:
             )
 
         for opportunity in opportunities:
+            for protocol in opportunity.disclosure_protocols:
+                protocol_fact_ids = {
+                    str(item) for item in protocol.get("fact_ids", ())
+                }
+                groups = tuple(protocol.get("required_term_groups", ()))
+                if (
+                    not protocol_fact_ids
+                    or not protocol_fact_ids.issubset(opportunity.allowed_fact_ids)
+                    or not groups
+                    or any(not group for group in groups)
+                ):
+                    raise ContentValidationError(
+                        f"互动机会披露协议无效：{opportunity.opportunity_id}"
+                    )
             unknown_flags = (
                 opportunity.requires_flags
                 | opportunity.closes_on_flags

@@ -245,6 +245,17 @@ class ActionService:
                         set(current.known_fact_ids) - known_fact_ids_before
                     )
                 ]
+            elif draft["kind"] == "resource_action":
+                response["fact_acquisition_bindings"] = [
+                    {
+                        "fact_id": fact_id,
+                        "route_type": "action",
+                        "source_id": draft["definition"].action_id,
+                    }
+                    for fact_id in sorted(
+                        set(current.known_fact_ids) - known_fact_ids_before
+                    )
+                ]
             if draft.get("npc_reply") is not None:
                 response["npc_reply"] = draft["npc_reply"]
             if draft["kind"] in {
@@ -572,7 +583,8 @@ class ActionService:
             for item in conversation.transcript
         )
         fact_boundary = self._disclosure_gate.role_turn_boundary(
-            session, package, opportunity, repeat_count=repeat_count
+            session, package, opportunity, repeat_count=repeat_count,
+            player_text=command.player_text,
         )
         memory_items = self._npc_memories.retrieve(
             session_id=session.session_id,

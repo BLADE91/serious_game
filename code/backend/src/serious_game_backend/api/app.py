@@ -1205,6 +1205,10 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 if route_type == "archive":
                     if archive_unlock_days.get(source_id) != unlock_day:
                         continue
+                elif route_type == "action":
+                    action = package.resource_actions.get(source_id)
+                    if action is None or not action.enabled or action.unlock_day > session.game_state.story_day:
+                        continue
                 elif source_id not in available_opportunity_ids:
                     continue
                 methods.append(public_acquisition_method(

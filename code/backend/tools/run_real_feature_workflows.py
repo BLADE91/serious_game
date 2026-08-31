@@ -905,6 +905,11 @@ def collect_session_coverage(
         if item.completion_status == "completed"
     }
     path_ids: set[str] = set()
+    learned_action_pairs = {
+        (str(item.get("fact_id")), str(item.get("source_id")))
+        for item in session.logs
+        if item.get("type") == "fact_learned"
+    }
     for fact_id, fact in package.facts.items():
         for method in fact.acquisition_methods:
             route_type = str(method["route_type"])
@@ -913,6 +918,9 @@ def collect_session_coverage(
                 route_type == "archive" and source_id in archive_ids
             ) or (
                 route_type == "conversation" and source_id in opportunity_ids
+            ) or (
+                route_type == "action"
+                and (fact_id, source_id) in learned_action_pairs
             ):
                 path_ids.add(f"{fact_id}:{route_type}:{source_id}")
     household_ids = {
@@ -1843,6 +1851,32 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
         known = set(_expect(client.get(
             f"/api/game/session/{session_id}/knowledge", headers=headers
         ))["known_fact_ids"])
+        if story_day >= 22 and "fact_water_sample" not in known:
+            quote = _expect(client.post(
+                f"/api/game/session/{session_id}/actions/quote",
+                headers=headers,
+                json={
+                    "state_version": result["state_version"],
+                    "action_id": "third_party_water_test",
+                    "target_ids": [],
+                    "parameters": {
+                        "sampling_protocol": "第三方见证并编号封存",
+                    },
+                },
+            ))
+            result = runner.action(client, session_id, headers, {
+                "input_mode": "resource_action",
+                "client_action_id": f"feature-water-sample-{serial:04d}",
+                "state_version": quote["state_version"],
+                "action_id": "third_party_water_test",
+                "target_ids": [],
+                "parameters": {
+                    "sampling_protocol": "第三方见证并编号封存",
+                },
+                "quote_id": quote["quote_id"],
+            })
+            serial += 1
+            known.add("fact_water_sample")
         available = {
             item["opportunity_id"]: item
             for item in _expect(client.get(
@@ -1882,6 +1916,9 @@ def _published_inventory_workflow(runner: RealRouteRunner) -> dict:
                         "opportunity_id": opportunity_id,
                         "target_npc_id": opportunity["npc_id"],
                         "player_text": (
+                            "我们换到保密安全地点谈；材料匿名登记，保护你和家人；"
+                            "优盘复制留痕并按正式交接清单封存，请把优盘交给我。"
+                            if fact_id == "fact_shi_usb" else
                             f"请只围绕“{fact.title}”给出你亲自掌握的具体事实、"
                             "时间、地点和可核验细节；在说清前先不要结束谈话。"
                         ),

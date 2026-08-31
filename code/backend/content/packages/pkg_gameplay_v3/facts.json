@@ -119,7 +119,7 @@
       "text": "玩家手中的水样取自冲沟之前，具备证据效力。",
       "source_label": "依程序取样并封存",
       "acquisition_methods": [
-        {"route_type": "conversation", "source_id": "opp_22_shi_wenbin_contact", "unlock_day": 22, "label": "与石文斌核实并封存水样", "instructions": "第22日起与石文斌会谈，追问取样点、取样时间和保管链，并按程序确认封存水样。"}
+        {"route_type": "action", "source_id": "third_party_water_test", "unlock_day": 22, "label": "第三方见证取样并封存", "instructions": "第22日起进入行动，请第三方在登记取样点、见证人和封存编号后取样送检。"}
       ],
       "related_npc_ids": ["npc_shi_wenbin", "npc_he_tiezhu", "npc_qian_wei"],
       "use_hint": "可送第三方检测并与企业或环保部门数据交叉印证。",

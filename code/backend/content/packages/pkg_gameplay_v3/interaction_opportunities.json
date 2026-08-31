@@ -245,7 +245,6 @@
         "fact_liu_old_ledger",
         "fact_shi_usb",
         "fact_eia_original",
-        "fact_water_sample",
         "fact_lead_census",
         "fact_lead_287",
         "fact_false_signing",
@@ -291,13 +290,20 @@
         "fact_liu_old_ledger",
         "fact_shi_usb",
         "fact_eia_original",
-        "fact_water_sample",
         "fact_lead_census",
         "fact_lead_287",
         "fact_false_signing",
         "fact_two_million_fee",
         "fact_shell_house"
-      ]
+      ],
+      "disclosure_protocols": [{
+        "fact_ids": ["fact_shi_usb"],
+        "required_term_groups": [
+          ["安全地点", "保密地点", "换个地方"],
+          ["匿名", "不公开姓名", "保护你和家人", "职业保障"],
+          ["复制留痕", "交接清单", "登记封存"]
+        ]
+      }]
     },
     {
       "opportunity_id": "opp_03_zhou_kuiyuan_contact",

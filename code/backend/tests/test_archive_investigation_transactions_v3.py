@@ -131,7 +131,7 @@ class TestArchiveInvestigationTransactionsV3:
         assert all(
             method["fact_id"] == item["fact_id"]
             and method["source_id"]
-            and method["route_type"] in {"archive", "conversation"}
+            and method["route_type"] in {"archive", "conversation", "action"}
             for item in leads.values()
             for method in item["methods"]
         )
