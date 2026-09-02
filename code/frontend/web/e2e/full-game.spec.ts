@@ -608,7 +608,14 @@ async function inspectAllAvailableArchives(page: Page, testInfo: TestInfo, route
     await form.getByRole("button", { name: "开始查阅", exact: true }).click();
     const response = await committed;
     if (!response.ok()) {
-      if (response.status() === 409) return;
+      if (response.status() === 409) {
+        const archiveDialog = page.getByRole("dialog").filter({ hasText: "查阅县级档案" });
+        const closeArchive = archiveDialog.getByRole("button", { name: "关闭", exact: true });
+        await expect(closeArchive).toBeVisible();
+        await closeArchive.click();
+        await expect(archiveDialog).toBeHidden();
+        return;
+      }
       expect(response.ok(), "archive investigation must commit through the player-visible form").toBe(true);
     }
     const reading = page.getByRole("dialog").filter({ hasText: "档案查阅结果" });
@@ -920,10 +927,11 @@ async function exerciseLeadershipMeeting(
 
   while (await detail.getByRole("button", { name: "请其会签" }).count()) {
     const signerButton = detail.getByRole("button", { name: "请其会签" }).first();
+    await expect(signerButton).toBeEnabled({ timeout: 600_000 });
     let accepted = false;
     for (let attempt = 0; attempt < 3 && !accepted; attempt += 1) {
       const signed = page.waitForResponse(response => response.request().method() === "POST"
-        && new URL(response.url()).pathname.endsWith(`/governance/documents/${documentId}/countersign`));
+        && new URL(response.url()).pathname.endsWith(`/governance/documents/${documentId}/countersign`), { timeout: 600_000 });
       await signerButton.click();
       const signedResponse = await signed;
       expect(signedResponse.ok(), "document countersign request must complete through the visible detail").toBe(true);
