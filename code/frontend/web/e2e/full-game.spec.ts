@@ -1116,6 +1116,10 @@ async function playRoute(page: Page, testInfo: TestInfo, sessionId: string, prof
       continue;
     }
     if (commands.can_end_day !== false) {
+      // A resolved decision can leave a short authoritative follow-up passage unread.
+      // Player actions remain intentionally locked until that passage is consumed, so
+      // finish it before looking for archives that may be required on the following day.
+      await finishVisibleNarrative(page, testInfo, profile.route_id);
       await inspectAllAvailableArchives(page, testInfo, profile.route_id);
       if (await completeOneOptionalOpportunity(page, testInfo, profile.route_id, sessionId, optionalOpportunityIds)) continue;
       if (await advanceOneDemand(page, testInfo, profile.route_id, sessionId, selectedDemandIds)) continue;
