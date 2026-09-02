@@ -561,7 +561,12 @@ async function advanceOneDemand(page: Page, testInfo: TestInfo, routeId: string,
 }
 
 async function satisfyMandatoryOpportunity(page: Page) {
-  const actionDialog = page.getByRole("dialog").filter({ hasText: "现场走访" });
+  const activeConversation = page.locator("form.conversation-bar textarea");
+  if (await activeConversation.isVisible().catch(() => false)) {
+    await finishOpenInteraction(page);
+    return;
+  }
+  const actionDialog = page.getByRole("dialog").filter({ hasText: /现场走访|入户走访/ });
   if (!await actionDialog.isVisible().catch(() => false)) {
     await page.getByRole("button", { name: /人物/ }).first().click(); // acceptance:people
     const start = page.getByRole("button", { name: "进入会谈" }).first();
