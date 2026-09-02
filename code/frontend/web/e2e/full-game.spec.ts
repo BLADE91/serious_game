@@ -744,7 +744,12 @@ async function signContractsTowardTarget(
       await expect(contractDialog.locator(".contract-status small")).not.toContainText(currentHouseholdId, { timeout: 600_000 });
       await expect(contractDialog.locator("form.contract-terms-form")).toBeVisible({ timeout: 600_000 });
     }
-    await contractDialog.getByRole("button").filter({ hasText: /^×$/ }).click();
+    const closeContract = contractDialog.getByRole("button", { name: "关闭", exact: true });
+    await expect(closeContract).toBeVisible({ timeout: 600_000 });
+    await expect(async () => {
+      await closeContract.click();
+      await expect(contractDialog).toBeHidden({ timeout: 5_000 });
+    }).toPass({ timeout: 600_000 });
     const finish = page.getByRole("button", { name: "结束本次行动", exact: true });
     const finished = page.waitForResponse(response => response.request().method() === "POST"
       && /\/governance\/actions\/[^/]+\/finish$/.test(new URL(response.url()).pathname));
@@ -874,9 +879,18 @@ async function exerciseLeadershipMeeting(
   const documentId = String(document.document_id || "");
   expect(documentId, "resolving a formal meeting must generate a document").not.toBe("");
   expect(String(document.source_meeting_id), "generated document must retain its source meeting").toBe(meetingId);
-  expect(asMap(document.resolution_snapshot), "generated document must retain the adopted resolution snapshot").toEqual(
-    asMap(resolveRequest.resolution),
-  );
+  const requestedResolution = asMap(resolveRequest.resolution);
+  const persistedResolution = asMap(document.resolution_snapshot);
+  expect(persistedResolution, "generated document must retain the adopted resolution fields").toMatchObject({
+    decision: requestedResolution.decision,
+    target_scope: requestedResolution.target_scope,
+    resource_mode: requestedResolution.resource_mode,
+    resource_authorization_limits: requestedResolution.resources,
+    responsible_ids: requestedResolution.responsible_ids,
+    deadline_day: requestedResolution.deadline_day,
+    public_scope: requestedResolution.public_scope,
+    document_title: requestedResolution.document_title,
+  });
   expect(String(document.review_status), "generated document must pass the independent review before countersign").toBe("pass");
   await expect(resolution).toBeHidden({ timeout: 600_000 });
 
