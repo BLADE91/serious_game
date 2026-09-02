@@ -1,4 +1,10 @@
 import { defineConfig } from "@playwright/test";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+const componentEvidenceDir = process.env.FULL_ACCEPTANCE_COMPONENT_DIR
+  ? path.resolve(process.env.FULL_ACCEPTANCE_COMPONENT_DIR)
+  : path.join(tmpdir(), "qingjiang-playwright-component");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -7,6 +13,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: "line",
+  outputDir: path.join(componentEvidenceDir, "artifacts"),
   use: {
     baseURL: "http://127.0.0.1:3101",
     trace: "retain-on-failure",

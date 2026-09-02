@@ -27,6 +27,9 @@ test("full browser acceptance is wired through every player-visible system", () 
   assert.match(source, /acceptance_route_profiles\.json/);
   assert.match(source, /inspectAllAvailableArchives/);
   assert.match(source, /signContractsTowardTarget/);
+  assert.match(source, /button:not\(\.active\)/);
+  assert.match(source, /next household.*contract detail must load/);
+  assert.match(source, /not\.toContainText\(currentHouseholdId, \{ timeout: 600_000 \}\)/);
   assert.match(source, /exerciseMapAction/);
   assert.match(source, /exerciseManualSaveLoad/);
   assert.match(source, /\/manual-saves/);
@@ -88,6 +91,14 @@ test("Playwright config retains failure evidence without embedding credentials",
   );
   assert.equal(packageJson.devDependencies["@playwright/test"].startsWith("^"), false);
   assert.doesNotMatch(config, /api[_-]?key/i);
+});
+
+test("component tests keep generated Playwright state outside the source worktree", () => {
+  const config = read("../playwright.component.config.ts");
+  assert.match(config, /FULL_ACCEPTANCE_COMPONENT_DIR/);
+  assert.match(config, /tmpdir\(\)/);
+  assert.match(config, /outputDir:/);
+  assert.doesNotMatch(config, /outputDir:\s*["']test-results/);
 });
 
 test("production server resolves its build output from the project script", () => {

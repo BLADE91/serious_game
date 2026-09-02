@@ -8,7 +8,7 @@ import { ApiError, GameApi, type NpcStreamEvent } from "./lib/api";
 import { resolveCharacter, type Character } from "./lib/characters";
 import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pendingDecisionIsReady, type NarrativeItem } from "./lib/narrative-model";
 import { resolveSceneForView } from "./lib/scene-resolver";
-import { actionPointCost, actionPointLabel, activeInteractionMode, aiConfigurationErrorMessage, aiConfigurationMode, aiConfigurationView, archiveInvestigationGroups, archivePlayerSections, archiveReadGains, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, conversationContractWorkflow, conversationTimelineUpdate, createActivityLatch, createSingleFlight, decisionUnlockRequirements, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, investigationLeadView, meetingEvidenceArchives, peopleRelationshipView, personDiscoveryPresentation, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, resourceInventoryView, reviewEndingView, sessionEntry, speakerSelectionForTimelineEntry, submitGovernanceAction, toPlayerText, withAIActivity } from "./lib/player-ui";
+import { actionPointCost, actionPointLabel, activeInteractionMode, aiConfigurationErrorMessage, aiConfigurationMode, aiConfigurationView, archiveInvestigationGroups, archivePlayerSections, archiveReadGains, budgetEnvelopeChoices, canonicalActionEntry, canonicalActionFamilies, contractBatchTabs, conversationContractWorkflow, conversationTimelineUpdate, createActivityLatch, createSingleFlight, decisionUnlockRequirements, governanceActionProgressLabels, governanceActionTitle, governanceCancelMessage, governanceFinishMessage, governanceLocationLocked, governanceLocationLockMessage, initialNpcStreamState, investigationLeadView, meetingEvidenceArchives, peopleRelationshipView, personDiscoveryPresentation, primaryScenePlan, publicWindowRewardAvailable, qualitativeRelationshipLabel, reduceNpcStream, requiresAIConfiguration, resourceInventoryView, reviewEndingView, sessionEntry, speakerSelectionForTimelineEntry, submitGovernanceAction, toPlayerText, withAIActivity } from "./lib/player-ui";
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
@@ -1485,7 +1485,7 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
   const documents = arr(governance.documents);
   const policyDocuments = documents.filter(item => item.document_type === "compensation_policy" && ["issued", "published"].includes(String(item.status)));
   const approvalDocuments = documents.filter(item => ["issued", "published"].includes(String(item.status)));
-  const siblingContracts = arr(governance.contracts).filter(item => item.batch_id === contract.batch_id);
+  const siblingContracts = contractBatchTabs(governance.contracts, contract) as Dict[];
   const auditIssues = arr(get(contract, "audit_result.issues"));
   const [text, setText] = useState(playerText(contract.contract_text));
   const rewardAvailable = publicWindowRewardAvailable(get(state, "story.day", 1));

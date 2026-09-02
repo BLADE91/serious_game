@@ -680,6 +680,22 @@ export function createSingleFlight<Args extends unknown[], Result>(fn: (...args:
   };
 }
 
+export function contractBatchTabs(
+  rawContracts: unknown,
+  currentContract: PlayerRecord,
+): PlayerRecord[] {
+  const batchId = String(currentContract.batch_id || "");
+  const currentId = String(currentContract.contract_id || "");
+  if (!batchId) return [];
+  return (Array.isArray(rawContracts) ? rawContracts : [])
+    .filter(item => item && typeof item === "object" && !Array.isArray(item))
+    .map(item => item as PlayerRecord)
+    .filter(item => String(item.batch_id || "") === batchId)
+    .map(item => String(item.contract_id || "") === currentId
+      ? { ...item, ...currentContract }
+      : item);
+}
+
 export function createActivityLatch(setActive: (active: boolean) => void) {
   let activeScopes = 0;
   return {

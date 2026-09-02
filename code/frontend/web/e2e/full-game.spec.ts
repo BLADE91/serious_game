@@ -732,11 +732,17 @@ async function signContractsTowardTarget(
       await expect(contractDialog.getByText("已签署", { exact: true }).first()).toBeVisible({ timeout: 600_000 });
       signed += 1;
       if (signed >= targetSigned) break;
-      const next = contractDialog.locator('[aria-label="同批次逐户合同"] button').filter({ hasNotText: "已签署" }).first();
+      const currentHouseholdId = householdId;
+      const next = contractDialog.locator('[aria-label="同批次逐户合同"] button:not(.active)').filter({ hasNotText: "已签署" }).first();
       if (!await next.isVisible().catch(() => false)) break;
+      const nextHouseholdId = String(await next.locator("small").evaluate(element => element.parentElement?.firstChild?.textContent || "")).trim();
+      const detail = page.waitForResponse(response => response.request().method() === "GET"
+        && /\/governance\/contracts\/[^/]+$/.test(new URL(response.url()).pathname), { timeout: 600_000 });
       await next.click();
+      expect((await detail).ok(), `${nextHouseholdId || "next household"} contract detail must load`).toBe(true);
       contractDialog = page.getByRole("dialog").filter({ hasText: "逐户合同 ·" });
-      await expect(contractDialog.locator("form.contract-terms-form")).toBeVisible();
+      await expect(contractDialog.locator(".contract-status small")).not.toContainText(currentHouseholdId, { timeout: 600_000 });
+      await expect(contractDialog.locator("form.contract-terms-form")).toBeVisible({ timeout: 600_000 });
     }
     await contractDialog.getByRole("button").filter({ hasText: /^×$/ }).click();
     const finish = page.getByRole("button", { name: "结束本次行动", exact: true });

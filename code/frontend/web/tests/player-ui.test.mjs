@@ -567,6 +567,25 @@ test("prevents overlapping confirmation submissions while preserving retries aft
   assert.equal(calls, 2);
 });
 
+test("contract batch tabs immediately reflect the authoritative open contract", () => {
+  assert.equal(typeof playerUi.contractBatchTabs, "function");
+  const staleOverview = [
+    { contract_id: "contract-1", batch_id: "batch-a", household_id: "ZDS-01", status: "awaiting_terms" },
+    { contract_id: "contract-2", batch_id: "batch-a", household_id: "ZDS-02", status: "awaiting_terms" },
+  ];
+  const signedDetail = {
+    contract_id: "contract-1",
+    batch_id: "batch-a",
+    household_id: "ZDS-01",
+    status: "signed",
+    signed_hash: "sha256:signed",
+  };
+  assert.deepEqual(playerUi.contractBatchTabs(staleOverview, signedDetail), [
+    { ...staleOverview[0], ...signedDetail },
+    staleOverview[1],
+  ]);
+});
+
 test("keeps player actions busy until every nested refresh scope finishes", async () => {
   assert.equal(typeof playerUi.createActivityLatch, "function");
   const busyStates = [];
