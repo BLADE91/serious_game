@@ -15,6 +15,7 @@ const evidenceRoot = process.env.FULL_ACCEPTANCE_BROWSER_DIR
 const routeCatalogPath = path.resolve(process.cwd(), "../../backend/content/packages/pkg_gameplay_v3/acceptance_route_profiles.json");
 const shardIndex = Number(process.env.FULL_E2E_SHARD_INDEX || 0);
 const shardTotal = Math.max(1, Number(process.env.FULL_E2E_SHARD_TOTAL || 1));
+const expectedForcedPlanCount = Math.max(1, Number(process.env.FULL_VISUAL_EXPECTED_FORCED_PLANS || 6));
 
 async function assertNoHorizontalOverflow(page: Page) {
   const dimensions = await page.evaluate(() => ({
@@ -83,7 +84,7 @@ test.describe("authoritative visual matrix", () => {
         "review", // visual:review
       ]) expect(states, `${state} has no screenshot at ${viewport.name}`).toContain(state);
       const forcedPlans = new Set(forViewport.filter(item => item.state === "forced-conversation").map(item => item.plan_id)); // visual:forced-conversation-6
-      expect(forcedPlans.size).toBe(6);
+      expect(forcedPlans.size).toBe(expectedForcedPlanCount);
       const mainEndings = new Set(forViewport.filter(item => item.state === "main-ending").flatMap(item => item.main_ending_ids || [])); // visual:main-endings-24
       expect([...mainEndings].sort()).toEqual(expectedEndings);
       expect(forViewport.filter(item => item.state === "map-8-locations").every(item => item.location_count === 8)).toBe(true);
