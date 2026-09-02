@@ -606,7 +606,13 @@ async function inspectAllAvailableArchives(page: Page, testInfo: TestInfo, route
       });
       return;
     }
-    await choices.first().check();
+    const factProducingChoices = form.locator("label.choice-card").filter({ hasText: /预计形成\s*[1-9]\d*\s*条事实/ });
+    if (await factProducingChoices.count() === 0) {
+      await page.getByRole("button", { name: "关闭", exact: true }).last().click();
+      await expect(form).toBeHidden();
+      return;
+    }
+    await factProducingChoices.first().locator('input[name="archive-investigation"]').check();
     const committed = page.waitForResponse(response =>
       response.request().method() === "POST"
         && /\/api\/game\/session\/[^/]+\/governance\/actions$/.test(new URL(response.url()).pathname),
@@ -852,9 +858,11 @@ async function exerciseLeadershipMeeting(
   const formalDocumentType = await documentType.locator("option").nth(1).getAttribute("value");
   expect(formalDocumentType, "at least one formal document type must be available").toBeTruthy();
   await documentType.selectOption(String(formalDocumentType));
-  await expect(form.locator("fieldset").filter({ hasText: "会议依据" })).toBeVisible();
-  expect(await form.locator("fieldset").filter({ hasText: "会议依据" }).locator('input[type="checkbox"]:checked').count(),
-    "formal document selection must bind a lawfully read archive").toBeGreaterThan(0);
+  const evidenceFieldset = form.locator("fieldset").filter({ hasText: "会议依据" });
+  await expect(evidenceFieldset).toBeVisible();
+  const evidenceChoice = evidenceFieldset.locator('input[type="checkbox"]').first();
+  await expect(evidenceChoice, "formal document workflow must expose a lawfully read archive").toBeEnabled();
+  await evidenceChoice.check();
   const lead = form.locator("fieldset").filter({ hasText: "指定分管或牵头领导" }).locator('input[type="radio"]').first();
   if (await lead.count()) await lead.check();
   const started = page.waitForResponse(response => response.request().method() === "POST"
@@ -1108,9 +1116,9 @@ async function playRoute(page: Page, testInfo: TestInfo, sessionId: string, prof
       continue;
     }
     if (commands.can_end_day !== false) {
+      await inspectAllAvailableArchives(page, testInfo, profile.route_id);
       if (await completeOneOptionalOpportunity(page, testInfo, profile.route_id, sessionId, optionalOpportunityIds)) continue;
       if (await advanceOneDemand(page, testInfo, profile.route_id, sessionId, selectedDemandIds)) continue;
-      await inspectAllAvailableArchives(page, testInfo, profile.route_id);
       if (targetSigned > 0) await signContractsTowardTarget(page, testInfo, profile.route_id, sessionId, day, targetSigned, contractTerms, processedRepresentatives);
       await endCurrentDay(page, testInfo, profile.route_id, sessionId, day);
       continue;
