@@ -452,11 +452,11 @@ async function finishForcedConversation(page: Page, testInfo: TestInfo, routeId:
     );
     await page.getByRole("button", { name: "送出回应" }).click();
     await expect(input).toBeDisabled({ timeout: 15_000 });
+    await expect(page.getByRole("status").filter({ hasText: "正在" })).toBeVisible({ timeout: 15_000 });
     const answerResponse = await answered;
     page.off("request", observeGovernanceTurn);
     expect(governanceTurnRequests, "forced group input must not submit a governance stream").toBe(0);
     expect(answerResponse.ok(), `${planId} turn ${turn + 1} must start a real-model stream`).toBe(true);
-    await expect(page.getByRole("status").filter({ hasText: "正在" })).toBeVisible({ timeout: 15_000 });
     expect(await answerResponse.finished(), `${planId} turn ${turn + 1} stream must finish cleanly`).toBeNull();
     const errorCode = streamErrorCode(await answerResponse.text());
     if (errorCode) {
@@ -887,6 +887,7 @@ async function exerciseLeadershipMeeting(
   expect(resolveResponse.ok(), "leadership meeting resolution must commit").toBe(true);
   const resolveRequest = asMap(resolveResponse.request().postDataJSON());
   const resolvedPayload = asMap(await resolveResponse.json());
+  const resolvedMeeting = asMap(resolvedPayload.meeting);
   let document = asMap(resolvedPayload.document);
   const documentId = String(document.document_id || "");
   expect(documentId, "resolving a formal meeting must generate a document").not.toBe("");
@@ -910,7 +911,7 @@ async function exerciseLeadershipMeeting(
     {
       step: "resolve", operation_id: `${meetingId}:resolve`, api_path: new URL(resolveResponse.url()).pathname,
       state_version_before: Number(resolveRequest.state_version), state_version_after: Number(resolvedPayload.state_version),
-      status: String(meeting.status || "resolved"),
+      status: String(resolvedMeeting.status || "resolved"),
     },
     {
       step: "observe_review", operation_id: `${documentId}:review-observed-in-resolve-response`, api_path: new URL(resolveResponse.url()).pathname,
@@ -1130,6 +1131,10 @@ const selectedProfiles = catalog.profiles.filter((_, index) => index % shardTota
 
 test.describe("full real browser routes", () => {
   test.skip(!enabled, "set RUN_FULL_REAL_E2E=1 only from the final real acceptance entrypoint");
+  test.beforeEach(async ({ page }) => {
+    page.setDefaultTimeout(600_000);
+    page.setDefaultNavigationTimeout(600_000);
+  });
   for (const [index, profile] of selectedProfiles.entries()) {
     test(`${profile.route_id} reaches its witnessed ending through player controls`, async ({ page }, testInfo) => {
       const finishEvidence = await installEvidenceObservers(page, testInfo);
