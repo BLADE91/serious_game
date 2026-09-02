@@ -823,8 +823,10 @@ async function exercisePlayerPanels(page: Page, testInfo: TestInfo, routeId: str
   await recordVisualState(page, testInfo, routeId, "clues");
   await page.getByRole("button", { name: /地图/ }).first().click(); // acceptance:map
   await expect(page.locator(".map-panel")).toBeVisible();
+  const mapLocations = page.locator(".location-list article");
+  await expect(mapLocations, "the complete map catalog must finish loading").toHaveCount(8, { timeout: 60_000 });
   await recordVisualState(page, testInfo, routeId, "map-current", "day-1", {
-    location_count: await page.locator(".location-list article").count(),
+    location_count: await mapLocations.count(),
   });
   await page.getByRole("button", { name: /关键节点/ }).first().click(); // acceptance:save-load
   await expect(page.getByText("五个关键节点")).toBeVisible();
@@ -835,7 +837,9 @@ async function exercisePlayerPanels(page: Page, testInfo: TestInfo, routeId: str
 async function captureCompletedPanels(page: Page, testInfo: TestInfo, routeId: string) {
   await page.getByRole("button", { name: /地图/ }).first().click();
   await expect(page.locator(".map-panel")).toBeVisible();
-  const locationCount = await page.locator(".location-list article").count();
+  const mapLocations = page.locator(".location-list article");
+  await expect(mapLocations, "completed route must finish loading all eight map locations").toHaveCount(8, { timeout: 60_000 });
+  const locationCount = await mapLocations.count();
   expect(locationCount, "completed route must expose all eight map locations").toBe(8);
   await recordVisualState(page, testInfo, routeId, "map-8-locations", "all", { location_count: locationCount });
   await page.getByRole("button", { name: /复盘/ }).first().click();
