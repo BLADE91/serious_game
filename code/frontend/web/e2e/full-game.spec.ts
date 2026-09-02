@@ -589,8 +589,13 @@ async function inspectAllAvailableArchives(page: Page, testInfo: TestInfo, route
   // one unread file per transaction until the day has no affordable unread file.
   for (let count = 0; count < 20; count += 1) {
     await dismissBlockingPlayerNotices(page, testInfo, routeId);
+    const catalogLoaded = page.waitForResponse(response =>
+      response.request().method() === "GET"
+        && /\/api\/game\/session\/[^/]+\/actions$/.test(new URL(response.url()).pathname),
+    );
     await page.getByRole("button", { name: /行动/ }).first().click(); // acceptance:archives
-    await expect(page.locator(".canonical-actions")).toBeVisible();
+    expect((await catalogLoaded).ok(), "player action catalog must load before archive availability is evaluated").toBe(true);
+    await expect(page.locator('.canonical-actions article[data-action-id="inspect_archives"]')).toBeVisible();
     const archiveAction = page.locator(".canonical-actions article").filter({ hasText: "查阅档案" }).first();
     const open = archiveAction.getByRole("button", { name: "填写方案", exact: true }).first();
     if (await open.count() === 0) return;
