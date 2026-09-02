@@ -182,7 +182,7 @@ export function validateLiveServerAuditEvidence(pages: AuditPage[], expected: {
     silent_fallback_count: audits.filter(audit => audit.provider !== "openai_compatible").length,
   };
   if (Object.values(derivedCounts).some(count => count !== 0)) throw new Error(`fallback audit count must be zero: ${JSON.stringify(derivedCounts)}`);
-  const failed = audits.find(audit => audit.status !== "success" || audit.error_code);
+  const failed = audits.find(audit => audit.status !== "succeeded" || audit.error_code);
   if (failed) throw new Error(`server audit operation failed: ${failed.audit_id}:${failed.error_code || failed.status}`);
   const operationIds = audits.map(audit => audit.operation_id);
   const coverage = [

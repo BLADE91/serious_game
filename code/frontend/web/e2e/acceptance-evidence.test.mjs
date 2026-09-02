@@ -132,10 +132,10 @@ const validAuditPage = () => ({
   session_id: "session-1",
   next_cursor: "2026-08-31T12:00:04Z|llm_sign",
   audits: [
-    { audit_id: "llm_turn", session_id: "session-1", run_id: "session-1", operation_id: "m-1:turn:1:npc-1", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:01Z" },
-    { audit_id: "llm_draft", session_id: "session-1", run_id: "session-1", operation_id: "m-1:draft-document", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:02Z" },
-    { audit_id: "llm_review", session_id: "session-1", run_id: "session-1", operation_id: `d-1:audit:v1:sha256:${"a".repeat(64)}`, provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:03Z" },
-    { audit_id: "llm_sign", session_id: "session-1", run_id: "session-1", operation_id: "d-1:countersign:npc-1:v1", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "success", error_code: null, timestamp: "2026-08-31T12:00:04Z" },
+    { audit_id: "llm_turn", session_id: "session-1", run_id: "session-1", operation_id: "m-1:turn:1:npc-1", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "succeeded", error_code: null, timestamp: "2026-08-31T12:00:01Z" },
+    { audit_id: "llm_draft", session_id: "session-1", run_id: "session-1", operation_id: "m-1:draft-document", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "succeeded", error_code: null, timestamp: "2026-08-31T12:00:02Z" },
+    { audit_id: "llm_review", session_id: "session-1", run_id: "session-1", operation_id: `d-1:audit:v1:sha256:${"a".repeat(64)}`, provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "succeeded", error_code: null, timestamp: "2026-08-31T12:00:03Z" },
+    { audit_id: "llm_sign", session_id: "session-1", run_id: "session-1", operation_id: "d-1:countersign:npc-1:v1", provider: "openai_compatible", model: "model-1", endpoint_host: "api.example.test", config_version: "cfg-1", status: "succeeded", error_code: null, timestamp: "2026-08-31T12:00:04Z" },
   ],
 });
 
