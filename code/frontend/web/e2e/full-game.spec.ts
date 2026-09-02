@@ -449,7 +449,7 @@ async function finishForcedConversation(page: Page, testInfo: TestInfo, routeId:
     const answered = page.waitForResponse(response =>
       response.request().method() === "POST"
         && /\/group-conversation\/turn\/stream$/.test(new URL(response.url()).pathname),
-    );
+    { timeout: 600_000 });
     await page.getByRole("button", { name: "送出回应" }).click();
     await expect(input).toBeDisabled({ timeout: 15_000 });
     await expect(page.getByRole("status").filter({ hasText: "正在" })).toBeVisible({ timeout: 15_000 });
@@ -485,7 +485,7 @@ async function finishOpenInteraction(page: Page, playerText = "请围绕当前�
     await input.fill(playerText);
     const answered = page.waitForResponse(response =>
       response.request().method() === "POST" && /\/stream$/.test(new URL(response.url()).pathname),
-    );
+    { timeout: 600_000 });
     await page.getByRole("button", { name: "送出回应" }).click();
     await expect(input).toBeDisabled({ timeout: 15_000 });
     const answerResponse = await answered;
@@ -593,6 +593,7 @@ async function inspectAllAvailableArchives(page: Page, testInfo: TestInfo, route
     await expect(page.locator(".canonical-actions")).toBeVisible();
     const archiveAction = page.locator(".canonical-actions article").filter({ hasText: "查阅档案" }).first();
     const open = archiveAction.getByRole("button", { name: "填写方案", exact: true }).first();
+    if (await open.count() === 0) return;
     if (!await open.isEnabled().catch(() => false)) return;
     await open.click();
 
@@ -707,7 +708,7 @@ async function signContractsTowardTarget(
     await expect(talk).toBeVisible();
     await talk.fill("我正式向你代表的每一户分别发起合同，请逐户核对条款并签约。");
     const answered = page.waitForResponse(response => response.request().method() === "POST"
-      && /\/governance\/actions\/[^/]+\/turn\/stream$/.test(new URL(response.url()).pathname));
+      && /\/governance\/actions\/[^/]+\/turn\/stream$/.test(new URL(response.url()).pathname), { timeout: 600_000 });
     await page.getByRole("button", { name: "送出回应", exact: true }).click();
     expect((await answered).ok(), `contract intent for ${representative} must reach the real model`).toBe(true);
     const contractEntry = page.getByRole("button", { name: "签订合同", exact: true });
@@ -738,7 +739,7 @@ async function signContractsTowardTarget(
       const review = contractDialog.getByRole("button", { name: "送交本户复核", exact: true });
       await expect(review).toBeEnabled({ timeout: 600_000 });
       const reviewed = page.waitForResponse(response => response.request().method() === "POST"
-        && /\/governance\/contracts\/[^/]+\/review$/.test(new URL(response.url()).pathname));
+        && /\/governance\/contracts\/[^/]+\/review$/.test(new URL(response.url()).pathname), { timeout: 600_000 });
       await review.click();
       expect((await reviewed).ok(), `${householdId} must complete real-model household review`).toBe(true);
       await expect(contractDialog.getByText("已签署", { exact: true }).first()).toBeVisible({ timeout: 600_000 });
@@ -869,7 +870,7 @@ async function exerciseLeadershipMeeting(
   await expect(input).toBeVisible();
   await input.fill("请各位围绕当前搬迁工作的事实依据、程序风险和下一步责任分工作出明确意见。");
   const answered = page.waitForResponse(response => response.request().method() === "POST"
-    && /\/governance\/meetings\/[^/]+\/turn\/stream$/.test(new URL(response.url()).pathname));
+    && /\/governance\/meetings\/[^/]+\/turn\/stream$/.test(new URL(response.url()).pathname), { timeout: 600_000 });
   await page.getByRole("button", { name: "送出回应", exact: true }).click();
   await expect(input).toBeDisabled({ timeout: 15_000 });
   const answerResponse = await answered;
@@ -1131,10 +1132,6 @@ const selectedProfiles = catalog.profiles.filter((_, index) => index % shardTota
 
 test.describe("full real browser routes", () => {
   test.skip(!enabled, "set RUN_FULL_REAL_E2E=1 only from the final real acceptance entrypoint");
-  test.beforeEach(async ({ page }) => {
-    page.setDefaultTimeout(600_000);
-    page.setDefaultNavigationTimeout(600_000);
-  });
   for (const [index, profile] of selectedProfiles.entries()) {
     test(`${profile.route_id} reaches its witnessed ending through player controls`, async ({ page }, testInfo) => {
       const finishEvidence = await installEvidenceObservers(page, testInfo);
