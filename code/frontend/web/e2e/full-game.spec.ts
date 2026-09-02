@@ -955,23 +955,28 @@ async function exerciseLeadershipMeeting(
     await expect(signerButton).toBeEnabled({ timeout: 600_000 });
     let accepted = false;
     for (let attempt = 0; attempt < 3 && !accepted; attempt += 1) {
-      const signed = page.waitForResponse(response => response.request().method() === "POST"
-        && new URL(response.url()).pathname.endsWith(`/governance/documents/${documentId}/countersign`), { timeout: 600_000 });
+      const beforePayload = await readPlayerState(page, sessionId);
+      const beforeVersion = playerStateVersion(beforePayload);
+      const signed = page.waitForRequest(request => request.method() === "POST"
+        && new URL(request.url()).pathname.endsWith(`/governance/documents/${documentId}/countersign`), { timeout: 60_000 });
       // The successful request refreshes the detail and can detach the pressed
       // button before Playwright observes mouseup. The response is authoritative;
       // keep the click promise handled without mistaking that refresh for failure.
       const clickAttempt = signerButton.click().catch(() => undefined);
-      const signedResponse = await signed;
+      const signedRequestObject = await signed;
       await Promise.race([clickAttempt, page.waitForTimeout(1_000)]);
-      expect(signedResponse.ok(), "document countersign request must complete through the visible detail").toBe(true);
-      const signedRequest = asMap(signedResponse.request().postDataJSON());
-      const signedPayload = asMap(await signedResponse.json());
-      accepted = signedPayload.accepted === true;
-      document = asMap(signedPayload.document);
+      const signedRequest = asMap(signedRequestObject.postDataJSON());
+      await expect.poll(async () => playerStateVersion(await readPlayerState(page, sessionId)), {
+        message: "countersign request must produce one authoritative state transition", timeout: 60_000,
+      }).toBeGreaterThan(beforeVersion);
+      const governanceAfterSign = await readGovernancePanel(page, sessionId);
+      document = asMap((governanceAfterSign.documents as JsonMap[]).find(item => String(item.document_id) === documentId));
+      const signedBy = (document.countersigned_by as string[]) || [];
+      accepted = signedBy.includes(String(signedRequest.npc_id));
       operations.push({
         step: "countersign", operation_id: `${documentId}:countersign:${String(signedRequest.npc_id)}:attempt-${attempt + 1}`,
-        api_path: new URL(signedResponse.url()).pathname,
-        state_version_before: Number(signedRequest.state_version), state_version_after: Number(signedPayload.state_version),
+        api_path: new URL(signedRequestObject.url()).pathname,
+        state_version_before: Number(signedRequest.state_version), state_version_after: playerStateVersion(await readPlayerState(page, sessionId)),
         status: accepted ? "accepted" : "rejected",
       });
       if (accepted) {
@@ -982,18 +987,25 @@ async function exerciseLeadershipMeeting(
   }
   expect(operations.some(item => item.step === "countersign"), "formal document must record at least one accepted countersign").toBe(true);
   await expect(detail.getByRole("button", { name: "正式印发", exact: true })).toBeVisible();
-  const issued = page.waitForResponse(response => response.request().method() === "POST"
-    && new URL(response.url()).pathname.endsWith(`/governance/documents/${documentId}/issue`));
-  await detail.getByRole("button", { name: "正式印发", exact: true }).click();
-  const issueResponse = await issued;
-  expect(issueResponse.ok(), "approved document must issue through the visible detail").toBe(true);
-  const issueRequest = asMap(issueResponse.request().postDataJSON());
-  const issuePayload = asMap(await issueResponse.json());
-  document = asMap(issuePayload.document);
+  const beforeIssuePayload = await readPlayerState(page, sessionId);
+  const beforeIssueVersion = playerStateVersion(beforeIssuePayload);
+  const issued = page.waitForRequest(request => request.method() === "POST"
+    && new URL(request.url()).pathname.endsWith(`/governance/documents/${documentId}/issue`));
+  const issueClick = detail.getByRole("button", { name: "正式印发", exact: true }).click().catch(() => undefined);
+  const issueRequestObject = await issued;
+  await Promise.race([issueClick, page.waitForTimeout(1_000)]);
+  const issueRequest = asMap(issueRequestObject.postDataJSON());
+  expect(Number(issueRequest.state_version), "issue must use the currently displayed state version").toBe(beforeIssueVersion);
+  await expect.poll(async () => {
+    const panel = await readGovernancePanel(page, sessionId);
+    return String(asMap((panel.documents as JsonMap[]).find(item => String(item.document_id) === documentId)).status);
+  }, { message: "issued document must persist in the governance DTO", timeout: 60_000 }).toBe("issued");
+  const issuedGovernance = await readGovernancePanel(page, sessionId);
+  document = asMap((issuedGovernance.documents as JsonMap[]).find(item => String(item.document_id) === documentId));
   expect(String(document.status)).toBe("issued");
   operations.push({
-    step: "issue", operation_id: `${documentId}:issue`, api_path: new URL(issueResponse.url()).pathname,
-    state_version_before: Number(issueRequest.state_version), state_version_after: Number(issuePayload.state_version),
+    step: "issue", operation_id: `${documentId}:issue`, api_path: new URL(issueRequestObject.url()).pathname,
+    state_version_before: beforeIssueVersion, state_version_after: playerStateVersion(await readPlayerState(page, sessionId)),
     status: String(document.status),
   });
 
