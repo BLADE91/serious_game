@@ -187,9 +187,9 @@ export function validateLiveServerAuditEvidence(pages: AuditPage[], expected: {
   const operationIds = audits.map(audit => audit.operation_id);
   const coverage = [
     operationIds.some(id => new RegExp(`^${expected.meeting_id}:turn:\\d+:[^:]+$`).test(id)),
-    operationIds.includes(`${expected.meeting_id}:draft-document`),
-    operationIds.some(id => new RegExp(`^${expected.document_id}:audit:v\\d+:sha256:[0-9a-f]{64}$`).test(id)),
-    operationIds.some(id => new RegExp(`^${expected.document_id}:countersign:[^:]+:v\\d+$`).test(id)),
+    operationIds.includes(`${expected.meeting_id}:draft-document:expression`),
+    operationIds.some(id => new RegExp(`^${expected.document_id}:countersign:[^:]+:v\\d+:choice$`).test(id)),
+    operationIds.some(id => new RegExp(`^${expected.document_id}:countersign:[^:]+:v\\d+:expression$`).test(id)),
   ];
   if (coverage.some(found => !found)) throw new Error("live server audits lack exact meeting/document operation coverage");
   return {
