@@ -824,7 +824,7 @@ async function exercisePlayerPanels(page: Page, testInfo: TestInfo, routeId: str
   await page.getByRole("button", { name: /地图/ }).first().click(); // acceptance:map
   await expect(page.locator(".map-panel")).toBeVisible();
   await recordVisualState(page, testInfo, routeId, "map-current", "day-1", {
-    location_count: await page.locator(".location-list > article").count(),
+    location_count: await page.locator(".location-list article").count(),
   });
   await page.getByRole("button", { name: /关键节点/ }).first().click(); // acceptance:save-load
   await expect(page.getByText("五个关键节点")).toBeVisible();
@@ -835,7 +835,7 @@ async function exercisePlayerPanels(page: Page, testInfo: TestInfo, routeId: str
 async function captureCompletedPanels(page: Page, testInfo: TestInfo, routeId: string) {
   await page.getByRole("button", { name: /地图/ }).first().click();
   await expect(page.locator(".map-panel")).toBeVisible();
-  const locationCount = await page.locator(".location-list > article").count();
+  const locationCount = await page.locator(".location-list article").count();
   expect(locationCount, "completed route must expose all eight map locations").toBe(8);
   await recordVisualState(page, testInfo, routeId, "map-8-locations", "all", { location_count: locationCount });
   await page.getByRole("button", { name: /复盘/ }).first().click();
@@ -953,8 +953,12 @@ async function exerciseLeadershipMeeting(
     for (let attempt = 0; attempt < 3 && !accepted; attempt += 1) {
       const signed = page.waitForResponse(response => response.request().method() === "POST"
         && new URL(response.url()).pathname.endsWith(`/governance/documents/${documentId}/countersign`), { timeout: 600_000 });
-      await signerButton.click();
+      // The successful request refreshes the detail and can detach the pressed
+      // button before Playwright observes mouseup. The response is authoritative;
+      // keep the click promise handled without mistaking that refresh for failure.
+      const clickAttempt = signerButton.click().catch(() => undefined);
       const signedResponse = await signed;
+      await Promise.race([clickAttempt, page.waitForTimeout(1_000)]);
       expect(signedResponse.ok(), "document countersign request must complete through the visible detail").toBe(true);
       const signedRequest = asMap(signedResponse.request().postDataJSON());
       const signedPayload = asMap(await signedResponse.json());
@@ -1011,7 +1015,7 @@ async function exerciseMapAction(
   routeId: string,
 ) {
   await page.getByRole("button", { name: /地图/ }).first().click();
-  const availableLocation = page.locator(".location-list > article").filter({ hasText: "可以前往" }).first();
+  const availableLocation = page.locator(".location-list article").filter({ hasText: "可以前往" }).first();
   const details = availableLocation.locator("details.location-actions");
   await expect(details).toBeVisible();
   if (!await details.getAttribute("open")) await details.locator("summary").click();
