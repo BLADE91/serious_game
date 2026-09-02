@@ -1,10 +1,69 @@
-# 《浊流之上》网页美术版本 1.0
+# 《浊流之上》0.5 运行说明
 
 这是一个以县域搬迁治理为主题的严肃游戏。玩家扮演云溪县县长李致远，通过剧情阅读、NPC 会谈、调查行动、班子会议、行政文书、合同签订和夜间结算推进 90 天治理进程。
 
 当前分支的玩家入口是网页，不再是旧终端客户端。
 
-## 一、最省事的启动方法
+本 README 对应 GitHub 分支：`浊流之上0.5`。以下步骤从“在 GitHub 找到分支”开始，直至网页和真实 AI 接口均可使用。
+
+## 一、从 GitHub 获取正确版本
+
+### 方法 A：第一次下载（推荐）
+
+打开 PowerShell，依次执行：
+
+```powershell
+git clone --branch "浊流之上0.5" --single-branch https://github.com/BLADE91/serious_game.git
+cd serious_game
+git branch --show-current
+```
+
+最后一条命令必须显示：
+
+```text
+浊流之上0.5
+```
+
+### 方法 B：电脑上已经有这个仓库
+
+先进入原仓库目录，保留或提交自己的修改，然后执行：
+
+```powershell
+git fetch origin
+git switch --track origin/浊流之上0.5
+git pull --ff-only
+git branch --show-current
+```
+
+如果本地已经创建过同名分支，则执行：
+
+```powershell
+git switch 浊流之上0.5
+git pull --ff-only
+```
+
+不要在存在未提交修改时强行切换或覆盖文件；先运行 `git status`，将自己的修改提交或另行备份。
+
+### 方法 C：不安装 Git，下载 ZIP
+
+1. 打开 GitHub 仓库页面。
+2. 点击左上方分支选择器，选择 `浊流之上0.5`。
+3. 点击 `Code` → `Download ZIP`。
+4. 下载完成后完整解压，再进入包含 `BEGIN.BAT` 的目录。
+
+不要只下载 `code` 文件夹，也不要把 `BEGIN.BAT` 单独复制到别处。正确目录应当是：
+
+```text
+serious_game\
+├── BEGIN.BAT
+├── README.md
+├── 最终剧本.md
+└── code\
+    ├── backend\
+    └── frontend\web\
+```
+
+## 二、最省事的启动方法
 
 适用系统：Windows 10 或 Windows 11。
 
@@ -26,30 +85,7 @@ npm --version
 
 三个命令都应正常输出版本号。Node.js 版本低于 22.13 时，网页无法正常构建。
 
-### 2. 下载正确分支
-
-推荐在 PowerShell 中执行：
-
-```powershell
-git clone --branch "网页美术版本1.0" --single-branch https://github.com/BLADE91/serious_game.git
-cd serious_game
-```
-
-不使用 Git 时，也可以在 GitHub 页面切换到 `网页美术版本1.0` 分支，选择 `Code`、`Download ZIP`，下载后完整解压。
-
-不要只下载 `code` 文件夹，也不要把 `BEGIN.BAT` 单独复制到别处。正确目录应当是：
-
-```text
-serious_game\
-├── BEGIN.BAT
-├── README.md
-├── 最终剧本.md
-└── code\
-    ├── backend\
-    └── frontend\web\
-```
-
-### 3. 配置 AI 接口
+### 2. 配置 AI 接口
 
 普通玩家不需要编辑 `.env`。启动网页后先登录或注册，再在同一个弹窗中选择：
 
@@ -94,7 +130,7 @@ ROLE_LLM_FALLBACK_TO_FAKE=false
 - 如果使用其他 OpenAI 兼容服务，请同时修改 `ROLE_LLM_BASE_URL`、模型名、Key 环境变量名和值；
 - 项目曾在沟通中出现过明文密钥，正式共享前应撤销旧密钥并创建新密钥。
 
-### 4. 一键启动网页
+### 3. 一键启动网页
 
 双击仓库根目录的：
 
@@ -118,7 +154,7 @@ BEGIN.BAT
 
 游戏运行期间不要关闭这两个窗口。结束游戏时关闭它们即可。
 
-## 二、启动前自检
+## 三、启动前自检
 
 在仓库根目录打开 PowerShell，执行：
 
@@ -135,7 +171,7 @@ Web address: http://127.0.0.1:3001
 
 这个命令只检查环境，不启动服务。
 
-## 三、确认游戏是否真正启动
+## 四、确认游戏是否真正启动
 
 启动后分别检查：
 
@@ -155,7 +191,18 @@ Web address: http://127.0.0.1:3001
 
 `llm_provider` 只表示管理员提供的服务器默认接口：`none` 表示玩家必须配置个人 API；`openai_compatible` 表示可以选择服务器默认接口；`fake` 仅用于开发和自动测试。
 
-## 四、常见问题排查
+## 五、第一次进入游戏
+
+1. 打开 <http://127.0.0.1:3001>。
+2. 点击“进入游戏”，注册一个本机账号或登录已有账号。
+3. 在第二步 AI 配置中选择个人 API 或服务器默认接口。
+4. 个人 API 需要填写公共 HTTPS Base URL、API Key 和模型名，然后点击“测试并启用”。
+5. 前端明确显示测试成功后，才能进入活动存档；测试失败时按页面提示检查鉴权、模型权限、余额和接口兼容性。
+6. 新建游戏后从 D1 开始；已有本机存档可从账号界面继续。旧 v3 开发存档如果内容哈希不同，按设计不能继续，需要新建存档。
+
+API 测试可能产生少量供应商费用。项目只支持 OpenAI Chat Completions 兼容接口；个人 Key 只存在后端内存中，后端重启或退出登录后需要重新配置。
+
+## 六、常见问题排查
 
 ### 双击后启动的是旧终端版
 
@@ -226,7 +273,7 @@ Get-NetTCPConnection -LocalPort 8100,3001 -State Listen |
 
 确认网页窗口标题包含 `Hot Reload`，并且访问的是 `http://127.0.0.1:3001`。必要时按 `Ctrl+F5` 强制刷新。
 
-## 五、手动启动方法
+## 七、手动启动方法
 
 只有在 `BEGIN.BAT` 无法运行且需要定位问题时才使用。
 
@@ -249,7 +296,7 @@ npm run dev -- --port 3001
 
 然后打开 <http://127.0.0.1:3001>。
 
-## 六、组员的数据与账号
+## 八、组员的数据与账号
 
 - 本地运行使用 `code/backend/data/serious_game.db`；
 - `data/` 已被 Git 忽略，不会上传个人账号和存档；
@@ -257,18 +304,18 @@ npm run dev -- --port 3001
 - 拉取代码不会覆盖本地存档；
 - 删除数据库文件会清空该电脑上的账号和游戏进度，操作前请备份。
 
-## 七、获取后续更新
+## 九、获取这个分支的后续更新
 
 在仓库目录执行：
 
 ```powershell
-git switch "网页美术版本1.0"
-git pull
+git switch "浊流之上0.5"
+git pull --ff-only
 ```
 
 如果自己修改过文件，请先提交或备份，再执行 `git pull`，避免覆盖本地工作。
 
-## 八、项目结构
+## 十、项目结构
 
 ```text
 BEGIN.BAT                  # Windows 网页一键启动器
@@ -281,7 +328,7 @@ docs/                      # 产品、技术、玩法和美术资料
 最终剧本.md                # 剧情内容权威来源
 ```
 
-## 九、开发验证
+## 十一、开发验证
 
 网页：
 
@@ -307,7 +354,9 @@ $env:PYTHONPATH = "."
 python -m pytest -q
 ```
 
-## 十、进一步资料
+## 十二、验收状态与进一步资料
+
+本分支当前是 0.5 内测候选版。主体游戏、三条真实 API D1–D90 路线和常规全量测试已经通过，但夜间策略矩阵等剩余人工验收项请以[最终验收报告](docs/《浊流之上》最终验收报告.md)为准，不应将 0.5 描述为无已知问题的正式最终版。
 
 - [最终剧本](最终剧本.md)
 - [产品与技术资料](docs/product/)
