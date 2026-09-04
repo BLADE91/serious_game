@@ -46,7 +46,7 @@ const QUICK_START = [
   ["接下调令", "你是云溪县县长李致远。点击右上角进入游戏，登录并测试 AI 接口，然后开始新游戏或继续进度。"],
   ["读完现场，再作决定", "在左侧逐段阅读，点击“下一段”继续。“上一段”和“剧情回看”可以重读；读到决定处后，点击相应选项。剧情决定不消耗精力。"],
   ["认识人物并开始交流", "打开“人物”查看已经认识的人与可会谈机会。进入会谈后，在下方输入要说的话，再点击“送出回应”。吴秀英会谈需要了解村庄的关键情况后才能推进，暂时结束不等于完成。"],
-  ["安排工作并收束行动", "打开“行动”选择工作，先核对对象、地点与精力成本。“地图”按地点查找同一批行动。“结束本次行动”结算成果；“终止行动”提前退出，已发生的交流与消耗保留。"],
+  ["安排工作并收束行动", "打开“行动”选择工作，先核对对象、地点与精力成本。“地图”按地点查找同一批行动。交流告一段落后，点击“结束本次行动”。系统会按实际进展记录结果，已发生的交流和精力消耗保留。"],
   ["结束今日与保留进度", "处理完必须完成的事项后，点击“结束今日”。夜间结果与次晨会谈可能继续推进局势。进度会自动保存，也可在“关键节点”另存。随时点击右上角“新手指引”重新查看。"],
 ];
 const EVIDENCE_RANK: Record<string, number> = { E0: 0, E1: 1, E2: 2, E3: 3 };
@@ -825,7 +825,7 @@ export default function GameShell() {
       setMeetingResolutionOpen(true);
       return;
     }
-    setConfirmRequest({ title: "结束本次行动", message: "确认完成本次交流并结算行动结果？如果只是暂时离开，可取消并继续交流。已发生的对话和精力消耗会保留。", confirmLabel: "确认结束", action: async () => {
+    setConfirmRequest({ title: "结束本次行动", message: "确认结束本次交流？已获得的信息和已发生的对话会保留，已消耗的精力不退还。系统会根据实际交流进展判断是否完成任务。", confirmLabel: "确认结束", action: async () => {
       await perform(() => api.write(sessionId, `/governance/actions/${encodeURIComponent(String(activeGovernanceAction.action_instance_id))}/finish`, "POST", {
         state_version: state.state_version,
       }), governanceFinishMessage(activeGovernanceAction));
@@ -1291,7 +1291,7 @@ function PlayerActionBar({ state, commands, busy, waitingForAI, notice, pending,
     const isMeeting = governanceAction.action_kind === "leadership_meeting";
     const respondingNpcIds = new Set(arr(meeting?.transcript).filter(item => item.speaker_type === "npc").map(item => String(item.npc_id)));
     const hasDiscussion = values(meeting?.participant_ids).every(id => respondingNpcIds.has(String(id)));
-    return <form className="conversation-bar governance-bar" onSubmit={onSubmit} aria-busy={waitingForAI}>{notice && isMeeting && <div className="governance-inline-notice" role="status">{notice}</div>}<label><span>{isMeeting ? "向班子成员说明你的意见" : "继续询问或说明"}</span><textarea name="player_text" value={value} onChange={event => onChange(event.target.value)} placeholder={isMeeting ? "说明方案、责任分工、期限，或回应在场意见…" : "追问事实、了解诉求、解释政策或提出具体方案…"} maxLength={1000} disabled={busy} /></label><div><small>{waitingForAI ? "正在思考回应…" : `${value.length} / 1000`}</small><button type="button" className="danger-quiet" onClick={onCancelGovernance} disabled={busy}>终止行动</button><button type="button" className="secondary" onClick={onFinishGovernance} disabled={busy || (isMeeting && !hasDiscussion)}>{isMeeting ? "形成会议决议" : "结束本次行动"}</button>{contractAvailable && !isMeeting && <button type="button" className="primary" onClick={onOpenContract} disabled={busy}>签订合同</button>}<button disabled={busy || !value.trim()}>{waitingForAI ? "正在思考…" : "送出回应"}</button></div></form>;
+    return <form className="conversation-bar governance-bar" onSubmit={onSubmit} aria-busy={waitingForAI}>{notice && isMeeting && <div className="governance-inline-notice" role="status">{notice}</div>}<label><span>{isMeeting ? "向班子成员说明你的意见" : "继续询问或说明"}</span><textarea name="player_text" value={value} onChange={event => onChange(event.target.value)} placeholder={isMeeting ? "说明方案、责任分工、期限，或回应在场意见…" : "追问事实、了解诉求、解释政策或提出具体方案…"} maxLength={1000} disabled={busy} /></label><div><small>{waitingForAI ? "正在思考回应…" : `${value.length} / 1000`}</small>{isMeeting && <button type="button" className="danger-quiet" onClick={onCancelGovernance} disabled={busy}>终止会议</button>}<button type="button" className="secondary" onClick={onFinishGovernance} disabled={busy || (isMeeting && !hasDiscussion)}>{isMeeting ? "形成会议决议" : "结束本次行动"}</button>{contractAvailable && !isMeeting && <button type="button" className="primary" onClick={onOpenContract} disabled={busy}>签订合同</button>}<button disabled={busy || !value.trim()}>{waitingForAI ? "正在思考…" : "送出回应"}</button></div></form>;
   }
   const overtimeAvailable = Boolean(get(state, "ledger.action_points.overtime_available"));
   return <div className="next-action"><div><span>下一步</span><p>{overtimeAvailable ? "今日精力已经用尽；可以结束今日，或在身体允许时申请一次加班。" : commands.can_end_day ? "今日工作可以收束，也可以继续使用剩余精力。" : "从行动或会谈中选择一个推进方向。"}</p></div><div className="next-buttons"><button onClick={() => onNavigate("actions")} disabled={busy}>安排行动</button><button onClick={() => onNavigate("opportunities")} disabled={busy}>寻找会谈</button>{overtimeAvailable && <button onClick={onOvertime} disabled={busy}>申请加班</button>}{commands.can_end_day && <button className="primary" onClick={onEndDay} disabled={busy}>结束今日</button>}</div></div>;
