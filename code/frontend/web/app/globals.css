@@ -742,13 +742,6 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
   .story-card:has(.forced-group-gal-stage) { grid-template-rows: 66px minmax(440px, 1fr) auto; }
 }
 .quick-start { line-height: 1.9; }
-.county-map { margin: 12px 0 18px; }
-.county-map h3 { margin-bottom: 6px; }
-.county-map p { font-size: 12px; line-height: 1.7; }
-.county-map svg { display: block; width: 100%; height: auto; }
-.county-map-pin { cursor: pointer; }
-.county-map-pin:focus circle { stroke: #b7452c; stroke-width: 4; }
-.county-map > button { padding: 8px 14px; margin-top: 10px; }
 .guide-controls { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 .guide-controls button { padding: 10px 16px; cursor: pointer; }
 button:not(:disabled), select:not(:disabled), summary, .choice-card:not(:has(input:disabled)) { cursor: pointer; }

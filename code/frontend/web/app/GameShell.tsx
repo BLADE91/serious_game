@@ -12,7 +12,7 @@ import { actionPointCost, actionPointLabel, activeInteractionMode, aiConfigurati
 
 type Dict = Record<string, any>;
 type Line = NarrativeItem;
-type PanelName = "scene" | "actions" | "opportunities" | "governance" | "desk" | "knowledge" | "map" | "review" | "manual-saves";
+type PanelName = "scene" | "actions" | "opportunities" | "governance" | "desk" | "knowledge" | "review" | "manual-saves";
 type ConfirmRequest = { title: string; message: string; confirmLabel: string; danger?: boolean; action: () => void | Promise<void> };
 
 const NAV: { id: PanelName; label: string; hint: string }[] = [
@@ -22,15 +22,13 @@ const NAV: { id: PanelName; label: string; hint: string }[] = [
   { id: "governance", label: "治理", hint: "会议与资源" },
   { id: "desk", label: "卷宗", hint: "任务与政策" },
   { id: "knowledge", label: "线索", hint: "事实与证据" },
-  { id: "map", label: "地图", hint: "地点与动向" },
   { id: "review", label: "复盘", hint: "选择与后果" },
-  { id: "manual-saves", label: "关键节点", hint: "保留进度" },
 ];
 
 const PANEL_TITLES: Record<PanelName, string> = {
   scene: "今日案头", actions: "可安排的行动", opportunities: "可以会谈的人", governance: "治理进展",
-  desk: "县长卷宗", knowledge: "已掌握的线索", map: "云溪县地图", review: "本局纪要",
-  "manual-saves": "关键节点管理",
+  desk: "县长卷宗", knowledge: "已掌握的线索", review: "本局纪要",
+  "manual-saves": "存档与读档",
 };
 
 const MEETING_TOPICS = [
@@ -46,8 +44,8 @@ const QUICK_START = [
   ["接下调令", "你是云溪县县长李致远。点击右上角进入游戏，登录并测试 AI 接口，然后开始新游戏或继续进度。"],
   ["读完现场，再作决定", "在左侧逐段阅读，点击“下一段”继续。“上一段”和“剧情回看”可以重读；读到决定处后，点击相应选项。剧情决定不消耗精力。"],
   ["认识人物并开始交流", "打开“人物”查看已经认识的人与可会谈机会。进入会谈后，在下方输入要说的话，再点击“送出回应”。吴秀英会谈需要了解村庄的关键情况后才能推进，暂时结束不等于完成。"],
-  ["安排工作并收束行动", "打开“行动”选择工作，先核对对象、地点与精力成本。“地图”按地点查找同一批行动。交流告一段落后，点击“结束本次行动”。系统会按实际进展记录结果，已发生的交流和精力消耗保留。"],
-  ["结束今日与保留进度", "处理完必须完成的事项后，点击“结束今日”。夜间结果与次晨会谈可能继续推进局势。进度会自动保存，也可在“关键节点”另存。随时点击右上角“新手指引”重新查看。"],
+  ["安排工作并收束行动", "打开“行动”选择工作，先核对对象、地点与精力成本。交流告一段落后，点击“结束本次行动”。系统会按实际进展记录结果，已发生的交流和精力消耗保留。"],
+  ["结束今日与保留进度", "处理完必须完成的事项后，点击“结束今日”。夜间结果与次晨会谈可能继续推进局势。进度会自动保存，也可通过右上角“游戏进度”中的“存档与读档”另存或恢复进度。随时点击右上角“新手指引”重新查看。"],
 ];
 const EVIDENCE_RANK: Record<string, number> = { E0: 0, E1: 1, E2: 2, E3: 3 };
 
@@ -1040,7 +1038,6 @@ export default function GameShell() {
             {panel === "governance" && <GovernancePanel data={panelData} busy={busy} onDisposeDemand={disposeDemand} onOpenRecord={setGovernanceRecordOpen} onOpenArchive={openArchiveDetail} onOpenContract={openContractDetail} />}
             {panel === "desk" && <DeskPanel data={panelData} />}
             {panel === "knowledge" && <KnowledgePanel data={panelData} />}
-            {panel === "map" && <MapPanel data={panelData} blocked={commands.can_act === false} remainingActionPoints={Number(actionPoints)} onRun={item => openCanonicalAction(item, item.title || "安排现场事务")} />}
             {panel === "review" && <ReviewPanel data={panelData} api={api} sessionId={sessionId} />}
             {panel === "manual-saves" && <SavePanel data={panelData} state={state} api={api} sessionId={sessionId} busy={busy} onPerform={perform} onConfirm={setConfirmRequest} />}
           </div>
@@ -1068,7 +1065,7 @@ export default function GameShell() {
         onReview={() => { setAuthOpen(false); setSessionOpen(true); void showSavedSessions(); }}
       /> : authRequired ? account ? <div className="account-card"><small>当前账号</small><strong>{account}</strong><p>你的游戏进度已绑定当前账号，重新登录后仍可继续。</p><div className={`ai-config-summary ${aiView.configured ? "active" : ""}`}><small>当前 AI 接口</small><b>{aiView.summary}</b></div>{authError && <div className="notice">{authError}</div>}<button className="secondary" onClick={() => { setAuthStep("ai"); setAiError(""); setAiSuccess(""); void loadAIConfiguration(false); }} disabled={busy}>AI 接口设置</button>{modelConsentRequired && <button className="secondary" onClick={() => setConsentOpen(true)} disabled={busy}>模型与数据授权</button>}<button onClick={logoutAccount} disabled={busy}>退出登录</button></div> : <form className="stack-form" onSubmit={authenticate}><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>登录</button>{selfRegistration && <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>注册</button>}</div><p>{authMode === "login" ? "登录后可继续这个账号的历史进度。" : "创建账号后即可保留多条游戏进度。"}</p>{authError && <div className="notice">{authError}</div>}<label>用户名<input name="username" minLength={authMode === "register" ? 3 : 1} maxLength={32} autoComplete="username" required autoFocus /></label><label>密码<input name="password" type="password" minLength={authMode === "register" ? 8 : 1} maxLength={256} autoComplete={authMode === "register" ? "new-password" : "current-password"} required /></label><button disabled={busy}>{busy ? "正在处理…" : authMode === "login" ? "登录并继续" : "注册并开始"}</button></form> : <div className="account-card"><small>当前身份</small><strong>本地试玩</strong><p>无需注册。游戏进度会保存在这台电脑上。</p><button onClick={() => setAuthStep("ai")}>配置 AI 接口</button></div>}
     </Modal>}
-    {sessionOpen && <Modal title="进入云溪县" onClose={() => { setSessionOpen(false); setSavedSessionsOpen(false); }}><div className="session-actions"><button onClick={() => openSession("new")} disabled={!aiView.configured}>开始新游戏<span>{aiView.configured ? "从上任第一天开始一条新的九十天时间线" : "请先测试并启用 AI 接口"}</span></button><button onClick={showSavedSessions} className={savedSessionsOpen ? "selected" : ""}>查看已有进度<span>可继续当前版本，或复盘已退役剧本</span></button></div>{savedSessionsOpen && <div className="saved-session-list" aria-live="polite">{busy && !savedSessions.length && <div className="form-loading">正在整理存档…</div>}{savedSessionsError && <div className="notice">{savedSessionsError}</div>}{!busy && !savedSessionsError && !savedSessions.length && <div className="empty-state"><p>还没有保存过的游戏，可以从新游戏开始。</p></div>}{savedSessions.map((saved, index) => { const entry = sessionEntry(saved); const needsAI = entry.openKind === "load" && !aiView.configured; return <button key={saved.session_id} className={entry.mode === "review" ? "review-only" : entry.mode === "unavailable" ? "unavailable" : ""} disabled={entry.openKind === null || needsAI} onClick={() => { if (entry.openKind && !needsAI) openSession(entry.openKind, String(saved.session_id)); }}><span><b>进度{chineseIndex(index)} · {entry.label}</b><small>第 {saved.story_day || 1} 日 · {needsAI ? "配置 AI 接口后可继续" : entry.mode === "review" ? "仅可复盘" : entry.mode === "unavailable" ? entry.unavailableReason : friendlyStatus(saved.status)}</small></span><time>{saved.updated_at ? new Date(saved.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</time></button>; })}</div>}</Modal>}
+    {sessionOpen && <Modal title="进入云溪县" onClose={() => { setSessionOpen(false); setSavedSessionsOpen(false); }}><div className="session-actions">{sessionId && <button onClick={() => { setSessionOpen(false); setSavedSessionsOpen(false); void loadPanel("manual-saves"); }}>存档与读档<span>保存当前进度，或载入本局已有存档</span></button>}<button onClick={() => openSession("new")} disabled={!aiView.configured}>开始新游戏<span>{aiView.configured ? "从上任第一天开始一条新的九十天时间线" : "请先测试并启用 AI 接口"}</span></button><button onClick={showSavedSessions} className={savedSessionsOpen ? "selected" : ""}>查看已有进度<span>可继续当前版本，或复盘已退役剧本</span></button></div>{savedSessionsOpen && <div className="saved-session-list" aria-live="polite">{busy && !savedSessions.length && <div className="form-loading">正在整理存档…</div>}{savedSessionsError && <div className="notice">{savedSessionsError}</div>}{!busy && !savedSessionsError && !savedSessions.length && <div className="empty-state"><p>还没有保存过的游戏，可以从新游戏开始。</p></div>}{savedSessions.map((saved, index) => { const entry = sessionEntry(saved); const needsAI = entry.openKind === "load" && !aiView.configured; return <button key={saved.session_id} className={entry.mode === "review" ? "review-only" : entry.mode === "unavailable" ? "unavailable" : ""} disabled={entry.openKind === null || needsAI} onClick={() => { if (entry.openKind && !needsAI) openSession(entry.openKind, String(saved.session_id)); }}><span><b>进度{chineseIndex(index)} · {entry.label}</b><small>第 {saved.story_day || 1} 日 · {needsAI ? "配置 AI 接口后可继续" : entry.mode === "review" ? "仅可复盘" : entry.mode === "unavailable" ? entry.unavailableReason : friendlyStatus(saved.status)}</small></span><time>{saved.updated_at ? new Date(saved.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</time></button>; })}</div>}</Modal>}
     {formOpen && <Modal title={formOpen.title} onClose={() => setFormOpen(null)}><ContextForm config={formOpen} state={state} api={api} sessionId={sessionId} notice={notice} onPerform={perform} onArchivesRead={setArchiveReadingOpen} onOpenProfile={setCharacterProfileOpen} /></Modal>}
     {meetingResolutionOpen && activeMeeting && <Modal title="确认会议决议" onClose={() => { if (!busy) setMeetingResolutionOpen(false); }}><MeetingResolutionForm meeting={activeMeeting} governance={governance || {}} state={state} busy={busy} notice={notice} onOpenProfile={setCharacterProfileOpen} onCancel={() => setMeetingResolutionOpen(false)} onSubmit={submitMeetingResolution} /></Modal>}
     {characterProfileOpen && <Modal title="人物介绍" className="character-profile-modal" onClose={() => setCharacterProfileOpen(null)}><CharacterProfileView character={characterProfileOpen} /></Modal>}
@@ -1633,16 +1630,6 @@ function KnowledgePanel({ data }: { data: Dict | null }) {
   return <div className="knowledge-panel">{leads.length > 0 && <section className="panel-section investigation-leads"><h3>当前可调查方向</h3><p className="panel-note">这里只提示当前已经开放的调查入口；材料尚未取得前，不会把待核内容当成事实。</p><div>{leads.map(lead => <article key={lead.factId}><div className="evidence-head"><h4>{lead.title}</h4><span>{lead.category === "evidence" ? "证据方向" : lead.category === "fact" ? "事实核对" : "线索方向"}</span></div>{lead.methods.map(method => <div className="investigation-method" key={`${lead.factId}:${method.routeType}:${method.label}`}><b>{method.routeType === "archive" ? "查档" : "会谈"} · {method.label}</b><p>{method.instructions}</p></div>)}</article>)}</div></section>}{groups.map(([title, items]) => <PanelSection key={title} title={title} items={items} empty={`暂无${title}`} render={(item) => <><div className="evidence-head"><h4>{playerText(item.title || item.name || item.label, "新材料")}</h4>{(item.evidence_level || item.confidentiality) && <span>{friendlyStatus(item.evidence_level || item.confidentiality)}</span>}</div><p>{playerText(item.text || item.summary || item.description || item.content, "已收入案头，等待进一步核实。")}</p>{(item.source_label || item.use_hint) && <dl className="knowledge-provenance">{item.source_label && <><dt>来源</dt><dd>{playerText(item.source_label)}</dd></>}{item.use_hint && <><dt>用途</dt><dd>{playerText(item.use_hint)}</dd></>}</dl>}</>} />)}</div>;
 }
 
-function MapPanel({ data, blocked, remainingActionPoints, onRun }: { data: Dict | null; blocked: boolean; remainingActionPoints: number; onRun: (item: Dict) => void }) {
-  const locations = arr(data?.locations);
-  const [selectedLocation, setSelectedLocation] = useState("");
-  const shownLocations = selectedLocation ? locations.filter(item => item.location_id === selectedLocation) : locations;
-  return <div className="map-panel"><div className="panel-note map-intro">行动页按工作类型安排事务；地图按地点查找同一批事务，使用相同的精力成本与办理流程。地点随剧情开放。</div><section className="county-map" aria-label="云溪县地点示意图"><h3>云溪县地点示意图</h3><p>位置仅为示意，不代表实际方位或距离。点击地点查看可办理事项。</p><svg viewBox="0 0 420 440" role="img" aria-label="清江沿岸地点索引"><rect width="420" height="440" rx="12" fill="#e2d1a6"/><path d="M-20 210 Q100 160 220 210 T450 210" fill="none" stroke="#839e9d" strokeWidth="36"/><text x="195" y="215" fill="#fff7dd" fontSize="18">清江</text>{locations.map((item, index) => { const x = 105 + (index % 2) * 210; const y = 35 + Math.floor(index / 2) * 110; const available = item.visual_state === "available"; const select = () => setSelectedLocation(String(item.location_id)); return <g key={item.location_id} role="button" tabIndex={0} aria-label={`查看${playerText(item.name)}${available ? "" : "（尚未开放）"}`} onClick={select} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); } }} className="county-map-pin"><title>{playerText(item.name)} · {available ? "可以前往" : "尚未开放"}</title><circle cx={x} cy={y} r="17" fill={selectedLocation === item.location_id ? "#923f32" : available ? "#63563b" : "#a79a7f"}/><text x={x} y={y + 5} textAnchor="middle" fill="white" fontSize="14">{index + 1}</text><text x={x} y={y + 38} textAnchor="middle" fill="#372b1a" fontSize="15">{playerText(item.name)}</text></g>; })}</svg>{selectedLocation && <button onClick={() => setSelectedLocation("")}>返回全部地点</button>}</section>{blocked && <div className="panel-note">先处理当前必须决定的事项，随后即可安排现场工作。</div>}<div className="card-list location-list">{shownLocations.length ? shownLocations.map((item, index) => {
-    const entries = item.visual_state === "available" ? arr(item.entry_cards) : [];
-    return <article key={item.location_id || index}><div className="location-mark">{index + 1}</div><div><h3>{playerText(item.name, `地点${chineseIndex(index)}`)}</h3><p>{playerText(item.description, "暂无新的现场信息。")}</p><small>{item.visual_state === "available" ? "可以前往" : "尚未开放"}</small>{entries.length > 0 && <details className="location-actions"><summary>可办理事项（{entries.length}）</summary><div>{entries.map((entry, actionIndex) => { const cost = actionPointCost(entry); const lacksEnergy = cost !== null && Number.isFinite(remainingActionPoints) && cost > remainingActionPoints; const unavailable = blocked || entry.available === false || lacksEnergy; const reason = blocked ? "先处理当前必须决定的事项" : entry.available === false ? playerText(entry.unavailable_reason, "当前条件尚未满足") : lacksEnergy ? `还需 ${cost} 点精力，当前仅剩 ${remainingActionPoints} 点` : ""; return <section key={entry.title || actionIndex} className={unavailable ? "unavailable" : ""}><div><b>{playerText(entry.title, "现场事务")}</b><p>{playerText(entry.description, "根据当前情况推进这项工作。")}</p><small>{actionPointLabel(entry)}{Number(entry.direct_budget_cost || 0) > 0 ? ` · 预算 ${entry.direct_budget_cost} 万元` : ""}</small>{reason && <em className="map-action-reason">{reason}</em>}</div><button disabled={unavailable} onClick={() => onRun({ ...entry, location_id: item.location_id })}>{entry.entry_type === "conversation" ? "进入会谈" : entry.available === false ? "条件不足" : lacksEnergy ? "精力不足" : "填写方案"}</button></section>; })}</div></details>}</div></article>;
-  }) : <Empty text="地图上暂时没有可公开的地点。"/>}</div></div>;
-}
-
 function ReviewPanel({ data, api, sessionId }: { data: Dict | null; api: GameApi; sessionId: string }) {
   const [historyResult, setHistoryResult] = useState<{
     requestKey: string;
@@ -1697,16 +1684,16 @@ function ReviewPanel({ data, api, sessionId }: { data: Dict | null; api: GameApi
 function SavePanel({ data, state, api, sessionId, busy, onPerform, onConfirm }: { data: Dict | null; state: Dict; api: GameApi; sessionId: string; busy: boolean; onPerform: (action: () => Promise<Dict>, success?: string, rebuildNarrative?: boolean, onResult?: (result: Dict) => void) => Promise<boolean>; onConfirm: (request: ConfirmRequest) => void }) {
   const saves = arr(data?.manual_saves);
   const [slot, setSlot] = useState(1);
-  const [name, setName] = useState(`第${get(state, "story.day", 1)}日关键节点`);
+  const [name, setName] = useState(`第${get(state, "story.day", 1)}日存档`);
   const occupied = saves.some(item => Number(item.slot_number) === slot);
   return <div className="save-panel">
     <section className="save-create">
-      <small>保留关键节点</small><h3>五个关键节点</h3><p>日常行动会自动保存。关键节点适合在重要抉择前保留一份独立进度。</p>
-      <label>节点位置<select value={slot} onChange={event => setSlot(Number(event.target.value))}>{[1, 2, 3, 4, 5].map(value => <option key={value} value={value}>位置{chineseIndex(value - 1)}{saves.some(item => Number(item.slot_number) === value) ? "（已有节点）" : ""}</option>)}</select></label>
-      <label>节点名称<input value={name} maxLength={40} onChange={event => setName(event.target.value)} /></label>
-      <button disabled={busy || !name.trim()} onClick={() => { const save = async () => { await onPerform(() => api.manualSave(sessionId, { client_action_id: api.key("manual-save"), state_version: state.state_version, slot_number: slot, display_name: name.trim(), overwrite: occupied }), "关键节点已保存"); }; if (occupied) onConfirm({ title: "覆盖已有关键节点", message: "这个位置已有关键节点。覆盖后，原有节点将被新进度替换。", confirmLabel: "确认覆盖", danger: true, action: save }); else void save(); }}>{occupied ? "覆盖这个位置" : "保存关键节点"}</button>
+      <small>保留存档</small><h3>五个存档</h3><p>日常行动会自动保存。存档适合在重要抉择前保留一份独立进度。</p>
+      <label>存档位置<select value={slot} onChange={event => setSlot(Number(event.target.value))}>{[1, 2, 3, 4, 5].map(value => <option key={value} value={value}>位置{chineseIndex(value - 1)}{saves.some(item => Number(item.slot_number) === value) ? "（已有存档）" : ""}</option>)}</select></label>
+      <label>存档名称<input value={name} maxLength={40} onChange={event => setName(event.target.value)} /></label>
+      <button disabled={busy || !name.trim()} onClick={() => { const save = async () => { await onPerform(() => api.manualSave(sessionId, { client_action_id: api.key("manual-save"), state_version: state.state_version, slot_number: slot, display_name: name.trim(), overwrite: occupied }), "存档已保存"); }; if (occupied) onConfirm({ title: "覆盖已有存档", message: "这个位置已有存档。覆盖后，原有存档将被新进度替换。", confirmLabel: "确认覆盖", danger: true, action: save }); else void save(); }}>{occupied ? "覆盖这个位置" : "保存存档"}</button>
     </section>
-    <PanelSection title="关键节点" items={saves} empty="还没有保留关键节点" render={(item, index) => <div className="save-row"><div><h4>{item.display_name || `关键节点${chineseIndex(index)}`}</h4><p>第 {item.story_day || 1} 日 · {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "已保存"}</p></div><button disabled={busy} onClick={() => onConfirm({ title: "载入关键节点", message: "载入后，当前未另存的进度会被所选节点覆盖。", confirmLabel: "确认载入", action: async () => { await onPerform(() => api.loadSnapshot(sessionId, { client_action_id: api.key("load-save"), state_version: state.state_version, snapshot_id: item.snapshot_id, confirmed: true }), "已载入所选关键节点", true); } })}>载入</button></div>} />
+    <PanelSection title="存档" items={saves} empty="还没有保留存档" render={(item, index) => <div className="save-row"><div><h4>{item.display_name || `存档${chineseIndex(index)}`}</h4><p>第 {item.story_day || 1} 日 · {item.created_at ? new Date(item.created_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "已保存"}</p></div><button disabled={busy} onClick={() => onConfirm({ title: "载入存档", message: "载入后，当前未另存的进度会被所选存档覆盖。", confirmLabel: "确认载入", action: async () => { await onPerform(() => api.loadSnapshot(sessionId, { client_action_id: api.key("load-save"), state_version: state.state_version, snapshot_id: item.snapshot_id, confirmed: true }), "已载入所选存档", true); } })}>载入</button></div>} />
   </div>;
 }
 
@@ -1727,7 +1714,7 @@ function ContextForm({ config, state, api, sessionId, notice, onPerform, onArchi
   if (config.kind === "resource" && (item.action_id || item.submit?.action_id)) {
     return <ResourceActionForm item={item} state={state} api={api} sessionId={sessionId} notice={notice} onPerform={onPerform} onOpenProfile={onOpenProfile} />;
   }
-  return <div className="empty-state"><span>缓</span><h3>这项安排尚需完善</h3><p>当前页面还没有足够的信息来安全执行它，请从地图或会谈入口尝试。</p></div>;
+  return <div className="empty-state"><span>缓</span><h3>这项安排尚需完善</h3><p>当前页面还没有足够的信息来安全执行它，请从行动或会谈入口尝试。</p></div>;
 }
 
 function ResourceActionForm({ item, state, api, sessionId, notice, onPerform, onOpenProfile }: { item: Dict; state: Dict; api: GameApi; sessionId: string; notice: string; onPerform: (fn: () => Promise<Dict>, text?: string, rebuildNarrative?: boolean, onResult?: (result: Dict) => void) => Promise<boolean>; onOpenProfile: (character: Character) => void }) {
