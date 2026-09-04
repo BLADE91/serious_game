@@ -154,7 +154,12 @@ export function narrativeItemFromFeed(value: Record<string, unknown>, fallbackId
     storyDay: typeof value.story_day === "number" ? value.story_day : undefined,
     kind: String(value.kind || "narrative"),
     speaker: value.speaker ? String(value.speaker) : undefined,
-    text: String(value.text || ""),
+    // Older saves include a duplicated date or a clipped opening paragraph here.
+    // The complete prose remains in the following scene blocks.
+    text: value.kind === "day_intro" && typeof value.story_day === "number"
+      && !String(value.text || "").includes("今天没有必须处理的主线事项")
+      ? `第${value.story_day}日`
+      : String(value.text || ""),
     contentInstanceId,
     blockId: typeof value.block_id === "string" ? value.block_id : undefined,
     decisionId: typeof value.decision_id === "string" ? value.decision_id : undefined,

@@ -50,6 +50,7 @@ export class ApiError extends Error {
 export class GameApi {
   baseUrl: string;
   csrfToken = "";
+  streamIdleTimeoutMs = 120_000;
   accountId = "";
 
   constructor(baseUrl: string) {
@@ -132,50 +133,68 @@ export class GameApi {
     };
     if (this.accountId) headers["X-Account-ID"] = this.accountId;
     if (this.csrfToken) headers["X-CSRF-Token"] = this.csrfToken;
-    let response: Response;
-    try {
-      response = await fetch(
-        `${this.baseUrl}/api/game/session/${encodeURIComponent(sessionId)}${suffix}`,
-        { method: "POST", headers, credentials: "include", body: JSON.stringify(body) },
-      );
-    } catch {
-      throw new ApiError("游戏服务暂时无法连接，请稍后重试。", "CLIENT_CONNECTION_ERROR");
-    }
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      const error = (data as { error?: Record<string, unknown> }).error ?? {};
-      throw new ApiError(
-        String(error.message ?? "这项操作暂时无法完成，请稍后重试。"),
-        String(error.code ?? "CLIENT_HTTP_ERROR"),
-        response.status,
-        (error.details as Record<string, unknown>) ?? {},
-      );
-    }
-    if (!response.body) throw new ApiError("NPC 回应流未建立。", "CLIENT_STREAM_UNAVAILABLE");
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let pending = "";
-    let result: Record<string, unknown> | null = null;
-    const streamState: { error: NpcStreamEvent | null } = { error: null };
-    const consume = (line: string) => {
-      if (!line.trim()) return;
-      const event = JSON.parse(line) as NpcStreamEvent;
-      onEvent(event);
-      if (event.type === "complete" && event.result) result = event.result;
-      if (event.type === "error") streamState.error = event;
+    const controller = new AbortController();
+    let timedOut = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    const resetTimeout = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => { timedOut = true; controller.abort(); }, this.streamIdleTimeoutMs);
     };
-    while (true) {
-      const { done, value } = await reader.read();
-      pending += decoder.decode(value, { stream: !done });
-      const lines = pending.split("\n");
-      pending = lines.pop() || "";
-      lines.forEach(consume);
-      if (done) break;
+    resetTimeout();
+    try {
+      let response: Response;
+      try {
+        response = await fetch(
+          `${this.baseUrl}/api/game/session/${encodeURIComponent(sessionId)}${suffix}`,
+          { method: "POST", headers, credentials: "include", body: JSON.stringify(body), signal: controller.signal },
+        );
+      } catch {
+        throw new ApiError("游戏服务暂时无法连接，请稍后重试。", "CLIENT_CONNECTION_ERROR");
+      }
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const error = (data as { error?: Record<string, unknown> }).error ?? {};
+        throw new ApiError(
+          String(error.message ?? "这项操作暂时无法完成，请稍后重试。"),
+          String(error.code ?? "CLIENT_HTTP_ERROR"),
+          response.status,
+          (error.details as Record<string, unknown>) ?? {},
+        );
+      }
+      if (!response.body) throw new ApiError("NPC 回应流未建立。", "CLIENT_STREAM_UNAVAILABLE");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let pending = "";
+      let result: Record<string, unknown> | null = null;
+      const streamState: { error: NpcStreamEvent | null } = { error: null };
+      const consume = (line: string) => {
+        if (!line.trim()) return;
+        const event = JSON.parse(line) as NpcStreamEvent;
+        onEvent(event);
+        if (event.type === "complete" && event.result) result = event.result;
+        if (event.type === "error") streamState.error = event;
+      };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value?.length) resetTimeout();
+        pending += decoder.decode(value, { stream: !done });
+        const lines = pending.split("\n");
+        pending = lines.pop() || "";
+        lines.forEach(consume);
+        if (done || result || streamState.error) break;
+      }
+      consume(pending);
+      void reader.cancel().catch(() => {});
+      if (streamState.error) throw new ApiError(streamState.error.message || "对方暂时无法回应，请稍后重试。", streamState.error.code || "NPC_RESPONSE_UNAVAILABLE", 503);
+      if (!result) throw new ApiError("NPC 回应流提前结束。", "CLIENT_STREAM_INCOMPLETE");
+      return result;
+    } catch (error) {
+      if (timedOut) throw new ApiError("等待人物回应超时，正在核对最新进度。请确认记录后再决定是否重试。", "CLIENT_STREAM_TIMEOUT");
+      throw error;
+    } finally {
+      clearTimeout(timeout!);
+      controller.abort();
     }
-    consume(pending);
-    if (streamState.error) throw new ApiError(streamState.error.message || "对方暂时无法回应，请稍后重试。", streamState.error.code || "NPC_RESPONSE_UNAVAILABLE", 503);
-    if (!result) throw new ApiError("NPC 回应流提前结束。", "CLIENT_STREAM_INCOMPLETE");
-    return result;
   }
 
   auth(mode: "login" | "register", username: string, password: string) {

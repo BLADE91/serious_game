@@ -107,6 +107,9 @@ class GroupConversationService:
             if conversation.phase != "active":
                 raise ActionUnavailableError("本场会谈已经收束，请确认结束后继续")
             package = require_locked_package(self._packages, session)
+            if stream_event is not None:
+                stream_event({"type": "npc_thinking_start", "stream_id": "group:review",
+                              "npc_name": "在场各方（正在理解你的发言）"})
             relevant, review_reason = self._input_review.review(
                 session,
                 operation_id=(
@@ -117,6 +120,8 @@ class GroupConversationService:
                 scene_goal=conversation.agenda,
             )
             ensure_stream_open(stream_cancelled)
+            if stream_event is not None:
+                stream_event({"type": "npc_thinking_end", "stream_id": "group:review"})
             if not relevant:
                 session.logs.append({
                     "type": "unrelated_input_rejected",
@@ -177,6 +182,10 @@ class GroupConversationService:
                     }
                 )
                 guidance = conversation.participant_guidance.get(npc_id, {})
+                thinking_id = f"group:{conversation.turn_count + 1}:{npc_id}"
+                if stream_event is not None:
+                    stream_event({"type": "npc_thinking_start", "stream_id": thinking_id,
+                                  "npc_id": npc_id, "npc_name": profile.name})
                 raw_result = self._gateway.run_night_turn(NightAgentContext(
                     session_id=session.session_id,
                     account_id=session.account_id,
@@ -194,6 +203,11 @@ class GroupConversationService:
                         profile.big_five.as_dict() if profile.big_five else {}
                     ),
                     counterpart_ids=other_ids,
+                    counterpart_names={item: profiles[item].name for item in other_ids if item in profiles},
+                    counterpart_roles={
+                        item: profiles[item].role_setting.splitlines()[0].lstrip("# ")
+                        for item in other_ids if item in profiles and profiles[item].role_setting.strip()
+                    },
                     transcript=tuple(conversation.transcript),
                     round_index=conversation.turn_count + 1,
                     scene_goal=conversation.agenda,
@@ -227,6 +241,9 @@ class GroupConversationService:
                     model_id="",
                 ))
                 ensure_stream_open(stream_cancelled)
+                if stream_event is not None:
+                    stream_event({"type": "npc_thinking_end", "stream_id": thinking_id,
+                                  "npc_id": npc_id, "npc_name": profile.name})
                 result = validate_night_turn_result(
                     raw_result,
                     expected_npc_id=npc_id,

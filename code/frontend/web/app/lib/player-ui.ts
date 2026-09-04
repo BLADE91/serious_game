@@ -464,8 +464,8 @@ export async function withAIActivity<Result>(
 
 export function governanceCancelMessage(action: PlayerRecord | null | undefined): string {
   return action?.cost_status === "pending"
-    ? "确认中止当前行动？尚未形成有效交流，不会消耗精力。"
-    : "确认中止当前行动？已经消耗的精力不会返还。";
+    ? "确认终止当前行动？尚未形成有效交流，不会消耗精力。"
+    : "确认终止当前行动？已经消耗的精力不会返还。";
 }
 
 export function governanceFinishMessage(action: PlayerRecord | null | undefined): string {

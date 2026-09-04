@@ -287,12 +287,12 @@ def build_container(
     disclosure_gate = DisclosureGateService()
     action_quotes = ActionQuoteService()
     action_handlers = ActionHandlerRegistry(scripted_effects)
-    nights = NightSimulationService(scripted_effects, trust_derivation, role_llm)
+    npc_memories = NPCMemoryService(memory_repository)
+    nights = NightSimulationService(scripted_effects, trust_derivation, role_llm, npc_memories)
     endings = EndingService(EndingAxisProjector())
     npc_turns = NPCTurnService(role_llm, validator)
     input_review = InputReviewService(role_llm)
     story_flow = StoryFlowService()
-    npc_memories = NPCMemoryService(memory_repository)
     gameplay_governance = GameplayGovernanceService(
         sessions,
         packages,

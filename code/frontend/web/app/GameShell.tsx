@@ -42,6 +42,13 @@ const MEETING_TOPICS = [
   "明确部门分工、责任人与完成期限",
 ];
 const CUSTOM_MEETING_TOPIC = "custom";
+const QUICK_START = [
+  ["接下调令", "你是云溪县县长李致远。点击右上角进入游戏，登录并测试 AI 接口，然后开始新游戏或继续进度。"],
+  ["读完现场，再作决定", "在左侧逐段阅读，点击“下一段”继续。“上一段”和“剧情回看”可以重读；读到决定处后，点击相应选项。剧情决定不消耗精力。"],
+  ["认识人物并开始交流", "打开“人物”查看已经认识的人与可会谈机会。进入会谈后，在下方输入要说的话，再点击“送出回应”。吴秀英会谈需要了解村庄的关键情况后才能推进，暂时结束不等于完成。"],
+  ["安排工作并收束行动", "打开“行动”选择工作，先核对对象、地点与精力成本。“地图”按地点查找同一批行动。“结束本次行动”结算成果；“终止行动”提前退出，已发生的交流与消耗保留。"],
+  ["结束今日与保留进度", "处理完必须完成的事项后，点击“结束今日”。夜间结果与次晨会谈可能继续推进局势。进度会自动保存，也可在“关键节点”另存。随时点击右上角“新手指引”重新查看。"],
+];
 const EVIDENCE_RANK: Record<string, number> = { E0: 0, E1: 1, E2: 2, E3: 3 };
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
@@ -113,6 +120,7 @@ const playerErrorMessage = (error: unknown) => {
   if (value?.code === "STATE_VERSION_CONFLICT") return "进度刚刚发生了变化，已为你重新读取最新状态。";
   if (value?.status === 409 && safeMessage) return safeMessage;
   if (value?.status === 422) return "所填内容还不完整，请检查后再提交。";
+  if (["CLIENT_STREAM_TIMEOUT", "CLIENT_STREAM_INCOMPLETE", "NPC_RESPONSE_UNAVAILABLE"].includes(value?.code) && safeMessage) return safeMessage;
   if (!value?.status || value.status >= 500) return "游戏服务暂时没有响应，请稍后重试。";
   if (safeMessage) return safeMessage;
   return "这项操作暂时无法完成，请换一种安排或稍后重试。";
@@ -213,6 +221,8 @@ export default function GameShell() {
   const [commands, setCommands] = useState<Dict>({});
   const [narrative, dispatchNarrative] = useReducer(narrativeReducer, initialNarrativeState);
   const [showHistory, setShowHistory] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideStep, setGuideStep] = useState(0);
   const [panel, setPanel] = useState<PanelName>("scene");
   const [panelData, setPanelData] = useState<Dict | null>(null);
   const [governance, setGovernance] = useState<Dict | null>(null);
@@ -242,6 +252,12 @@ export default function GameShell() {
   ));
   const activityLatchRef = useRef(createActivityLatch(setBusy));
   const contextRef = useRef<HTMLElement>(null);
+  const storyScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = storyScrollRef.current;
+    root?.scrollTo({ top: 0 });
+    root?.querySelectorAll(".gal-dialogue > p").forEach(element => element.scrollTo({ top: 0 }));
+  }, [narrative.currentIndex, sessionId]);
   const progressBroadcast = state.progress_broadcast as Dict | null;
   const progressBroadcastId = String(progressBroadcast?.broadcast_id || "");
   const progressBroadcastTone = String(progressBroadcast?.tone || "wry");
@@ -627,6 +643,9 @@ export default function GameShell() {
           setFormOpen(null);
           await refresh(0, sessionId, false, true, "latest");
           setNotice("已有一项治理行动正在进行，已为你切换到当前现场。");
+        } else if (["CLIENT_STREAM_TIMEOUT", "CLIENT_STREAM_INCOMPLETE"].includes(apiError?.code)) {
+          await refresh(0, sessionId, false, true, "latest");
+          fail(error);
         } else fail(error);
       }
       finally { releaseActivity(); }
@@ -694,7 +713,9 @@ export default function GameShell() {
     if (group) {
       await performNpcStream(onEvent => api.streamWrite(sessionId, "/group-conversation/turn/stream", {
         client_action_id: api.key("group-turn"), state_version: state.state_version, player_text: text,
-      }, onEvent), "你的回应已经传达给在场各方");
+      }, onEvent), result => result.input_rejected
+        ? playerText(result.message, "这句话没有送达，请围绕当前议题继续交流。")
+        : "你的回应已经传达给在场各方");
     } else if (conversation) {
       await performNpcStream(onEvent => api.streamWrite(sessionId, "/action/stream", {
         input_mode: "free_text", client_action_id: api.key("talk"), state_version: state.state_version,
@@ -804,9 +825,11 @@ export default function GameShell() {
       setMeetingResolutionOpen(true);
       return;
     }
-    await perform(() => api.write(sessionId, `/governance/actions/${encodeURIComponent(String(activeGovernanceAction.action_instance_id))}/finish`, "POST", {
-      state_version: state.state_version,
-    }), governanceFinishMessage(activeGovernanceAction));
+    setConfirmRequest({ title: "结束本次行动", message: "确认完成本次交流并结算行动结果？如果只是暂时离开，可取消并继续交流。已发生的对话和精力消耗会保留。", confirmLabel: "确认结束", action: async () => {
+      await perform(() => api.write(sessionId, `/governance/actions/${encodeURIComponent(String(activeGovernanceAction.action_instance_id))}/finish`, "POST", {
+        state_version: state.state_version,
+      }), governanceFinishMessage(activeGovernanceAction));
+    } });
   }
 
   async function submitMeetingResolution(resolution: Dict) {
@@ -877,15 +900,15 @@ export default function GameShell() {
     if (!activeGovernanceAction) return;
     await perform(() => api.write(sessionId, `/governance/actions/${encodeURIComponent(String(activeGovernanceAction.action_instance_id))}/cancel`, "POST", {
       state_version: state.state_version,
-    }), "当前行动已经中止");
+    }), "当前行动已经终止");
   }
 
   function confirmCancelGovernanceAction() {
     if (!activeGovernanceAction) return;
     setConfirmRequest({
-      title: "中止当前行动",
+      title: "终止当前行动",
       message: governanceCancelMessage(activeGovernanceAction),
-      confirmLabel: "确认中止",
+      confirmLabel: "确认终止",
       danger: true,
       action: cancelGovernanceAction,
     });
@@ -948,6 +971,7 @@ export default function GameShell() {
     <header className="topbar">
       <div className="brand"><span className="seal">清</span><div><h1>浊流之上</h1><p>县域治理情境模拟</p></div></div>
       <div className="top-status">
+        <button onClick={() => { setGuideStep(0); setGuideOpen(true); }}>新手指引</button>
         <span className={connected ? "online" : "offline"}><i />{connected ? "游戏已就绪" : "正在连接"}</span>
         {progressBroadcast && <button className="broadcast-reopen" onClick={() => { setProgressBroadcastOpen(true); void playProgressCue(progressBroadcastTone); }}>第 {progressBroadcast.story_day} 日督办</button>}
         <button onClick={openGameEntry} disabled={busy}>{sessionId ? `第 ${story.day || 1} 日 · 游戏进度` : authRequired && !account ? "登录" : "进入游戏"}</button>
@@ -979,7 +1003,7 @@ export default function GameShell() {
         <section className="story-card">
           <Image key={currentScene.asset} className="scene-backdrop" src={currentScene.asset} alt={currentScene.title} fill priority sizes="(max-width: 980px) 100vw, 70vw" unoptimized />
           <div className="story-head"><div><small>县长手记 · 第 {displayValue(story.day, "待定")} 日</small><h2>{sessionId ? currentScene.title : "一纸调令，九十天限期"}</h2></div></div>
-          <div className="story-scroll" aria-live="polite" data-scene-match={currentScene.matchedBy}>
+          <div className="story-scroll" ref={storyScrollRef} aria-live="polite" data-scene-match={currentScene.matchedBy}>
             {notice && panel !== "manual-saves" && !(activeConversation || (activeGovernanceAction && !activeMeeting)) && <div className="notice" role="status"><b>案头提醒</b><span>{notice}</span></div>}
             {!sessionId && <div className="welcome-block"><span className="eyebrow">云溪县 · 柳林村搬迁专班</span><h2>你有九十天，处理一场正在失控的搬迁。</h2><p>三十六户人家、八千万元预算，还有一条没人愿意说透的旧账。你的每次会谈、批示、承诺和沉默，都会留下痕迹。</p><p className="currency-notice" role="note">资源余额可用于兑换通晓币。通晓币不用于人物会谈或本局行动消耗。它将用于后续“百晓生”网站兑换；开放时间、兑换范围和具体规则以百晓生网站公告为准。</p><div className="welcome-credits"><small>开发：杨钞越　剧情：吉瑞新　美术：章钊林　指导：蒋俊彦、高翔</small></div><div className="welcome-action"><button onClick={openGameEntry} disabled={busy}>{authRequired && !account ? "登录后赴任" : "接下调令，前往云溪"}</button></div></div>}
             {(primaryScene === "narrative" || primaryScene === "conversation") && <section className={activeConversation ? "gal-stage conversation-mode" : decisionReady ? "gal-stage decision-mode" : "gal-stage"} data-primary-scene={primaryScene} data-testid={state.active_conversation ? "active-conversation-character" : undefined}>
@@ -1024,7 +1048,8 @@ export default function GameShell() {
       </div>
     </section>
 
-    <footer><span>{sessionId ? "每次行动与决定都会自动保存" : "准备好后，从右上角进入游戏"}</span><span>{activeGovernanceAction ? activeGovernanceLabels.footer : activeConversation ? "会谈进行中" : pending ? decisionReady ? "等待你的决定" : "请继续阅读当前剧情" : sessionId ? "请合理分配今日精力" : "清江水急，民心难测"}</span></footer>
+    <footer><span>{sessionId ? "每次行动与决定都会自动保存" : "准备好后，从右上角进入游戏"}</span><span>开发：杨钞越　剧情：吉瑞新　美术：章钊林　指导：蒋俊彦、高翔</span><span>{activeGovernanceAction ? activeGovernanceLabels.footer : activeConversation ? "会谈进行中" : pending ? decisionReady ? "等待你的决定" : "请继续阅读当前剧情" : sessionId ? "请合理分配今日精力" : "清江水急，民心难测"}</span></footer>
+    {guideOpen && <Modal title="县长上手指引" onClose={() => setGuideOpen(false)}><section className="quick-start" aria-live="polite"><small>第 {guideStep + 1} 步 / {QUICK_START.length} 步</small><h3>{QUICK_START[guideStep][0]}</h3><p>{QUICK_START[guideStep][1]}</p><div className="guide-controls"><button onClick={() => setGuideStep(value => value - 1)} disabled={guideStep === 0}>上一步</button>{guideStep < QUICK_START.length - 1 ? <button onClick={() => setGuideStep(value => value + 1)}>下一步</button> : <button onClick={() => setGuideOpen(false)}>完成指引，返回游戏</button>}<button onClick={() => setGuideOpen(false)}>返回游戏</button></div></section></Modal>}
 
     {authOpen && <Modal title={authStep === "ai" ? "配置 AI 接口" : authRequired ? account ? "账号中心" : "登录治理档案" : "本地试玩"} onClose={aiView.configured || authStep === "account" ? () => setAuthOpen(false) : undefined}>
       {authStep === "ai" ? <AIConfigurationPanel
@@ -1256,8 +1281,9 @@ function PlayerActionBar({ state, commands, busy, waitingForAI, notice, pending,
   const compactCharacter = conversation ? resolveCharacter(conversation.npc_id, conversation.target_npc_id, conversation.npc_name) : null;
   if (interactionMode === "group" && group?.phase === "resolved") return <div className="conversation-bar gal-conversation-bar group-resolution-bar"><div><b>发起人已确认不再追问</b><span>你可以回看完整记录；确认后将进入次晨流程。</span></div><button type="button" onClick={onFinishGroup} disabled={busy}>结束夜间会谈</button></div>;
   if (interactionMode === "group" || interactionMode === "conversation") return <form className="conversation-bar gal-conversation-bar" onSubmit={onSubmit} aria-busy={waitingForAI}>
+    {notice && <div className="conversation-notice" role="status">{notice}</div>}
     {interactionMode === "conversation" && conversation && <header className="conversation-compact" data-testid="active-conversation-compact"><div className="compact-portrait"><CharacterPortrait character={compactCharacter} fallbackName={conversationName || "对方"} /></div><div><small>正在会谈</small><strong>{compactCharacter?.name || conversationName || "对方"}</strong><span>{compactCharacter?.role || playerText(conversation.npc_title, "身份待确认")}</span></div><b>第 {Number(conversation.turn_count || conversation.turns_completed || 0)} 轮</b></header>}
-    {interactionMode === "group" && group && <header className="conversation-compact group-compact" data-testid="active-group-conversation-compact"><div><small>强制多人会谈</small><strong>{playerText(group.agenda, "在场各方要求立即说明")}</strong><span>{groupStatusSummary}</span></div><b>不可跳过</b></header>}
+    {interactionMode === "group" && group && <header className="conversation-compact group-compact" data-testid="active-group-conversation-compact"><div><small>强制多人会谈</small><strong>{playerText(group.agenda, "在场各方要求立即说明")}</strong><span>{groupStatusSummary}</span><span>在场人物：{values(group.participant_ids).map(id => resolveCharacter(String(id))?.name || "在场人物").join("、")}</span></div><b>不可跳过</b></header>}
     <label><span>{interactionMode === "group" ? "回应在场各方" : `回应 ${conversationName || "对方"}`}</span><textarea name="player_text" value={value} onChange={event => onChange(event.target.value)} placeholder="说清事实、诉求、承诺或你要追问的问题…" maxLength={1000} disabled={busy} /></label><div><small>{waitingForAI ? "正在思考回应…" : `${value.length} / 1000`}</small>{interactionMode === "conversation" && conversation && <button type="button" className="secondary" onClick={onLeave} disabled={busy}>结束会谈</button>}<button disabled={busy || !value.trim()}>{waitingForAI ? "正在思考…" : "送出回应"}</button></div>
   </form>;
   if (pending) return <div className="next-action pending"><span>{decisionReady ? "先处理上方事项" : "继续阅读上方剧情"}</span><p>{decisionReady ? "作出决定后，行动与会谈会重新开放。" : "请使用“下一段”按顺序读完当前现场；相关情节出现后才会开放决定。"}</p></div>;
@@ -1265,7 +1291,7 @@ function PlayerActionBar({ state, commands, busy, waitingForAI, notice, pending,
     const isMeeting = governanceAction.action_kind === "leadership_meeting";
     const respondingNpcIds = new Set(arr(meeting?.transcript).filter(item => item.speaker_type === "npc").map(item => String(item.npc_id)));
     const hasDiscussion = values(meeting?.participant_ids).every(id => respondingNpcIds.has(String(id)));
-    return <form className="conversation-bar governance-bar" onSubmit={onSubmit} aria-busy={waitingForAI}>{notice && isMeeting && <div className="governance-inline-notice" role="status">{notice}</div>}<label><span>{isMeeting ? "向班子成员说明你的意见" : "继续询问或说明"}</span><textarea name="player_text" value={value} onChange={event => onChange(event.target.value)} placeholder={isMeeting ? "说明方案、责任分工、期限，或回应在场意见…" : "追问事实、了解诉求、解释政策或提出具体方案…"} maxLength={1000} disabled={busy} /></label><div><small>{waitingForAI ? "正在思考回应…" : `${value.length} / 1000`}</small><button type="button" className="danger-quiet" onClick={onCancelGovernance} disabled={busy}>中止行动</button><button type="button" className="secondary" onClick={onFinishGovernance} disabled={busy || (isMeeting && !hasDiscussion)}>{isMeeting ? "形成会议决议" : "结束本次行动"}</button>{contractAvailable && !isMeeting && <button type="button" className="primary" onClick={onOpenContract} disabled={busy}>签订合同</button>}<button disabled={busy || !value.trim()}>{waitingForAI ? "正在思考…" : "送出回应"}</button></div></form>;
+    return <form className="conversation-bar governance-bar" onSubmit={onSubmit} aria-busy={waitingForAI}>{notice && isMeeting && <div className="governance-inline-notice" role="status">{notice}</div>}<label><span>{isMeeting ? "向班子成员说明你的意见" : "继续询问或说明"}</span><textarea name="player_text" value={value} onChange={event => onChange(event.target.value)} placeholder={isMeeting ? "说明方案、责任分工、期限，或回应在场意见…" : "追问事实、了解诉求、解释政策或提出具体方案…"} maxLength={1000} disabled={busy} /></label><div><small>{waitingForAI ? "正在思考回应…" : `${value.length} / 1000`}</small><button type="button" className="danger-quiet" onClick={onCancelGovernance} disabled={busy}>终止行动</button><button type="button" className="secondary" onClick={onFinishGovernance} disabled={busy || (isMeeting && !hasDiscussion)}>{isMeeting ? "形成会议决议" : "结束本次行动"}</button>{contractAvailable && !isMeeting && <button type="button" className="primary" onClick={onOpenContract} disabled={busy}>签订合同</button>}<button disabled={busy || !value.trim()}>{waitingForAI ? "正在思考…" : "送出回应"}</button></div></form>;
   }
   const overtimeAvailable = Boolean(get(state, "ledger.action_points.overtime_available"));
   return <div className="next-action"><div><span>下一步</span><p>{overtimeAvailable ? "今日精力已经用尽；可以结束今日，或在身体允许时申请一次加班。" : commands.can_end_day ? "今日工作可以收束，也可以继续使用剩余精力。" : "从行动或会谈中选择一个推进方向。"}</p></div><div className="next-buttons"><button onClick={() => onNavigate("actions")} disabled={busy}>安排行动</button><button onClick={() => onNavigate("opportunities")} disabled={busy}>寻找会谈</button>{overtimeAvailable && <button onClick={onOvertime} disabled={busy}>申请加班</button>}{commands.can_end_day && <button className="primary" onClick={onEndDay} disabled={busy}>结束今日</button>}</div></div>;
@@ -1609,7 +1635,9 @@ function KnowledgePanel({ data }: { data: Dict | null }) {
 
 function MapPanel({ data, blocked, remainingActionPoints, onRun }: { data: Dict | null; blocked: boolean; remainingActionPoints: number; onRun: (item: Dict) => void }) {
   const locations = arr(data?.locations);
-  return <div className="map-panel"><div className="panel-note map-intro">地点会随调查与剧情推进开放；这里只展示你当前已经掌握的去处。</div>{blocked && <div className="panel-note">先处理当前必须决定的事项，随后即可安排现场工作。</div>}<div className="card-list location-list">{locations.length ? locations.map((item, index) => {
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const shownLocations = selectedLocation ? locations.filter(item => item.location_id === selectedLocation) : locations;
+  return <div className="map-panel"><div className="panel-note map-intro">行动页按工作类型安排事务；地图按地点查找同一批事务，使用相同的精力成本与办理流程。地点随剧情开放。</div><section className="county-map" aria-label="云溪县地点示意图"><h3>云溪县地点示意图</h3><p>位置仅为示意，不代表实际方位或距离。点击地点查看可办理事项。</p><svg viewBox="0 0 420 440" role="img" aria-label="清江沿岸地点索引"><rect width="420" height="440" rx="12" fill="#e2d1a6"/><path d="M-20 210 Q100 160 220 210 T450 210" fill="none" stroke="#839e9d" strokeWidth="36"/><text x="195" y="215" fill="#fff7dd" fontSize="18">清江</text>{locations.map((item, index) => { const x = 105 + (index % 2) * 210; const y = 35 + Math.floor(index / 2) * 110; const available = item.visual_state === "available"; const select = () => setSelectedLocation(String(item.location_id)); return <g key={item.location_id} role="button" tabIndex={0} aria-label={`查看${playerText(item.name)}${available ? "" : "（尚未开放）"}`} onClick={select} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); } }} className="county-map-pin"><title>{playerText(item.name)} · {available ? "可以前往" : "尚未开放"}</title><circle cx={x} cy={y} r="17" fill={selectedLocation === item.location_id ? "#923f32" : available ? "#63563b" : "#a79a7f"}/><text x={x} y={y + 5} textAnchor="middle" fill="white" fontSize="14">{index + 1}</text><text x={x} y={y + 38} textAnchor="middle" fill="#372b1a" fontSize="15">{playerText(item.name)}</text></g>; })}</svg>{selectedLocation && <button onClick={() => setSelectedLocation("")}>返回全部地点</button>}</section>{blocked && <div className="panel-note">先处理当前必须决定的事项，随后即可安排现场工作。</div>}<div className="card-list location-list">{shownLocations.length ? shownLocations.map((item, index) => {
     const entries = item.visual_state === "available" ? arr(item.entry_cards) : [];
     return <article key={item.location_id || index}><div className="location-mark">{index + 1}</div><div><h3>{playerText(item.name, `地点${chineseIndex(index)}`)}</h3><p>{playerText(item.description, "暂无新的现场信息。")}</p><small>{item.visual_state === "available" ? "可以前往" : "尚未开放"}</small>{entries.length > 0 && <details className="location-actions"><summary>可办理事项（{entries.length}）</summary><div>{entries.map((entry, actionIndex) => { const cost = actionPointCost(entry); const lacksEnergy = cost !== null && Number.isFinite(remainingActionPoints) && cost > remainingActionPoints; const unavailable = blocked || entry.available === false || lacksEnergy; const reason = blocked ? "先处理当前必须决定的事项" : entry.available === false ? playerText(entry.unavailable_reason, "当前条件尚未满足") : lacksEnergy ? `还需 ${cost} 点精力，当前仅剩 ${remainingActionPoints} 点` : ""; return <section key={entry.title || actionIndex} className={unavailable ? "unavailable" : ""}><div><b>{playerText(entry.title, "现场事务")}</b><p>{playerText(entry.description, "根据当前情况推进这项工作。")}</p><small>{actionPointLabel(entry)}{Number(entry.direct_budget_cost || 0) > 0 ? ` · 预算 ${entry.direct_budget_cost} 万元` : ""}</small>{reason && <em className="map-action-reason">{reason}</em>}</div><button disabled={unavailable} onClick={() => onRun({ ...entry, location_id: item.location_id })}>{entry.entry_type === "conversation" ? "进入会谈" : entry.available === false ? "条件不足" : lacksEnergy ? "精力不足" : "填写方案"}</button></section>; })}</div></details>}</div></article>;
   }) : <Empty text="地图上暂时没有可公开的地点。"/>}</div></div>;

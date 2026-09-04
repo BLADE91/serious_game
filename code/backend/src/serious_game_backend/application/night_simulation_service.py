@@ -4,6 +4,8 @@ from dataclasses import replace
 import secrets
 
 from serious_game_backend.application.ports import RoleLLMGateway
+from serious_game_backend.application.npc_memory_service import NPCMemoryService
+from serious_game_backend.application.npc_relationship_service import NPCRelationshipService
 from serious_game_backend.application.scripted_effect_service import ScriptedEffectService
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.llm import NightAgentContext, NightAgentResult
@@ -32,10 +34,33 @@ class NightSimulationService:
         scripted_effects: ScriptedEffectService,
         trust_derivation: TrustDerivationService | None = None,
         night_llm: RoleLLMGateway | None = None,
+        npc_memories: NPCMemoryService | None = None,
     ) -> None:
         self._scripted_effects = scripted_effects
         self._trust_derivation = trust_derivation or TrustDerivationService()
         self._night_llm = night_llm
+        self._npc_memories = npc_memories
+
+    def _character_turn_context(self, session: GameSession, package: ScriptPackage, **fields) -> NightAgentContext:
+        npc_id = fields["npc_id"]
+        memory = self._npc_memories.context(
+            session_id=session.session_id, npc_id=npc_id,
+            story_day=session.game_state.story_day,
+            query=f"{fields.get('scene_goal', '')} {fields.get('player_text', '')}",
+        ) if self._npc_memories is not None else {}
+        fields["memory_items"] = tuple(memory.get("memory_items", ()))
+        fields["unresolved_commitments"] = tuple(memory.get("unresolved_commitments", ()))
+        fields["relationship_context"] = NPCRelationshipService.relationship_context(session, npc_id)
+        fields["counterpart_names"] = {
+            profile.npc_id: profile.name for profile in package.npc_profiles
+            if profile.npc_id in fields.get("counterpart_ids", ())
+        }
+        fields["counterpart_roles"] = {
+            profile.npc_id: profile.role_setting.splitlines()[0].lstrip("# ")
+            for profile in package.npc_profiles
+            if profile.npc_id in fields.get("counterpart_ids", ()) and profile.role_setting.strip()
+        }
+        return NightAgentContext(**fields)
 
     def run_night(self, session: GameSession, package: ScriptPackage) -> dict:
         day = session.game_state.story_day
@@ -265,7 +290,7 @@ class NightSimulationService:
                     for plan in followup_plans
                     if plan.get("required_when")
                 )
-                context = NightAgentContext(
+                context = self._character_turn_context(session, package,
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=(
@@ -333,7 +358,7 @@ class NightSimulationService:
                     if invited_id == npc_id:
                         continue
                     invited = profiles[invited_id]
-                    response_context = NightAgentContext(
+                    response_context = self._character_turn_context(session, package,
                             session_id=session.session_id,
                             account_id=session.account_id,
                             operation_id=(
@@ -537,7 +562,7 @@ class NightSimulationService:
                 candidate_ids,
                 action_catalog,
             )
-            context = NightAgentContext(
+            context = self._character_turn_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(
@@ -650,7 +675,7 @@ class NightSimulationService:
             accepted_contacts: list[str] = []
             for invited_id in contacts:
                 invited = profiles[invited_id]
-                response_context = NightAgentContext(
+                response_context = self._character_turn_context(session, package,
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=(
@@ -800,7 +825,7 @@ class NightSimulationService:
                         participants,
                         action_catalog,
                     )
-                    context = NightAgentContext(
+                    context = self._character_turn_context(session, package,
                         session_id=session.session_id,
                         account_id=session.account_id,
                         operation_id=(
@@ -901,7 +926,7 @@ class NightSimulationService:
                     # engine constraint, not a model failure and not a reason
                     # to invent a hold proposal on the NPC's behalf.
                     continue
-                context = NightAgentContext(
+                context = self._character_turn_context(session, package,
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=(

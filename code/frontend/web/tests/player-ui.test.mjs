@@ -381,11 +381,11 @@ test("explains whether cancelling an active governance action spends energy", ()
   assert.equal(typeof playerUi.governanceCancelMessage, "function");
   assert.equal(
     playerUi.governanceCancelMessage({ cost_status: "pending" }),
-    "确认中止当前行动？尚未形成有效交流，不会消耗精力。",
+    "确认终止当前行动？尚未形成有效交流，不会消耗精力。",
   );
   assert.equal(
     playerUi.governanceCancelMessage({ cost_status: "committed" }),
-    "确认中止当前行动？已经消耗的精力不会返还。",
+    "确认终止当前行动？已经消耗的精力不会返还。",
   );
 });
 

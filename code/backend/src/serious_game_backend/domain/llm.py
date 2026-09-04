@@ -181,6 +181,7 @@ class NightAgentContext:
     big_five: dict[str, int]
     counterpart_ids: tuple[str, ...]
     counterpart_names: dict[str, str] = field(default_factory=dict)
+    counterpart_roles: dict[str, str] = field(default_factory=dict)
     transcript: tuple[dict[str, str], ...] = ()
     round_index: int = 0
     scene_goal: str = ""
@@ -242,6 +243,7 @@ class GovernanceLLMContext:
     actor_profile: str
     payload: dict
     prompt_version: str = "governance-workflow-v1"
+    actor_context: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

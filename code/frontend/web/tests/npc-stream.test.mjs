@@ -5,6 +5,41 @@ import test from "node:test";
 import { GameApi } from "../app/lib/api.ts";
 import * as playerUi from "../app/lib/player-ui.ts";
 
+test("a complete event finishes even when a proxy leaves the connection open", async () => {
+  const original = globalThis.fetch;
+  let cancelled = false;
+  globalThis.fetch = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"type":"complete","result":{"state_version":4}}\n'));
+    },
+    cancel() { cancelled = true; },
+  }));
+  try {
+    const result = await new GameApi("").streamWrite("s", "/turn/stream", {}, () => {});
+    assert.equal(result.state_version, 4);
+    assert.equal(cancelled, true);
+  } finally { globalThis.fetch = original; }
+});
+
+test("a silent response stream times out without resubmitting the player turn", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (_url, options) => {
+    calls++;
+    return new Response(new ReadableStream({
+      start(controller) {
+        options.signal.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")));
+      },
+    }));
+  };
+  try {
+    const api = new GameApi("");
+    api.streamIdleTimeoutMs = 20;
+    await assert.rejects(api.streamWrite("s", "/turn/stream", {}, () => {}), error => error.code === "CLIENT_STREAM_TIMEOUT");
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = original; }
+});
+
 test("parses incremental NPC events and returns the authoritative result", async () => {
   const previousFetch = globalThis.fetch;
   const encoded = new TextEncoder();

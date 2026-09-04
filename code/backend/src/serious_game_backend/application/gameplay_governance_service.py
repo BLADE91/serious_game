@@ -1596,7 +1596,7 @@ class GameplayGovernanceService:
         for npc_id in meeting.participant_ids:
             profile = profiles[npc_id]
             result = self._gateway.run_governance_task(
-                GovernanceLLMContext(
+                self._governance_context(session, package,
                     session_id=session.session_id,
                     account_id=session.account_id,
                     operation_id=f"{meeting_id}:position:{npc_id}",
@@ -1746,7 +1746,7 @@ class GameplayGovernanceService:
             item for item in package.npc_profiles if item.npc_id == npc_id
         )
         result = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=f"{document_id}:countersign:{npc_id}:v{document.version}",
@@ -1995,7 +1995,7 @@ class GameplayGovernanceService:
             session, package, contract, term_sheet
         )
         result = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=f"{contract_id}:draft:{len(contract.versions) + 1}",
@@ -2127,7 +2127,7 @@ class GameplayGovernanceService:
             package, contract
         )
         result = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(
@@ -2681,7 +2681,7 @@ class GameplayGovernanceService:
             if item.npc_id == representative_npc_id
         )
         result = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(
@@ -2931,7 +2931,7 @@ class GameplayGovernanceService:
         title = str(meeting.resolution["document_title"])
         document_id = f"doc_{secrets.token_hex(10)}"
         result = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=f"{meeting.meeting_id}:draft-document",
@@ -3036,7 +3036,7 @@ class GameplayGovernanceService:
         if review["status"] == "pass":
             return
         revision = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(
@@ -3136,7 +3136,7 @@ class GameplayGovernanceService:
         stage: str,
     ) -> dict:
         result = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(
@@ -3954,6 +3954,23 @@ class GameplayGovernanceService:
             ) is not None
         return str(value) in text
 
+    def _governance_context(self, session: GameSession, package: ScriptPackage, **fields) -> GovernanceLLMContext:
+        profile = next((p for p in package.npc_profiles if p.npc_id == fields["actor_id"]), None)
+        if profile is not None:
+            memory = self._npc_memories.context(
+                session_id=session.session_id, npc_id=profile.npc_id,
+                story_day=session.game_state.story_day,
+                query=str(fields.get("payload", {})),
+            ) if self._npc_memories is not None else {}
+            fields["actor_profile"] = profile.role_setting
+            fields["actor_context"] = {
+                "big_five": profile.big_five.as_dict() if profile.big_five else {},
+                "memory_items": memory.get("memory_items", ()),
+                "unresolved_commitments": memory.get("unresolved_commitments", ()),
+                "relationship_context": NPCRelationshipService.relationship_context(session, profile.npc_id),
+            }
+        return GovernanceLLMContext(**fields)
+
     def _audit_contract_version(
         self,
         session: GameSession,
@@ -3966,7 +3983,7 @@ class GameplayGovernanceService:
             str(term_sheet["policy_document_id"])
         ]
         result = self._gateway.run_governance_task(
-            GovernanceLLMContext(
+            self._governance_context(session, package,
                 session_id=session.session_id,
                 account_id=session.account_id,
                 operation_id=(

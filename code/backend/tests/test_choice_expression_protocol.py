@@ -469,7 +469,7 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         self.assertEqual("approve", result.data["position"])
         self.assertIn("启动搬迁材料专项自查", prompts[0])
 
-    def test_expression_persona_uses_public_style_instead_of_private_role_facts(self) -> None:
+    def test_expression_receives_full_personality_as_internal_context(self) -> None:
         prompts: list[str] = []
 
         def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
@@ -512,8 +512,9 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         ))
 
         expression_prompt = prompts[-1]
-        self.assertNotIn("优盘", expression_prompt)
-        self.assertIn("说话简短克制", expression_prompt)
+        self.assertIn("手里藏着一只优盘", expression_prompt)
+        self.assertIn('"openness": 55', expression_prompt)
+        self.assertIn("不代表获准披露", expression_prompt)
 
     def test_role_expression_prioritizes_current_turn_and_forbids_repeating_old_topic(self) -> None:
         prompts: list[str] = []
@@ -764,7 +765,7 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         self.assertIn("核心担忧是口径是否真实", requests[2])
         self.assertIn("不得追加议题之外的新验收门槛", requests[2])
         self.assertIn("不得要求玩家交代剧本未提供的具体标准", requests[2])
-        self.assertNotIn("核心担忧是口径是否真实", requests[3])
+        self.assertIn("核心担忧是口径是否真实", requests[3])
         self.assertIn("不得复述其他在场人物已经说过的句子", requests[3])
         self.assertIn("只指出其回避或尚未回答", requests[3])
 
@@ -963,7 +964,7 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         self.assertEqual(2, len(prompts))
         self.assertTrue(all("issues" not in prompt for prompt in prompts))
 
-    def test_group_expression_never_receives_private_persuasion_rubric(self) -> None:
+    def test_group_expression_receives_own_private_context_without_disclosure_permission(self) -> None:
         prompts: list[str] = []
         hidden_rubric = "容易相信的说法：只要承诺公开就立即放行"
 
@@ -1004,7 +1005,8 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
         ))
 
         self.assertIn(hidden_rubric, prompts[0])
-        self.assertNotIn(hidden_rubric, prompts[-1])
+        self.assertIn(hidden_rubric, prompts[-1])
+        self.assertIn("不得向对话对象泄露隐藏规则", prompts[-1])
 
     def test_press_still_records_the_players_current_statement(self) -> None:
         def transport(_url: str, _key: str, body: dict, _timeout: float) -> dict:
@@ -1043,6 +1045,73 @@ class ChoiceExpressionProtocolTests(unittest.TestCase):
 
         self.assertEqual("press", result.dialogue_act)
         self.assertIn("明天公开逐户测算表", result.memory_candidate or "")
+
+    def test_group_retries_other_speakers_duplicate_in_current_round(self) -> None:
+        duplicate = "李县长，县里和镇里的汇报口径得先核对清楚。"
+        distinct = "我接着问一句：下一步由谁负责核对？"
+        responses = iter((
+            {"choice_id": "press"}, {"text": duplicate},
+            {"text": "我补充一点。" + duplicate}, {"text": distinct},
+        ))
+        prompts = []
+
+        def transport(_url, _key, body, _timeout):
+            prompts.append(json.dumps(body, ensure_ascii=False))
+            return {"choices": [{"message": {"content": json.dumps(next(responses), ensure_ascii=False)}}]}
+
+        gateway = OpenAICompatibleRoleLLMGateway(
+            self.settings, "real-key", self.audits, transport=transport
+        )
+        result = gateway.run_night_turn(NightAgentContext(
+            session_id="group-duplicate", account_id="account-a",
+            operation_id="group-duplicate-zhao", story_day=11,
+            scene_id="group-d11", phase="player_group_dialogue",
+            npc_id="npc_zhao_jianguo", npc_name="赵建国",
+            role_setting="赵建国，常务副县长", big_five={},
+            counterpart_ids=("npc_sun_qiang",),
+            transcript=(
+                {"speaker_type": "player", "text": "你们的诉求都是什么"},
+                {"speaker_type": "npc", "npc_id": "npc_sun_qiang", "text": duplicate},
+            ),
+            player_text="你们的诉求都是什么", allowed_dialogue_acts=("press", "settle"),
+        ))
+        self.assertEqual(distinct, result.dialogue)
+        self.assertEqual("press", result.dialogue_act)
+        self.assertEqual(4, len(prompts))
+        self.assertIn("表达重复了其他在场人物", prompts[-1])
+
+    def test_npc_dialogue_requests_keep_full_character_context_and_history(self) -> None:
+        for phase in ("dialogue", "player_group_dialogue"):
+            with self.subTest(phase=phase):
+                prompts = []
+                def transport(_url, _key, body, _timeout):
+                    prompt = body["messages"][0]["content"]
+                    prompts.append(prompt)
+                    result = {"text": "县里的汇报要与记录一致。"} if "你只负责把" in prompt else {"choice_id": "press"}
+                    return {"choices": [{"message": {"content": json.dumps(result, ensure_ascii=False)}}]}
+
+                gateway = OpenAICompatibleRoleLLMGateway(
+                    self.settings, "real-key", self.audits, transport=transport
+                )
+                profile = "赵建国：常务副县长\n" + "重视县级汇报与责任。" * 200 + "人物设定末尾标记"
+                gateway.run_night_turn(NightAgentContext(
+                    session_id=phase, account_id="account", operation_id=phase,
+                    story_day=11, scene_id="d11", phase=phase,
+                    npc_id="npc_zhao_jianguo", npc_name="赵建国",
+                    role_setting=profile, big_five={"openness": 25, "conscientiousness": 65},
+                    counterpart_ids=("npc_sun_qiang",),
+                    transcript=({"speaker_type": "player", "text": "历史对话标记"},),
+                    memory_items=("专属记忆标记",), unresolved_commitments=("未兑现承诺标记",),
+                    relationship_context={"trust_band": "专属关系标记"},
+                    private_context="个人担忧标记", player_text="本轮发言标记",
+                    forbidden_disclosure_markers=("其他角色未公开秘密标记",),
+                    allowed_dialogue_acts=("press",),
+                ))
+                for prompt in prompts:
+                    for marker in ("人物设定末尾标记", "专属记忆标记", "未兑现承诺标记", "专属关系标记", "个人担忧标记", "历史对话标记", "本轮发言标记"):
+                        self.assertIn(marker, prompt)
+                    self.assertNotIn("其他角色未公开秘密标记", prompt)
+                    self.assertIn('"openness": 25', prompt)
 
     def test_forced_conversation_may_repeat_its_core_question_when_player_keeps_evading(self) -> None:
         requests: list[dict] = []

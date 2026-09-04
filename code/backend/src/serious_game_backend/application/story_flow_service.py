@@ -190,7 +190,7 @@ class StoryFlowService:
             text=(
                 f"第{story_day}日，今天没有必须处理的主线事项，可以自由安排行动。"
                 if is_free_day else self.session_public_text(
-                    f"第{story_day}日，{beat.title}", session
+                    f"第{story_day}日", session
                 )
             ),
             content_instance_id=f"day:{story_day}:intro",

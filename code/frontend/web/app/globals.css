@@ -729,7 +729,36 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .group-participants span, .contract-households span { display: inline-flex; align-items: center; gap: 5px; border: 1px solid rgba(210,177,107,.3); padding: 5px 8px; color: #ddc99f; font-size: 11px; }
 .group-participants i { display: grid; width: 21px; height: 21px; place-items: center; border-radius: 50%; background: #7c4036; color: #f0dfba; font-style: normal; }
 .group-demands { margin: 8px 0 12px; border-left: 3px solid #a85244; padding: 8px 10px 8px 26px; background: rgba(0,0,0,.15); color: #d7c6a6; font-size: 11px; line-height: 1.7; }
-.group-compact { padding-left: 2px; }.group-compact > div { display: grid; gap: 3px; }.group-compact > b { color: #d9806d !important; }
+.group-compact { padding-left: 2px; grid-template-columns: minmax(0, 1fr) auto; }
+.group-compact > div { display: grid; gap: 3px; min-width: 0; }
+.group-compact > div strong, .group-compact > div span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.group-compact > b { color: #d9806d !important; }
+.conversation-bar > .conversation-notice { display: block; margin: 0 0 10px; padding: 10px; border-left: 3px solid #d09a63; color: #f0d4a4; line-height: 1.7; }
+/* A group has a roster and a transcript: do not collapse them into the small
+   story row left over below the dashboard on short desktop screens. */
+@media (min-width: 781px) {
+  .app-shell:has(.forced-group-gal-stage) { height: auto; min-height: 100dvh; overflow: visible; grid-template-rows: 78px auto 30px; }
+  .main-grid:has(.forced-group-gal-stage) { height: max(860px, calc(100dvh - 260px)); min-height: 860px; }
+  .story-card:has(.forced-group-gal-stage) { grid-template-rows: 66px minmax(440px, 1fr) auto; }
+}
+.quick-start { line-height: 1.9; }
+.county-map { margin: 12px 0 18px; }
+.county-map h3 { margin-bottom: 6px; }
+.county-map p { font-size: 12px; line-height: 1.7; }
+.county-map svg { display: block; width: 100%; height: auto; }
+.county-map-pin { cursor: pointer; }
+.county-map-pin:focus circle { stroke: #b7452c; stroke-width: 4; }
+.county-map > button { padding: 8px 14px; margin-top: 10px; }
+.guide-controls { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.guide-controls button { padding: 10px 16px; cursor: pointer; }
+button:not(:disabled), select:not(:disabled), summary, .choice-card:not(:has(input:disabled)) { cursor: pointer; }
+.history-drawer > header { position: sticky; top: 0; z-index: 2; background: #282118; }
+.history-drawer { max-height: 50dvh; overflow-y: auto; }
+.gal-transcript-history { max-height: 220px; overflow-y: auto; }
+.gal-transcript-history > summary { position: sticky; top: 0; background: #282118; padding: 6px 0; z-index: 2; }
+.gal-transcript-history article { grid-template-columns: 54px minmax(0, 1fr); }
+.gal-transcript-history article p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.app-shell > footer { flex-wrap: wrap; gap: 8px 18px; }
 .contract-proposal, .contract-workspace { display: grid; gap: 14px; padding-top: 15px; }
 .contract-proposal > p, .contract-warning p, .contract-terms-form > p { color: #665640; font-size: 12px; line-height: 1.7; }
 .contract-households span { border-color: #9b825e; color: #54442f; background: rgba(255,255,255,.2); }
