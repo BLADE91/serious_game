@@ -5,10 +5,10 @@ import { initialNarrativeState, narrativeItemFromFeed, narrativeReducer, pending
 
 const line = (id, cursor, text = id, storyDay = 1) => ({ id, cursor, storyDay, kind: "narrative", text, contentInstanceId: `block:${id}` });
 
-test("old-save day headings normalize without truncating narrative or free-day guidance", () => {
+test("standalone day headings are empty while prose and free-day guidance remain", () => {
   for (let day = 1; day <= 90; day++) {
     const intro = narrativeItemFromFeed({ kind: "day_intro", story_day: day, text: `第${day}日，第三日·被截取的标题`, content_instance_id: `day:${day}:intro` }, "unused");
-    assert.equal(intro.text, `第${day}日`);
+    assert.equal(intro.text, "");
     assert.equal(intro.contentInstanceId, `day:${day}:intro`);
   }
   const text = "第三日，他向你说明了完整的事情经过。";
