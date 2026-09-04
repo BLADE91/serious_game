@@ -14,7 +14,7 @@ test("standalone day headings are empty while prose and free-day guidance remain
   const text = "第三日，他向你说明了完整的事情经过。";
   assert.equal(narrativeItemFromFeed({ kind: "narrative", story_day: 3, text }, "scene").text, text);
   const free = "第4日，今天没有必须处理的主线事项，可以自由安排行动。";
-  assert.equal(narrativeItemFromFeed({ kind: "day_intro", story_day: 4, text: free }, "free").text, free);
+  assert.equal(narrativeItemFromFeed({ kind: "day_intro", story_day: 4, text: free }, "free").text, free.replace("第4日，", ""));
 });
 
 test("merges incremental feeds, de-duplicates content and stops at the first unread item", () => {
@@ -98,4 +98,16 @@ test("keeps optional feed metadata for compatibility and stable scene matching",
   assert.equal(item.beatId, "beat_d01_arrival_and_reception");
   assert.equal(item.sceneId, "C01_S02");
   assert.equal(item.presentationPhase, "opening");
+});
+
+
+test("merges the free-day introduction into its morning card without repeated dates", () => {
+  const morning = narrativeItemFromFeed({kind: "morning_card", story_day: 4, text: "D4 清晨，专班完成了昨日材料结转。", content_instance_id: "morning:4"}, "morning");
+  const intro = narrativeItemFromFeed({kind: "day_intro", story_day: 4, text: "第4日，今天没有必须处理的主线事项，可以自由安排行动。", content_instance_id: "day:4:intro"}, "intro");
+  let state = narrativeReducer(initialNarrativeState, {type: "SESSION_REBUILD", sessionId: "d4", items: [morning, intro], cursor: 2});
+  assert.equal(state.items.length, 1);
+  assert.equal(state.items[0].text, "清晨，专班完成了昨日材料结转。\n今天没有必须处理的主线事项，可以自由安排行动。");
+  state = narrativeReducer(state, {type: "FEED_MERGE", sessionId: "d4", items: [morning, intro], cursor: 2});
+  assert.equal(state.items.length, 1);
+  assert.equal(state.items[0].text.split("今天").length, 2);
 });

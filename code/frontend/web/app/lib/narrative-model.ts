@@ -14,6 +14,7 @@ export type NarrativeItem = {
   presentationPhase?: string;
   daySequence?: number;
   readGate?: string;
+  mergedKeys?: string[];
 };
 
 export type NarrativeState = {
@@ -63,12 +64,25 @@ const keyFor = (item: NarrativeItem) => item.contentInstanceId
 
 export function dedupeNarrative(items: readonly NarrativeItem[]): NarrativeItem[] {
   const known = new Set<string>();
-  return items.filter(item => {
+  const result: NarrativeItem[] = [];
+  for (const item of items) {
     const key = keyFor(item);
-    if (known.has(key)) return false;
+    if (known.has(key)) continue;
     known.add(key);
-    return true;
-  });
+    for (const mergedKey of item.mergedKeys || []) known.add(mergedKey);
+    const previous = result[result.length - 1];
+    if (item.kind === "day_intro" && item.text.includes("今天没有必须处理的主线事项")
+      && previous?.kind === "morning_card" && previous.storyDay === item.storyDay) {
+      result[result.length - 1] = {
+        ...previous,
+        text: `${previous.text}\n${item.text}`,
+        mergedKeys: [...(previous.mergedKeys || []), key],
+      };
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
 }
 
 function splitLatestDay(items: readonly NarrativeItem[]) {
@@ -147,6 +161,10 @@ export function narrativeReducer(state: NarrativeState, action: NarrativeAction)
 
 export function narrativeItemFromFeed(value: Record<string, unknown>, fallbackId: string): NarrativeItem {
   const contentInstanceId = typeof value.content_instance_id === "string" ? value.content_instance_id : undefined;
+  const rawText = String(value.text || "");
+  const displayText = ["morning_card", "day_intro"].includes(String(value.kind))
+    ? rawText.replace(/^(?:D\d+|第\s*[\d一二三四五六七八九十百]+\s*[日天])(?:[，、：:]|\s)+/u, "")
+    : rawText;
   const cursor = typeof value.cursor === "number" ? value.cursor : undefined;
   return {
     id: String(contentInstanceId || cursor || fallbackId),
@@ -159,7 +177,7 @@ export function narrativeItemFromFeed(value: Record<string, unknown>, fallbackId
     text: value.kind === "day_intro" && typeof value.story_day === "number"
       && !String(value.text || "").includes("今天没有必须处理的主线事项")
       ? ""
-      : String(value.text || ""),
+      : displayText,
     contentInstanceId,
     blockId: typeof value.block_id === "string" ? value.block_id : undefined,
     decisionId: typeof value.decision_id === "string" ? value.decision_id : undefined,
