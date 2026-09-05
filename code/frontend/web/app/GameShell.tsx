@@ -103,7 +103,7 @@ const friendlyStatus = (value: unknown) => {
     critical: "紧急", high: "较高", medium: "一般", low: "较低",
     pending: "待处理", checkpoint: "自动保存", manual: "手动存档", public: "公开", internal: "内部掌握",
     confidential: "保密", restricted: "限内部查阅", secret: "机密", 内部: "内部掌握", 敏感: "敏感材料", 机密: "机密材料", E1: "初步材料", E2: "可核材料", E3: "正式证据",
-    unknown: "尚未发现", discovered: "已经发现", acknowledged: "已经确认", committed: "资源已承诺",
+    unknown: "尚未发现", discovered: "已经发现", acknowledged: "已经确认", committed: "历史资源记录", allocated: "已分配",
     satisfied: "已经办结", lawfully_refused: "已依法拒绝", breached: "承诺违约", expired: "处置逾期",
   };
   return labels[String(value)] || "已记录";
@@ -687,13 +687,6 @@ export default function GameShell() {
     }), "");
   }
 
-  async function disposeDemand(demand: Dict, transition: string) {
-    const labels: Record<string, string> = { acknowledged: "诉求已经确认", committed: "所需资源已经预占", satisfied: "诉求已经办结", lawfully_refused: "非法诉求已经依法拒绝", breached: "违约后果已经结算" };
-    await perform(() => api.write(sessionId, `/governance/npc-demands/${encodeURIComponent(String(demand.demand_id))}/dispose`, "POST", {
-      state_version: state.state_version, transition,
-    }), labels[transition] || "诉求状态已经更新");
-  }
-
   async function endDay() {
     const completed = await perform(() => api.write(sessionId, "/end-day", "POST", {
       client_action_id: api.key("end-day"), state_version: state.state_version, active_rest: false,
@@ -943,7 +936,8 @@ export default function GameShell() {
     currentIndex: narrative.currentIndex,
     itemCount: playerLines.length,
     currentStoryDay: story.day,
-    pendingSceneId: decisionReady ? pending?.scene_id : undefined,
+    pendingSceneId: activeGovernanceAction && arr(activeGovernanceAction.hard_outcomes).some(item => item.kind === "contract_fact" && item.id === "real_unit_viewed")
+      ? "C06_S10" : decisionReady ? pending?.scene_id : undefined,
     mainEndingId: get(state, "ending.main_ending_id") || get(state, "ending_result.main_ending_id") || state.main_ending_id,
     beatId: get(state, "story.beat_id") || get(state, "story.story_beat_id") || state.story_beat_id,
   });
@@ -1043,7 +1037,7 @@ export default function GameShell() {
             {panel === "scene" && <SceneSummary state={state} commands={commands} governanceAction={activeGovernanceAction} decisionReady={decisionReady} onNavigate={loadPanel} onEndDay={confirmEndDay} onOvertime={() => setOvertimeOpen(true)} />}
             {panel === "actions" && <ActionPanel data={panelData} onRun={item => { setNotice(""); setFormOpen({ title: item.name || item.action_name || "安排治理行动", kind: "resource", item }); }} />}
             {panel === "opportunities" && <OpportunityPanel signingOnly={signingOnly} data={panelData} activeConversation={state.active_conversation || null} onOpenProfile={setCharacterProfileOpen} onContinue={() => void loadPanel("scene")} onStart={item => openCanonicalAction(item, `与 ${playerText(item.npc_name, "对方")} 会谈`)} />}
-            {panel === "governance" && <GovernancePanel data={panelData} busy={busy} onDisposeDemand={disposeDemand} onOpenRecord={setGovernanceRecordOpen} onOpenArchive={openArchiveDetail} onOpenContract={openContractDetail} />}
+            {panel === "governance" && <GovernancePanel data={panelData} busy={busy} onOpenRecord={setGovernanceRecordOpen} onOpenArchive={openArchiveDetail} onOpenContract={openContractDetail} />}
             {panel === "desk" && <DeskPanel data={panelData} />}
             {panel === "knowledge" && <KnowledgePanel data={panelData} />}
             {panel === "review" && <ReviewPanel data={panelData} api={api} sessionId={sessionId} />}
@@ -1142,14 +1136,15 @@ function GovernanceActionScene({ action, overview, streamingReplies }: { action:
   const latestReply = streamingReplies.length ? streamingReplies[streamingReplies.length - 1] : null;
   const latestNpcEntry = [...transcript].reverse().find(entry => entry.speaker_type !== "player");
   const dialogue = latestReply?.text || latestNpcEntry?.text || "你已经到达现场。先说明来意，再围绕事实、诉求与可行安排展开交流。";
-  const speakerName = playerText(latestReply?.npc_name || latestNpcEntry?.npc_name, targetCharacter?.name || targetName);
+  const narration = !latestReply && latestNpcEntry?.speaker_type === "system";
+  const speakerName = narration ? "县长手记" : playerText(latestReply?.npc_name || latestNpcEntry?.npc_name, targetCharacter?.name || targetName);
   return <section className="gal-stage governance-gal-stage conversation-mode" data-primary-scene="governance_action" data-testid="governance-gal-scene" data-action-kind={String(action.action_kind)}>
     <div className="gal-scene-meta"><small>正在进行 · {title}</small><strong>{playerText(action.topic, `与${targetName}当面沟通`)}</strong><span>第 {action.story_day || "待定"} 日</span></div>
     <div className="gal-portrait" aria-label={`${targetName}立绘`}><CharacterPortrait character={targetCharacter} fallbackName={targetName} priority /></div>
     <div className="gal-dialogue has-speaker">
-      <header><span>{speakerName}</span><small>{targetCharacter?.role || title}{latestReply ? latestReply.complete ? " · 回应完成" : " · 正在回应" : ""}</small></header>
+      <header><span>{speakerName}</span><small>{narration ? "现场记录" : targetCharacter?.role || title}{latestReply ? latestReply.complete ? " · 回应完成" : " · 正在回应" : ""}</small></header>
       <p>{dialogue}{latestReply && !latestReply.complete && <i className="stream-cursor" aria-hidden="true" />}</p>
-      {transcript.length > 0 && <details className="gal-transcript-history"><summary>回看本次交谈记录（{transcript.length}）</summary><div>{transcript.map((entry, index) => <article key={index}><strong>{entry.speaker_type === "player" ? "你" : entry.npc_name || targetName}</strong><p>{entry.text || "对方暂未表态。"}</p></article>)}</div></details>}
+      {transcript.length > 0 && <details className="gal-transcript-history"><summary>回看本次交谈记录（{transcript.length}）</summary><div>{transcript.map((entry, index) => <article key={index}><strong>{entry.speaker_type === "player" ? "你" : entry.speaker_type === "system" ? "县长手记" : entry.npc_name || targetName}</strong><p>{entry.text || "对方暂未表态。"}</p></article>)}</div></details>}
     </div>
   </section>;
 }
@@ -1475,7 +1470,7 @@ function OpportunityPanel({ data, signingOnly = false, activeConversation, onSta
   </div>;
 }
 
-function GovernancePanel({ data, busy, onDisposeDemand, onOpenRecord, onOpenArchive, onOpenContract }: { data: Dict | null; busy: boolean; onDisposeDemand: (demand: Dict, transition: string) => void; onOpenRecord: (record: { meeting?: Dict; document?: Dict }) => void; onOpenArchive: (archive: Dict) => void; onOpenContract: (contract: Dict) => void }) {
+function GovernancePanel({ data, busy, onOpenRecord, onOpenArchive, onOpenContract }: { data: Dict | null; busy: boolean; onOpenRecord: (record: { meeting?: Dict; document?: Dict }) => void; onOpenArchive: (archive: Dict) => void; onOpenContract: (contract: Dict) => void }) {
   if (!data) return <Empty text="正在整理治理进展…"/>;
   const actions = arr(data.governance_actions);
   const meetings = arr(data.meetings);
@@ -1483,7 +1478,6 @@ function GovernancePanel({ data, busy, onDisposeDemand, onOpenRecord, onOpenArch
   const archives = arr(data.archives);
   const archiveGroups = archiveInvestigationGroups(archives);
   const contracts = arr(data.contracts);
-  const demands = arr(data.npc_demands);
   const resourceInventory = resourceInventoryView(get(data, "resources.resource_pools"));
   const activeActions = actions.filter(item => item.status === "active");
   const stats = [
@@ -1491,7 +1485,7 @@ function GovernancePanel({ data, busy, onDisposeDemand, onOpenRecord, onOpenArch
     ["已形成文件", arr(data.documents).length], ["待查档案", archiveGroups.unreadCount],
   ];
   const cash = get(data, "resources.cash_ledger");
-  return <div className="governance-panel"><div className="governance-grid">{stats.map(([label, value]) => <div key={String(label)}><strong>{value}</strong><span>{label}</span></div>)}</div>{cash && <section className="resource-card"><small>财政资源</small><h3>可安排 {displayValue(cash.available_unencumbered, "待定")} 万元</h3><p>已承诺 {displayValue(cash.committed, 0)} 万元 · 已支付 {displayValue(cash.paid, 0)} 万元</p></section>}{resourceInventory.length > 0 && <ResourceInventoryLedger items={resourceInventory} />}<PanelSection title="已发现的核心诉求" items={demands} empty="尚未通过剧情或正式接触发现人物诉求" render={(item) => <div className="demand-card" data-testid="npc-demand-card"><div className="evidence-head"><h4>{playerText(item.npc_name)} · {playerText(item.title)}</h4><span>{friendlyStatus(item.status)}</span></div><p>{playerText(item.description)}</p>{arr(item.required_resources).length > 0 && <small>所需资源：{arr(item.required_resources).map(value => `${playerText(value.name, value.resource_id)} ×${value.quantity}`).join("、")}</small>}<div className="demand-actions">{values(item.allowed_transitions).map(String).map(transition => <button key={transition} disabled={busy} onClick={() => onDisposeDemand(item, transition)}>{({ acknowledged: "确认诉求", committed: "预占资源并承诺", satisfied: "确认交付", lawfully_refused: "依法拒绝", breached: "登记违约" } as Record<string, string>)[transition] || "更新状态"}</button>)}</div></div>} /><PanelSection title="行动记录" items={actions.slice().reverse().slice(0, 6)} empty="尚未开展治理行动" render={(item) => <><div className="evidence-head"><h4>{GOVERNANCE_ACTION_LABELS[item.action_kind] || "治理行动"}</h4><span>{friendlyStatus(item.status)}</span></div><p>{playerText(item.topic, `第 ${item.story_day || "待定"} 日开展`)}</p></>} /><PanelSection title="逐户合同记录" items={contracts} empty="尚未建立逐户合同；请在与相关人员或代表的入户会谈中提出签约" render={(item) => <div className="governance-record-row"><div><h4>{playerText(item.signatory_name, item.household_id || "待确认家庭")}</h4><p>{item.household_id} · {friendlyStatus(item.status)} · {playerText(item.resource_hold_status, "未预占")}</p></div>{item.status === "signed" ? <button onClick={() => onOpenContract(item)}>查看合同</button> : <small>请在相关人员或代表的入户会谈中继续办理</small>}</div>} /><PanelSection title="已取得档案" items={archives} empty="尚未取得可查阅档案" render={(item) => { const hasBeenRead = values(item.read_at_days).length > 0; return <div className="governance-record-row"><div><h4>{playerText(item.title, "治理档案")}</h4><p>{friendlyStatus(item.evidence_level)} · {hasBeenRead ? `已于第 ${values(item.read_at_days).at(-1)} 日查阅` : "尚未查阅"}</p></div><button disabled={!hasBeenRead} title={!hasBeenRead ? "请先从行动页执行一次查阅档案" : undefined} onClick={() => onOpenArchive(item)}>{hasBeenRead ? "重读正文" : "等待查阅"}</button></div>; }} /><PanelSection title="近期会议" items={meetings} empty="尚未召开正式会议" render={(item) => { const document = documents.find(value => String(value.source_meeting_id) === String(item.meeting_id)); return <div className="governance-record-row"><div><h4>{playerText(item.topic || item.title, "治理协调会")}</h4><p>第 {item.story_day || "待定"} 日 · {friendlyStatus(item.status)}</p></div><button onClick={() => onOpenRecord({ meeting: item, document })}>{document ? "查看决议" : "查看纪要"}</button></div>; }} /><PanelSection title="已形成文件" items={documents} empty="尚未形成新的正式文件" render={(item) => <div className="governance-record-row"><div><h4>{playerText(item.title || DOCUMENT_TYPE_LABELS[item.document_type], "治理文件")}</h4><p>{friendlyStatus(item.status)} · 第 {item.issued_day || item.story_day || "待定"} 日</p></div><button onClick={() => onOpenRecord({ document: item, meeting: meetings.find(value => String(value.meeting_id) === String(item.source_meeting_id)) })}>查看文件</button></div>} /></div>;
+  return <div className="governance-panel"><div className="governance-grid">{stats.map(([label, value]) => <div key={String(label)}><strong>{value}</strong><span>{label}</span></div>)}</div>{cash && <section className="resource-card"><small>财政资源</small><h3>可安排 {displayValue(cash.available_unencumbered, "待定")} 万元</h3><p>已支付 {displayValue(cash.paid, 0)} 万元</p></section>}{resourceInventory.length > 0 && <ResourceInventoryLedger items={resourceInventory} />}<PanelSection title="行动记录" items={actions.slice().reverse().slice(0, 6)} empty="尚未开展治理行动" render={(item) => <><div className="evidence-head"><h4>{GOVERNANCE_ACTION_LABELS[item.action_kind] || "治理行动"}</h4><span>{friendlyStatus(item.status)}</span></div><p>{playerText(item.topic, `第 ${item.story_day || "待定"} 日开展`)}</p></>} /><PanelSection title="逐户合同记录" items={contracts} empty="尚未建立逐户合同；请在与相关人员或代表的入户会谈中提出签约" render={(item) => <div className="governance-record-row"><div><h4>{playerText(item.signatory_name, item.household_id || "待确认家庭")}</h4><p>{item.household_id} · {friendlyStatus(item.status)} · {playerText(item.resource_hold_status, "尚未扣除资源")}</p></div>{item.status === "signed" ? <button onClick={() => onOpenContract(item)}>查看合同</button> : <small>请在相关人员或代表的入户会谈中继续办理</small>}</div>} /><PanelSection title="已取得档案" items={archives} empty="尚未取得可查阅档案" render={(item) => { const hasBeenRead = values(item.read_at_days).length > 0; return <div className="governance-record-row"><div><h4>{playerText(item.title, "治理档案")}</h4><p>{friendlyStatus(item.evidence_level)} · {hasBeenRead ? `已于第 ${values(item.read_at_days).at(-1)} 日查阅` : "尚未查阅"}</p></div><button disabled={!hasBeenRead} title={!hasBeenRead ? "请先从行动页执行一次查阅档案" : undefined} onClick={() => onOpenArchive(item)}>{hasBeenRead ? "重读正文" : "等待查阅"}</button></div>; }} /><PanelSection title="近期会议" items={meetings} empty="尚未召开正式会议" render={(item) => { const document = documents.find(value => String(value.source_meeting_id) === String(item.meeting_id)); return <div className="governance-record-row"><div><h4>{playerText(item.topic || item.title, "治理协调会")}</h4><p>第 {item.story_day || "待定"} 日 · {friendlyStatus(item.status)}</p></div><button onClick={() => onOpenRecord({ meeting: item, document })}>{document ? "查看决议" : "查看纪要"}</button></div>; }} /><PanelSection title="已形成文件" items={documents} empty="尚未形成新的正式文件" render={(item) => <div className="governance-record-row"><div><h4>{playerText(item.title || DOCUMENT_TYPE_LABELS[item.document_type], "治理文件")}</h4><p>{friendlyStatus(item.status)} · 第 {item.issued_day || item.story_day || "待定"} 日</p></div><button onClick={() => onOpenRecord({ document: item, meeting: meetings.find(value => String(value.meeting_id) === String(item.source_meeting_id)) })}>查看文件</button></div>} /></div>;
 }
 
 function ResourceInventoryLedger({ items }: { items: ReturnType<typeof resourceInventoryView> }) {
@@ -1500,7 +1494,7 @@ function ResourceInventoryLedger({ items }: { items: ReturnType<typeof resourceI
     { title: "合同配套服务", items: items.filter(item => item.category !== "housing" && item.allocatableScope !== "npc_demand") },
     { title: "治理专项能力", items: items.filter(item => item.allocatableScope === "npc_demand") },
   ].filter(group => group.items.length > 0);
-  return <section className="resource-card resource-pool-card" data-testid="resource-pool-summary"><small>完整资源台账</small><h3>合同与人物诉求共用同一份权威库存</h3><p>“剩余”是尚未被预占、签署或交付的数量；标有开放日的资源到期后才能使用。</p>{groups.map(group => <section className="resource-inventory-group" key={group.title}><h4>{group.title}</h4><div className="resource-pool-grid">{group.items.map(item => <article key={item.resourceId}><b>{item.name}</b><span>剩余 {item.available} / 总量 {item.capacity} {item.unit}</span>{item.used > 0 && <em>已占用 {item.used} {item.unit}</em>}{item.availableDay > 1 && <small>第 {item.availableDay} 日开放</small>}</article>)}</div></section>)}</section>;
+  return <section className="resource-card resource-pool-card" data-testid="resource-pool-summary"><small>完整资源台账</small><h3>签约资源台账</h3><p>签约成功后立即扣除对应资金、房源和服务名额；标有开放日的资源到期后才能使用。</p>{groups.map(group => <section className="resource-inventory-group" key={group.title}><h4>{group.title}</h4><div className="resource-pool-grid">{group.items.map(item => <article key={item.resourceId}><b>{item.name}</b><span>剩余 {item.available} / 总量 {item.capacity} {item.unit}</span>{item.used > 0 && <em>已分配 {item.used} {item.unit}</em>}{item.availableDay > 1 && <small>第 {item.availableDay} 日开放</small>}</article>)}</div></section>)}</section>;
 }
 
 function ContractBatchProposal({ proposal, busy, onConfirm }: { proposal: Dict; busy: boolean; onConfirm: (confirmed: boolean) => void }) {
@@ -1545,17 +1539,12 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
       budget_envelope: String(data.get("budget_envelope") || "property_land"),
       housing_resource_id: String(data.get("housing_resource_id") || "") || null,
       service_allocations: allocations,
-      payment_day: Number(data.get("payment_day")),
+      payment_day: Number(get(state, "story.day", 1)),
       move_out_day: Number(data.get("move_out_day")),
       housing_delivery_day: Number(data.get("housing_delivery_day")),
       transition_months: Number(data.get("transition_months")),
       public_window_reward: rewardAvailable && data.has("public_window_reward"),
       approval_document_ids: data.getAll("approval_document_ids").map(String),
-      authorization_confirmed: data.has("authorization_confirmed"),
-      real_unit_viewed: data.has("real_unit_viewed"),
-      ledger_disclosed: data.has("ledger_disclosed"),
-      old_case_resolved: data.has("old_case_resolved"),
-      prior_payment_verified: data.has("prior_payment_verified"),
     };
     void onPerform(() => api.write(sessionId, `/governance/contracts/${encodeURIComponent(String(contract.contract_id))}/terms`, "PUT", payload), "资源条款已核验，合同正文和专业审校结果已经生成", "正在生成并专业审校合同");
   }
@@ -1564,27 +1553,27 @@ function ContractWorkspace({ contract, governance, state, busy, api, sessionId, 
     <header className="contract-status"><div><small>{contract.household_id} · 逐户独立合同</small><h3>{playerText(contract.signatory_name, "待确认签约人")}</h3></div><span>{friendlyStatus(status)}</span></header>
     {siblingContracts.length > 1 && <nav className="contract-tabs" aria-label="同批次逐户合同">{siblingContracts.map(item => <button key={item.contract_id} className={item.contract_id === contract.contract_id ? "active" : ""} disabled={busy} onClick={() => onOpenContract(item)}>{item.household_id}<small>{friendlyStatus(item.status)}</small></button>)}</nav>}
     <div className="contract-progress"><span className={contract.current_version ? "done" : "active"}>一 核定条款</span><span className={contract.audit_status === "pass" ? "done" : contract.current_version ? "active" : ""}>二 专业审校</span><span className={status === "signed" ? "done" : status === "draft" ? "active" : ""}>三 本户复核并签署</span></div>
-    <p className="contract-hold">资源状态：{playerText(contract.resource_hold_status, "未预占")}</p>
-    {contract.review_reason && <div className="contract-review"><b>签约人反馈</b><p>{playerText(contract.review_reason)}</p>{Object.keys(contract.counteroffer || {}).length > 0 && <pre>{JSON.stringify(contract.counteroffer, null, 2)}</pre>}</div>}
+    <p className="contract-hold">资源状态：{playerText(contract.resource_hold_status, "尚未扣除资源")}</p>
+    {contract.review_reason && <div className="contract-review"><b>签约人反馈</b><p>{playerText(contract.review_reason)}</p></div>}
     {editable && <form className="contract-terms-form" onSubmit={submitTerms}>
-      <h3>逐户资源条款</h3><p>系统只会把下列真实资源写入合同；不满足政策或资源约束时，后端会拒绝生成。</p>
+      <h3>逐户资源条款</h3><p>填写拟议补偿方案，生成合同后可继续修改或交给对方签约。草案不扣资源；签订成功时立即付款，交房与搬离日期按约定安排。</p>
       <div className="contract-field-grid">
         <label>依据补偿方案<select name="policy_document_id" defaultValue={terms.policy_document_id || policyDocuments[0]?.document_id || "doc_compensation_policy_v1"}>{policyDocuments.length ? policyDocuments.map(item => <option key={item.document_id} value={item.document_id}>{item.title}</option>) : <option value="doc_compensation_policy_v1">云溪县柳林村整体搬迁补偿安置方案</option>}</select></label>
         <label>专项预算<select name="budget_envelope" defaultValue={terms.budget_envelope || "property_land"}>{envelopes.map(item => <option key={item.envelope_id} value={item.envelope_id}>{item.name}（余 {displayValue(item.available, displayValue(item.remaining, "待核"))}）</option>)}</select></label>
         <label>现金补偿（万元）<input name="cash_amount" type="number" min="0" max="8000" defaultValue={terms.cash_amount ?? 100} required /></label>
         <label>过渡月份<input name="transition_months" type="number" min="0" max="12" defaultValue={terms.transition_months ?? 12} required /></label>
-        <label>付款日<input name="payment_day" type="number" min={Number(get(state, "story.day", 1))} max="90" defaultValue={terms.payment_day ?? Math.min(90, Number(get(state, "story.day", 1)) + 1)} required /></label>
         <label>搬离日<input name="move_out_day" type="number" min={Number(get(state, "story.day", 1))} max="90" defaultValue={terms.move_out_day ?? Math.min(90, Number(get(state, "story.day", 1)) + 20)} required /></label>
         <label>交房日<input name="housing_delivery_day" type="number" min={Number(get(state, "story.day", 1))} max="90" defaultValue={terms.housing_delivery_day ?? Math.min(90, Number(get(state, "story.day", 1)) + 20)} required /></label>
         <label>安置房源<select name="housing_resource_id" defaultValue={terms.housing_resource_id || ""}><option value="">不采用实物安置</option>{housing.map(item => <option key={item.resource_id} value={item.resource_id}>{item.name}（可用 {displayValue(item.available, item.capacity)}）</option>)}</select></label>
       </div>
-      <fieldset><legend>配套服务资源</legend><p className="contract-resource-hint">这里显示当前权威库存。填写只形成合同草案；本户复核接受后将直接签署并占用对应资源。</p><div className="service-allocation-grid">{services.map(item => { const inventory = serviceInventory.get(String(item.resource_id)); return <label className="service-resource-label" key={item.resource_id}><span>{item.name}</span><small>可用 {inventory?.available ?? 0} / {inventory?.capacity ?? 0} {inventory?.unit || "份"}{inventory?.used ? ` · 已占用 ${inventory.used}` : ""}</small><input name={`service:${item.resource_id}`} type="number" min="0" max={inventory?.available ?? 0} defaultValue={get(terms, `service_allocations.${item.resource_id}`, 0)} /></label>; })}</div></fieldset>
+      <fieldset><legend>配套服务资源</legend><p className="contract-resource-hint">这里显示当前权威库存。填写只形成合同草案；对方接受签约后立即扣除对应资源。</p><div className="service-allocation-grid">{services.map(item => { const inventory = serviceInventory.get(String(item.resource_id)); return <label className="service-resource-label" key={item.resource_id}><span>{item.name}</span><small>可用 {inventory?.available ?? 0} / {inventory?.capacity ?? 0} {inventory?.unit || "份"}{inventory?.used ? ` · 已分配 ${inventory.used}` : ""}</small><input name={`service:${item.resource_id}`} type="number" min="0" max={inventory?.available ?? 0} defaultValue={get(terms, `service_allocations.${item.resource_id}`, 0)} /></label>; })}</div></fieldset>
       {approvalDocuments.length > 0 && <fieldset><legend>引用已签发批准文件</legend><div className="contract-check-grid">{approvalDocuments.map(item => <label key={item.document_id}><input name="approval_document_ids" type="checkbox" value={item.document_id} defaultChecked={values(terms.approval_document_ids).includes(item.document_id)} />{item.title}</label>)}</div></fieldset>}
-      <fieldset><legend>事实与程序确认</legend><div className="contract-check-grid"><label><input name="public_window_reward" type="checkbox" disabled={!rewardAvailable} defaultChecked={rewardAvailable && Boolean(terms.public_window_reward)} />{rewardAvailable ? "适用公开签约奖励" : "公开签约奖励已于D75截止"}</label><label><input name="authorization_confirmed" type="checkbox" defaultChecked={Boolean(terms.authorization_confirmed)} />授权文件已核验</label><label><input name="real_unit_viewed" type="checkbox" defaultChecked={Boolean(terms.real_unit_viewed)} />本户已查看实际房源</label><label><input name="ledger_disclosed" type="checkbox" defaultChecked={Boolean(terms.ledger_disclosed)} />测量底账已向本户公开</label><label><input name="old_case_resolved" type="checkbox" defaultChecked={Boolean(terms.old_case_resolved)} />历史争议已处理</label><label><input name="prior_payment_verified" type="checkbox" defaultChecked={Boolean(terms.prior_payment_verified)} />前期款项已核验</label></div></fieldset>
+      <fieldset><legend>公开签约奖励</legend><label><input name="public_window_reward" type="checkbox" disabled={!rewardAvailable} defaultChecked={rewardAvailable && Boolean(terms.public_window_reward)} />{rewardAvailable ? "适用公开签约奖励" : "公开签约奖励已于D75截止"}</label></fieldset>
       <button disabled={busy}>核验条款并生成合同</button>
     </form>}
       {contract.contract_text && <section className="contract-text-section"><header><div><small>当前版本 V{contract.current_version}</small><h3>合同正文</h3></div><span>{friendlyStatus(contract.audit_status)}</span></header><textarea value={text} onChange={event => setText(event.target.value)} readOnly={!editable} rows={14} />{auditIssues.length > 0 && <div className="audit-issues"><b>专业审校意见</b>{auditIssues.map((issue, index) => <article key={index}><p>{playerText(issue.message, "存在需要修订的条款")}</p>{issue.text_quote && <q>{playerText(issue.text_quote)}</q>}{issue.suggestion && <small>{playerText(issue.suggestion)}</small>}</article>)}</div>}{editable && <button className="secondary" disabled={busy || !text.trim() || text === contract.contract_text} onClick={() => void onPerform(() => api.write(sessionId, `/governance/contracts/${encodeURIComponent(String(contract.contract_id))}/text`, "PUT", { state_version: state.state_version, text }), "合同正文已更新并重新完成专业审校", "正在重新审校合同正文")}>保存正文并重新审校</button>}</section>}
-    <div className="contract-final-actions">{status === "draft" && <button disabled={busy || contract.audit_status !== "pass"} title={contract.audit_status !== "pass" ? "必须先通过专业审校" : undefined} onClick={() => void onPerform(() => api.write(sessionId, `/governance/contracts/${encodeURIComponent(String(contract.contract_id))}/review`, "POST", { state_version: state.state_version }), "本户复核已经完成；如接受，合同已直接签署并计入真实签约进度", "正在生成签约人的复核意见")}>送交本户复核</button>}{status === "signed" && <div className="signed-contract-seal"><b>已签署</b><span>第 {contract.signed_day} 日 · 签署哈希 {String(contract.signed_hash || "").slice(0, 12)}…</span></div>}</div>
+    {contract.term_sheet && status !== "signed" && <section className="contract-deduction-preview" aria-label="当前方案扣除预览"><h3>签订成功时扣除</h3><p>现金 {displayValue(terms.cash_amount, 0)} 万元{terms.housing_resource_id ? ` · ${playerText(resources.find(item => item.resource_id === terms.housing_resource_id)?.name, "所选房源")} 1 套` : ""}{Object.entries(terms.service_allocations || {}).filter(([, amount]) => Number(amount) > 0).map(([id, amount]) => ` · ${playerText(resources.find(item => item.resource_id === id)?.name, "所选服务")} ×${amount}`).join("")}</p><small>以上为已生成合同的条款。对方接受后立即扣除；拒绝或继续协商不扣除。</small></section>}
+    <div className="contract-final-actions">{status === "draft" && <button disabled={busy || contract.audit_status !== "pass"} title={contract.audit_status !== "pass" ? "必须先通过专业审校" : undefined} onClick={() => void onPerform(() => api.write(sessionId, `/governance/contracts/${encodeURIComponent(String(contract.contract_id))}/review`, "POST", { state_version: state.state_version }), "已收到签约人反馈；接受时合同生效并扣除对应资源", "正在生成签约人的复核意见")}>提交签约</button>}{status === "signed" && <div className="signed-contract-seal"><b>已签署</b><span>第 {contract.signed_day} 日 · 签署哈希 {String(contract.signed_hash || "").slice(0, 12)}…</span></div>}</div>
   </div>;
 }
 

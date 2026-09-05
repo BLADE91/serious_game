@@ -18,14 +18,6 @@ def progress_broadcast(session: GameSession) -> dict | None:
         ceil(state.total_households * day / 90),
     )
     lag = max(0, expected_signed - state.signed_households)
-    demand_states = session.npc_demand_states.values()
-    breached = sum(
-        1 for item in demand_states if str(item.get("status")) == "breached"
-    )
-    expired = sum(
-        1 for item in demand_states if str(item.get("status")) == "expired"
-    )
-
     pressure = 0
     if lag:
         pressure += 1
@@ -40,8 +32,6 @@ def progress_broadcast(session: GameSession) -> dict | None:
     if state.fatigue >= 70:
         pressure += 1
     if state.budget_remaining <= state.budget_base_authorized * 0.25:
-        pressure += 1
-    if breached or expired:
         pressure += 1
 
     on_schedule = state.signed_households >= expected_signed
@@ -85,12 +75,6 @@ def progress_broadcast(session: GameSession) -> dict | None:
         signals.append("你确实很累；遗憾的是，疲惫不能折算成签约户数。")
     if state.budget_remaining <= state.budget_base_authorized * 0.25:
         signals.append("财政余量偏紧：别拿明天的资源安抚今天的情绪。")
-    if breached:
-        signals.append(
-            f"已有{breached}项诉求承诺违约：下一次口头保证会更便宜，也更没人信。"
-        )
-    if expired:
-        signals.append(f"已有{expired}项诉求错过处置窗口：日历不会替你补签。")
     if not signals:
         signals.append("签约进度达到阶段参考；程序、兑现和后续风险仍要逐项复核。")
 

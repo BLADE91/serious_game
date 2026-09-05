@@ -87,6 +87,18 @@ class StoryRoutesV3Tests(unittest.TestCase):
         self.assertEqual(200, response.status_code, response.text)
         return response.json()
 
+    def test_contract_route_ignores_historic_self_attested_facts(self) -> None:
+        from unittest.mock import Mock
+        client = Mock()
+        terms = {"cash_amount": 36, "payment_day": 77,
+                 **dict.fromkeys(("authorization_confirmed", "real_unit_viewed",
+                     "ledger_disclosed", "old_case_resolved", "prior_payment_verified"), True)}
+        self.set_contract_terms_for_route(client, "session", {}, "contract",
+                                         state_version=9, terms=terms)
+        payload = client.put.call_args.kwargs["json"]
+        self.assertEqual({"state_version": 9, "cash_amount": 36, "payment_day": 77}, payload)
+        self.assertTrue(terms["real_unit_viewed"])
+
     def test_opportunity_driver_does_not_end_a_conversation_twice_when_npc_closed_it(self) -> None:
         class Response:
             status_code = 200
@@ -304,52 +316,6 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 serial,
             )
 
-    def advance_selected_demands(
-        self,
-        client,
-        session_id: str,
-        headers: dict[str, str],
-        result: dict,
-        demand_ids: frozenset[str],
-    ) -> dict:
-        if not demand_ids:
-            return result
-        while True:
-            overview = client.get(
-                f"/api/game/session/{session_id}/governance", headers=headers
-            )
-            self.assertEqual(200, overview.status_code, overview.text)
-            candidates = [
-                item for item in overview.json()["npc_demands"]
-                if item["demand_id"] in demand_ids
-                and set(item.get("allowed_transitions", ()))
-                & {"acknowledged", "lawfully_refused", "committed", "satisfied"}
-            ]
-            if not candidates:
-                return result
-            demand = candidates[0]
-            allowed = demand["allowed_transitions"]
-            transition = next(
-                value for value in (
-                    "acknowledged",
-                    "lawfully_refused",
-                    "committed",
-                    "satisfied",
-                )
-                if value in allowed
-            )
-            response = client.post(
-                f"/api/game/session/{session_id}/governance/npc-demands/"
-                f"{demand['demand_id']}/dispose",
-                headers=headers,
-                json={
-                    "state_version": result["state_version"],
-                    "transition": transition,
-                },
-            )
-            self.assertEqual(200, response.status_code, response.text)
-            result = {**result, "state_version": response.json()["state_version"]}
-
     def review_contract_for_route(
         self,
         client,
@@ -400,7 +366,13 @@ class StoryRoutesV3Tests(unittest.TestCase):
             f"/api/game/session/{session_id}/governance/contracts/"
             f"{contract_id}/terms",
             headers=headers,
-            json={"state_version": state_version, **terms},
+            # Historic route profiles carry self-attested facts. They are not
+            # evidence and must not be sent by the player-route driver.
+            json={"state_version": state_version, **{
+                key: value for key, value in terms.items()
+                if key not in {"authorization_confirmed", "real_unit_viewed",
+                    "ledger_disclosed", "old_case_resolved", "prior_payment_verified"}
+            }},
         )
 
     def group_conversation_turn_for_route(
@@ -481,45 +453,60 @@ class StoryRoutesV3Tests(unittest.TestCase):
             self.assertEqual(201, started.status_code, started.text)
             started_body = started.json()
             action_id = started_body["action"]["action_instance_id"]
-            turn = self.governance_turn_for_route(
-                client,
-                session_id,
-                headers,
-                action_id,
-                started_body,
-                player_text=(
-                    "我正式向你代表的每一户分别发起合同，请逐户核对条款并签约。"
-                ),
-                client_action_id=f"witness-contract-{action_id}",
-            )
-            self.assertEqual(200, turn.status_code, turn.text)
-            turn_body = turn.json()
-            proposal = turn_body.get("contract_batch_proposal")
-            if proposal is None:
-                finished = client.post(
-                    f"/api/game/session/{session_id}/governance/actions/{action_id}/finish",
-                    headers=headers,
-                    json={"state_version": turn_body["state_version"]},
+            # Resume actual drafts rather than creating a second contract when
+            # the household previously asked for evidence or clarification.
+            overview = client.get(f"/api/game/session/{session_id}/governance", headers=headers)
+            self.assertEqual(200, overview.status_code, overview.text)
+            existing = overview.json()
+            batch_ids = {b["batch_id"] for b in existing.get("contract_batches", [])
+                         if b["representative_npc_id"] == representative}
+            pending_contracts = [c for c in existing.get("contracts", [])
+                                 if c["batch_id"] in batch_ids and c["status"] != "signed"]
+            if pending_contracts:
+                confirmed_body = {"state_version": started_body["state_version"],
+                                  "contracts": pending_contracts}
+            else:
+                turn = self.governance_turn_for_route(
+                    client,
+                    session_id,
+                    headers,
+                    action_id,
+                    started_body,
+                    player_text=(
+                        "我正式向你代表的每一户分别发起合同，请逐户核对条款并签约。"
+                    ),
+                    client_action_id=f"witness-contract-{action_id}",
                 )
-                self.assertEqual(200, finished.status_code, finished.text)
-                result = finished.json()
-                continue
-            confirmed = client.post(
-                f"/api/game/session/{session_id}/governance/contract-batches/"
-                f"{proposal['batch_id']}/confirm",
-                headers=headers,
-                json={"state_version": turn_body["state_version"], "confirmed": True},
-            )
-            self.assertEqual(200, confirmed.status_code, confirmed.text)
-            confirmed_body = confirmed.json()
+                self.assertEqual(200, turn.status_code, turn.text)
+                turn_body = turn.json()
+                proposal = turn_body.get("contract_batch_proposal")
+                if proposal is None:
+                    finished = client.post(
+                        f"/api/game/session/{session_id}/governance/actions/{action_id}/finish",
+                        headers=headers,
+                        json={"state_version": turn_body["state_version"]},
+                    )
+                    self.assertEqual(200, finished.status_code, finished.text)
+                    result = finished.json()
+                    continue
+                confirmed = client.post(
+                    f"/api/game/session/{session_id}/governance/contract-batches/"
+                    f"{proposal['batch_id']}/confirm",
+                    headers=headers,
+                    json={"state_version": turn_body["state_version"], "confirmed": True},
+                )
+                self.assertEqual(200, confirmed.status_code, confirmed.text)
+                confirmed_body = confirmed.json()
             state_version = confirmed_body["state_version"]
+            all_resolved = True
             for contract in confirmed_body["contracts"]:
                 if current >= target_signed:
                     break
                 household_id = contract["household_id"]
                 self.assertIn(household_id, contract_terms)
                 terms = dict(contract_terms[household_id])
-                for field in ("payment_day", "move_out_day", "housing_delivery_day"):
+                terms["payment_day"] = story_day
+                for field in ("move_out_day", "housing_delivery_day"):
                     terms[field] = max(story_day, int(terms[field]))
                 if story_day > 75:
                     terms["public_window_reward"] = False
@@ -534,6 +521,18 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 self.assertEqual(200, drafted.status_code, drafted.text)
                 draft_body = drafted.json()
                 self.assertEqual("pass", draft_body["contract"]["audit_status"])
+                if household_id == "LAO-01" and terms.get("housing_resource_id"):
+                    # Perform a present-tense invitation through the real action
+                    # route. The NPC decides; the application records a viewing
+                    # only after acceptance. Never patch a verified fact here.
+                    viewing = self.governance_turn_for_route(
+                        client, session_id, headers, action_id, draft_body,
+                        player_text="我们现在去看合同中这套可交付房源，您愿意一起去看吗？",
+                        client_action_id=f"witness-viewing-{contract['contract_id']}",
+                    )
+                    self.assertEqual(200, viewing.status_code, viewing.text)
+                    draft_body = {**draft_body,
+                        "state_version": viewing.json()["state_version"]}
                 reviewed = self.review_contract_for_route(
                     client,
                     session_id,
@@ -555,8 +554,15 @@ class StoryRoutesV3Tests(unittest.TestCase):
                     )
                     self.assertEqual(200, signed.status_code, signed.text)
                     review_body = signed.json()
-                self.assertEqual("signed", review_body["contract"]["status"])
                 state_version = review_body["state_version"]
+                status = review_body["contract"]["status"]
+                self.assertIn(status, {"signed", "explanation_requested", "counteroffered", "rejected"},
+                              f"{household_id}: {review_body['contract'].get('review_reason')}")
+                if status != "signed":
+                    print(f"deferred D{story_day} {household_id}: {status}: "
+                          f"{review_body['contract'].get('review_reason')}", flush=True)
+                    all_resolved = False
+                    continue
                 current += 1
             finished = client.post(
                 f"/api/game/session/{session_id}/governance/actions/{action_id}/finish",
@@ -565,7 +571,8 @@ class StoryRoutesV3Tests(unittest.TestCase):
             )
             self.assertEqual(200, finished.status_code, finished.text)
             result = finished.json()
-            processed_representatives.add(representative)
+            if all_resolved:
+                processed_representatives.add(representative)
         return result
 
     def drain_required_group_conversation(
@@ -1009,13 +1016,6 @@ class StoryRoutesV3Tests(unittest.TestCase):
                 serial,
                 allowed_opportunity_ids,
             )
-            result = self.advance_selected_demands(
-                client,
-                session_id,
-                headers,
-                result,
-                selected_demand_ids,
-            )
             result = self.inspect_all_available_archives(
                 client, session_id, headers, result
             )
@@ -1048,6 +1048,7 @@ class StoryRoutesV3Tests(unittest.TestCase):
             "sub_ending_id": ending["sub_ending_id"],
             "ledger": result["visible_state"]["ledger"]["signed_households"],
             "axes": ending["axes"],
+            "people_score_evidence": self.people_score_evidence(stored_session),
             "signed_contracts": sorted(
                 contract.household_id
                 for contract in stored_session.household_contracts.values()
@@ -1073,6 +1074,15 @@ class StoryRoutesV3Tests(unittest.TestCase):
             flush=True,
         )
         return witness
+
+    @staticmethod
+    def people_score_evidence(session) -> dict:
+        from serious_game_backend.application.ending_service import EndingAxisProjector
+        positive = sorted(session.flags & EndingAxisProjector.POSITIVE_PEOPLE_FLAGS)
+        negative = sorted(session.flags & EndingAxisProjector.NEGATIVE_PEOPLE_FLAGS)
+        heavy = sorted(session.flags & EndingAxisProjector.HEAVY_PEOPLE_FLAGS)
+        return {"score": len(positive) - len(negative) - 2 * len(heavy),
+                "positive": positive, "negative": negative, "heavy": heavy}
 
     def test_every_published_ending_witness_replays_through_formal_api(self) -> None:
         from tools.run_story_routes_v3_isolated import run_isolated

@@ -28,9 +28,6 @@ from serious_game_backend.domain.errors import ActionUnavailableError
 from serious_game_backend.domain.game_session import GameSession
 from serious_game_backend.domain.game_state import GameState
 from serious_game_backend.domain.gameplay_governance import (
-    ContractVersion,
-    GovernanceActionRecord,
-    HouseholdContract,
     ResourceReservation,
 )
 from serious_game_backend.infrastructure.repositories.memory import (
@@ -118,7 +115,10 @@ def test_progress_broadcast_turns_stern_when_governance_is_slipping(package):
     assert broadcast["tone"] == "stern"
     assert "会议纪要" in broadcast["message"]
     assert any("疲惫不能折算" in item for item in broadcast["signals"])
-    assert any("承诺违约" in item for item in broadcast["signals"])
+    assert not any("承诺违约" in item for item in broadcast["signals"])
+    # Historical manual statuses no longer affect the ten-day assessment.
+    session.npc_demand_states.clear()
+    assert progress_broadcast(session) == broadcast
 
 
 def test_progress_broadcast_uses_wry_nudge_for_a_small_delay(package):
@@ -163,7 +163,7 @@ def test_every_npc_has_one_machine_readable_core_demand(package):
         assert isinstance(demand.consequences, dict)
 
 
-def test_illegal_demands_are_resolved_by_lawful_refusal(package):
+def test_illegal_private_demands_have_no_manual_disposition_buttons(package):
     dispositions = {
         item.npc_id: item.legal_disposition for item in package.npc_demands
     }
@@ -172,51 +172,28 @@ def test_illegal_demands_are_resolved_by_lawful_refusal(package):
     assert dispositions["npc_zhao_jianguo"] == "lawfully_refuse"
     assert NPCDemandService.allowed_transitions(
         "acknowledged", "lawfully_refuse"
-    ) == ["lawfully_refused"]
+    ) == []
 
 
-def test_all_states_exist_but_undiscovered_demands_are_not_projected(package):
+def test_private_demands_are_never_projected_as_an_omniscient_checklist(package):
     session = new_session(package)
     NPCDemandService.initialize(session, package)
     assert len(session.npc_demand_states) == 29
-    public = NPCDemandService.public(session, package)
-    assert public
-    assert len(public) < 29
-    assert all(item["status"] != "unknown" for item in public)
-    visible_npcs = GameplayGovernanceService._visible_governance_npc_ids(
-        session, package
-    )
-    assert {item["npc_id"] for item in public}.issubset(visible_npcs)
-    assert "demand_zhang_li" not in {item["demand_id"] for item in public}
-    assert all(
-        item["allowed_transitions"] == []
-        for item in public
-        if item["status"] == "discovered"
-    )
+    for state in session.npc_demand_states.values():
+        state["status"] = "acknowledged"
+    assert NPCDemandService.public(session, package) == []
 
-
-def test_formal_contact_confirms_demand_before_disposition(package):
+def test_formal_contact_records_contact_but_does_not_disclose_private_needs(package):
     session = new_session(package)
     NPCDemandService.initialize(session, package)
-    demand = next(
-        item for item in package.npc_demands if item.npc_id == "npc_wu_xiuying"
-    )
-    assert session.npc_demand_states[demand.demand_id]["status"] == "discovered"
-
-    session.logs.append({
-        "type": "conversation_started",
-        "npc_id": demand.npc_id,
-        "story_day": 1,
-    })
+    demand = next(d for d in package.npc_demands if d.npc_id == "npc_wu_xiuying")
+    session.logs.append({"type": "conversation_started", "npc_id": demand.npc_id, "story_day": 1})
+    before = session.game_state
     NPCDemandService.sync(session, package)
-
     assert session.npc_demand_states[demand.demand_id]["status"] == "acknowledged"
-    public = next(
-        item for item in NPCDemandService.public(session, package)
-        if item["demand_id"] == demand.demand_id
-    )
-    assert public["allowed_transitions"] == ["committed"]
-
+    assert session.game_state == before
+    assert NPCDemandService.public(session, package) == []
+    assert NPCDemandService.allowed_transitions("acknowledged", demand.legal_disposition) == []
 
 def test_legacy_save_defaults_to_empty_demand_state_and_can_be_initialized(package):
     session = new_session(package)
@@ -228,93 +205,36 @@ def test_legacy_save_defaults_to_empty_demand_state_and_can_be_initialized(packa
     assert len(restored.npc_demand_states) == 29
 
 
-def test_demand_resource_pool_cannot_be_overbooked(package):
+@pytest.mark.parametrize("old_status", ["unknown", "discovered", "acknowledged", "committed", "satisfied", "lawfully_refused", "breached", "expired"])
+@pytest.mark.parametrize("transition", ["acknowledged", "committed", "satisfied", "lawfully_refused", "breached", "expired"])
+def test_retired_disposal_rejects_every_transition_without_mutation(package, old_status, transition):
     session = new_session(package)
-    NPCDemandService.initialize(session, package)
-    for index in range(2):
-        session.resource_reservations.append(ResourceReservation(
-            reservation_id=f"existing_{index}",
-            owner_type="contract",
-            owner_id=f"contract_{index}",
-            resource_id="housing_d1_100_accessible",
-            quantity=1,
-            status="committed",
-            reserved_day=1,
-        ))
-    demand = next(
-        item for item in package.npc_demands
-        if item.demand_id == "demand_yuan_guilan"
-    )
-    service = GameplayGovernanceService.__new__(GameplayGovernanceService)
-    with pytest.raises(ActionUnavailableError):
-        service._commit_demand_resources(session, package, demand)
-    assert not any(
-        item.owner_type == "npc_demand" for item in session.resource_reservations
-    )
-
-
-def test_committed_demand_cannot_be_falsely_delivered_and_consequence_is_once(
-    package,
-):
-    demand = next(
-        item for item in package.npc_demands
-        if item.demand_id == "demand_zheng_xiangdong"
-    )
-    session = new_session(package)
-    session.npc_demand_states[demand.demand_id] = {
-        "npc_id": demand.npc_id,
-        "status": "committed",
-        "updated_day": 1,
-        "history": [],
-    }
+    session.npc_demand_states["demand_wu_xiuying"] = {
+        "npc_id": "npc_wu_xiuying", "status": old_status, "history": []}
     session.resource_reservations.append(ResourceReservation(
-        reservation_id="demand_legal_review",
-        owner_type="npc_demand",
-        owner_id=demand.demand_id,
-        resource_id="legal_review_slot",
-        quantity=1,
-        status="committed",
-        reserved_day=1,
-        committed_day=1,
-    ))
+        "old-hold", "npc_demand", "demand_wu_xiuying", "audit_slot", 1, "committed", 1))
     service, sessions = demand_service(session, package)
-    version = session.state_version
+    before = encode_session(session)
+    with pytest.raises(ActionUnavailableError, match="已移除"):
+        service.dispose_npc_demand(account_id=session.account_id, session_id=session.session_id,
+            state_version=session.state_version, demand_id="demand_wu_xiuying", transition=transition)
+    assert encode_session(sessions.get_owned(session.session_id, session.account_id)) == before
 
-    with pytest.raises(ActionUnavailableError, match="履约事实"):
-        service.dispose_npc_demand(
-            account_id=session.account_id,
-            session_id=session.session_id,
-            state_version=version,
-            demand_id=demand.demand_id,
-            transition="satisfied",
-        )
-    stored = sessions.get_owned(session.session_id, session.account_id)
-    assert stored is not None
-    assert stored.npc_demand_states[demand.demand_id]["status"] == "committed"
-    public = next(
-        item for item in NPCDemandService.public(stored, package)
-        if item["demand_id"] == demand.demand_id
-    )
-    assert public["allowed_transitions"] == ["breached"]
-
-    stored.game_state = replace(stored.game_state, story_day=2, days_left=88)
-    sessions.save(stored, expected_version=version)
-    result = service.dispose_npc_demand(
-        account_id=session.account_id,
-        session_id=session.session_id,
-        state_version=version,
-        demand_id=demand.demand_id,
-        transition="satisfied",
-    )
-    assert result["demand"]["status"] == "satisfied"
-    after = sessions.get_owned(session.session_id, session.account_id)
-    assert after is not None
-    credit = after.game_state.political_credit
-    assert NPCDemandService.apply_consequences(
-        after, demand, "satisfied"
-    ) == {}
-    assert after.game_state.political_credit == credit
-
+def test_old_commitment_does_not_auto_fulfill_on_the_next_day(package):
+    session = new_session(package, story_day=2, days_left=88)
+    demand = next(d for d in package.npc_demands if d.demand_id == "demand_zheng_xiangdong")
+    session.npc_demand_states[demand.demand_id] = {
+        "npc_id": demand.npc_id, "status": "committed", "updated_day": 1, "history": []}
+    session.resource_reservations.append(ResourceReservation(
+        "old-hold", "npc_demand", demand.demand_id, "legal_review_slot", 1,
+        "committed", 1, committed_day=1))
+    before_state = session.game_state
+    before_resources = deepcopy(session.resource_reservations)
+    NPCDemandService.sync(session, package)
+    assert not NPCDemandService.can_fulfill(session, package, demand)
+    assert session.npc_demand_states[demand.demand_id]["status"] == "committed"
+    assert session.game_state == before_state
+    assert session.resource_reservations == before_resources
 
 def test_visible_projection_is_idempotent_and_does_not_sync_demands(package):
     session = new_session(package)
@@ -330,142 +250,34 @@ def test_visible_projection_is_idempotent_and_does_not_sync_demands(package):
     assert session.npc_demand_states == {}
 
 
-def test_flag_and_expiry_consequences_are_applied_exactly_once(package):
-    source = next(
-        item for item in package.npc_demands
-        if item.demand_id == "demand_zheng_xiangdong"
-    )
+def test_story_flag_sync_does_not_double_score_or_apply_retired_expiry_penalties(package):
+    source = next(d for d in package.npc_demands if d.demand_id == "demand_zheng_xiangdong")
     flagged = replace(source, satisfy={"required_flags": ["proof_ready"]})
-    flagged_package = replace(
-        package,
-        npc_demands=tuple(
-            flagged if item.demand_id == flagged.demand_id else item
-            for item in package.npc_demands
-        ),
-    )
+    flagged_package = replace(package, npc_demands=tuple(
+        flagged if d.demand_id == flagged.demand_id else d for d in package.npc_demands))
     session = new_session(flagged_package)
     session.npc_demand_states[flagged.demand_id] = {
-        "npc_id": flagged.npc_id,
-        "status": "committed",
-        "updated_day": 1,
-        "history": [],
-    }
+        "npc_id": flagged.npc_id, "status": "committed", "history": []}
     session.flags.add("proof_ready")
-    before_credit = session.game_state.political_credit
+    before = session.game_state
     NPCDemandService.sync(session, flagged_package)
     NPCDemandService.sync(session, flagged_package)
-    assert session.game_state.political_credit == before_credit + 3
+    assert session.npc_demand_states[flagged.demand_id]["status"] == "satisfied"
+    assert session.game_state == before
+    expired = new_session(package, story_day=59, days_left=31)
+    expired.npc_demand_states["demand_shi_wenbin"] = {
+        "npc_id": "npc_shi_wenbin", "status": "committed", "updated_day": 58, "history": []}
+    before = expired.game_state
+    NPCDemandService.sync(expired, package)
+    NPCDemandService.sync(expired, package)
+    assert expired.npc_demand_states["demand_shi_wenbin"]["status"] == "committed"
+    assert expired.game_state == before
 
-    expiring = next(
-        item for item in package.npc_demands
-        if item.demand_id == "demand_shi_wenbin"
-    )
-    expired_session = new_session(package, story_day=59, days_left=31)
-    expired_session.npc_demand_states[expiring.demand_id] = {
-        "npc_id": expiring.npc_id,
-        "status": "committed",
-        "updated_day": 58,
-        "history": [],
-    }
-    before_credit = expired_session.game_state.political_credit
-    NPCDemandService.sync(expired_session, package)
-    NPCDemandService.sync(expired_session, package)
-    assert expired_session.game_state.political_credit == before_credit - 8
-
-
-def test_capacity_one_demand_reservation_transfers_to_signed_contract(package):
-    config = deepcopy(package.governance_config)
-    for pool in config["resource_pools"]:
-        if pool["resource_id"] == "housing_d1_100":
-            pool["capacity"] = 1
-    limited_package = replace(package, governance_config=config)
-    demand = next(
-        item for item in limited_package.npc_demands
-        if item.demand_id == "demand_lao_juetou"
-    )
-    session = new_session(limited_package, story_day=46, days_left=44)
-    session.npc_demand_states[demand.demand_id] = {
-        "npc_id": demand.npc_id,
-        "status": "committed",
-        "updated_day": 46,
-        "history": [],
-    }
-    service = GameplayGovernanceService.__new__(GameplayGovernanceService)
-    service._commit_demand_resources(session, limited_package, demand)
-    contract = HouseholdContract(
-        contract_id="contract_capacity_one",
-        batch_id="batch_capacity_one",
-        household_id="hh_capacity_one",
-        signatory_name="老倔头",
-        signatory_npc_id=demand.npc_id,
-        created_day=46,
-        status="accepted",
-        term_sheet={
-            "budget_envelope": "housing_delivery",
-            "cash_amount": 1,
-            "housing_resource_id": "housing_d1_100",
-            "service_allocations": {},
-            "payment_day": 46,
-            "move_out_day": 47,
-            "housing_delivery_day": 47,
-            "public_window_reward": False,
-            "policy_document_id": "doc_compensation_policy_v1",
-            "approval_document_ids": [],
-        },
-        versions=[ContractVersion(
-            version=1,
-            text="老倔头逐户安置合同",
-            term_hash="term-hash",
-            text_hash="text-hash",
-            created_by="test",
-        )],
-        current_version=1,
-    )
-    session.household_contracts[contract.contract_id] = contract
-    session.governance_actions["action_capacity_one"] = GovernanceActionRecord(
-        action_instance_id="action_capacity_one",
-        action_kind="household_visit",
-        story_day=46,
-        target_ids=(demand.npc_id,),
-        required_permissions=(),
-        status="active",
-    )
-    service._reserve_contract_resources(session, limited_package, contract)
-    active_housing = [
-        item for item in session.resource_reservations
-        if item.resource_id == "housing_d1_100"
-        and item.status in {"reserved", "committed", "delivered"}
-    ]
-    assert sum(item.quantity for item in active_housing) == 1
-    assert active_housing[0].owner_id == contract.contract_id
-    service._validate_contract_reservations(session, contract)
-
-    wired, sessions = demand_service(session, limited_package)
-    before = encode_session(session)
-    with pytest.raises(ActionUnavailableError, match="不能绕过复核"):
-        wired.sign_contract(
-            account_id=session.account_id,
-            session_id=session.session_id,
-            state_version=session.state_version,
-            contract_id=contract.contract_id,
-            confirmed=True,
-        )
-    assert encode_session(
-        sessions.get_owned(session.session_id, session.account_id)
-    ) == before
-
-    wired._finalize_contract_signature(session, contract)
-    NPCDemandService.sync(session, limited_package)
-    sessions.save(session, expected_version=session.state_version)
-    stored = sessions.get_owned(session.session_id, session.account_id)
-    assert stored is not None
-    assert stored.npc_demand_states[demand.demand_id]["status"] == "satisfied"
-    assert sum(
-        item.quantity for item in stored.resource_reservations
-        if item.resource_id == "housing_d1_100"
-        and item.status in {"reserved", "committed", "delivered"}
-    ) == 1
-
+def test_retired_resource_transfer_helpers_are_not_available():
+    # Old-hold migration is covered by test_contract_accounting. No helper
+    # remains that can create a new independent NPC commitment or transfer it.
+    assert not hasattr(GameplayGovernanceService, "_commit_demand_resources")
+    assert not hasattr(GameplayGovernanceService, "_reserve_contract_resources")
 
 def test_cost_policy_preserves_final_script_fixed_prices(package):
     trust = new_session(package, public_trust=40)

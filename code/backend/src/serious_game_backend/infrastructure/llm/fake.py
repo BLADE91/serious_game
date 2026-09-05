@@ -316,7 +316,7 @@ class FakeRoleLLMGateway:
                 f"现金权益：{terms['cash_amount']}万元；预算信封：{terms['budget_envelope']}。\n"
                 f"安置房资源：{housing}。\n"
                 f"服务资源：{allocations}。\n"
-                f"付款日：D{terms['payment_day']}；搬离日：D{terms['move_out_day']}；"
+                f"付款安排：签署当日付款；搬离日：D{terms['move_out_day']}；"
                 f"交房日：D{terms['housing_delivery_day']}。\n"
                 "双方确认：所有资源以本合同结构化附件为准，任何口头承诺均不改变附件。"
             )
@@ -378,6 +378,8 @@ class FakeRoleLLMGateway:
                 },
                 model_id="fake-contract-auditor-v1",
             )
+        if task == "consider_housing_viewing":
+            return GovernanceLLMResult(task=task, data={"decision": "go"}, model_id="fake-governance-v1")
         if task == "review_contract":
             allowed = list(payload.get("allowed_decisions", ()))
             decision = "accept" if "accept" in allowed else (

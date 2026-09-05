@@ -1,0 +1,14 @@
+{
+  "provider": "openai_compatible",
+  "model": "qwen3.6-plus",
+  "audit_model": "deterministic-contract-rule-audit",
+  "audit_status": "pass",
+  "sample": "独立内存测试账户：真实模型生成合同和本人复核；专业审校使用确定性规则，使用正式应用服务方法（未经过HTTP），无玩家进度改动",
+  "status": "counteroffered",
+  "reply": "这合同我先不签，得把账算细了才行。我家那165平米房子、200平米宅基地，还有院里的水泥地和果树，都得一项项重新量清楚。光给个总数我不放心，万一漏了附属物咋办？咱们先安排补测复核，等测量单和合同对上了，再谈签字的事。",
+  "cash_before": 7800,
+  "cash_after": 7800,
+  "signed_delta": 0,
+  "allocated": [],
+  "elapsed_seconds": 6.07
+}

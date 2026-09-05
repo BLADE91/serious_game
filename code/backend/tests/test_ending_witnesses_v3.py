@@ -92,7 +92,7 @@ def test_zhou_clan_land_decision_is_reachable_from_its_story_scene() -> None:
     assert not package.decisions["dp4_05"].required_flags
 
 
-def test_suppressed_reporter_witnesses_resolve_people_demands_legally() -> None:
+def test_suppressed_reporter_witnesses_declare_people_axis_not_proof_of_reachability() -> None:
     witnesses = load_witnesses(ROUTE_PROFILE_PATH)
     reporter_routes = [
         item for item in witnesses
@@ -111,28 +111,6 @@ def test_veto_and_inspection_witnesses_include_their_legal_trigger_choices() -> 
     for suffix in "abcde":
         assert witnesses[f"route-ending-02{suffix}"].decision_policy["dp6_05"] == "a"
     assert witnesses["route-ending-15b"].decision_policy["dp6_07"] == "d_a_b_c_e"
-
-
-def test_every_expiring_npc_demand_can_be_contacted_before_its_deadline() -> None:
-    package = load_v3()
-    first_contact_day_by_npc: dict[str, int] = {}
-    for opportunity in package.interaction_opportunities:
-        if opportunity.availability_mode.value == "closed":
-            continue
-        first_contact_day_by_npc[opportunity.npc_id] = min(
-            opportunity.day_min,
-            first_contact_day_by_npc.get(opportunity.npc_id, 91),
-        )
-
-    for demand in package.npc_demands:
-        expires_day = demand.satisfy.get("expires_day")
-        if expires_day is None:
-            continue
-        assert first_contact_day_by_npc[demand.npc_id] <= int(expires_day), (
-            demand.demand_id,
-            first_contact_day_by_npc.get(demand.npc_id),
-            expires_day,
-        )
 
 
 @pytest.mark.parametrize(

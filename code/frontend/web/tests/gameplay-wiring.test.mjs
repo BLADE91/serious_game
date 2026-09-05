@@ -80,7 +80,7 @@ test("signs an accepted household contract without a second confirmation step", 
   assert.match(shell, /确认逐户合同提议/);
   assert.match(shell, /核验条款并生成合同/);
   assert.match(shell, /保存正文并重新审校/);
-  assert.match(shell, /送交本户复核/);
+  assert.match(shell, /提交签约/);
   assert.doesNotMatch(shell, /正式签署并入账/);
   assert.doesNotMatch(shell, /确认本人签署/);
   assert.match(shell, /group_conversation_timeline/);

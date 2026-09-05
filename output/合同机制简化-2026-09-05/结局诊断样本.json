@@ -1,0 +1,265 @@
+[
+  {
+    "route_id": "route-ending-07c",
+    "expected_main": "ending_07",
+    "expected_sub": "ending_07c",
+    "main_ending_id": "ending_07",
+    "sub_ending_id": "ending_07a",
+    "axes": {
+      "A": "差一两户",
+      "C": "未触碰",
+      "D": "干净",
+      "T": "揭而已治",
+      "M": "温和",
+      "X": "实",
+      "R": "据实以告",
+      "P": "归心",
+      "F": "揽责",
+      "Z": "中立",
+      "J": "未起疑",
+      "K": "拥护",
+      "E": "结盟发稿",
+      "V": "背书"
+    },
+    "people_score_evidence": {
+      "score": 5,
+      "positive": [
+        "困难户帮扶",
+        "样板签约",
+        "毛坯据实",
+        "民生优先",
+        "血铅补实"
+      ],
+      "negative": [],
+      "heavy": []
+    }
+  },
+  {
+    "route_id": "route-ending-07d",
+    "expected_main": "ending_07",
+    "expected_sub": "ending_07d",
+    "main_ending_id": "ending_07",
+    "sub_ending_id": "ending_07b",
+    "axes": {
+      "A": "差一两户",
+      "C": "未触碰",
+      "D": "干净",
+      "T": "揭而已治",
+      "M": "温和",
+      "X": "实",
+      "R": "据实以告",
+      "P": "认可",
+      "F": "揽责",
+      "Z": "对立",
+      "J": "未起疑",
+      "K": "拥护",
+      "E": "结盟发稿",
+      "V": "背书"
+    },
+    "people_score_evidence": {
+      "score": 1,
+      "positive": [
+        "困难户帮扶",
+        "样板签约",
+        "毛坯据实",
+        "血铅补实"
+      ],
+      "negative": [
+        "宗族对立",
+        "秀英寒心",
+        "面子优先"
+      ],
+      "heavy": []
+    }
+  },
+  {
+    "route_id": "route-ending-13b",
+    "expected_main": "ending_13",
+    "expected_sub": "ending_13b",
+    "main_ending_id": "ending_13",
+    "sub_ending_id": "ending_13a",
+    "axes": {
+      "A": "宽裕",
+      "C": "弃车保帅",
+      "D": "干净",
+      "T": "揭而已治",
+      "M": "温和",
+      "X": "实",
+      "R": "据实以告",
+      "P": "归心",
+      "F": "揽责",
+      "Z": "中立",
+      "J": "未起疑",
+      "K": "拥护",
+      "E": "结盟发稿",
+      "V": "背书"
+    },
+    "people_score_evidence": {
+      "score": 5,
+      "positive": [
+        "俯身接怨",
+        "困难户帮扶",
+        "最后一公里攻坚成功",
+        "样板签约",
+        "毛坯据实",
+        "血铅补实"
+      ],
+      "negative": [
+        "面子优先"
+      ],
+      "heavy": []
+    }
+  },
+  {
+    "route_id": "route-ending-13c",
+    "expected_main": "ending_13",
+    "expected_sub": "ending_13c",
+    "main_ending_id": "ending_13",
+    "sub_ending_id": "ending_13a",
+    "axes": {
+      "A": "宽裕",
+      "C": "弃车保帅",
+      "D": "干净",
+      "T": "揭而已治",
+      "M": "温和",
+      "X": "实",
+      "R": "据实以告",
+      "P": "归心",
+      "F": "揽责",
+      "Z": "中立",
+      "J": "未起疑",
+      "K": "拥护",
+      "E": "结盟发稿",
+      "V": "背书"
+    },
+    "people_score_evidence": {
+      "score": 6,
+      "positive": [
+        "困难户帮扶",
+        "最后一公里攻坚成功",
+        "样板签约",
+        "毛坯据实",
+        "民生优先",
+        "血铅补实"
+      ],
+      "negative": [],
+      "heavy": []
+    }
+  },
+  {
+    "route_id": "route-ending-13d",
+    "expected_main": "ending_13",
+    "expected_sub": "ending_13d",
+    "main_ending_id": "ending_13",
+    "sub_ending_id": "ending_13b",
+    "axes": {
+      "A": "宽裕",
+      "C": "弃车保帅",
+      "D": "干净",
+      "T": "揭而已治",
+      "M": "温和",
+      "X": "实",
+      "R": "据实以告",
+      "P": "认可",
+      "F": "揽责",
+      "Z": "对立",
+      "J": "未起疑",
+      "K": "拥护",
+      "E": "结盟发稿",
+      "V": "背书"
+    },
+    "people_score_evidence": {
+      "score": 2,
+      "positive": [
+        "困难户帮扶",
+        "最后一公里攻坚成功",
+        "样板签约",
+        "毛坯据实",
+        "血铅补实"
+      ],
+      "negative": [
+        "宗族对立",
+        "秀英寒心",
+        "面子优先"
+      ],
+      "heavy": []
+    }
+  },
+  {
+    "route_id": "route-ending-15a",
+    "expected_main": "ending_15",
+    "expected_sub": "ending_15a",
+    "main_ending_id": "ending_23",
+    "sub_ending_id": "ending_23c",
+    "axes": {
+      "A": "宽裕",
+      "C": "未触碰",
+      "D": "干净",
+      "T": "揭而已治",
+      "M": "施压",
+      "X": "实",
+      "R": "据实以告",
+      "P": "归心",
+      "F": "揽责",
+      "Z": "归附",
+      "J": "未起疑",
+      "K": "拥护",
+      "E": "结盟发稿",
+      "V": "背书"
+    },
+    "people_score_evidence": {
+      "score": 5,
+      "positive": [
+        "俯身接怨",
+        "困难户帮扶",
+        "最后一公里攻坚成功",
+        "样板签约",
+        "民生优先",
+        "血铅补实"
+      ],
+      "negative": [
+        "强制施压"
+      ],
+      "heavy": []
+    }
+  },
+  {
+    "route_id": "route-ending-16a",
+    "expected_main": "ending_16",
+    "expected_sub": "ending_16a",
+    "main_ending_id": "ending_23",
+    "sub_ending_id": "ending_23b",
+    "axes": {
+      "A": "宽裕",
+      "C": "未触碰",
+      "D": "干净",
+      "T": "揭而已治",
+      "M": "温和",
+      "X": "实",
+      "R": "据实以告",
+      "P": "认可",
+      "F": "揽责",
+      "Z": "对立",
+      "J": "未起疑",
+      "K": "拥护",
+      "E": "结盟发稿",
+      "V": "背书"
+    },
+    "people_score_evidence": {
+      "score": 2,
+      "positive": [
+        "困难户帮扶",
+        "最后一公里攻坚成功",
+        "样板签约",
+        "毛坯据实",
+        "血铅补实"
+      ],
+      "negative": [
+        "宗族对立",
+        "秀英寒心",
+        "面子优先"
+      ],
+      "heavy": []
+    }
+  }
+]

@@ -610,9 +610,7 @@ class ActionService:
             demand.description
             for demand in package.npc_demands
             if demand.npc_id == opportunity.npc_id
-            and session.npc_demand_states.get(demand.demand_id, {}).get(
-                "status"
-            ) in {"discovered", "acknowledged", "committed"}
+            and session.npc_demand_states.get(demand.demand_id, {}).get("status") != "satisfied"
         )
         prepared_input = (
             self._model_input_policy.prepare(account_id, command.player_text)

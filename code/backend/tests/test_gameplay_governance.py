@@ -1648,7 +1648,7 @@ class GameplayGovernanceTests(unittest.TestCase):
         self.assertEqual("signed", review["contract"]["status"])
         self.assertIsNone(review["contract"]["reserved_until_day"])
         self.assertEqual(
-            "已签署并占用资源，尚未支付",
+            "已扣款并分配资源",
             review["contract"]["resource_hold_status"],
         )
         self.assertEqual(
@@ -1679,18 +1679,19 @@ class GameplayGovernanceTests(unittest.TestCase):
         reviewed_session = self.runtime.sessions.get_owned(
             self.session_id, "acct_gameplay_governance"
         )
-        self.assertEqual(7800, reviewed_session.game_state.budget_remaining)
-        with self.assertRaises(ActionUnavailableError):
-            ScriptedEffectService(ScriptedDeltaResolver()).apply(
-                reviewed_session,
-                self.runtime.packages.get("pkg_gameplay_v2"),
-                ScriptedEffects(
-                    ledger_deltas={"budget_remaining": (-7750, -7750)}
-                ),
-                source_id="test-player-choice",
-                resource_authority="player_choice",
-                resource_reference="test-choice-id",
-            )
+        self.assertEqual(7700, reviewed_session.game_state.budget_remaining)
+        # Funds were paid already; no retired preoccupation remains to block
+        # this independent scripted effect. Its existing ledger rule clamps
+        # excessive spending to zero, without undoing the signed allocation.
+        spending_probe = decode_session(encode_session(reviewed_session))
+        ScriptedEffectService(ScriptedDeltaResolver()).apply(
+            spending_probe,
+            self.runtime.packages.get("pkg_gameplay_v2"),
+            ScriptedEffects(ledger_deltas={"budget_remaining": (-7750, -7750)}),
+            source_id="test-player-choice", resource_authority="player_choice",
+            resource_reference="test-choice-id")
+        self.assertEqual(0, spending_probe.game_state.budget_remaining)
+        self.assertEqual(reviewed_session.resource_reservations, spending_probe.resource_reservations)
         reserved_overview = self.client.get(
             f"/api/game/session/{self.session_id}/governance",
             headers=self.headers,
@@ -1708,9 +1709,9 @@ class GameplayGovernanceTests(unittest.TestCase):
             if item["resource_id"] == "housing_d1_120"
         )
         self.assertEqual(0, reserved_housing["reserved"])
-        self.assertEqual(1, reserved_housing["committed"])
+        self.assertEqual(1, reserved_housing["allocated"])
         self.assertEqual(
-            "已签署并占用资源，尚未支付",
+            "已分配",
             next(
                 item["display_status"]
                 for item in reserved_overview["resources"][
@@ -1729,7 +1730,7 @@ class GameplayGovernanceTests(unittest.TestCase):
         )
         self.assertEqual(1, housing["used"])
         self.assertEqual(0, housing["reserved"])
-        self.assertEqual(1, housing["committed"])
+        self.assertEqual(1, housing["allocated"])
         self.assertEqual(
             100,
             overview["resources"]["budget_envelopes"]["property_land"]["used"],
@@ -1744,9 +1745,9 @@ class GameplayGovernanceTests(unittest.TestCase):
             for item in contract_entries
         ))
         self.assertTrue(any(
-            item["change_kind"] == "ledger_commitment"
+            item["change_kind"] == "payment"
             and item["source_type"] == "signed_contract"
-            and item["resource_id"] == "budget_committed"
+            and item["resource_id"] == "budget_remaining"
             for item in contract_entries
         ))
 
@@ -1806,6 +1807,13 @@ class GameplayGovernanceTests(unittest.TestCase):
         )
 
     def test_all_13_groups_can_complete_36_individual_contracts(self) -> None:
+        """API/inventory coverage, NOT a played 90-day route.
+
+        The day-60 fixture supplies existing story outcomes for Tan/Yuan gates,
+        Zhou Mancang's disclosed ledger and Miao's clarified old agreement.
+        Those flags are interpreted only for their actual household groups.
+        Lao's viewing is performed against live available inventory below.
+        """
         session = self.runtime.sessions.get_owned(
             self.session_id, "acct_gameplay_governance"
         )
@@ -1829,6 +1837,7 @@ class GameplayGovernanceTests(unittest.TestCase):
             for household in package.households
             if household.signing_lock_flag
         )
+        session.flags.update({"村账已摊", "补偿口径已澄清"})
         batches = []
         for representative_id in package.governance_config[
             "household_representative_npc_ids"
@@ -1942,11 +1951,6 @@ class GameplayGovernanceTests(unittest.TestCase):
                 "transition_months": 0,
                 "public_window_reward": False,
                 "approval_document_ids": [],
-                "authorization_confirmed": True,
-                "real_unit_viewed": True,
-                "ledger_disclosed": True,
-                "old_case_resolved": True,
-                "prior_payment_verified": True,
             }
             current = self.runtime.sessions.get_owned(
                 self.session_id, "acct_gameplay_governance"
@@ -1966,6 +1970,19 @@ class GameplayGovernanceTests(unittest.TestCase):
                 required_permissions=("governance:household_visit",),
                 topic="与本户签约人或代表核定合同",
             )
+            if household.household_id == "LAO-01":
+                # This paid visit executes a present-tense mutually accepted
+                # viewing; no checkbox or historical self-report grants it.
+                from serious_game_backend.application.contract_facts import conduct_household_viewing
+                action = current.governance_actions[action_id]
+                action.cost_action_points = 1
+                current.game_state = replace(current.game_state,
+                    action_points=current.game_state.action_points - 1)
+                viewed = conduct_household_viewing(current, package, action,
+                    household_id="LAO-01",
+                    housing_resource_id=term_sheet["housing_resource_id"],
+                    invitation="我们现在去看这套安置房", npc_accepted=True)
+                self.assertIsNotNone(viewed)
             self.runtime.sessions.save(
                 current, expected_version=current.state_version
             )
@@ -1999,7 +2016,7 @@ class GameplayGovernanceTests(unittest.TestCase):
                 item.quantity
                 for item in completed.resource_reservations
                 if item.resource_id.startswith("housing_")
-                and item.status == "committed"
+                and item.status == "allocated"
             ),
         )
         self.assertEqual(
@@ -2008,7 +2025,7 @@ class GameplayGovernanceTests(unittest.TestCase):
                 item.quantity
                 for item in completed.resource_reservations
                 if item.resource_id == "grave_relocation_service"
-                and item.status == "committed"
+                and item.status == "allocated"
             ),
         )
 

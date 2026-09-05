@@ -106,16 +106,21 @@ class FeedbackActionTests(unittest.TestCase):
             self.assertGreaterEqual(r.status_code, 400)
         self.assertEqual({}, self.session().contract_batches)
 
-    def test_tan_story_gate_and_completed_action_are_enforced(self):
+    def test_tan_can_prepare_without_hidden_story_gate_but_completed_action_cannot(self):
         action = self.start("npc_tan_laoliu")
-        for status in ("active", "completed"):
-            s = self.session()
-            s.governance_actions[action].status = status
-            self.save(s)
-            r = self.client.post(self.base + f"/governance/actions/{action}/prepare-contracts",
-                headers=self.headers, json={"state_version": s.state_version})
-            self.assertGreaterEqual(r.status_code, 400)
-        self.assertEqual({}, self.session().contract_batches)
+        before = self.session()
+        response = self.post(f"/governance/actions/{action}/prepare-contracts")
+        self.assertTrue(response["batch"])
+        after = self.session()
+        self.assertEqual(before.game_state.signed_households, after.game_state.signed_households)
+        self.assertEqual(before.game_state.budget_remaining, after.game_state.budget_remaining)
+        self.assertEqual(before.resource_reservations, after.resource_reservations)
+        after.governance_actions[action].status = "completed"
+        self.save(after)
+        response = self.client.post(self.base + f"/governance/actions/{action}/prepare-contracts",
+            headers=self.headers, json={"state_version": after.state_version})
+        self.assertGreaterEqual(response.status_code, 400)
+        self.assertEqual(1, len(self.session().contract_batches))
 
     def test_free_action_guide_persists_after_day_three_until_actual_completion(self):
         self.assertFalse(self.get("/view")["state"]["onboarding"]["free_action_completed"])

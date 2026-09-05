@@ -114,17 +114,6 @@ class EndingAxisProjector:
             - len(self.NEGATIVE_PEOPLE_FLAGS & flags)
             - 2 * len(self.HEAVY_PEOPLE_FLAGS & flags)
         )
-        demand_statuses = [
-            str(item.get("status", "unknown"))
-            for item in session.npc_demand_states.values()
-        ]
-        people_score += sum(
-            1 for value in demand_statuses
-            if value in {"satisfied", "lawfully_refused"}
-        ) // 4
-        people_score -= sum(
-            1 for value in demand_statuses if value in {"breached", "expired"}
-        )
         if people_score >= 5:
             axis_p = "归心"
         elif people_score >= 1:
@@ -268,27 +257,11 @@ class EndingService:
 
     @staticmethod
     def _governance_obligations(session: GameSession) -> dict:
-        counts = {
-            status: sum(
-                1 for item in session.npc_demand_states.values()
-                if item.get("status") == status
-            )
-            for status in (
-                "discovered", "acknowledged", "committed", "satisfied",
-                "lawfully_refused", "breached", "expired",
-            )
-        }
-        resolved = counts["satisfied"] + counts["lawfully_refused"]
-        failed = counts["breached"] + counts["expired"]
+        signed = [c for c in session.household_contracts.values() if c.status == "signed"]
         return {
-            "counts": counts,
-            "resolved_public_obligations": resolved,
-            "failed_public_obligations": failed,
-            "assessment": (
-                "公共义务兑现稳健" if resolved >= 8 and failed == 0
-                else "公共义务存在明显缺口" if failed >= 3
-                else "公共义务部分兑现"
-            ),
+            "signed_contracts": len(signed),
+            "allocated_contracts": sum(bool(c.fulfillment.get("resources_allocated")) for c in signed),
+            "assessment": "按实际签署合同与剧情结果记录；资源分配不代表搬迁、治疗等后续事项已经完成",
         }
 
     @staticmethod

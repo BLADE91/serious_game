@@ -5,10 +5,10 @@ import { resourceInventoryView } from "../app/lib/player-ui.ts";
 
 const shell = await readFile(new URL("../app/GameShell.tsx", import.meta.url), "utf8");
 
-test("hides decision forecasts and exact thresholds while keeping discovered NPC demands", () => {
+test("hides decision forecasts and exact thresholds without revealing NPC demand checklists", () => {
   assert.doesNotMatch(shell, /data-testid="decision-tradeoff-preview"/);
   assert.doesNotMatch(shell, /data-testid="threshold-alerts"/);
-  assert.match(shell, /data-testid="npc-demand-card"/);
+  assert.doesNotMatch(shell, /data-testid="npc-demand-card"/);
   assert.match(shell, /data-testid="resource-pool-summary"/);
   assert.doesNotMatch(shell, /tradeoff_preview/);
   assert.equal(resourceInventoryView([{
@@ -21,11 +21,9 @@ test("hides decision forecasts and exact thresholds while keeping discovered NPC
   }])[0].available, 2);
 });
 
-test("wires every NPC demand disposition to the authoritative backend", () => {
-  assert.match(shell, /governance\/npc-demands\/\$\{encodeURIComponent/);
-  for (const transition of [
-    "acknowledged", "committed", "satisfied", "lawfully_refused", "breached",
-  ]) {
-    assert.match(shell, new RegExp(transition));
-  }
+test("removes resource commitment controls and client asserted facts", () => {
+  assert.doesNotMatch(shell, /governance\/npc-demands|onDisposeDemand|name="(?:authorization_confirmed|real_unit_viewed|ledger_disclosed|old_case_resolved|prior_payment_verified|payment_day)"/);
+  assert.doesNotMatch(shell, /JSON.stringify\(contract.counteroffer/);
+  assert.match(shell, /当前方案扣除预览/);
+  assert.match(shell, />提交签约<\/button>/);
 });

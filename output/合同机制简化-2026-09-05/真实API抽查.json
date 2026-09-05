@@ -1,0 +1,30 @@
+{
+  "first_round": {
+    "provider": "openai_compatible",
+    "model_id": "qwen3.6-plus",
+    "elapsed_seconds": 4.14,
+    "sample": "隔离测试：周大山未接受草案；测试会谈记录，未修改玩家进度",
+    "context_checks": {
+      "household": "ZDS-01",
+      "negotiation_records": 1,
+      "versions": 1,
+      "private_constraints_sent": true
+    },
+    "response": {
+      "decision": "counteroffer",
+      "reason": "李县长，这八十万现金和那套安置房，看着是不少，可有些根子上的事还没落地。我家祖坟和祠堂的迁建安排，合同里怎么只字未提？这可是周家十几户人的脸面，没个体面的说法，我没法跟族人交代。这事你说了算，还是我说了算？",
+      "counteroffer": {}
+    }
+  },
+  "second_round": {
+    "model_id": "qwen3.6-plus",
+    "elapsed_seconds": 3.37,
+    "sample": "隔离模型抽查：明确补入迁坟服务后的拟议方案，非真实签约事务",
+    "response": {
+      "decision": "accept",
+      "reason": "既然迁坟的事已经写进合同，那周家的脸面算是保住了。这八十万现金和安置房，我替家里接了。不过丑话说在前头，签字可以，但怎么跟族里人交代，还得按我的规矩来。",
+      "counteroffer": {}
+    }
+  },
+  "identical_replies": false
+}

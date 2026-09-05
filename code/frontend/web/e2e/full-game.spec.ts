@@ -537,30 +537,6 @@ async function completeOneOptionalOpportunity(page: Page, testInfo: TestInfo, ro
   return true;
 }
 
-async function advanceOneDemand(page: Page, testInfo: TestInfo, routeId: string, sessionId: string, selectedDemandIds: Set<string>) {
-  if (!selectedDemandIds.size) return false;
-  const governance = await readPlayerEndpoint(page, sessionId, "governance");
-  const demand = (Array.isArray(governance.npc_demands) ? governance.npc_demands : []).map(asMap)
-    .find(item => selectedDemandIds.has(String(item.demand_id))
-      && (Array.isArray(item.allowed_transitions) ? item.allowed_transitions : [])
-        .some(value => ["acknowledged", "lawfully_refused", "committed", "satisfied"].includes(String(value))));
-  if (!demand) return false;
-  const transition = ["acknowledged", "lawfully_refused", "committed", "satisfied"]
-    .find(value => (Array.isArray(demand.allowed_transitions) ? demand.allowed_transitions : []).map(String).includes(value));
-  if (!transition) return false;
-  await dismissBlockingPlayerNotices(page, testInfo, routeId);
-  await page.getByRole("button", { name: /治理/ }).first().click();
-  const card = page.locator('[data-testid="npc-demand-card"]').filter({ hasText: String(demand.title || demand.npc_name || "") }).first();
-  const labels: Record<string, string> = { acknowledged: "确认诉求", lawfully_refused: "依法拒绝", committed: "预占资源并承诺", satisfied: "确认交付" };
-  const button = card.getByRole("button", { name: labels[transition], exact: true });
-  await expect(button).toBeEnabled();
-  const committed = page.waitForResponse(response => response.request().method() === "POST"
-    && /\/governance\/npc-demands\/[^/]+\/dispose$/.test(new URL(response.url()).pathname));
-  await button.click();
-  expect((await committed).ok(), `${String(demand.demand_id)} must advance lawfully`).toBe(true);
-  return true;
-}
-
 async function satisfyMandatoryOpportunity(page: Page) {
   const activeConversation = page.locator("form.conversation-bar textarea");
   if (await activeConversation.isVisible().catch(() => false)) {
@@ -652,7 +628,6 @@ async function fillContractTerms(form: ReturnType<Page["locator"]>, terms: JsonM
   await form.locator('[name="budget_envelope"]').selectOption(String(terms.budget_envelope || "property_land"));
   await scalar("cash_amount", Number(terms.cash_amount || 0));
   await scalar("transition_months", Number(terms.transition_months || 0));
-  await scalar("payment_day", Math.max(storyDay, Number(terms.payment_day || storyDay)));
   await scalar("move_out_day", Math.max(storyDay, Number(terms.move_out_day || storyDay)));
   await scalar("housing_delivery_day", Math.max(storyDay, Number(terms.housing_delivery_day || storyDay)));
   await form.locator('[name="housing_resource_id"]').selectOption(String(terms.housing_resource_id || ""));
@@ -666,11 +641,6 @@ async function fillContractTerms(form: ReturnType<Page["locator"]>, terms: JsonM
   }
   const checks: Array<[string, boolean]> = [
     ["public_window_reward", storyDay <= 75 && Boolean(terms.public_window_reward)],
-    ["authorization_confirmed", Boolean(terms.authorization_confirmed)],
-    ["real_unit_viewed", Boolean(terms.real_unit_viewed)],
-    ["ledger_disclosed", Boolean(terms.ledger_disclosed)],
-    ["old_case_resolved", Boolean(terms.old_case_resolved)],
-    ["prior_payment_verified", Boolean(terms.prior_payment_verified)],
   ];
   for (const [name, checked] of checks) {
     const input = form.locator(`[name="${name}"]`);
@@ -748,7 +718,7 @@ async function signContractsTowardTarget(
         && /\/governance\/contracts\/[^/]+\/terms$/.test(new URL(response.url()).pathname));
       await termsForm.getByRole("button", { name: "核验条款并生成合同", exact: true }).click();
       expect((await drafted).ok(), `${householdId} lawful terms must pass`).toBe(true);
-      const review = contractDialog.getByRole("button", { name: "送交本户复核", exact: true });
+      const review = contractDialog.getByRole("button", { name: "提交签约", exact: true });
       await expect(review).toBeEnabled({ timeout: 600_000 });
       const reviewed = page.waitForResponse(response => response.request().method() === "POST"
         && /\/governance\/contracts\/[^/]+\/review$/.test(new URL(response.url()).pathname), { timeout: 600_000 });
@@ -1148,7 +1118,6 @@ async function playRoute(page: Page, testInfo: TestInfo, sessionId: string, prof
       await finishVisibleNarrative(page, testInfo, profile.route_id);
       await inspectAllAvailableArchives(page, testInfo, profile.route_id);
       if (await completeOneOptionalOpportunity(page, testInfo, profile.route_id, sessionId, optionalOpportunityIds)) continue;
-      if (await advanceOneDemand(page, testInfo, profile.route_id, sessionId, selectedDemandIds)) continue;
       if (targetSigned > 0) await signContractsTowardTarget(page, testInfo, profile.route_id, sessionId, day, targetSigned, contractTerms, processedRepresentatives);
       await endCurrentDay(page, testInfo, profile.route_id, sessionId, day);
       continue;
