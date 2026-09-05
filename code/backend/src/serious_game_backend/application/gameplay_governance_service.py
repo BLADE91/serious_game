@@ -170,6 +170,12 @@ class GameplayGovernanceService:
             "state_version": session.state_version,
             "permissions": config.get("permissions", {}),
             "base_actions": self._base_actions(session, package),
+            "active_contract_preparation": next((
+                self.contract_preparation(session, package, item.target_ids[0])
+                for item in session.governance_actions.values()
+                if item.status == "active" and item.action_kind == "household_visit"
+                and len(item.target_ids) == 1
+            ), None),
             "governance_actions": [
                 asdict(item)
                 for item in session.governance_actions.values()
@@ -1898,6 +1904,38 @@ class GameplayGovernanceService:
             "visible_state": self._projector.project(session, package),
         }
 
+    @staticmethod
+    def contract_preparation(session, package, npc_id: str) -> dict:
+        households = tuple(item for item in package.households if item.representative_npc == npc_id)
+        gate = (package.governance_config or {}).get("contract_batch_gate_flags", {}).get(npc_id)
+        existing = {item.household_id for item in session.household_contracts.values()
+                    if item.status != "rejected"}
+        reason = ("此人没有可办理的搬迁家庭底账" if not households else
+                  "需先完成该户相关的剧情协商与程序核实" if gate and gate not in session.flags else
+                  "本批住户已建立合同，请继续办理现有合同" if all(item.household_id in existing for item in households) else None)
+        return {"available": reason is None, "reason": reason,
+                "household_count": len(households)}
+
+    def prepare_contracts(self, *, account_id: str, session_id: str,
+                          state_version: int, action_instance_id: str) -> dict:
+        session, package = self._load_mutable(account_id, session_id, state_version)
+        action = session.governance_actions.get(action_instance_id)
+        if (action is None or action.status != "active"
+                or action.action_kind != "household_visit" or len(action.target_ids) != 1):
+            raise ActionUnavailableError("请先与相关住户或代表开展入户协商")
+        npc_id = action.target_ids[0]
+        existing = next((b for b in session.contract_batches.values()
+                         if b.representative_npc_id == npc_id and b.status == "pending_confirmation"), None)
+        if existing:
+            return {"state_version": session.state_version, "batch": asdict(existing)}
+        preparation = self.contract_preparation(session, package, npc_id)
+        if not preparation["available"]:
+            raise ActionUnavailableError(preparation["reason"])
+        batch = self._create_contract_batch(session, package, npc_id,
+            "请按住户底账准备逐户合同，逐户核定条款并由本人复核。", "玩家主动选择准备合同")
+        self._commit(session, state_version)
+        return {"state_version": session.state_version, "batch": asdict(batch)}
+
     def confirm_contract_batch(
         self,
         *,
@@ -2669,6 +2707,8 @@ class GameplayGovernanceService:
         )
         if existing is not None:
             return existing
+        if not self.contract_preparation(session, package, representative_npc_id)["available"]:
+            return None
         gate_flag = str(
             (package.governance_config or {})
             .get("contract_batch_gate_flags", {})
@@ -2698,9 +2738,17 @@ class GameplayGovernanceService:
         )
         if result.data["intent"] != "request_contract_batch":
             return None
-        households = package.contract_batch_for_representative(
-            representative_npc_id
-        )
+        return self._create_contract_batch(session, package, representative_npc_id,
+                                           player_text, str(result.data["reason"]))
+
+    @staticmethod
+    def _create_contract_batch(session, package, representative_npc_id, player_text, reason):
+        existing_households = {item.household_id for item in session.household_contracts.values()
+                               if item.status != "rejected"}
+        households = [item for item in package.contract_batch_for_representative(representative_npc_id)
+                      if item.household_id not in existing_households]
+        if not households:
+            raise ActionUnavailableError("本批住户已建立合同，请继续办理现有合同")
         batch = ContractBatch(
             batch_id=f"batch_{secrets.token_hex(10)}",
             representative_npc_id=representative_npc_id,
@@ -2708,7 +2756,7 @@ class GameplayGovernanceService:
             household_ids=tuple(item.household_id for item in households),
             status="pending_confirmation",
             player_request=player_text,
-            intent_reason=str(result.data["reason"]),
+            intent_reason=reason,
         )
         session.contract_batches[batch.batch_id] = batch
         return batch

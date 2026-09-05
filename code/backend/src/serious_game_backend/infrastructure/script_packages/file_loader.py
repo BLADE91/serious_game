@@ -133,6 +133,8 @@ STORY_AUTHORITY_CONTRACT = (
 class FileScriptPackageLoader:
     PORTABLE_CONTENT_HASH_VERSION = "text-eol-v1"
     _TEXT_EOL_V1_HASH_BY_PACKAGE = {
+        ("published", "pkg_gameplay_v3", "sha256:d32346777561cd929b7222ce3a6ceb14e0735798e860dff7dabe9e19487d072c"):
+            "sha256:1725a2336043dc23d24a404d83d0dc3ac31adc722b19abff2f4ab508b49239a2",
         (
             "published",
             "pkg_backend_dev_v1",
@@ -2844,9 +2846,8 @@ class FileScriptPackageLoader:
                 raise ContentValidationError(
                     f"剧情决定必须为零行动点：{decision.decision_id}"
                 )
-            if gameplay_schema_version >= 3 and (
-                not decision.presentation_blocks or not decision.followup_blocks
-            ):
+            # Each choice already emits its own consequence; extra prose is optional.
+            if gameplay_schema_version >= 3 and not decision.presentation_blocks:
                 raise ContentValidationError(
                     f"决策缺少铺垫或后续：{decision.decision_id}",
                     details={

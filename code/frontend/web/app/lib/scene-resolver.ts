@@ -1,3 +1,505 @@
+// Reviewed camera overrides also correct historical feed records saved before
+// the content update. These are locations, not chapter or event names.
+export const STORY_SHOTS: Record<string, { sceneId: string; title: string }> = {
+  "d01_night": {
+    "sceneId": "C06_S02",
+    "title": "临时宿舍·夜间案头"
+  },
+  "d02_notebook_summary": {
+    "sceneId": "C06_S02",
+    "title": "临时宿舍·夜间案头"
+  },
+  "d14_close": {
+    "sceneId": "C06_S02",
+    "title": "临时宿舍·夜间案头"
+  },
+  "d14_source_night": {
+    "sceneId": "C06_S02",
+    "title": "临时宿舍·夜间案头"
+  },
+  "d06_source_opening": {
+    "sceneId": "C01_S06",
+    "title": "专班办公室·核对底册"
+  },
+  "d08_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d18_phone_pressure": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d18_phone_choice_setup": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d20_note": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d28_four_fronts": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d28_cards": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d29_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d29_feng_words": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d29_four_mouths": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d38_hint": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d41_four_files": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d41_clock": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d42_he_tiezhu_known": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d53_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d56_he_tiezhu_intro": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d58_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d70_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d70_ning_introduction": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d72_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d78_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d84_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d08_invitation": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d12_source_opening": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d27_source_opening": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d27_real_count": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d27_sun_proposal": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d27_pen": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d30_source_opening": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d30_remaining": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d30_lamp": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d43_tea": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d43_pressure": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d44_statement": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d73_source_night": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d75_source_opening": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d75_phone": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d81_source_opening": {
+    "sceneId": "C06_S02",
+    "title": "县长案头·审阅材料"
+  },
+  "d09_source_opening": {
+    "sceneId": "C06_S07",
+    "title": "县政府老楼·走廊"
+  },
+  "d09_jiang_advice": {
+    "sceneId": "C06_S07",
+    "title": "县政府老楼·走廊"
+  },
+  "d44_wait": {
+    "sceneId": "C06_S07",
+    "title": "县政府老楼·走廊"
+  },
+  "d87_source_opening": {
+    "sceneId": "C06_S07",
+    "title": "县政府老楼·走廊"
+  },
+  "d09_zhao_visit": {
+    "sceneId": "C01_S08",
+    "title": "赵建国办公室"
+  },
+  "d09_zhao_eia": {
+    "sceneId": "C01_S08",
+    "title": "赵建国办公室"
+  },
+  "d10_source_opening": {
+    "sceneId": "C01_S12",
+    "title": "镇政府院子·傍晚"
+  },
+  "d10_source_night": {
+    "sceneId": "C03_S03",
+    "title": "临时宿舍·夜间登门"
+  },
+  "d57_zhao_visit": {
+    "sceneId": "C03_S03",
+    "title": "临时宿舍·夜间登门"
+  },
+  "d14_route": {
+    "sceneId": "C01_S07",
+    "title": "柳林村·入户走访"
+  },
+  "d14_field": {
+    "sceneId": "C01_S01",
+    "title": "柳林村·雨后村道"
+  },
+  "d32_ledger": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d32_question": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d34_meeting": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d34_zhao_words": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d34_room": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d67_source_opening": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d68_zhou_arrival": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d68_second_step": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d69_source_opening": {
+    "sceneId": "C01_S06",
+    "title": "工作组会议室·核对材料"
+  },
+  "d38_petition": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d38_setup": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_transition_context": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d39_petition_archive_lead": {
+    "sceneId": "C03_S02",
+    "title": "县政府·卷宗室"
+  },
+  "d88_source_opening": {
+    "sceneId": "C03_S02",
+    "title": "县政府·卷宗室"
+  },
+  "d43_notice": {
+    "sceneId": "C06_S07",
+    "title": "县委走廊·谈话通知"
+  },
+  "d44_room": {
+    "sceneId": "C03_S05",
+    "title": "个别谈话室"
+  },
+  "d45_calls": {
+    "sceneId": "C01_S04",
+    "title": "县委书记办公室"
+  },
+  "d45_jiang": {
+    "sceneId": "C01_S04",
+    "title": "县委书记办公室"
+  },
+  "d45_setup": {
+    "sceneId": "C01_S04",
+    "title": "县委书记办公室"
+  },
+  "d52_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d54_yang_bo_intro": {
+    "sceneId": "C01_S05",
+    "title": "柳林村·公示栏旁"
+  },
+  "d71_source_opening": {
+    "sceneId": "C01_S05",
+    "title": "柳林村·公示栏旁"
+  },
+  "d57_source_opening": {
+    "sceneId": "C04_S01",
+    "title": "县长办公室·收治安排"
+  },
+  "d60_source_opening": {
+    "sceneId": "C06_S08",
+    "title": "县委会议室·检查座谈"
+  },
+  "d63_source_opening": {
+    "sceneId": "C04_S04",
+    "title": "周家祠堂·傍晚"
+  },
+  "d77_source_opening": {
+    "sceneId": "C06_S10",
+    "title": "安置小区·实际房源"
+  },
+  "d79_crowd": {
+    "sceneId": "C03_S06",
+    "title": "柳林村委会·验收现场"
+  },
+  "d79_choice": {
+    "sceneId": "C03_S06",
+    "title": "柳林村委会·验收现场"
+  },
+  "d83_draft": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室·记者来访"
+  },
+  "d83_chen": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室·记者来访"
+  },
+  "d83_choice": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室·记者来访"
+  },
+  "d82_source_opening": {
+    "sceneId": "C06_S03",
+    "title": "县长案头·舆情材料"
+  },
+  "d29_teahouse": {
+    "sceneId": "C01_S02",
+    "title": "县长案头·晨间简报"
+  },
+  "d29_comparison": {
+    "sceneId": "C01_S02",
+    "title": "县长案头·晨间简报"
+  },
+  "d86_empty": {
+    "sceneId": "C01_S01",
+    "title": "柳林村·搬迁核查"
+  },
+  "d86_receipts": {
+    "sceneId": "C01_S01",
+    "title": "柳林村·搬迁核查"
+  },
+  "d86_pause": {
+    "sceneId": "C01_S01",
+    "title": "柳林村·搬迁核查"
+  },
+  "d86_he_receipt": {
+    "sceneId": "C01_S01",
+    "title": "柳林村·搬迁核查"
+  },
+  "d86_zhou_approval": {
+    "sceneId": "C01_S01",
+    "title": "柳林村·搬迁核查"
+  },
+  "d44_village_inspection": {
+    "sceneId": "C03_S06",
+    "title": "柳林村·巡察核查"
+  },
+  "d48_source_opening_part_02": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_03": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_04": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_05": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_06": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_07": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_08": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_09": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d48_source_opening_part_10": {
+    "sceneId": "C04_S02",
+    "title": "县政府门口·台阶"
+  },
+  "d52_source_opening_part_02": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_03": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_04": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_05": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_06": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_07": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_08": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_09": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d52_source_opening_part_10": {
+    "sceneId": "C03_S01",
+    "title": "县政府大院"
+  },
+  "d53_source_opening_part_02": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d53_source_opening_part_03": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d53_source_opening_part_04": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d53_source_opening_part_05": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d53_source_opening_part_06": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d55_source_opening": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d55_source_opening_part_02": {
+    "sceneId": "C01_S02",
+    "title": "县长办公室"
+  },
+  "d55_source_opening_part_03": {
+    "sceneId": "C04_S05",
+    "title": "县医院·门诊楼前"
+  },
+  "d55_source_opening_part_04": {
+    "sceneId": "C04_S05",
+    "title": "县医院·门诊楼前"
+  },
+  "d55_source_opening_part_05": {
+    "sceneId": "C04_S05",
+    "title": "县医院·门诊楼前"
+  },
+  "d55_source_opening_part_06": {
+    "sceneId": "C04_S05",
+    "title": "县医院·门诊楼前"
+  },
+  "d55_source_opening_part_07": {
+    "sceneId": "C04_S05",
+    "title": "县医院·门诊楼前"
+  }
+};
+
+
 export type SceneMatchedBy =
   | "content_instance_id"
   | "block_id"
@@ -69,11 +571,13 @@ export const STORY_SCENES: readonly SceneDefinition[] = [
   scene("C01_S06", "渡口镇工作组例会", ["beat_d03_faction_map_closure", "beat_d07_m2", "beat_d25_m2"], ["d02_taskforce_intro", "d02_taskforce_context", "d02_stage_summary", "d02_notebook_summary", "d03_faction_map_formed", "d07_source_opening", "d25_meeting", "d25_miao", "d25_sun_words", "d25_choice_setup", "dp2_05_presentation", "dp2_05_followup"], ["dp1_01_taskforce_faction_map", "dp1_04", "dp2_05"]),
   scene("C01_S07", "袁桂兰旧瓦房", ["beat_d05_m2", "beat_d06_m2"], ["d05_source_opening", "d06_source_opening"], ["dp1_03", "ev1_03"]),
   scene("C01_S08", "赵建国办公室", ["beat_d08_m2", "beat_d09_m2"], ["d08_source_opening", "d09_source_opening", "d18_phone_pressure", "d18_phone_choice_setup", "dp2_02_phone_presentation", "dp2_02_phone_followup"], ["dp1_05"]),
-  scene("C01_S09", "首轮签约", ["beat_d11_m2", "beat_d12_m2", "beat_d13_m2"], ["d11_source_opening", "d12_source_opening", "d13_source_opening"], ["dp1_06", "dp1_07", "dp1_08"]),
-  scene("C01_S10", "渡口堵路", ["beat_d10_m2"], ["d10_source_opening", "d10_source_night"], ["ev1_02"]),
-  scene("C01_S11", "三盏灯", ["beat_d14_m2", "beat_d15_m2"], ["d14_source_night", "d15_source_night"], ["dp1_09"]),
+  scene("C01_S09", "镇政府·签约工作室", ["beat_d11_m2", "beat_d12_m2", "beat_d13_m2"], ["d11_source_opening", "d12_source_opening", "d13_source_opening"], ["dp1_06", "dp1_07", "dp1_08"]),
+  scene("C01_S10", "渡口路口", ["beat_d10_m2"], ["d10_source_opening", "d10_source_night"], ["ev1_02"]),
+  scene("C01_S11", "柳林村·夜间", ["beat_d14_m2", "beat_d15_m2"], ["d14_source_night", "d15_source_night"], ["dp1_09"]),
+  scene("C06_S10", "安置小区·实际房源", [], ["d77_housing"]),
+  scene("C01_S12", "镇政府院子·傍晚", [], ["d10_courtyard"]),
 
-  scene("C02_S01", "晨间三张纸与茶叶盒", ["beat_d17_m2", "beat_d18_m2"], ["d17_source_opening", "d18_source_opening"], ["dp2_01", "dp2_02"]),
+  scene("C02_S01", "县长办公室", ["beat_d17_m2", "beat_d18_m2"], ["d17_source_opening", "d18_source_opening"], ["dp2_01", "dp2_02"]),
   scene("C02_S02", "三张连号发票", ["beat_d19_m2"]),
   scene("C02_S03", "废弃粮站", ["beat_d20_m2", "beat_d21_m2"], ["d20_source_opening"], ["dp2_03"]),
   scene("C02_S04", "三年不变的数据", ["beat_d22_m2", "beat_d23_m2"], ["d22_source_opening"], ["dp2_04"]),
@@ -106,7 +610,7 @@ export const STORY_SCENES: readonly SceneDefinition[] = [
   scene("C05_S07", "儿科走廊补偿信封", ["beat_d74_m2", "beat_d75_m2"], ["d74_source_opening", "d75_source_opening", "d75_phone"], ["dp5_08", "dp5_10", "dp5_11", "dp5_12", "ev5_03"]),
 
   scene("C06_S01", "招待所深夜审账", ["beat_d76_m2", "beat_d77_m2"], ["d76_source_opening", "d77_source_opening"], ["dp6_01", "dp6_02"]),
-  scene("C06_S02", "铁盒证物", ["beat_d78_m2", "beat_d79_m2", "beat_d80_m2", "beat_d81_m2"], ["d78_source_opening", "d79_source_opening", "d80_source_opening", "d81_source_opening"], ["dp6_03", "ev6_01", "dp6_04", "dp6_05"]),
+  scene("C06_S02", "县长案头", ["beat_d78_m2", "beat_d79_m2", "beat_d80_m2", "beat_d81_m2"], ["d78_source_opening", "d79_source_opening", "d80_source_opening", "d81_source_opening"], ["dp6_03", "ev6_01", "dp6_04", "dp6_05"]),
   scene("C06_S03", "第二波舆情", ["beat_d82_m2"], ["d82_source_opening"], ["ev6_02"]),
   scene("C06_S04", "记者的稿子", ["beat_d83_m2"], ["d83_source_opening"], ["dp6_06"]),
   scene("C06_S05", "十一项整改", ["beat_d84_m2", "beat_d85_m2"], ["d84_source_opening", "d85_source_opening"], ["dp6_07", "dp6_08"]),
@@ -157,6 +661,11 @@ export function blockIdFromContentInstance(value: unknown): string {
 }
 
 export function resolveScene(input: SceneResolveInput = {}): ResolvedScene {
+  const shotId = id(input.blockId) || blockIdFromContentInstance(input.contentInstanceId);
+  const shot = STORY_SHOTS[shotId];
+  if (shot && sceneIndex.has(shot.sceneId)) {
+    return result({ ...sceneIndex.get(shot.sceneId)!, title: shot.title }, "block_id", shotId);
+  }
   const explicitSceneId = id(input.sceneId);
   if (explicitSceneId && sceneIndex.has(explicitSceneId)) {
     return result(sceneIndex.get(explicitSceneId)!, "scene_id", explicitSceneId);

@@ -1,4 +1,6 @@
 export const SCENE_ASSET_WHITELIST = [
+  ["06_第六章_验收之日/C06_S10_安置小区实际房源.webp", "c06-s10.webp"],
+  ["01_第一章_迷雾初现/C01_S12_镇政府院子傍晚.webp", "c01-s12.webp"],
   ["01_第一章_迷雾初现/C01_S01_雨后抵达柳林村.webp", "c01-s01.webp"],
   ["01_第一章_迷雾初现/C01_S02_县政府办公室.webp", "c01-s02.webp"],
   ["01_第一章_迷雾初现/C01_S03_接风宴.webp", "c01-s03.webp"],
@@ -73,5 +75,5 @@ export const SCENE_ASSET_WHITELIST = [
   ["07_结局/E24_尘埃落定.webp", "ending-24.webp"],
 ].map(([source, destination]) => ({ source, destination }));
 
-export const STORY_ASSET_COUNT = 48;
+export const STORY_ASSET_COUNT = 50;
 export const ENDING_ASSET_COUNT = 24;

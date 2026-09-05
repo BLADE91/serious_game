@@ -4,23 +4,150 @@
   "projection": "canonical JSON of one story beat and all decisions whose story_day matches",
   "hash_algorithm": "sha256",
   "days": [
-    {"story_day": 13, "source_lines": [3033, 3085], "sha256": "8c83c3587a7e85bc6294d024e0fea1bafe7babb9ace6f29be35b79fa5d04dda9"},
-    {"story_day": 14, "source_lines": [3084, 3267], "sha256": "8271e64a8cee3a24477a98df3964fd8aeb14451ce6e83b0d7a68c4eac238bf95"},
-    {"story_day": 15, "source_lines": [3086, 3140], "sha256": "591d6f4792af2cc83b8dffb0a1367e92876306a6b1cccc41f9fac31ac3facf51"},
-    {"story_day": 16, "source_lines": [3422, 3518], "sha256": "1fee14d758091cdc9331caadfc52eea604b14dd2742025f04ee54291e78cfb89"},
-    {"story_day": 17, "source_lines": [3519, 3583], "sha256": "a971633ac6d36fed14b167dc9e69ce513a2d648612e64c916b20f963c0922edb"},
-    {"story_day": 18, "source_lines": [3585, 3653], "sha256": "5cede20b3d324cfec781970a526dd10daf693e58f88162359d1fac9ae962efed"},
-    {"story_day": 19, "source_lines": [3654, 3656], "sha256": "ba72111d44ec329e6b04541ac7097c186baae0b5cb424bda8acbd51797011443"},
-    {"story_day": 20, "source_lines": [3657, 3729], "sha256": "410854019ae01a813d216764a880e6c52188f0c20d229ca9b63ad5f5d20aca01"},
-    {"story_day": 21, "source_lines": [3657, 3729], "sha256": "5bfe964e8c0c49a721137f972e334844ea0c5a43150de774a10361040d07d5ab"},
-    {"story_day": 22, "source_lines": [3730, 3799], "sha256": "5b48c277d09c2ebbeec2dddb8dac9d2f1ebbb52788016405b5997905b3a6d7a6"},
-    {"story_day": 23, "source_lines": [3730, 3799], "sha256": "92ee35dc77a5592202f42a6f692956363c0dbd61312a9c815cedb0e0efdc251c"},
-    {"story_day": 24, "source_lines": [3800, 3854], "sha256": "358f83323e993fde46a5cf437bd94761e4dbcf6751a1f3b9c04a8a0e004ae2f4"},
-    {"story_day": 25, "source_lines": [3855, 3915], "sha256": "1f3cab46666ae7c7875f90fe7126219e68e2f057925ef763567c2bcb90adbe27"},
-    {"story_day": 26, "source_lines": [3916, 4114], "sha256": "4b5e3f59e695bfd1cfa77be584b8dc6ff0668166c03885600e2e9f39290c4fa5"},
-    {"story_day": 27, "source_lines": [4115, 4174], "sha256": "c3bdaf6a5d059047fc8c41d2ef6e23df3ffbcd02c015b8e962744207c19015b4"},
-    {"story_day": 28, "source_lines": [4175, 4329], "sha256": "4e2860a811201f92ce3d76ca9ab728a690d4e07425acc6960f73409668872ca1"},
-    {"story_day": 29, "source_lines": [4330, 4392], "sha256": "3f3785a542809149dce739d75423e534a6d0919abdee5f60576bd824d9caac47"},
-    {"story_day": 30, "source_lines": [4393, 4458], "sha256": "97c844fadd55b06e3df70429943022b6cac8a8ec3674281d3b20fcf121784c56"}
-  ]
+    {
+      "story_day": 13,
+      "source_lines": [
+        3033,
+        3085
+      ],
+      "sha256": "35847b163df4c7407b78a51a27894edabce199d8f8bd851108f86a012c786d30"
+    },
+    {
+      "story_day": 14,
+      "source_lines": [
+        3084,
+        3267
+      ],
+      "sha256": "b8842337d1ae6a36554206baad08ad68041f62b65bfacccea125cacbeb1045a5"
+    },
+    {
+      "story_day": 15,
+      "source_lines": [
+        3086,
+        3140
+      ],
+      "sha256": "79e9b22ed5f051d3dceb6d290342582d83488de6639331f526e99489c7ce62e9"
+    },
+    {
+      "story_day": 16,
+      "source_lines": [
+        3422,
+        3518
+      ],
+      "sha256": "1fee14d758091cdc9331caadfc52eea604b14dd2742025f04ee54291e78cfb89"
+    },
+    {
+      "story_day": 17,
+      "source_lines": [
+        3519,
+        3583
+      ],
+      "sha256": "ccba17662564c3d4cc3d82762394951d9932e1b8a880ba9dedf139c376408d12"
+    },
+    {
+      "story_day": 18,
+      "source_lines": [
+        3585,
+        3653
+      ],
+      "sha256": "456193bae37b44b5335c92f58b74870c21b43fade25754f3d7c763fbf3264fe9"
+    },
+    {
+      "story_day": 19,
+      "source_lines": [
+        3654,
+        3656
+      ],
+      "sha256": "46407394ac4532d446ee901c28ad646dba3c54975c011bd6b5b84e1638c5f24d"
+    },
+    {
+      "story_day": 20,
+      "source_lines": [
+        3657,
+        3729
+      ],
+      "sha256": "6c1b5b43dbee0fec215124b5c54755131f810c220c2fb75dc4c12f8c617d42cc"
+    },
+    {
+      "story_day": 21,
+      "source_lines": [
+        3657,
+        3729
+      ],
+      "sha256": "a2d0b81489285f4f1e747954310f9ed0a6b228c941eff67c0edb514ffcdcb504"
+    },
+    {
+      "story_day": 22,
+      "source_lines": [
+        3730,
+        3799
+      ],
+      "sha256": "91b5506947c5e182354b5f001abfeaf6dc50573c8af5515b2e10433430aed43a"
+    },
+    {
+      "story_day": 23,
+      "source_lines": [
+        3730,
+        3799
+      ],
+      "sha256": "64c7747dc05a17fa530f5be0030d6fb4a31d98cab2e66c4fd39eba62e7039d9f"
+    },
+    {
+      "story_day": 24,
+      "source_lines": [
+        3800,
+        3854
+      ],
+      "sha256": "f19e7ebfd80d8abb95e34562dac41c807115c614d86fb47cbfc923d4adc4bcc5"
+    },
+    {
+      "story_day": 25,
+      "source_lines": [
+        3855,
+        3915
+      ],
+      "sha256": "7053e66c05b8c2ca3819a9020754dcd0567663a178d41352e72794221813c0b4"
+    },
+    {
+      "story_day": 26,
+      "source_lines": [
+        3916,
+        4114
+      ],
+      "sha256": "4e25f28bb257d6438d95c43d9dd384e455fb3f25e046fd1cb76773d7dc2ba691"
+    },
+    {
+      "story_day": 27,
+      "source_lines": [
+        4115,
+        4174
+      ],
+      "sha256": "dba96415c46559cea6148ebb769764cfec97ae72e87b44565b36806ff2868f8b"
+    },
+    {
+      "story_day": 28,
+      "source_lines": [
+        4175,
+        4329
+      ],
+      "sha256": "cd1ee18fbe59b93116767f29908f6fb30d516aa82ab2bfa9fe35c58666ca214a"
+    },
+    {
+      "story_day": 29,
+      "source_lines": [
+        4330,
+        4392
+      ],
+      "sha256": "00746b85a07096ac8ec8a42b147dff51436a1e444f9f508d97380e665b4c8d3e"
+    },
+    {
+      "story_day": 30,
+      "source_lines": [
+        4393,
+        4458
+      ],
+      "sha256": "85827e8b127b0f8a5a0243285ed0914f5b998e2f03364b7fac4ff540ea81d70a"
+    }
+  ],
+  "editorial_revision": "2026-09-05: feedback 23-28 reviewed text and camera corrections; removed fixed claims of zero or newly signed households from D14/15/25/27/30; feedback 31 free actions after required decisions. Choice effects and source line anchors preserved."
 }

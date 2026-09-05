@@ -264,8 +264,13 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .welcome-block button { border: 1px solid #7f392f; background: var(--red); color: #f2e4c6; padding: 12px 26px; cursor: pointer; box-shadow: inset 0 0 0 2px rgba(255,255,255,.12); }
 .eyebrow { color: #8a3f33; font-size: 11px; letter-spacing: .17em; }
 
-.notice { max-width: 880px; margin: 0 auto 18px; padding: 11px 14px; border-left: 4px solid var(--red); background: rgba(142,61,50,.11); color: #6a352c; display: flex; gap: 10px; font-size: 13px; line-height: 1.6; }
+.notice { max-width: 880px; margin: 0 auto 18px; padding: 11px 14px; border-left: 4px solid #ae8b49; background: #29251e; color: #f5e6c4; display: flex; flex-wrap: wrap; gap: 10px; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 .notice b { flex: none; }
+.stat-link { padding: 0 0 0 8px; border: 0; background: transparent; color: var(--gold); font-size: inherit; text-decoration: underline; min-height: 0; }
+.person-action { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; border-top: 1px solid rgba(115,93,52,.3); padding-top: 12px; margin-top: 12px; }
+.person-action > div { flex: 1; min-width: 130px; }
+.person-action small { display: block; }
+.person-action p { margin: 5px 0; }
 .decision-block { max-width: 880px; margin: 26px auto 4px; padding: 22px; border: 1px solid #9a774e; background: rgba(248,238,212,.96); box-shadow: 0 8px 25px rgba(62,44,20,.12); position: relative; }
 .decision-block::before { content: "批"; position: absolute; right: 18px; top: 14px; color: rgba(142,61,50,.18); font-family: "STKaiti", "KaiTi", serif; font-size: 58px; transform: rotate(-8deg); }
 .decision-block h3 { margin: 9px 60px 8px 0; color: #372b1d; font-family: "STKaiti", "KaiTi", serif; font-size: 23px; line-height: 1.5; }
@@ -714,10 +719,10 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .required-participants { color: #6f5d43; line-height: 1.5; }
 .field-error { color: #8e3d32; font-size: 11px; }
 .form-notice { margin-top: 12px; }
-.governance-bar > .governance-inline-notice { display: block; margin: 0 0 10px; border-left: 3px solid var(--red); background: rgba(142,61,50,.08); color: #6a352c; padding: 9px 11px; font-size: 11px; line-height: 1.55; }
+.governance-bar > .governance-inline-notice { display: block; margin: 0 0 10px; border-left: 3px solid #ae8b49; background: #29251e; color: #f5e6c4; padding: 9px 11px; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 .meeting-evidence-choices { max-height: 190px; }
 .form-loading { padding: 35px; color: #756650; text-align: center; }
-.modal .notice { color: #6a352c; }
+.modal .notice { color: #f5e6c4; }
 .modal:has(.meeting-resolution-form) { width: min(760px,100%); }
 .contract-modal { width: min(940px,100%); }
 .forced-group-scene { margin: 14px; border: 1px solid rgba(194,127,93,.46); background: rgba(49,27,22,.92); color: #eadbbd; padding: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.24); }
@@ -733,7 +738,7 @@ button:disabled { cursor: not-allowed; opacity: 1; border-style: dashed; }
 .group-compact > div { display: grid; gap: 3px; min-width: 0; }
 .group-compact > div strong, .group-compact > div span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .group-compact > b { color: #d9806d !important; }
-.conversation-bar > .conversation-notice { display: block; margin: 0 0 10px; padding: 10px; border-left: 3px solid #d09a63; color: #f0d4a4; line-height: 1.7; }
+.conversation-bar > .conversation-notice { display: block; margin: 0 0 10px; padding: 10px; border-left: 3px solid #ae8b49; background: #29251e; color: #f5e6c4; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
 /* A group has a roster and a transcript: do not collapse them into the small
    story row left over below the dashboard on short desktop screens. */
 @media (min-width: 781px) {

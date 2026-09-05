@@ -73,7 +73,7 @@ test("signs an accepted household contract without a second confirmation step", 
   assert.match(shell, /发起人：/);
   assert.match(shell, /participant_ids/);
   assert.match(shell, /contract_batch_proposal/);
-  assert.match(shell, />签订合同</);
+  assert.match(shell, />继续办理合同</);
   assert.doesNotMatch(shell, /if \(result\.contract_batch_proposal\) setContractProposalOpen/);
   assert.match(shell, /activeContractWorkflow/);
   assert.match(shell, /openContractDetail\(activeContractWorkflow\.contract\)/);
@@ -128,8 +128,8 @@ test("uses in-game confirmation panels instead of browser-native blocking dialog
   assert.doesNotMatch(shell, /window\.confirm/);
   assert.match(shell, /结束今日工作/);
   assert.match(shell, /进入夜间结算/);
-  assert.match(shell, /载入关键节点/);
-  assert.match(shell, /覆盖已有关键节点/);
+  assert.doesNotMatch(shell, /载入关键节点/);
+  assert.doesNotMatch(shell, /覆盖已有关键节点/);
 });
 
 test("routes retired saves to review and disables unavailable locked content", async () => {

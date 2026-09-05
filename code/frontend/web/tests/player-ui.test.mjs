@@ -810,7 +810,7 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   assert.match(source, /className="conversation-bar gal-conversation-bar"/);
   assert.match(source, /compactCharacter\?\.role/);
   assert.match(source, /actionPointLabel\(item\)/);
-  assert.match(source, /api\.loadSnapshot[\s\S]*"已载入所选关键节点", true/);
+  // Manual snapshot controls were removed at the player's request.
   assert.match(source, /refresh\(0, id, true, true, kind === "load" \? "latest" : "start"\)/);
   assert.match(source, /decisionReady && pending/);
   assert.match(source, /disabled=\{narrative\.currentIndex >= playerLines\.length - 1\}>下一段/);
@@ -866,7 +866,7 @@ test("keeps the visible conversation loop and removes the old terminal surface",
   assert.match(source, /governance\/meetings\/\$\{encodeURIComponent[\s\S]*\/turn\/stream/);
   assert.match(source, /governance\/actions\/\$\{encodeURIComponent[\s\S]*\/turn\/stream/);
   assert.match(source, /aria-live="polite"/);
-  assert.match(source, /还需 \$\{cost\} 点精力，当前仅剩 \$\{remainingActionPoints\} 点/);
+  assert.match(source, /item\.unavailable_reason/);
   assert.match(source, /: "填写方案"/);
   assert.doesNotMatch(source, />WORKSPACE</);
   assert.doesNotMatch(source, /state v\{/);

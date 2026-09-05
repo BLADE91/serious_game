@@ -45,8 +45,8 @@ test("keeps historical and current-state scene identifiers in separate time cont
 
 test("binds the D18 hostile phone and D25 work meeting to their matching scenes", () => {
   const phone = resolveScene({ contentInstanceId: "block:d18_phone_pressure", beatId: "beat_d18_m2" });
-  assert.equal(phone.id, "C01_S08");
-  assert.equal(phone.title, "赵建国办公室");
+  assert.equal(phone.id, "C01_S02");
+  assert.equal(phone.title, "县长办公室");
   assert.notEqual(phone.title, "晨间三张纸与茶叶盒");
 
   const meeting = resolveScene({ contentInstanceId: "block:d25_meeting", beatId: "beat_d25_m2" });
@@ -70,10 +70,10 @@ test("uses a neutral scene when the current record has no scene binding", () => 
   assert.equal(resolveSceneForView({ line: { storyDay: 1 }, currentStoryDay: 1 }).id, "N00");
 });
 
-test("covers exactly 48 story scenes and all 24 real main endings", async () => {
-  assert.equal(STORY_SCENES.length, 48);
+test("covers 50 story scenes and all 24 real main endings", async () => {
+  assert.equal(STORY_SCENES.length, 50);
   assert.equal(ENDING_SCENES.length, 24);
-  assert.equal(new Set(STORY_SCENES.map(item => item.id)).size, 48);
+  assert.equal(new Set(STORY_SCENES.map(item => item.id)).size, 50);
   assert.equal(new Set(ENDING_SCENES.map(item => item.id)).size, 24);
   assert.equal(new Set(STORY_SCENES.flatMap(item => item.blockIds)).size, STORY_SCENES.reduce((total, item) => total + item.blockIds.length, 0));
   assert.equal(new Set(STORY_SCENES.flatMap(item => item.decisionIds)).size, STORY_SCENES.reduce((total, item) => total + item.decisionIds.length, 0));

@@ -9,17 +9,17 @@ import { ENDING_ASSET_COUNT, SCENE_ASSET_WHITELIST, STORY_ASSET_COUNT } from "./
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = path.resolve(projectRoot, "..", "photo", "全本场景图");
 const outputRoot = path.resolve(projectRoot, "public", "scenes");
-const backendPackage = path.resolve(projectRoot, "..", "..", "backend", "content", "packages", "pkg_gameplay_v2");
+const backendPackage = path.resolve(projectRoot, "..", "..", "backend", "content", "packages", "pkg_gameplay_v3");
 const forbidden = /rejected|qa|backup|prompt|source|overview|script|备份|提示词|源图|总览|处理脚本|\.png$|\.jpg$/i;
 const MAX_SCENE_BYTES = 600 * 1024;
 const MAX_SCENE_TOTAL_BYTES = 44 * 1024 * 1024;
 
-assert.equal(STORY_ASSET_COUNT, 48);
+assert.equal(STORY_ASSET_COUNT, 50);
 assert.equal(ENDING_ASSET_COUNT, 24);
-assert.equal(SCENE_ASSET_WHITELIST.length, 72);
-assert.equal(new Set(SCENE_ASSET_WHITELIST.map(item => item.source)).size, 72);
-assert.equal(new Set(SCENE_ASSET_WHITELIST.map(item => item.destination)).size, 72);
-assert.equal(STORY_SCENES.length, 48);
+assert.equal(SCENE_ASSET_WHITELIST.length, 74);
+assert.equal(new Set(SCENE_ASSET_WHITELIST.map(item => item.source)).size, 74);
+assert.equal(new Set(SCENE_ASSET_WHITELIST.map(item => item.destination)).size, 74);
+assert.equal(STORY_SCENES.length, 50);
 assert.equal(ENDING_SCENES.length, 24);
 
 const expected = SCENE_ASSET_WHITELIST.map(item => item.destination).sort();
@@ -70,4 +70,4 @@ for (let index = 1; index <= 24; index += 1) {
   assert.ok(endingIds.has(`ending_${String(index).padStart(2, "0")}`));
 }
 
-console.log("Scene assets validated: 48 story scenes, 24 endings, no public leakage.");
+console.log("Scene assets validated: 50 story scenes, 24 endings, no public leakage.");

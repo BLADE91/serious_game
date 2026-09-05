@@ -158,11 +158,15 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     async def handle_domain_error(_request: Request, exc: DomainError) -> JSONResponse:
         return error_response(exc)
 
-    def retired_session_error(path: str, account_id: str) -> PackageRetiredError | None:
+    def retired_session_error(path: str, account_id: str) -> DomainError | None:
         match = re.match(r"^/api/game/session/([^/]+)(?:/|$)", path)
         if match is None:
             return None
-        session = runtime.game_sessions.get_owned(match.group(1), account_id)
+        try:
+            session = runtime.game_sessions.get_owned(match.group(1), account_id)
+        except DomainError as exc:
+            # Middleware runs outside FastAPI's route exception handler.
+            return exc
         package = runtime.packages.get(session.package_id) if session else None
         if package is not None and package.status == "retired":
             return PackageRetiredError("退役剧本包仅供复盘，不能继续写入")
@@ -514,6 +518,15 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             "action_blocked_reason": action_blocked_reason,
         }
 
+    def executable_variant(session, package, variant, gate) -> dict:
+        descriptor = public_variant(session, package, variant)
+        reason = gate["action_blocked_reason"]
+        if reason is None and session.game_state.action_points < descriptor["cost_action_points"]:
+            reason = "今日精力不足"
+        if reason:
+            descriptor.update(available=False, unavailable_reason=reason)
+        return descriptor
+
     def action_entries(session, package) -> tuple[str, list[dict]]:
         NPCRelationshipService.synchronize(session, package)
         state = session.game_state
@@ -557,7 +570,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                     "permissions": item["permissions"],
                     "target_kind": item["target_kind"],
                     "variants": [
-                        public_variant(session, package, variant)
+                        executable_variant(session, package, variant, gate)
                         for variant in configured_variants(package)
                         if variant.get("action_id") == item["action_id"]
                         and variant_availability(session, variant)[0]
@@ -1681,6 +1694,18 @@ def create_app(settings: Settings | None = None, container: Container | None = N
             scope=tuple(body.scope),
         )
 
+    @app.post("/api/game/session/{session_id}/governance/actions/{action_instance_id}/prepare-contracts")
+    async def prepare_contracts(
+        session_id: str,
+        action_instance_id: str,
+        body: GovernanceFinishRequest,
+        x_account_id: str | None = Header(default=None),
+    ) -> dict:
+        return runtime.gameplay_governance.prepare_contracts(
+            account_id=current_account_id(x_account_id), session_id=session_id,
+            state_version=body.state_version, action_instance_id=action_instance_id,
+        )
+
     @app.post(
         "/api/game/session/{session_id}/governance/contract-batches/{batch_id}/confirm"
     )
@@ -1859,9 +1884,28 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 ),
             }
 
+        # Both screens consume the same action catalog, even after a one-off
+        # story topic has closed. No new NPC visibility or execution permission.
+        _, families = action_entries(session, package)
+        person_actions = []
+        for family in families:
+            if family["action_id"] not in {"household_visit", "cadre_interview"}:
+                continue
+            for descriptor in family.get("variants", []):
+                for target in descriptor["target_choices"]:
+                    person_actions.append({
+                        **descriptor,
+                        "npc_id": target["target_id"],
+                        "npc_name": target["label"],
+                        "preselected_npc_ids": [target["target_id"]],
+                        "contract_preparation": runtime.gameplay_governance.contract_preparation(
+                            session, package, target["target_id"]
+                        ) if family["action_id"] == "household_visit" else None,
+                    })
         return {
             "state_version": session.state_version,
             "blocked_reason": gate["action_blocked_reason"],
+            "person_actions": person_actions,
             "people": NPCRelationshipService.public_people(session, package),
             "relationship_edges": NPCRelationshipService.public_edges(
                 session, package

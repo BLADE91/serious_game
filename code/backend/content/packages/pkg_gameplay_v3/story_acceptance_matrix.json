@@ -74,9 +74,7 @@
       "decision_display_node_ids": [
         "ev1_01_reception_bag_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev1_01_reception_bag_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d01_opening",
@@ -316,9 +314,7 @@
       "decision_display_node_ids": [
         "dp1_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp1_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d03_compensation_storm",
@@ -390,9 +386,7 @@
       "decision_display_node_ids": [
         "dp1_03_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp1_03_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d05_source_opening"
@@ -430,7 +424,7 @@
         "d06_source_opening"
       ],
       "scene_ids": [
-        "C01_S07"
+        "C01_S06"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -481,9 +475,7 @@
       "decision_display_node_ids": [
         "dp1_04_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp1_04_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d07_source_opening"
@@ -525,7 +517,7 @@
         "d08_source_opening"
       ],
       "scene_ids": [
-        "C01_S08",
+        "C01_S02",
         "C01_S10"
       ],
       "visible_speakers": [],
@@ -544,9 +536,7 @@
       "decision_display_node_ids": [
         "ev1_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev1_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d08_source_opening"
@@ -590,9 +580,12 @@
       ],
       "opening_block_ids": [
         "d09_source_opening",
-        "d09_transition_context"
+        "d09_jiang_advice",
+        "d09_zhao_visit",
+        "d09_zhao_eia"
       ],
       "scene_ids": [
+        "C06_S07",
         "C01_S08"
       ],
       "visible_speakers": [],
@@ -609,13 +602,13 @@
       "decision_display_node_ids": [
         "dp1_05_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp1_05_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d09_source_opening",
-        "d09_transition_context"
+        "d09_jiang_advice",
+        "d09_zhao_visit",
+        "d09_zhao_eia"
       ],
       "decision_presentation_order": [
         {
@@ -650,8 +643,8 @@
         "d10_source_opening"
       ],
       "scene_ids": [
-        "C01_S10",
-        "C01_S07"
+        "C01_S12",
+        "C03_S03"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -667,9 +660,7 @@
       "decision_display_node_ids": [
         "ev1_03_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev1_03_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d10_source_opening"
@@ -725,9 +716,7 @@
       "decision_display_node_ids": [
         "dp1_06_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp1_06_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d11_source_opening"
@@ -761,6 +750,7 @@
         "d12_source_opening"
       ],
       "scene_ids": [
+        "C06_S02",
         "C01_S09"
       ],
       "visible_speakers": [],
@@ -774,9 +764,7 @@
       "decision_display_node_ids": [
         "dp1_07_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp1_07_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d12_source_opening"
@@ -851,8 +839,9 @@
         "d14_close"
       ],
       "scene_ids": [
-        "C01_S09",
-        "C01_S11"
+        "C01_S07",
+        "C01_S01",
+        "C06_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [],
@@ -1074,6 +1063,7 @@
       ],
       "scene_ids": [
         "C02_S01",
+        "C01_S02",
         "C01_S08"
       ],
       "visible_speakers": [
@@ -1177,6 +1167,7 @@
         "d20_choice_setup"
       ],
       "scene_ids": [
+        "C01_S02",
         "C02_S03"
       ],
       "visible_speakers": [
@@ -1586,6 +1577,7 @@
         "d27_pen"
       ],
       "scene_ids": [
+        "C06_S02",
         "C02_S07"
       ],
       "visible_speakers": [
@@ -1647,6 +1639,7 @@
         "d28_cards"
       ],
       "scene_ids": [
+        "C01_S02",
         "C02_S08"
       ],
       "visible_speakers": [
@@ -1718,6 +1711,7 @@
         "d29_four_mouths"
       ],
       "scene_ids": [
+        "C01_S02",
         "C02_S08"
       ],
       "visible_speakers": [
@@ -1784,7 +1778,8 @@
         "d30_lamp"
       ],
       "scene_ids": [
-        "C02_S08"
+        "C02_S08",
+        "C06_S02"
       ],
       "visible_speakers": [
         "郑向东"
@@ -1846,9 +1841,7 @@
       "decision_display_node_ids": [
         "dp3_01_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_01_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d31_fog",
@@ -1888,7 +1881,7 @@
         "d32_question"
       ],
       "scene_ids": [
-        "C03_S02"
+        "C01_S06"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -1903,9 +1896,7 @@
       "decision_display_node_ids": [
         "dp3_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d32_ledger",
@@ -1969,7 +1960,8 @@
         "d34_room"
       ],
       "scene_ids": [
-        "C03_S02"
+        "C01_S06",
+        "C01_S02"
       ],
       "visible_speakers": [
         "赵建国"
@@ -1990,10 +1982,7 @@
         "dp3_03_presentation",
         "dp3_04_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_03_followup",
-        "dp3_04_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d34_meeting",
@@ -2085,9 +2074,7 @@
       "decision_display_node_ids": [
         "dp3_05_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_05_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d36_knock",
@@ -2151,7 +2138,8 @@
         "d38_setup"
       ],
       "scene_ids": [
-        "C03_S03"
+        "C01_S02",
+        "C04_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -2167,9 +2155,7 @@
       "decision_display_node_ids": [
         "dp3_06_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_06_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d38_hint",
@@ -2209,7 +2195,7 @@
         "d39_petition_archive_lead"
       ],
       "scene_ids": [
-        "C03_S03"
+        "C03_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -2278,7 +2264,7 @@
         "d41_clock"
       ],
       "scene_ids": [
-        "C03_S04"
+        "C01_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -2293,9 +2279,7 @@
       "decision_display_node_ids": [
         "dp3_07_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_07_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d41_four_files",
@@ -2330,7 +2314,7 @@
         "d42_he_tiezhu_known"
       ],
       "scene_ids": [
-        "C03_S04"
+        "C01_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -2346,9 +2330,7 @@
       "decision_display_node_ids": [
         "ev3_01_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev3_01_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d42_he_tiezhu_known"
@@ -2392,8 +2374,10 @@
         "d43_pressure"
       ],
       "scene_ids": [
-        "C03_S05",
-        "C03_S04"
+        "C06_S07",
+        "C06_S02",
+        "C01_S02",
+        "C03_S05"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -2414,11 +2398,7 @@
         "dp3_tea_disposition_presentation",
         "dp3_08_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev3_01_followup_followup",
-        "dp3_tea_disposition_followup",
-        "dp3_08_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d43_notice",
@@ -2466,41 +2446,44 @@
       ],
       "opening_block_ids": [
         "d44_wait",
-        "d44_room",
-        "d44_statement"
+        "d44_room"
       ],
       "scene_ids": [
+        "C06_S07",
         "C03_S05",
-        "C03_S06"
+        "C03_S06",
+        "C06_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
         "npc_zhang_li",
-        "npc_zhao_jianguo",
         "npc_zheng_xiangdong"
       ],
       "prerequisite_narrative_ids": [
+        "d44_village_inspection",
+        "d44_statement",
         "dp3_09_presentation"
       ],
       "decision_ids": [
         "dp3_09"
       ],
       "decision_display_node_ids": [
+        "d44_village_inspection",
+        "d44_statement",
         "dp3_09_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_09_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d44_wait",
-        "d44_room",
-        "d44_statement"
+        "d44_room"
       ],
       "decision_presentation_order": [
         {
           "decision_id": "dp3_09",
           "presentation_entry_ids": [
+            "d44_village_inspection",
+            "d44_statement",
             "dp3_09_presentation"
           ]
         }
@@ -2508,10 +2491,6 @@
       "npc_discovery_transitions": [
         {
           "npc_id": "npc_zhang_li",
-          "state": "mentioned"
-        },
-        {
-          "npc_id": "npc_zhao_jianguo",
           "state": "mentioned"
         },
         {
@@ -2536,7 +2515,7 @@
         "d45_setup"
       ],
       "scene_ids": [
-        "C03_S06"
+        "C01_S04"
       ],
       "visible_speakers": [
         "蒋崇岳"
@@ -2556,9 +2535,7 @@
       "decision_display_node_ids": [
         "dp3_10_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp3_10_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d45_calls",
@@ -2635,10 +2612,7 @@
         "dp4_01_presentation",
         "dp4_roster_disposition_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_01_followup",
-        "dp4_roster_disposition_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d46_ke_introduction",
@@ -2716,14 +2690,25 @@
       ],
       "opening_block_ids": [
         "d48_source_opening",
+        "d48_source_opening_part_02",
+        "d48_source_opening_part_03",
+        "d48_source_opening_part_04",
+        "d48_source_opening_part_05",
+        "d48_source_opening_part_06",
+        "d48_source_opening_part_07",
+        "d48_source_opening_part_08",
+        "d48_source_opening_part_09",
+        "d48_source_opening_part_10",
         "d48_transition_context"
       ],
       "scene_ids": [
-        "C04_S02"
+        "C04_S02",
+        "C01_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
-        "npc_wang_fang"
+        "npc_wang_fang",
+        "npc_zhou_mancang"
       ],
       "prerequisite_narrative_ids": [
         "dp4_02_presentation"
@@ -2734,12 +2719,19 @@
       "decision_display_node_ids": [
         "dp4_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d48_source_opening",
+        "d48_source_opening_part_02",
+        "d48_source_opening_part_03",
+        "d48_source_opening_part_04",
+        "d48_source_opening_part_05",
+        "d48_source_opening_part_06",
+        "d48_source_opening_part_07",
+        "d48_source_opening_part_08",
+        "d48_source_opening_part_09",
+        "d48_source_opening_part_10",
         "d48_transition_context"
       ],
       "decision_presentation_order": [
@@ -2753,6 +2745,10 @@
       "npc_discovery_transitions": [
         {
           "npc_id": "npc_wang_fang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_mancang",
           "state": "mentioned"
         },
         {
@@ -2778,15 +2774,15 @@
         "D48:day_closed"
       ],
       "opening_block_ids": [
-        "d49_source_opening",
-        "d49_transition_context"
+        "d49_source_opening"
       ],
       "scene_ids": [
         "C04_S03"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
-        "npc_zhao_jianguo"
+        "npc_zhao_jianguo",
+        "npc_qian_wei"
       ],
       "prerequisite_narrative_ids": [
         "dp4_03_presentation"
@@ -2797,13 +2793,10 @@
       "decision_display_node_ids": [
         "dp4_03_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_03_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d49_source_opening",
-        "d49_transition_context"
+        "d49_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -2816,6 +2809,10 @@
       "npc_discovery_transitions": [
         {
           "npc_id": "npc_zhao_jianguo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_qian_wei",
           "state": "mentioned"
         }
       ],
@@ -2853,8 +2850,7 @@
         "D50:day_closed"
       ],
       "opening_block_ids": [
-        "d51_zhou_kuiyuan_intro",
-        "d51_transition_context"
+        "d51_zhou_kuiyuan_intro"
       ],
       "scene_ids": [
         "C04_S04"
@@ -2873,13 +2869,10 @@
       "decision_display_node_ids": [
         "dp4_04_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_04_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d51_zhou_kuiyuan_intro",
-        "d51_transition_context"
+        "d51_zhou_kuiyuan_intro"
       ],
       "decision_presentation_order": [
         {
@@ -2915,15 +2908,27 @@
         "D51:day_closed"
       ],
       "opening_block_ids": [
-        "d52_source_opening"
+        "d52_source_opening",
+        "d52_source_opening_part_02",
+        "d52_source_opening_part_03",
+        "d52_source_opening_part_04",
+        "d52_source_opening_part_05",
+        "d52_source_opening_part_06",
+        "d52_source_opening_part_07",
+        "d52_source_opening_part_08",
+        "d52_source_opening_part_09",
+        "d52_source_opening_part_10"
       ],
       "scene_ids": [
-        "C04_S04"
+        "C01_S02",
+        "C03_S01"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
         "npc_zhou_dashan",
-        "npc_zheng_xiangdong"
+        "npc_zheng_xiangdong",
+        "npc_zhou_kuiyuan",
+        "npc_zhou_mancang"
       ],
       "prerequisite_narrative_ids": [
         "dp4_05_presentation"
@@ -2934,12 +2939,19 @@
       "decision_display_node_ids": [
         "dp4_05_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_05_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d52_source_opening"
+        "d52_source_opening",
+        "d52_source_opening_part_02",
+        "d52_source_opening_part_03",
+        "d52_source_opening_part_04",
+        "d52_source_opening_part_05",
+        "d52_source_opening_part_06",
+        "d52_source_opening_part_07",
+        "d52_source_opening_part_08",
+        "d52_source_opening_part_09",
+        "d52_source_opening_part_10"
       ],
       "decision_presentation_order": [
         {
@@ -2957,6 +2969,14 @@
         {
           "npc_id": "npc_zheng_xiangdong",
           "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_kuiyuan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_mancang",
+          "state": "mentioned"
         }
       ],
       "archive_unlock_ids": [],
@@ -2972,14 +2992,20 @@
       ],
       "opening_block_ids": [
         "d53_source_opening",
-        "d53_transition_context"
+        "d53_source_opening_part_02",
+        "d53_source_opening_part_03",
+        "d53_source_opening_part_04",
+        "d53_source_opening_part_05",
+        "d53_source_opening_part_06"
       ],
       "scene_ids": [
-        "C04_S04"
+        "C01_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
-        "npc_tan_laoliu"
+        "npc_tan_laoliu",
+        "npc_liu_san",
+        "npc_zheng_xiangdong"
       ],
       "prerequisite_narrative_ids": [
         "dp4_06_presentation"
@@ -2990,13 +3016,15 @@
       "decision_display_node_ids": [
         "dp4_06_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_06_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d53_source_opening",
-        "d53_transition_context"
+        "d53_source_opening_part_02",
+        "d53_source_opening_part_03",
+        "d53_source_opening_part_04",
+        "d53_source_opening_part_05",
+        "d53_source_opening_part_06"
       ],
       "decision_presentation_order": [
         {
@@ -3009,6 +3037,14 @@
       "npc_discovery_transitions": [
         {
           "npc_id": "npc_tan_laoliu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_liu_san",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
           "state": "mentioned"
         },
         {
@@ -3031,7 +3067,7 @@
         "d54_yang_bo_intro"
       ],
       "scene_ids": [
-        "C04_S04"
+        "C01_S05"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -3072,13 +3108,25 @@
         "D54:day_closed"
       ],
       "opening_block_ids": [
-        "d55_source_opening"
+        "d55_source_opening",
+        "d55_source_opening_part_02",
+        "d55_source_opening_part_03",
+        "d55_source_opening_part_04",
+        "d55_source_opening_part_05",
+        "d55_source_opening_part_06",
+        "d55_source_opening_part_07"
       ],
       "scene_ids": [
+        "C01_S02",
         "C04_S05"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_chen_mo",
+        "npc_wu_xiuying",
+        "npc_yuan_guilan",
+        "npc_zheng_xiangdong"
+      ],
       "prerequisite_narrative_ids": [
         "ev4_01_presentation"
       ],
@@ -3088,12 +3136,16 @@
       "decision_display_node_ids": [
         "ev4_01_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev4_01_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d55_source_opening"
+        "d55_source_opening",
+        "d55_source_opening_part_02",
+        "d55_source_opening_part_03",
+        "d55_source_opening_part_04",
+        "d55_source_opening_part_05",
+        "d55_source_opening_part_06",
+        "d55_source_opening_part_07"
       ],
       "decision_presentation_order": [
         {
@@ -3104,6 +3156,22 @@
         }
       ],
       "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_chen_mo",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_wu_xiuying",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_yuan_guilan",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
         {
           "npc_id": "npc_yuan_guilan",
           "state": "contactable"
@@ -3126,7 +3194,7 @@
         "d56_he_tiezhu_intro"
       ],
       "scene_ids": [
-        "C04_S05"
+        "C01_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -3141,9 +3209,7 @@
       "decision_display_node_ids": [
         "dp4_07_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_07_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d56_he_tiezhu_intro"
@@ -3178,14 +3244,16 @@
         "D56:day_closed"
       ],
       "opening_block_ids": [
-        "d57_source_opening",
-        "d57_transition_context"
+        "d57_source_opening"
       ],
       "scene_ids": [
+        "C04_S01",
         "C04_S06"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_he_tiezhu"
+      ],
       "prerequisite_narrative_ids": [
         "ev4_02_presentation",
         "dp4_08_presentation"
@@ -3198,14 +3266,10 @@
         "ev4_02_presentation",
         "dp4_08_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev4_02_followup",
-        "dp4_08_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d57_source_opening",
-        "d57_transition_context"
+        "d57_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3221,7 +3285,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -3236,10 +3305,10 @@
         "D57:day_closed"
       ],
       "opening_block_ids": [
-        "d58_source_opening",
-        "d58_transition_context"
+        "d58_source_opening"
       ],
       "scene_ids": [
+        "C01_S02",
         "C04_S06"
       ],
       "visible_speakers": [],
@@ -3259,14 +3328,10 @@
         "ev4_03_presentation",
         "dp4_09_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev4_03_followup",
-        "dp4_09_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d58_source_opening",
-        "d58_transition_context"
+        "d58_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3308,8 +3373,7 @@
         "D58:day_closed"
       ],
       "opening_block_ids": [
-        "d59_source_opening",
-        "d59_transition_context"
+        "d59_source_opening"
       ],
       "scene_ids": [
         "C04_S07"
@@ -3330,14 +3394,10 @@
         "ev4_04_presentation",
         "dp4_10_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev4_04_followup",
-        "dp4_10_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d59_source_opening",
-        "d59_transition_context"
+        "d59_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3376,14 +3436,15 @@
         "D59:day_closed"
       ],
       "opening_block_ids": [
-        "d60_source_opening",
-        "d60_transition_context"
+        "d60_source_opening"
       ],
       "scene_ids": [
-        "C04_S07"
+        "C06_S08"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_he_tiezhu"
+      ],
       "prerequisite_narrative_ids": [
         "dp4_11_presentation"
       ],
@@ -3393,13 +3454,10 @@
       "decision_display_node_ids": [
         "dp4_11_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp4_11_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d60_source_opening",
-        "d60_transition_context"
+        "d60_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3409,7 +3467,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [
         "archive_resettlement_acceptance_sample"
       ],
@@ -3425,8 +3488,7 @@
         "D60:day_closed"
       ],
       "opening_block_ids": [
-        "d61_source_opening",
-        "d61_transition_context"
+        "d61_source_opening"
       ],
       "scene_ids": [
         "C05_S01"
@@ -3442,13 +3504,10 @@
       "decision_display_node_ids": [
         "dp5_01_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_01_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d61_source_opening",
-        "d61_transition_context"
+        "d61_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3493,15 +3552,15 @@
         "D62:day_closed"
       ],
       "opening_block_ids": [
-        "d63_source_opening",
-        "d63_transition_context"
+        "d63_source_opening"
       ],
       "scene_ids": [
-        "C05_S02"
+        "C04_S04"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
-        "npc_zheng_xiangdong"
+        "npc_zheng_xiangdong",
+        "npc_zhou_kuiyuan"
       ],
       "prerequisite_narrative_ids": [
         "dp5_02_presentation"
@@ -3512,13 +3571,10 @@
       "decision_display_node_ids": [
         "dp5_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d63_source_opening",
-        "d63_transition_context"
+        "d63_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3531,6 +3587,10 @@
       "npc_discovery_transitions": [
         {
           "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhou_kuiyuan",
           "state": "mentioned"
         }
       ],
@@ -3546,8 +3606,7 @@
         "D63:day_closed"
       ],
       "opening_block_ids": [
-        "d64_source_opening",
-        "d64_transition_context"
+        "d64_source_opening"
       ],
       "scene_ids": [
         "C05_S03"
@@ -3565,13 +3624,10 @@
       "decision_display_node_ids": [
         "dp5_03_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_03_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d64_source_opening",
-        "d64_transition_context"
+        "d64_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3617,9 +3673,7 @@
       "decision_display_node_ids": [
         "ev5_01_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev5_01_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "第65日，今天没有必须处理的主线事项，可以自由安排行动。",
       "required_story_entry_ids": [],
       "decision_presentation_order": [
@@ -3671,14 +3725,15 @@
         "D66:day_closed"
       ],
       "opening_block_ids": [
-        "d67_source_opening",
-        "d67_transition_context"
+        "d67_source_opening"
       ],
       "scene_ids": [
-        "C05_S04"
+        "C01_S06"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_zhou_mancang"
+      ],
       "prerequisite_narrative_ids": [
         "dp5_04_presentation"
       ],
@@ -3688,13 +3743,10 @@
       "decision_display_node_ids": [
         "dp5_04_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_04_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d67_source_opening",
-        "d67_transition_context"
+        "d67_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3704,7 +3756,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zhou_mancang",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -3721,7 +3778,7 @@
         "d68_second_step"
       ],
       "scene_ids": [
-        "C05_S04"
+        "C01_S06"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -3736,9 +3793,7 @@
       "decision_display_node_ids": [
         "dp5_05_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_05_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d68_zhou_arrival",
@@ -3773,7 +3828,7 @@
         "d69_source_opening"
       ],
       "scene_ids": [
-        "C05_S04"
+        "C01_S06"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -3813,8 +3868,7 @@
         "d70_ning_introduction"
       ],
       "scene_ids": [
-        "C05_S05",
-        "C05_S06"
+        "C01_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -3858,14 +3912,15 @@
         "D70:day_closed"
       ],
       "opening_block_ids": [
-        "d71_source_opening",
-        "d71_transition_context"
+        "d71_source_opening"
       ],
       "scene_ids": [
-        "C05_S05"
+        "C01_S05"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_ning_dehai"
+      ],
       "prerequisite_narrative_ids": [
         "dp5_06_presentation"
       ],
@@ -3875,13 +3930,10 @@
       "decision_display_node_ids": [
         "dp5_06_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_06_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d71_source_opening",
-        "d71_transition_context"
+        "d71_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3891,7 +3943,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_ning_dehai",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -3907,10 +3964,15 @@
         "d72_source_opening"
       ],
       "scene_ids": [
+        "C01_S02",
         "C05_S06"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_ma_changshun",
+        "npc_miao_xiwang",
+        "npc_zheng_xiangdong"
+      ],
       "prerequisite_narrative_ids": [
         "ev5_02_presentation"
       ],
@@ -3920,9 +3982,7 @@
       "decision_display_node_ids": [
         "ev5_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev5_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d72_source_opening"
@@ -3935,7 +3995,20 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_ma_changshun",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_miao_xiwang",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -3948,14 +4021,15 @@
         "D72:day_closed"
       ],
       "opening_block_ids": [
-        "d73_source_opening",
-        "d73_transition_context"
+        "d73_source_opening"
       ],
       "scene_ids": [
         "C05_S06"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_ma_changshun"
+      ],
       "prerequisite_narrative_ids": [
         "dp5_07_presentation"
       ],
@@ -3965,13 +4039,10 @@
       "decision_display_node_ids": [
         "dp5_07_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_07_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d73_source_opening",
-        "d73_transition_context"
+        "d73_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -3981,7 +4052,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_ma_changshun",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -3995,8 +4071,7 @@
         "D73:day_closed"
       ],
       "opening_block_ids": [
-        "d74_source_opening",
-        "d74_transition_context"
+        "d74_source_opening"
       ],
       "scene_ids": [
         "C05_S07",
@@ -4018,14 +4093,10 @@
         "dp5_08_presentation",
         "dp5_09_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp5_08_followup",
-        "dp5_09_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d74_source_opening",
-        "d74_transition_context"
+        "d74_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -4060,14 +4131,18 @@
         "D74:day_closed"
       ],
       "opening_block_ids": [
-        "d75_source_opening",
-        "d75_transition_context"
+        "d75_source_opening"
       ],
       "scene_ids": [
-        "C05_S07"
+        "C06_S02",
+        "C03_S03",
+        "C01_S04",
+        "C01_S02"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_zheng_xiangdong"
+      ],
       "prerequisite_narrative_ids": [
         "ev5_03_presentation",
         "dp5_10_presentation",
@@ -4086,16 +4161,10 @@
         "dp5_11_presentation",
         "dp5_12_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev5_03_followup",
-        "dp5_10_followup",
-        "dp5_11_followup",
-        "dp5_12_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d75_source_opening",
-        "d75_transition_context"
+        "d75_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -4123,7 +4192,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -4140,8 +4214,7 @@
         "D75:day_closed"
       ],
       "opening_block_ids": [
-        "d76_source_opening",
-        "d76_transition_context"
+        "d76_source_opening"
       ],
       "scene_ids": [
         "C06_S01"
@@ -4157,13 +4230,10 @@
       "decision_display_node_ids": [
         "dp6_01_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_01_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d76_source_opening",
-        "d76_transition_context"
+        "d76_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -4186,11 +4256,10 @@
         "D76:day_closed"
       ],
       "opening_block_ids": [
-        "d77_source_opening",
-        "d77_transition_context"
+        "d77_source_opening"
       ],
       "scene_ids": [
-        "C06_S01"
+        "C06_S10"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -4205,13 +4274,10 @@
       "decision_display_node_ids": [
         "dp6_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d77_source_opening",
-        "d77_transition_context"
+        "d77_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -4246,7 +4312,7 @@
         "d78_source_opening"
       ],
       "scene_ids": [
-        "C06_S02"
+        "C01_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
@@ -4261,9 +4327,7 @@
       "decision_display_node_ids": [
         "dp6_03_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_03_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d78_source_opening"
@@ -4306,7 +4370,7 @@
         "d79_choice"
       ],
       "scene_ids": [
-        "C06_S02"
+        "C03_S06"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [],
@@ -4319,9 +4383,7 @@
       "decision_display_node_ids": [
         "ev6_01_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev6_01_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d79_crowd",
@@ -4368,9 +4430,7 @@
       "decision_display_node_ids": [
         "dp6_04_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_04_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d80_receipt",
@@ -4403,14 +4463,15 @@
         "D80:day_closed"
       ],
       "opening_block_ids": [
-        "d81_source_opening",
-        "d81_transition_context"
+        "d81_source_opening"
       ],
       "scene_ids": [
         "C06_S02"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_liu_san"
+      ],
       "prerequisite_narrative_ids": [
         "dp6_05_presentation"
       ],
@@ -4420,13 +4481,10 @@
       "decision_display_node_ids": [
         "dp6_05_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_05_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d81_source_opening",
-        "d81_transition_context"
+        "d81_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -4436,7 +4494,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_liu_san",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -4455,7 +4518,9 @@
         "C06_S03"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_zheng_xiangdong"
+      ],
       "prerequisite_narrative_ids": [
         "ev6_02_presentation"
       ],
@@ -4465,9 +4530,7 @@
       "decision_display_node_ids": [
         "ev6_02_presentation"
       ],
-      "outcome_transition_ids": [
-        "ev6_02_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d82_source_opening"
@@ -4480,7 +4543,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_zheng_xiangdong",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -4498,7 +4566,7 @@
         "d83_choice"
       ],
       "scene_ids": [
-        "C06_S04"
+        "C01_S02"
       ],
       "visible_speakers": [
         "陈默"
@@ -4515,9 +4583,7 @@
       "decision_display_node_ids": [
         "dp6_06_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_06_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d83_draft",
@@ -4557,11 +4623,13 @@
         "d84_source_opening"
       ],
       "scene_ids": [
+        "C01_S02",
         "C06_S05"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [
-        "npc_deng_shouben"
+        "npc_deng_shouben",
+        "npc_zheng_xiangdong"
       ],
       "prerequisite_narrative_ids": [
         "dp6_07_presentation"
@@ -4572,9 +4640,7 @@
       "decision_display_node_ids": [
         "dp6_07_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_07_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d84_source_opening"
@@ -4590,6 +4656,10 @@
       "npc_discovery_transitions": [
         {
           "npc_id": "npc_deng_shouben",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zheng_xiangdong",
           "state": "mentioned"
         },
         {
@@ -4629,9 +4699,7 @@
       "decision_display_node_ids": [
         "dp6_08_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_08_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
         "d85_list",
@@ -4664,13 +4732,10 @@
         "d86_pause"
       ],
       "scene_ids": [
-        "C06_S06"
+        "C01_S01"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [
-        "npc_zhou_kuiyuan",
-        "npc_he_tiezhu"
-      ],
+      "introduced_npc_ids": [],
       "prerequisite_narrative_ids": [],
       "decision_ids": [],
       "decision_display_node_ids": [],
@@ -4682,16 +4747,7 @@
         "d86_pause"
       ],
       "decision_presentation_order": [],
-      "npc_discovery_transitions": [
-        {
-          "npc_id": "npc_zhou_kuiyuan",
-          "state": "mentioned"
-        },
-        {
-          "npc_id": "npc_he_tiezhu",
-          "state": "mentioned"
-        }
-      ],
+      "npc_discovery_transitions": [],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -4705,14 +4761,16 @@
         "D86:day_closed"
       ],
       "opening_block_ids": [
-        "d87_source_opening",
-        "d87_transition_context"
+        "d87_source_opening"
       ],
       "scene_ids": [
-        "C06_S07"
+        "C06_S07",
+        "C01_S04"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_jiang_chongyue"
+      ],
       "prerequisite_narrative_ids": [
         "dp6_09_presentation"
       ],
@@ -4722,13 +4780,10 @@
       "decision_display_node_ids": [
         "dp6_09_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_09_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d87_source_opening",
-        "d87_transition_context"
+        "d87_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -4738,7 +4793,12 @@
           ]
         }
       ],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_jiang_chongyue",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     },
@@ -4754,7 +4814,7 @@
         "d88_source_opening"
       ],
       "scene_ids": [
-        "C06_S07"
+        "C03_S02"
       ],
       "visible_speakers": [],
       "introduced_npc_ids": [],
@@ -4779,8 +4839,7 @@
         "D88:day_closed"
       ],
       "opening_block_ids": [
-        "d89_source_opening",
-        "d89_transition_context"
+        "d89_source_opening"
       ],
       "scene_ids": [
         "C06_S08"
@@ -4798,13 +4857,10 @@
       "decision_display_node_ids": [
         "dp6_10_presentation"
       ],
-      "outcome_transition_ids": [
-        "dp6_10_followup"
-      ],
+      "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d89_source_opening",
-        "d89_transition_context"
+        "d89_source_opening"
       ],
       "decision_presentation_order": [
         {
@@ -4832,23 +4888,57 @@
         "D89:day_closed"
       ],
       "opening_block_ids": [
-        "d90_source_opening"
+        "d90_source_opening",
+        "d90_source_opening_part_02",
+        "d90_source_opening_part_03",
+        "d90_source_opening_part_04",
+        "d90_source_opening_part_05",
+        "d90_source_opening_part_06",
+        "d90_source_opening_part_07"
       ],
       "scene_ids": [
         "C06_S09"
       ],
       "visible_speakers": [],
-      "introduced_npc_ids": [],
+      "introduced_npc_ids": [
+        "npc_he_tiezhu",
+        "npc_tan_laoliu",
+        "npc_wu_xiuying",
+        "npc_zhang_li"
+      ],
       "prerequisite_narrative_ids": [],
       "decision_ids": [],
       "decision_display_node_ids": [],
       "outcome_transition_ids": [],
       "free_action_prompt": "",
       "required_story_entry_ids": [
-        "d90_source_opening"
+        "d90_source_opening",
+        "d90_source_opening_part_02",
+        "d90_source_opening_part_03",
+        "d90_source_opening_part_04",
+        "d90_source_opening_part_05",
+        "d90_source_opening_part_06",
+        "d90_source_opening_part_07"
       ],
       "decision_presentation_order": [],
-      "npc_discovery_transitions": [],
+      "npc_discovery_transitions": [
+        {
+          "npc_id": "npc_he_tiezhu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_tan_laoliu",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_wu_xiuying",
+          "state": "mentioned"
+        },
+        {
+          "npc_id": "npc_zhang_li",
+          "state": "mentioned"
+        }
+      ],
       "archive_unlock_ids": [],
       "forced_conversation_plan_ids": []
     }

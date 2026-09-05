@@ -67,6 +67,11 @@ class VisibleStateProjector:
             "session_id": session.session_id,
             "state_version": session.state_version,
             "status": session.status.value,
+            "onboarding": {
+                "free_action_completed": any(
+                    item.status == "completed" for item in session.governance_actions.values()
+                ),
+            },
             "story": {
                 "day": state.story_day,
                 "chapter": package.chapter_for(state.story_day),

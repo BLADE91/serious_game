@@ -83,20 +83,12 @@
         {
           "block_id": "ev1_01_reception_bag_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "钱伟把袋子留在你手边，里面触到一个硬盒。赵建国和孙强都还没有离席，钱伟等着看你如何处置。",
           "scene_id": "C01_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev1_01_reception_bag_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S03",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp1_01_taskforce_faction_map",
@@ -237,7 +229,7 @@
         {
           "block_id": "dp1_01_taskforce_faction_map_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "专班的人手要由你来定。赵建国的老班底熟悉本地，县直部门的骨干便于独立核查；两种安排会改变你接下来掌握村情的方式。",
           "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
@@ -247,7 +239,7 @@
       "decision_id": "dp1_02",
       "story_day": 3,
       "title": "识局第二步：补偿这道口子，怎么开",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -360,26 +352,18 @@
         {
           "block_id": "dp1_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "补偿意见在村委会分成几拨：困难户盼着照顾，临江户想另谈价钱，周大山主张沿用原来的办法。你需要给专班定下统一的办理口径。",
           "scene_id": "C01_S05",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp1_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp1_03",
       "story_day": 5,
       "title": "识局第三步：坡上那间旧瓦房，袁桂兰的一句话",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -468,26 +452,18 @@
         {
           "block_id": "dp1_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "袁桂兰攥着衣角，担心搬迁后的住处和孩子的病。说起江对岸的旧厂子，她只低声说离那里远点，娃兴许能好些。",
           "scene_id": "C01_S07",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp1_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp1_04",
       "story_day": 7,
       "title": "识局第四步：调度会上，孙强递来的那记软钉子",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -597,26 +573,18 @@
         {
           "block_id": "dp1_04_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "孙强把残缺的逐户台账摆上会议桌。材料迟迟报不齐，补偿争议也卡在半道；专班需要你明确下一步如何催办和核查。",
           "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp1_04_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp1_05",
       "story_day": 9,
       "title": "识局第五步：与赵建国的第一个回合",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -768,26 +736,18 @@
         {
           "block_id": "dp1_05_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "赵建国放下茶杯，等你接话。他希望与你共同推进搬迁，并把旧厂和环评的疑问就此放下。",
           "scene_id": "C01_S08",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp1_05_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S08",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp1_06",
       "story_day": 11,
       "title": "试水：首轮签约，谁肯按下第一个手印",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -900,26 +860,18 @@
         {
           "block_id": "dp1_06_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "协议和印泥已经备齐，但谁也不肯先按下手印。先与有意愿的住户核实条款，还是要求专班全面铺开，得由你决定。",
           "scene_id": "C01_S09",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp1_06_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S09",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp1_07",
       "story_day": 12,
       "title": "程序红线：那一户填得含糊的协议",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1001,20 +953,12 @@
         {
           "block_id": "dp1_07_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "这份协议的权属、代签授权和公示期限都有疑点。干事把笔递了过来，等你决定退回补齐手续，还是先签后补。",
           "scene_id": "C01_S09",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp1_07_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S09",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp1_08",
@@ -1233,13 +1177,13 @@
       "decision_id": "ev1_02",
       "story_day": 8,
       "title": "（一）渡口堵路",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a",
-          "text": "连夜亲赴。 第一时间赶到渡口，站进人群中间，不带镇里的人，跟带头的村民面对面谈。",
+          "text": "即刻亲赴。 第一时间赶到渡口，站进人群中间，不带镇里的人，跟带头的村民面对面谈。",
           "consequence": "你拨开人群站到最前头，报出自己的名姓，说路你们堵着我不怪你们，有委屈冲我来，补偿的账我一笔一笔跟你们算清楚",
           "effects": {
             "metric_deltas": {
@@ -1374,26 +1318,18 @@
         {
           "block_id": "ev1_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "当天，孙强打来急电：“县长，渡口堵上了，乌泱泱一片人，拦都拦不住。”柳林村通往外面的渡口被农用车、石块和板凳堵住，带头的临江户认为补偿不公，人群中也有周氏族亲。记者陈默已在现场拍摄。你放下手头的材料，需要决定亲自赶赴现场，还是另作处置。",
           "scene_id": "C01_S10",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev1_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S10",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev1_03",
       "story_day": 10,
       "title": "（二）病儿急送",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -1500,25 +1436,17 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C01_S07",
+      "scene_id": "C03_S03",
       "presentation_blocks": [
         {
           "block_id": "ev1_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C01_S07",
+          "text": "第十日深夜，坡上传来急促的敲门声。袁桂兰抱着高烧抽搐的孩子，跌跌撞撞跑来找专班求救。孩子脸色青紫，镇卫生院夜里没有值班的儿科医生，最近的县医院还有四十里山路。袁桂兰哭得话都说不囫囵。\n\n你需要立即决定怎样安排送医和救治。",
+          "scene_id": "C03_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev1_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C01_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp2_01",
@@ -1531,8 +1459,15 @@
         {
           "option_id": "a",
           "text": "当场批条子，责成审计局对搬迁工程支出立项专项审计，把三张发票写进立项报告。",
-          "required_fact_ids": ["fact_connected_invoices"],
-          "unlock_requirements": [{"archive_name": "发票登记与编号索引", "reason": "专项审计需要先形成连号发票的书面依据；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_connected_invoices"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "发票登记与编号索引",
+              "reason": "专项审计需要先形成连号发票的书面依据；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "审计立项文件当天下午发出，赵建国当晚打电话给蒋崇岳，查账的动静已经传到县委。",
           "effects": {
             "metric_deltas": {
@@ -1942,8 +1877,15 @@
         {
           "option_id": "a",
           "text": "以县政府名义正式行文，请市生态环境局对柳林村清江段重新做一次独立复核。",
-          "required_fact_ids": ["fact_identical_reports"],
-          "unlock_requirements": [{"archive_name": "三年度环保报告版本", "reason": "正式独立复核需要先确认三年报告高度一致；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_identical_reports"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "三年度环保报告版本",
+              "reason": "正式独立复核需要先确认三年报告高度一致；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "行文当天下午，赵建国在电话里问你，这个时候捅这个篓子是不是太急",
           "effects": {
             "metric_deltas": {
@@ -1974,8 +1916,15 @@
         {
           "option_id": "b",
           "text": "不行文。自己带人到清江取水样，送到外地的机构去测，样品封存备查。",
-          "required_fact_ids": ["fact_identical_reports"],
-          "unlock_requirements": [{"archive_name": "三年度环保报告版本", "reason": "封存取样需要先确认既有报告存在重复异常；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_identical_reports"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "三年度环保报告版本",
+              "reason": "封存取样需要先确认既有报告存在重复异常；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "水样封在县环保站的冷柜里，只有你和石文斌知道编号",
           "effects": {
             "metric_deltas": {
@@ -3460,7 +3409,7 @@
       "decision_id": "dp3_01",
       "story_day": 31,
       "title": "见面定调",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3559,34 +3508,33 @@
         {
           "block_id": "dp3_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "张立不急着听成绩汇报，先要看台账、环评和信访材料。第一次见面，你准备主动交代哪些问题？",
           "scene_id": "C03_S01",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S01",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_02",
       "story_day": 32,
       "title": "台账关",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a",
           "text": "当场把手上那张表递过去，两版并排放。",
-          "required_fact_ids": ["fact_false_signing"],
-          "unlock_requirements": [{"archive_name": "两版签约台账比对", "reason": "并排提交前必须掌握两版台账不一致的权威事实；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_false_signing"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "两版签约台账比对",
+              "reason": "并排提交前必须掌握两版台账不一致的权威事实；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "两张表并排放在桌上",
           "effects": {
             "metric_deltas": {
@@ -3685,31 +3633,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S02",
+      "scene_id": "C01_S06",
       "presentation_blocks": [
         {
           "block_id": "dp3_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S02",
+          "text": "两版补偿材料有对不上的地方，巡察人员正在等县里解释。赵建国也坐在对面，准备接过话头。",
+          "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_03",
       "story_day": 34,
       "title": "赵建国甩锅",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3814,31 +3754,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S02",
+      "scene_id": "C01_S06",
       "presentation_blocks": [
         {
           "block_id": "dp3_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S02",
+          "text": "赵建国把进度和政策争议归到镇里，又强调搬迁一直由你亲自抓。孙强没有开口，会议室里的人等着你的回应。",
+          "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_04",
       "story_day": 34,
       "title": "瞒报红线",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -3940,31 +3872,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S02",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp3_04_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S02",
+          "text": "涉及环评的数据材料被送到面前。留下封存、移交巡察组、退回，还是让经手人直接上报市环保部门，需要明确处置。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_04_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_05",
       "story_day": 36,
       "title": "钱伟的条件",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4068,26 +3992,18 @@
         {
           "block_id": "dp3_05_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "钱伟把工人的生计、补偿缺口与排口调查绑在同一个条件里。他站在宿舍门外，等你回应。",
           "scene_id": "C03_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_05_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S03",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_06",
       "story_day": 38,
       "title": "谭老六的状子",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4191,31 +4107,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S03",
+      "scene_id": "C04_S02",
       "presentation_blocks": [
         {
           "block_id": "dp3_06_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S03",
+          "text": "谭老六把多年未解决的占地材料举到你面前。他需要一个能追到负责人的答复，而不是再被转走一次。",
+          "scene_id": "C04_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_06_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S03",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_07",
       "story_day": 41,
       "title": "四桩事排先后",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -4927,31 +4835,23 @@
           "d": "谭老六卷宗"
         }
       },
-      "scene_id": "C03_S04",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp3_07_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S04",
+          "text": "巡察说明、签约安排、排口取证、旧案核查同时需要人手和时间。请给这四项工作排定先后。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_07_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev3_01",
       "story_day": 42,
       "title": "突发·血铅患儿曝光",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -5092,31 +4992,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S04",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "ev3_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S04",
+          "text": "何铁柱孙子的血铅检测消息被传到网上。治疗与复查还在安排，公众已经开始追问。今晚需要决定是否公开事实以及怎样回应。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev3_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_tea_disposition",
       "story_day": 43,
       "title": "场景处置·两包茶叶",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -5167,31 +5059,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S05",
+      "scene_id": "C06_S02",
       "presentation_blocks": [
         {
           "block_id": "dp3_tea_disposition_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S05",
+          "text": "赵建国把两包茶叶留在桌角。你需要明确退回、留下还是登记上交，不能让物品的去向含混不清。",
+          "scene_id": "C06_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_tea_disposition_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_08",
       "story_day": 43,
       "title": "个别谈话",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -5295,26 +5179,18 @@
         {
           "block_id": "dp3_08_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "张立请你说明云溪当前最需要正视的问题。补偿程序、环评材料、班子关系与发展压力都在谈话范围内，由你决定先说什么。",
           "scene_id": "C03_S05",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_08_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_09",
       "story_day": 44,
       "title": "情况说明",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -5379,31 +5255,37 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S05",
+      "scene_id": "C06_S02",
       "presentation_blocks": [
+        {
+          "block_id": "d44_village_inspection",
+          "kind": "narration",
+          "text": "下午，巡察组又没有通知县里，直接去了柳林村，把两种补偿标准当着村民的面问了出来。",
+          "scene_id": "C03_S06",
+          "presentation_phase": "decision_setup"
+        },
+        {
+          "block_id": "d44_statement",
+          "kind": "narration",
+          "text": "晚上回到办公室，赵建国已经拟好一份给巡察组的情况说明。先据实解释、承认问题并限期核查，还是采用班子准备好的统一口径，这张纸必须由你定稿。",
+          "scene_id": "C06_S02",
+          "presentation_phase": "scene"
+        },
         {
           "block_id": "dp3_09_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S05",
+          "text": "情况说明要把两种补偿标准解释为笔误。赵建国等着你签字，你清楚纸上的表述与已知材料是否相符。",
+          "scene_id": "C06_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_09_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp3_10",
       "story_day": 45,
       "title": "最后两日的定向",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -5530,39 +5412,38 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C03_S06",
+      "scene_id": "C01_S04",
       "presentation_blocks": [
         {
           "block_id": "dp3_10_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S06",
+          "text": "巡察组即将离开。剩下的时间可以用于交材料、推进签约、协调口径，或者不再追加动作。",
+          "scene_id": "C01_S04",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp3_10_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_01",
       "story_day": 46,
       "title": "（二）单子往哪儿走",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a",
           "text": "原样上报市卫健委，同时在县内公开检测结果。",
-          "required_fact_ids": ["fact_lead_census"],
-          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "公开检测结论必须有完整原始总表支撑；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_lead_census"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "血铅普查原始总表",
+              "reason": "公开检测结论必须有完整原始总表支撑；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "数据当天下午挂上县政府网站",
           "effects": {
             "metric_deltas": {
@@ -5658,8 +5539,15 @@
         {
           "option_id": "d",
           "text": "把结果附进给巡察组的材料，随反馈函一并上报。",
-          "required_fact_ids": ["fact_lead_census"],
-          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "纳入巡察材料必须有完整原始总表支撑；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_lead_census"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "血铅普查原始总表",
+              "reason": "纳入巡察材料必须有完整原始总表支撑；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "材料压在了反馈函的信封里",
           "effects": {
             "metric_deltas": {
@@ -5710,26 +5598,18 @@
         {
           "block_id": "dp4_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "一百零七名儿童的检测结果已送到案头。原始数据需要保全，救治和复核需要接续，你先决定报告向哪里送。",
           "scene_id": "C04_S01",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S01",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_02",
       "story_day": 48,
       "title": "（二）通报的先后",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10071,31 +9951,23 @@
           "e": "王芳"
         }
       },
-      "scene_id": "C04_S02",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp4_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C04_S02",
+          "text": "原始检测材料涉及受检家庭、上级、企业和媒体。消息送出的先后无法收回，请排定通报次序。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_03",
       "story_day": 49,
       "title": "（二）棱",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10219,26 +10091,18 @@
         {
           "block_id": "dp4_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "钱伟把赔付方案与果篮里的信封一起推了过来，赵建国坐在一旁。赔付如何谈，个人收到的财物如何处置，需要分清。",
           "scene_id": "C04_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S03",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_04",
       "story_day": 51,
       "title": "（二）祠堂里的第二堵墙",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10388,26 +10252,18 @@
         {
           "block_id": "dp4_04_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "周奎元要谈祖坟和祭祀如何延续：择地、择日、起灵、祭祀，缺一项都不能只用钱来代替。他等你回应。",
           "scene_id": "C04_S04",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_04_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_05",
       "story_day": 52,
       "title": "（二）祠堂那块地",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10499,31 +10355,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C04_S04",
+      "scene_id": "C03_S01",
       "presentation_blocks": [
         {
           "block_id": "dp4_05_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C04_S04",
+          "text": "周大山拿出了自己能够代表的六户名单，但祠堂安置用地仍需要有效批文。他希望知道这件事能否真正落到纸上。",
+          "scene_id": "C03_S01",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_05_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_06",
       "story_day": 53,
       "title": "（二）压不住的六天",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10641,31 +10489,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C04_S04",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp4_06_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C04_S04",
+          "text": "谭老六的四亩旧占地不在本次搬迁补偿盘子里。他不愿这次搬迁后旧账再无处可查，准备在迎检时继续反映。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_06_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev4_01",
       "story_day": 55,
       "title": "（一）队伍排到了马路上",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10772,26 +10612,18 @@
         {
           "block_id": "ev4_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "医院复查队伍已经排到路边。袁桂兰凑不齐复查费用，家属开始拥挤争执，记者就在门诊楼前拍摄。",
           "scene_id": "C04_S05",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev4_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_07",
       "story_day": 56,
       "title": "（二）他要一份名册",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -10991,39 +10823,38 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C04_S05",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp4_07_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C04_S05",
+          "text": "陈默要求核对儿童检测名册，准备把报道中的数字写准。是否提供原件、如何保护姓名住址，以及县里怎样回应，都需要你定夺。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_07_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_08",
       "story_day": 57,
       "title": "（一）一个七岁的孩子",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a",
           "text": "启动医疗兜底，十一名超标儿童由县里全额收治，病例向社会公开。",
-          "required_fact_ids": ["fact_lead_census"],
-          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "十一名儿童的完整医疗处置需要以普查总表确认对象；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_lead_census"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "血铅普查原始总表",
+              "reason": "十一名儿童的完整医疗处置需要以普查总表确认对象；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "何铁柱把军装照收回口袋",
           "effects": {
             "metric_deltas": {
@@ -11285,31 +11116,23 @@
       "required_flags": [
         "掌握血铅"
       ],
-      "scene_id": "C04_S06",
+      "scene_id": "C04_S01",
       "presentation_blocks": [
         {
           "block_id": "dp4_08_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C04_S06",
+          "text": "重症儿童的复查、治疗与费用需要明确安排。家属等着能实际执行的方案，医院也需要知道由谁承担。",
+          "scene_id": "C04_S01",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_08_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev4_02",
       "story_day": 57,
       "title": "（三）深夜的敲门声",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11395,26 +11218,18 @@
         {
           "block_id": "ev4_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "深夜，赵建国提着茶叶来到宿舍。他承认两百万元前期协调费由自己经手，希望不要在迎检前公开。你需要决定是否要求他留下书面说明。",
           "scene_id": "C04_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev4_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_09",
       "story_day": 58,
       "title": "（三）【DP4-09】用途栏那四个字",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11607,31 +11422,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C04_S06",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp4_09_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C04_S06",
+          "text": "第二套账里的前期协调费用，与赵建国的经手记录相连。原件怎样保管、哪些材料先交出去、哪些还需交叉核实，需要你决定。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_09_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev4_03",
       "story_day": 58,
       "title": "（四）【突发·EV4-03】围堰漫了",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11747,26 +11554,18 @@
         {
           "block_id": "ev4_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "环保站深夜来电，围堰险情需要处置。抢险和向市里报告是两件事，天亮前是否行动不能再含混。",
           "scene_id": "C04_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev4_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev4_04",
       "story_day": 59,
       "title": "（一）【突发·EV4-04】先遣先到",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -11877,37 +11676,42 @@
         {
           "block_id": "ev4_04_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "迎检大队进城前，先遣人员已经到了渠边，准备走到围堰查看现场。你需要决定由谁接待，以及怎样安排现场核验。",
           "scene_id": "C04_S07",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev4_04_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_10",
       "story_day": 59,
       "title": "（二）【DP4-10】怎么见人",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a",
           "text": "全部照实，血铅、复检、围堰、那笔两百万，一样不留地摆上桌",
-          "required_fact_ids": ["fact_lead_census", "fact_two_million_fee", "fact_eia_original"],
+          "required_fact_ids": [
+            "fact_lead_census",
+            "fact_two_million_fee",
+            "fact_eia_original"
+          ],
           "unlock_requirements": [
-            {"archive_name": "血铅普查原始总表", "reason": "据实汇报需要掌握完整血铅事实。"},
-            {"archive_name": "前期协调费索引", "reason": "据实汇报需要掌握两百万元协调费事实。"},
-            {"archive_name": "环评原始数据附件", "reason": "据实汇报需要掌握环评原始数据；三项事实也可分别通过正式接触取得。"}
+            {
+              "archive_name": "血铅普查原始总表",
+              "reason": "据实汇报需要掌握完整血铅事实。"
+            },
+            {
+              "archive_name": "前期协调费索引",
+              "reason": "据实汇报需要掌握两百万元协调费事实。"
+            },
+            {
+              "archive_name": "环评原始数据附件",
+              "reason": "据实汇报需要掌握环评原始数据；三项事实也可分别通过正式接触取得。"
+            }
           ],
           "consequence": "全部照实，血铅、复检、围堰、那笔两百万，一样不留地摆上桌",
           "effects": {
@@ -12109,26 +11913,18 @@
         {
           "block_id": "dp4_10_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "检查组已到，搬迁、血铅、复检、围堰和前期协调费的材料都涉及汇报口径。你准备怎样说明当前事实？",
           "scene_id": "C04_S07",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_10_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_11",
       "story_day": 60,
       "title": "（三）【DP4-11】座谈桌上那句话",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12197,31 +11993,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C04_S07",
+      "scene_id": "C06_S08",
       "presentation_blocks": [
         {
           "block_id": "dp4_11_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C04_S07",
+          "text": "副组长把血铅事件概括为“偶发、个别、处置得当”，询问你是否认可。检测结果和未完成的处置都还摆在桌上。",
+          "scene_id": "C06_S08",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_11_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_01",
       "story_day": 61,
       "title": "迎检之后",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12371,26 +12159,18 @@
         {
           "block_id": "dp5_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "迎检结束，接下来是逐户验收。未决家庭还在名册上，必须决定继续逐户协商、分工包户、据实上报，还是只调整纸面口径。",
           "scene_id": "C05_S01",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S01",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_02",
       "story_day": 63,
       "title": "祖坟的规矩",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12495,31 +12275,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C05_S02",
+      "scene_id": "C04_S04",
       "presentation_blocks": [
         {
           "block_id": "dp5_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S02",
+          "text": "周奎元不肯只听补偿数字。他要求先正式谈清迁坟规矩和祭祀延续，你准备从哪里开始？",
+          "scene_id": "C04_S04",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_03",
       "story_day": 64,
       "title": "三·三 决策点",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12681,26 +12453,18 @@
         {
           "block_id": "dp5_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "祖坟和祠堂的迁移安排到了需要落实的时刻。程序、仪式与住户意愿如何处理，会直接决定这次行动怎样进行。",
           "scene_id": "C05_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S03",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev5_01",
       "story_day": 65,
       "title": "三·五 承接·掘坟之后",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12779,26 +12543,18 @@
         {
           "block_id": "ev5_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "掘坟后的争议没有平息，白幡挂了出来，村民在等县里的回应。道歉补办、单独协商还是清除白幡，必须明确选择。",
           "scene_id": "C05_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev5_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S03",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_04",
       "story_day": 67,
       "title": "四·二 顺序",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -12898,31 +12654,23 @@
       "required_flags": [
         "村账在手"
       ],
-      "scene_id": "C05_S04",
+      "scene_id": "C01_S06",
       "presentation_blocks": [
         {
           "block_id": "dp5_04_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S04",
+          "text": "周满仓把自己的旧账本放在桌上，要先核村账，再看原始检测材料，最后才谈补偿。他在等你拿出第一份材料。",
+          "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_04_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_05",
       "story_day": 68,
       "title": "四·三 第二环",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -13048,39 +12796,38 @@
       "required_flags": [
         "村账已摊"
       ],
-      "scene_id": "C05_S04",
+      "scene_id": "C01_S06",
       "presentation_blocks": [
         {
           "block_id": "dp5_05_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S04",
+          "text": "村账已经摊开，周满仓等着下一步核对。你准备继续摆原始检测记录，还是改变谈话的顺序？",
+          "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_05_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_06",
       "story_day": 71,
       "title": "五·二 第七十一日 · 那张表",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a",
           "text": "把那张汇总表当众作废。逐户重评，张榜公示，异议期走满七天，谁的字谁自己按手印。",
-          "required_fact_ids": ["fact_false_signing"],
-          "unlock_requirements": [{"archive_name": "两版签约台账比对", "reason": "作废汇总表前必须掌握台账失真的权威事实；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_false_signing"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "两版签约台账比对",
+              "reason": "作废汇总表前必须掌握台账失真的权威事实；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "把那张汇总表当众作废。逐户重评，张榜公示，异议期走满七天，谁的字谁自己按手印。",
           "effects": {
             "metric_deltas": {},
@@ -13305,31 +13052,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C05_S05",
+      "scene_id": "C01_S05",
       "presentation_blocks": [
         {
           "block_id": "dp5_06_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S05",
+          "text": "宁德海指出汇总表上有未经本人核实的代签。他要的是重评、公示、异议期和本人确认，你准备怎样回应？",
+          "scene_id": "C01_S05",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_06_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev5_02",
       "story_day": 72,
       "title": "六·一 第七十二日 · 门板上的复印件",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -13415,26 +13154,18 @@
         {
           "block_id": "ev5_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "苗喜旺旧协议的复印件贴在小卖部门板上，围观者开始比较补偿。需要把旧协议和现行标准的关系说明白。",
           "scene_id": "C05_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev5_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_07",
       "story_day": 73,
       "title": "六·二 第七十三日 · 那道坎",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -13747,26 +13478,18 @@
         {
           "block_id": "dp5_07_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "马长顺仍担心自家比邻居吃亏。逐户台账、统一标准、单独许价或请人劝说，是不同的回应方式。",
           "scene_id": "C05_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_07_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S06",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_08",
       "story_day": 74,
       "title": "场景二·把话说死",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -13976,26 +13699,18 @@
         {
           "block_id": "dp5_08_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "何铁柱守在病房门口，追问孩子今后的治疗和费用。搬迁协商到了他最在意的这件事上。",
           "scene_id": "C05_S07",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_08_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_09",
       "story_day": 74,
       "title": "场景三·祠堂那块地",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -14297,26 +14012,18 @@
         {
           "block_id": "dp5_09_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "从住院部出来是十点半。郑向东把车头调向西边。柳林村的祠堂在村东头，周大山坐在门槛上，看见你的车便站了起来。\n\n周大山要看的祠堂用地批文仍卡在指标和手续上。他要一份后辈也能拿来核实的正式依据，你需要决定怎样推动办理，或者怎样向他说明当前障碍。",
           "scene_id": "C05_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_09_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_10",
       "story_day": 75,
       "title": "场景二·你怎么开口",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -14520,31 +14227,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C05_S07",
+      "scene_id": "C01_S04",
       "presentation_blocks": [
         {
           "block_id": "dp5_10_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S07",
+          "text": "你带着普查材料与蒋崇岳谈，准备争取他支持继续处理污染问题。需要选择怎样把事实和理由说清楚。",
+          "scene_id": "C01_S04",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_10_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_11",
       "story_day": 75,
       "title": "场景二·联络员带来的话",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -14613,31 +14312,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C05_S07",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp5_11_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S07",
+          "text": "联络员带来对当前局势的判断，认为搬迁和血铅都已稳住。你需要决定是否认可，或据实指出仍未完成的事项。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_11_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_12",
       "story_day": 75,
       "title": "场景三·剩下十五天的次序",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -18499,31 +18190,23 @@
           "e": "接通张立"
         }
       },
-      "scene_id": "C05_S07",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp5_12_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S07",
+          "text": "首批名册冻结前，多项工作同时需要安排。请按你准备投入的时间和注意力排定次序。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_12_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev5_03",
       "story_day": 75,
       "title": "场景四·夜里那通电话",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -18595,31 +18278,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C05_S07",
+      "scene_id": "C03_S03",
       "presentation_blocks": [
         {
           "block_id": "ev5_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S07",
+          "text": "夜里，赵建国打来电话要求见面。让他进屋、留下见证人在场，还是只在电话里谈，需要你决定。",
+          "scene_id": "C03_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev5_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_01",
       "story_day": 76,
       "title": "第七十六日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -18697,26 +18372,18 @@
         {
           "block_id": "dp6_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "验收开始核对名册。真实签署记录与上报台账必须对照，未签的家庭要怎样呈现，由你决定。",
           "scene_id": "C06_S01",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S01",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_02",
       "story_day": 77,
       "title": "第七十七日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -18824,31 +18491,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C06_S01",
+      "scene_id": "C06_S10",
       "presentation_blocks": [
         {
           "block_id": "dp6_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C06_S01",
+          "text": "老倔头到了安置小区，坚持看实际能交付的房子。真实毛坯、加急完成的住房或临时摆设的样板间，并不是同一件事。",
+          "scene_id": "C06_S10",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S01",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_03",
       "story_day": 78,
       "title": "第七十八日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -18967,31 +18626,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C06_S02",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp6_03_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C06_S02",
+          "text": "贺兴邦送来受检儿童资料。复检、治疗与费用的责任还需要逐项明确，家属要看到能执行到人的安排。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_03_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev6_01",
       "story_day": 79,
       "title": "第七十九日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -19063,31 +18714,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C06_S02",
+      "scene_id": "C03_S06",
       "presentation_blocks": [
         {
           "block_id": "ev6_01_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C06_S02",
+          "text": "安置验收组刚进场，村委会台阶下已挤满家属。他们带着体检单，追问住房钥匙和复查责任。验收流程与当面答复撞在一起。",
+          "scene_id": "C03_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev6_01_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_04",
       "story_day": 80,
       "title": "第八十日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -19170,26 +18813,18 @@
         {
           "block_id": "dp6_04_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "原始凭证已与财政缺口对上，赵建国等着与你谈处置。移交、核查、封存或交换条件，会留下不同的记录。",
           "scene_id": "C06_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_04_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_05",
       "story_day": 81,
       "title": "【自主行动窗口】第八十一日上午",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -19281,26 +18916,18 @@
         {
           "block_id": "dp6_05_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "刘三对经手账目的说明已有进展。整本移交、只报部分、封存或者销毁，必须明确处理边界。",
           "scene_id": "C06_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_05_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S02",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev6_02",
       "story_day": 82,
       "title": "第八十二日 · 第二波",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -19385,26 +19012,18 @@
         {
           "block_id": "ev6_02_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "关于清江边孩子与搬迁的新一轮帖子正在传播。提供有依据的数据、只谈进度，还是请求压下消息，需要县里明确回应。",
           "scene_id": "C06_S03",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev6_02_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S03",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_06",
       "story_day": 83,
       "title": "【自主行动窗口】第八十三日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -19497,31 +19116,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C06_S04",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "dp6_06_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C06_S04",
+          "text": "陈默带来尚未发表的稿子，要求核准数字，并询问整改承诺是否公开。稿子是否发表由他决定，你决定提供哪些材料。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_06_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_07",
       "story_day": 84,
       "title": "【自主行动窗口】第八十四日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -22488,26 +22099,18 @@
         {
           "block_id": "dp6_07_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "整改反馈已经送达。住房交付、医疗保障、程序核验等事项同时待办，请排定具体推进次序。",
           "scene_id": "C06_S05",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_07_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_08",
       "story_day": 85,
       "title": "【自主行动窗口】第八十五日",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -22532,71 +22135,72 @@
           "option_id": "b",
           "text": "不报。四个人一个一个约谈，责任写在纸上，人留在岗位上把事办完，名单不上交",
           "consequence": "名单没上交",
-      "effects": {
-        "metric_deltas": {},
-        "ledger_deltas": {},
-        "open_flags": [
-          "班子拥护"
+          "effects": {
+            "metric_deltas": {},
+            "ledger_deltas": {},
+            "open_flags": [
+              "班子拥护"
             ],
             "close_flags": [
               "班子结怨"
             ],
-        "state_assignments": {}
-      },
-      "unavailable_reason": "条件不足"
-    },
-    {
-      "option_id": "c",
-      "text": "不替谁兜底，也不把四个人捆在一张名单上。把已经坐实的责任逐人移交，未坐实的继续核查，各自回岗位等正式结论",
-      "consequence": "你没有换取拥护，也没有用一张名单把所有人推成敌人。会散后，四个人各自回了办公室",
-      "effects": {
-        "metric_deltas": {},
-        "ledger_deltas": {},
-        "open_flags": [],
-        "close_flags": [
-          "班子拥护",
-          "班子结怨"
-        ],
-        "state_assignments": {}
-      },
-      "unavailable_reason": "条件不足"
-    }
-  ],
+            "state_assignments": {}
+          },
+          "unavailable_reason": "条件不足"
+        },
+        {
+          "option_id": "c",
+          "text": "不替谁兜底，也不把四个人捆在一张名单上。把已经坐实的责任逐人移交，未坐实的继续核查，各自回岗位等正式结论",
+          "consequence": "你没有换取拥护，也没有用一张名单把所有人推成敌人。会散后，四个人各自回了办公室",
+          "effects": {
+            "metric_deltas": {},
+            "ledger_deltas": {},
+            "open_flags": [],
+            "close_flags": [
+              "班子拥护",
+              "班子结怨"
+            ],
+            "state_assignments": {}
+          },
+          "unavailable_reason": "条件不足"
+        }
+      ],
       "scene_id": "C06_S05",
       "presentation_blocks": [
         {
           "block_id": "dp6_08_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "责任名单涉及财务、环保、搬迁程序和旧案。已经坐实与仍待核实的部分，需要分别明确处理方式。",
           "scene_id": "C06_S05",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_08_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S05",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_09",
       "story_day": 87,
       "title": "第八十七日 · 会前的那道门",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
         {
           "option_id": "a",
           "text": "把风险摆到桌上，讲清楚这件事捂下去会在什么时候炸，炸的时候谁站在最近的地方",
-          "required_fact_ids": ["fact_inspection_anchors", "fact_eia_original"],
+          "required_fact_ids": [
+            "fact_inspection_anchors",
+            "fact_eia_original"
+          ],
           "unlock_requirements": [
-            {"archive_name": "上级检查工作日程", "reason": "风险论证需要明确检查时点。"},
-            {"archive_name": "环评原始数据附件", "reason": "风险论证需要掌握环评原始数据；两项事实也可分别通过正式接触取得。"}
+            {
+              "archive_name": "上级检查工作日程",
+              "reason": "风险论证需要明确检查时点。"
+            },
+            {
+              "archive_name": "环评原始数据附件",
+              "reason": "风险论证需要掌握环评原始数据；两项事实也可分别通过正式接触取得。"
+            }
           ],
           "consequence": "把风险摆到桌上，讲清楚这件事捂下去会在什么时候炸，炸的时候谁站在最近的地方",
           "effects": {
@@ -22622,8 +22226,15 @@
         {
           "option_id": "b",
           "text": "讲那九个孩子，讲最小的四岁，问他一个共产党的县委书记能不能睡得着",
-          "required_fact_ids": ["fact_lead_census"],
-          "unlock_requirements": [{"archive_name": "血铅普查原始总表", "reason": "患儿论证必须有普查总表支撑；也可通过正式接触取得同一事实。"}],
+          "required_fact_ids": [
+            "fact_lead_census"
+          ],
+          "unlock_requirements": [
+            {
+              "archive_name": "血铅普查原始总表",
+              "reason": "患儿论证必须有普查总表支撑；也可通过正式接触取得同一事实。"
+            }
+          ],
           "consequence": "讲那九个孩子，讲最小的四岁，问他一个共产党的县委书记能不能睡得着",
           "effects": {
             "metric_deltas": {},
@@ -22681,31 +22292,23 @@
           "unavailable_reason": "条件不足"
         }
       ],
-      "scene_id": "C06_S07",
+      "scene_id": "C01_S04",
       "presentation_blocks": [
         {
           "block_id": "dp6_09_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C06_S07",
+          "text": "常委会前，你还有机会与蒋崇岳单独说明风险、家属处境和公众反应，也可以把意见留到会上。",
+          "scene_id": "C01_S04",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_09_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S07",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp6_10",
       "story_day": 89,
       "title": "第八十九日 · 常委会",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -22730,12 +22333,29 @@
         {
           "option_id": "b",
           "text": "一条一条讲，办成的怎么办成的，没办成的卡在哪里，谁做的谁的名字都念出来",
-          "required_fact_ids": ["fact_original_vouchers", "fact_lead_census", "fact_false_signing", "fact_shell_house"],
+          "required_fact_ids": [
+            "fact_original_vouchers",
+            "fact_lead_census",
+            "fact_false_signing",
+            "fact_shell_house"
+          ],
           "unlock_requirements": [
-            {"archive_name": "四十一张原始凭证", "reason": "逐项责任汇报需要原始凭证。"},
-            {"archive_name": "血铅普查原始总表", "reason": "逐项责任汇报需要完整健康依据。"},
-            {"archive_name": "两版签约台账比对", "reason": "逐项责任汇报需要确认签约台账差异。"},
-            {"archive_name": "安置房抽样验收材料", "reason": "逐项责任汇报需要掌握安置房真实验收状态；相关事实也可分别通过正式接触取得。"}
+            {
+              "archive_name": "四十一张原始凭证",
+              "reason": "逐项责任汇报需要原始凭证。"
+            },
+            {
+              "archive_name": "血铅普查原始总表",
+              "reason": "逐项责任汇报需要完整健康依据。"
+            },
+            {
+              "archive_name": "两版签约台账比对",
+              "reason": "逐项责任汇报需要确认签约台账差异。"
+            },
+            {
+              "archive_name": "安置房抽样验收材料",
+              "reason": "逐项责任汇报需要掌握安置房真实验收状态；相关事实也可分别通过正式接触取得。"
+            }
           ],
           "consequence": "一条一条讲，办成的怎么办成的，没办成的卡在哪里，谁做的谁的名字都念出来",
           "effects": {
@@ -22776,26 +22396,18 @@
         {
           "block_id": "dp6_10_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "蒋崇岳请你汇报柳林村。哪些已办成、哪些仍未完成、各自由谁负责，需要在常委会上给出清楚的交代。",
           "scene_id": "C06_S08",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp6_10_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C06_S08",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "ev3_01_followup",
       "story_day": 43,
       "title": "突发·血铅患儿曝光·次日重选",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -22917,31 +22529,23 @@
       "required_flags": [
         "上交矛盾"
       ],
-      "scene_id": "C03_S04",
+      "scene_id": "C01_S02",
       "presentation_blocks": [
         {
           "block_id": "ev3_01_followup_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C03_S04",
+          "text": "关于孩子检测结果的追问仍在继续，上一轮回应没有让事情结束。需要重新明确公开、治疗和调查安排。",
+          "scene_id": "C01_S02",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "ev3_01_followup_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C03_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_04_recovery",
       "story_day": 69,
       "title": "周满仓·唯一一次重启",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -23041,31 +22645,23 @@
       "required_flags": [
         "周满仓重启已付费"
       ],
-      "scene_id": "C05_S04",
+      "scene_id": "C01_S06",
       "presentation_blocks": [
         {
           "block_id": "dp5_04_recovery_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S04",
+          "text": "你重新得到与周满仓核账的机会。他仍坚持先村账、再原始检测记录、最后补偿的次序，等你重新开始。",
+          "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_04_recovery_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp5_05_recovery",
       "story_day": 69,
       "title": "四·三 第二环",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -23191,31 +22787,23 @@
       "required_flags": [
         "村账已摊"
       ],
-      "scene_id": "C05_S04",
+      "scene_id": "C01_S06",
       "presentation_blocks": [
         {
           "block_id": "dp5_05_recovery_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
-          "scene_id": "C05_S04",
+          "text": "重新核对村账后，谈话到了第二步。周满仓等着看你是否会把原始检测记录继续摆出来。",
+          "scene_id": "C01_S06",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp5_05_recovery_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C05_S04",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     },
     {
       "decision_id": "dp4_roster_disposition",
       "story_day": 46,
       "title": "名册原件的下落",
-      "prompt": "请根据已经展开的现场信息作出决定。本决定不消耗行动点。",
+      "prompt": "你准备如何处理？",
       "action_point_cost": 0,
       "skippable": false,
       "options": [
@@ -23297,20 +22885,12 @@
         {
           "block_id": "dp4_roster_disposition_presentation",
           "kind": "narration",
-          "text": "现场的事实、人物立场和时间压力已经摆到你面前。现在必须决定先做什么，以及愿意承担哪一种治理责任。",
+          "text": "报告去向确定后，这份带姓名和签字的名册原件仍须明确保管或移交，不能与对外汇总混为一件事。",
           "scene_id": "C04_S01",
           "presentation_phase": "decision_setup"
         }
       ],
-      "followup_blocks": [
-        {
-          "block_id": "dp4_roster_disposition_followup",
-          "kind": "narration",
-          "text": "决定已经写入当天案卷。现场的人带着各自的判断离开，真正的影响不会以数字预告，而会从后续人物态度和事件变化中逐渐显现。",
-          "scene_id": "C04_S01",
-          "presentation_phase": "consequence"
-        }
-      ]
+      "followup_blocks": []
     }
   ]
 }

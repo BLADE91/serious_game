@@ -66,6 +66,9 @@ export function dedupeNarrative(items: readonly NarrativeItem[]): NarrativeItem[
   const known = new Set<string>();
   const result: NarrativeItem[] = [];
   for (const item of items) {
+    // Retired filler may still exist in saved feeds. Never remove a decision gate.
+    if (!item.text.trim() || (item.presentationPhase !== "decision"
+      && item.text.startsWith("决定已经写入当天案卷。现场的人带着各自的判断离开"))) continue;
     const key = keyFor(item);
     if (known.has(key)) continue;
     known.add(key);
